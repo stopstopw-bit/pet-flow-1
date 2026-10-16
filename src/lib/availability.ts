@@ -194,8 +194,11 @@ export async function getRoomAvailability(
   const closed = isShopClosedOn(config, checkin) || isShopClosedOn(config, checkout);
 
   const all = await listBookings();
-  const booked = all.filter(
-    (b) =>
+  // นับเป็น "ห้อง" ไม่ใช่ "แมว" — บ้านเดียวกันช่วงเดียวกันอยู่ห้องเดียวกันได้ถึง maxCats ตัว
+  const maxCats = Math.max(1, config.rooms.find((r) => r.id === roomTypeId)?.maxCats || 1);
+  const households = new Map<string, number>();
+  for (const b of all) {
+    if (
       b.service === "room" &&
       b.room === roomTypeId &&
       b.status !== "cancelled" &&
@@ -203,7 +206,13 @@ export async function getRoomAvailability(
       b.checkout &&
       b.checkin < checkout &&
       b.checkout > checkin
-  ).length;
+    ) {
+      const key = `${b.customerName}|${b.checkin}|${b.checkout}`;
+      households.set(key, (households.get(key) || 0) + 1);
+    }
+  }
+  let booked = 0;
+  for (const cats of households.values()) booked += Math.ceil(cats / maxCats);
   return {
     capacity,
     booked,

@@ -56,6 +56,10 @@ export type RoomType = {
    * ไม่ระบุ = 1 ตัว (คนละบ้านไม่นอนรวมกันเสมอ ไม่ว่าห้องจะจุได้เท่าไหร่)
    */
   maxCats?: number;
+  /** ราคาห้อง (price) รวมแมวได้กี่ตัว — เกินจากนี้คิดเพิ่ม extraCatPrice ต่อตัวต่อคืน (ไม่ตั้ง = 2) */
+  includedCats?: number;
+  /** ค่าแมวตัวที่เกิน includedCats ต่อตัว/คืน — ไม่ตั้งหรือ 0 = ไม่คิดเพิ่ม */
+  extraCatPrice?: number;
   /**
    * ห้องเชื่อม — เกิดจากเปิดห้องจริงที่อยู่ติดกันถึงกัน ไม่ใช่ห้องเพิ่ม
    * เช่น Duo = ห้อง S 2 ห้อง → [{ typeId: "<id ห้อง S>", units: 2 }]
@@ -412,4 +416,22 @@ export const DEMO_PROMOS = [
 
 export function getRoomById(id: string) {
   return ROOMS.find((r) => r.id === id);
+}
+
+/** ค่าแมวเพิ่มต่อคืนของบ้านที่พัก n ตัวในห้องแบบนี้ (คิดต่อห้อง — n ตัวอาจใช้หลายห้อง) */
+export function extraCatChargePerNight(
+  room: Pick<RoomType, "maxCats" | "includedCats" | "extraCatPrice">,
+  n: number
+): { rooms: number; extraCats: number; perNight: number } {
+  const max = Math.max(1, room.maxCats || 1);
+  const rooms = Math.max(1, Math.ceil(n / max));
+  const included = Math.max(1, room.includedCats ?? 2);
+  // กระจายแมวให้เท่าๆ กันในแต่ละห้อง แล้วนับตัวที่เกินโควตาของแต่ละห้อง
+  let extraCats = 0;
+  for (let i = 0; i < rooms; i++) {
+    const inRoom = Math.floor(n / rooms) + (i < n % rooms ? 1 : 0);
+    extraCats += Math.max(0, inRoom - included);
+  }
+  const price = Math.max(0, room.extraCatPrice || 0);
+  return { rooms, extraCats: price ? extraCats : 0, perNight: price * extraCats };
 }

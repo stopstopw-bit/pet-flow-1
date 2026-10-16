@@ -1217,6 +1217,22 @@ function RoomsTab({
             <p className="mt-1 text-[10px] text-brown-faint">
               แมวของบ้านเดียวกันช่วงวันเดียวกันเท่านั้นที่นอนรวมห้องได้ · คนละบ้านไม่รวมกันเสมอ
             </p>
+            {(room.maxCats ?? 1) > 1 && (
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <Field
+                  label="ราคาห้องรวมแมวกี่ตัว"
+                  type="number"
+                  value={String(room.includedCats ?? 2)}
+                  onChange={(v) => updateRoom(idx, { includedCats: Math.max(1, Number(v) || 1) })}
+                />
+                <Field
+                  label={`ตัวที่ ${(room.includedCats ?? 2) + 1} ขึ้นไป +฿/ตัว/คืน`}
+                  type="number"
+                  value={String(room.extraCatPrice ?? 0)}
+                  onChange={(v) => updateRoom(idx, { extraCatPrice: Math.max(0, Number(v) || 0) })}
+                />
+              </div>
+            )}
 
             <p className="mt-3 text-[10px] font-extrabold text-brown-soft">
               🔗 ห้องเชื่อม — ห้องนี้เกิดจากเปิดห้องจริงถึงกันหรือเปล่า?

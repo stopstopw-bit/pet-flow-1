@@ -20,6 +20,7 @@ import {
   type GroomProgram,
 } from "@/lib/grooming-prices";
 import { priceSignature, findLastPrice } from "@/lib/special-price";
+import { extraCatChargePerNight } from "@/lib/business";
 
 type Customer = {
   id: string;
@@ -343,6 +344,10 @@ export default function BillingPage() {
   const [promos, setPromos] = useState<Promo[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [rooms, setRooms] = useState<(ServicePreset & { id: string })[]>([]);
+  /** จุห้อง/ค่าน้องตัวเกิน ของแต่ละประเภทห้อง — ใช้แตกบิลบ้านเดียวกันเป็นห้อง + ค่าตัวเกิน */
+  const [roomRules, setRoomRules] = useState<
+    Record<string, { maxCats?: number; includedCats?: number; extraCatPrice?: number }>
+  >({});
   const [servicePresets, setServicePresets] = useState<ServicePreset[]>(SERVICE_PRESETS);
   const [freebiePresets, setFreebiePresets] = useState<string[]>(FREEBIE_PRESETS);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -452,6 +457,16 @@ export default function BillingPage() {
         label: `ห้อง ${r.name}`,
         amount: r.price,
       }))
+    );
+    setRoomRules(
+      Object.fromEntries(
+        (config?.rooms || []).map(
+          (r: { id: string; maxCats?: number; includedCats?: number; extraCatPrice?: number }) => [
+            r.id,
+            { maxCats: r.maxCats, includedCats: r.includedCats, extraCatPrice: r.extraCatPrice },
+          ]
+        )
+      )
     );
     setGroomPrograms(resolveGroomPrograms(config?.groomPricePrograms));
     if (config?.payment) setPay(config.payment);
@@ -885,23 +900,54 @@ export default function BillingPage() {
     // ตั้งชื่อน้องให้แต่ละบรรทัดเมื่อมาหลายตัว จะได้รู้ว่าตัวไหนใช้บริการอะไร
     const many = group.length > 1;
     if (bk.service === "room") {
-      setItems(
-        group.map((g) => {
-          // นัดเก็บ room เป็น id → จับคู่กับ id ก่อน แล้วค่อย fallback เป็นชื่อ
-          const matched =
-            rooms.find((r) => g.room && r.id === g.room) ||
-            rooms.find((r) => g.room && r.label.includes(g.room));
-          return {
+      // บ้านเดียวกันอยู่ห้องเดียวกัน: 1 บรรทัดต่อ 1 ห้อง (เกินจุห้องค่อยแตกห้องเพิ่ม)
+      // + บรรทัดค่าน้องตัวที่เกินโควตาห้อง ตามที่ตั้งไว้ในประเภทห้อง
+      const byStay = new Map<string, typeof group>();
+      for (const g of group) {
+        const key = `${g.room || ""}|${g.checkin || ""}|${g.checkout || ""}`;
+        byStay.set(key, [...(byStay.get(key) || []), g]);
+      }
+      const lines: Item[] = [];
+      for (const stay of byStay.values()) {
+        const g = stay[0];
+        // นัดเก็บ room เป็น id → จับคู่กับ id ก่อน แล้วค่อย fallback เป็นชื่อ
+        const matched =
+          rooms.find((r) => g.room && r.id === g.room) ||
+          rooms.find((r) => g.room && r.label.includes(g.room));
+        const rule = (matched && roomRules[matched.id]) || {};
+        const nights = nightsBetween(g.checkin, g.checkout);
+        const roomLabel =
+          matched?.label || rooms[0]?.label || (g.room ? `ห้อง ${g.room}` : "ห้องพัก");
+        const { rooms: roomCount, extraCats, perNight } = extraCatChargePerNight(
+          rule,
+          stay.length
+        );
+        let at = 0;
+        for (let i = 0; i < roomCount; i++) {
+          const inRoom =
+            Math.floor(stay.length / roomCount) + (i < stay.length % roomCount ? 1 : 0);
+          const names = stay.slice(at, at + inRoom).map((x) => x.catName);
+          at += inRoom;
+          lines.push({
             ...newGrooming(undefined, groomPrograms),
             kind: "room" as const,
-            roomLabel:
-              matched?.label || rooms[0]?.label || (g.room ? `ห้อง ${g.room}` : "ห้องพัก"),
+            roomLabel,
             roomPrice: matched?.amount ?? rooms[0]?.amount ?? 0,
-            nights: nightsBetween(g.checkin, g.checkout),
-            catName: many ? g.catName : undefined,
-          };
-        })
-      );
+            nights,
+            catName: many ? joinCatNames(names) : undefined,
+          });
+        }
+        if (perNight > 0) {
+          const included = Math.max(1, rule.includedCats ?? 2);
+          lines.push({
+            ...newGrooming(undefined, groomPrograms),
+            kind: "custom" as const,
+            label: `ค่าน้องตัวที่ ${included + 1} ขึ้นไป · ${roomLabel} (${extraCats} ตัว × ${Math.max(1, nights)} คืน)`,
+            amount: perNight * Math.max(1, nights),
+          });
+        }
+      }
+      setItems(lines);
     } else {
       setItems(
         group.map((g) => ({

@@ -7,6 +7,7 @@ import { useConfig } from "@/components/ConfigProvider";
 import { PageHeader } from "@/components/PageHeader";
 import { SELF_BOOKABLE_ROOM_IDS } from "@/lib/self-bookable-rooms";
 import { GROOM_PROGRAMS } from "@/lib/grooming-prices";
+import { extraCatChargePerNight } from "@/lib/business";
 import { toJpegDataUrl } from "@/lib/image-convert";
 
 type Service = "groom" | "room";
@@ -71,20 +72,22 @@ function BookPageInner() {
     () =>
       config.rooms
         .filter((r) => SELF_BOOKABLE_ROOM_IDS.includes(r.id))
-        .map((r) => ({ id: r.id, name: r.name })),
+        .map((r) => ({
+          id: r.id,
+          name: r.name,
+          price: r.price,
+          maxCats: r.maxCats,
+          includedCats: r.includedCats,
+          extraCatPrice: r.extraCatPrice,
+        })),
     [config.rooms]
   );
   const [service, setService] = useState<Service>(
     params.get("service") === "room" ? "room" : "groom"
   );
-  // อาบน้ำเลือกได้หลายตัว (แต่ละตัวกินคิวว่าง 1 ช่อง) — เข้าพักเลือกได้ทีละตัว (คนละห้อง คนละ flow)
+  // เลือกน้องได้หลายตัวทั้งอาบน้ำและเข้าพัก — เข้าพักบ้านเดียวกันอยู่ห้องเดียวกัน (เกินจุห้อง = เพิ่มห้อง)
   const [catNames, setCatNames] = useState<string[]>([]);
-  const catName = catNames[0] || "";
   const toggleCat = (name: string) => {
-    if (service === "room") {
-      setCatNames([name]);
-      return;
-    }
     setCatNames((prev) =>
       prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]
     );
@@ -107,6 +110,28 @@ function BookPageInner() {
   const [roomAvail, setRoomAvail] = useState<RoomAvail>(null);
   const [roomAvailErr, setRoomAvailErr] = useState("");
   const [loadingRoom, setLoadingRoom] = useState(false);
+
+  // บ้านเดียวกันอยู่ห้องเดียวกัน — เกินจุห้องค่อยเพิ่มห้อง · ค่าตัวที่เกินโควตาห้องคิดตามตั้งค่าห้อง
+  const selectedRoom = roomTypes.find((r) => r.id === roomType);
+  const roomsNeeded = selectedRoom
+    ? Math.max(1, Math.ceil(catNames.length / Math.max(1, selectedRoom.maxCats || 1)))
+    : 1;
+  const roomPrice = useMemo(() => {
+    if (!selectedRoom || !catNames.length || checkout <= checkin) return null;
+    const nights = Math.round(
+      (Date.parse(checkout + "T00:00:00Z") - Date.parse(checkin + "T00:00:00Z")) / 86400000
+    );
+    const extra = extraCatChargePerNight(selectedRoom, catNames.length);
+    return {
+      nights,
+      rooms: extra.rooms,
+      roomPerNight: selectedRoom.price,
+      extraCats: extra.extraCats,
+      extraCatPrice: selectedRoom.extraCatPrice || 0,
+      included: Math.max(1, selectedRoom.includedCats ?? 2),
+      total: (selectedRoom.price * extra.rooms + extra.perNight) * nights,
+    };
+  }, [selectedRoom, catNames.length, checkin, checkout]);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitErr, setSubmitErr] = useState("");
@@ -153,11 +178,6 @@ function BookPageInner() {
   useEffect(() => {
     if (customer?.cats?.length && !catNames.length) setCatNames([customer.cats[0].name]);
   }, [customer, catNames]);
-
-  // เปลี่ยนไปแท็บเข้าพัก — ถ้าเผลอเลือกไว้หลายตัว (จากแท็บอาบน้ำ) ตัดเหลือตัวแรกตัวเดียว
-  useEffect(() => {
-    if (service === "room" && catNames.length > 1) setCatNames((prev) => prev.slice(0, 1));
-  }, [service, catNames.length]);
 
   useEffect(() => {
     // roomType เริ่มว่างเพราะรอโหลด config ก่อน — เลือกห้องแรกที่ร้านนี้เปิดให้จองเองได้
@@ -240,8 +260,10 @@ function BookPageInner() {
       if (!time) return false;
       return Boolean(assignedPreview);
     }
-    return Boolean(roomType && roomAvail && roomAvail.remaining > 0 && checkout > checkin);
-  }, [catNames, service, time, assignedPreview, roomType, roomAvail, checkin, checkout]);
+    return Boolean(
+      roomType && roomAvail && roomAvail.remaining >= roomsNeeded && checkout > checkin
+    );
+  }, [catNames, service, time, assignedPreview, roomType, roomAvail, checkin, checkout, roomsNeeded]);
 
   const submit = async (withSlip = true) => {
     if (!profile?.lineUserId || !canSubmit) return;
@@ -261,7 +283,7 @@ function BookPageInner() {
             }
           : {
               lineUserId: profile.lineUserId,
-              catName,
+              catNames,
               service,
               checkin,
               checkout,
@@ -443,7 +465,7 @@ function BookPageInner() {
         <>
           <div className="rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm">
             <p className="mb-2 text-xs font-bold text-brown-soft">
-              🐱 น้องแมว{service === "groom" ? " (เลือกได้หลายตัว — 1 ตัว = 1 คิว)" : ""}
+              🐱 น้องแมว (เลือกได้หลายตัว)
             </p>
             <div className="mb-3 flex flex-wrap gap-2">
               {customer.cats.map((c) => {
@@ -628,13 +650,28 @@ function BookPageInner() {
                       roomAvail.remaining > 0 ? "bg-sage/15 text-ok" : "bg-wait/10 text-wait"
                     }`}
                   >
-                    {roomAvail.remaining > 0
+                    {roomAvail.remaining >= roomsNeeded
                       ? `✅ ว่าง ${roomAvail.remaining} ห้อง`
+                      : roomAvail.remaining > 0
+                        ? `ว่างแค่ ${roomAvail.remaining} ห้อง แต่น้อง ${catNames.length} ตัวต้องใช้ ${roomsNeeded} ห้อง`
                       : roomAvail.closed
                         ? "ร้านปิดวันเช็คอิน/เช็คเอาท์ที่เลือกไว้ — ลองเปลี่ยนวันดูนะคะ"
                         : "เต็มแล้วช่วงนี้ — ลองเปลี่ยนวันดูนะคะ"}
                   </p>
                 ) : null}
+                {roomPrice && (
+                  <div className="mt-2 rounded-petflow-sm bg-paper px-3 py-2 text-xs text-brown">
+                    <p className="font-bold">
+                      💰 ประมาณ ฿{roomPrice.total.toLocaleString()} ({roomPrice.nights} คืน)
+                    </p>
+                    <p className="text-brown-soft">
+                      ห้อง ฿{roomPrice.roomPerNight.toLocaleString()} × {roomPrice.rooms} ห้อง
+                      {roomPrice.extraCats > 0 &&
+                        ` + น้องตัวที่ ${roomPrice.included + 1} ขึ้นไป ${roomPrice.extraCats} ตัว × ฿${roomPrice.extraCatPrice}`}{" "}
+                      ต่อคืน
+                    </p>
+                  </div>
+                )}
               </>
             )}
           </div>
