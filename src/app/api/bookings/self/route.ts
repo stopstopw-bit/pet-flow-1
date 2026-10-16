@@ -6,6 +6,9 @@ import { assignGroomSlots, getGroomAvailability, getRoomAvailability } from "@/l
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { groomProgram } from "@/lib/grooming-prices";
 import { requireCustomerSession } from "@/lib/customer-session";
+import { getSiteConfig } from "@/lib/config-store";
+import { depositAmountFor, type DepositStatus } from "@/lib/booking-deposit";
+import { saveDepositSlip, depositTelegramLine } from "@/lib/booking-deposit-server";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +49,24 @@ async function handlePost(req: NextRequest) {
     return NextResponse.json({ error: "cat_not_found" }, { status: 404 });
   }
 
+  // มัดจำ — ยอดคิดจากตั้งค่าร้านฝั่งเซิร์ฟเวอร์เสมอ (ไม่เชื่อยอดที่ client ส่งมา)
+  // แนบสลิปมา = รอตรวจ, ไม่แนบ ("โอนทีหลัง") = ยังไม่โอน — การจองไม่ถูกบล็อกทั้งสองแบบ
+  const depositAmount = depositAmountFor((await getSiteConfig()).bookingDeposit, service);
+  const slipRaw = typeof body.depositSlip === "string" ? body.depositSlip : "";
+  const depositInfo = async (): Promise<{
+    depositAmount?: number;
+    depositSlipUrl?: string;
+    depositStatus?: DepositStatus;
+  }> => {
+    if (!depositAmount) return {};
+    const url = slipRaw ? await saveDepositSlip(slipRaw) : undefined;
+    return {
+      depositAmount,
+      depositSlipUrl: url,
+      depositStatus: url ? "pending_review" : "none",
+    };
+  };
+
   // วันนี้ตามเวลาไทย — server รันเป็น UTC ใช้ตรงๆ จะคลาดวันช่วงหลังเที่ยงคืนไทย
   const todayBkk = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
   // นัดเดิมของลูกค้าคนนี้ — ใช้กันจองซ้ำ (กดหลายรอบ/ลืมว่าจองแล้ว = กินคิวว่างฟรี)
@@ -74,6 +95,7 @@ async function handlePost(req: NextRequest) {
       return NextResponse.json({ error: "slot_full" }, { status: 409 });
     }
     const programId = String(body.groomProgram || "").trim() || undefined;
+    const deposit = await depositInfo();
     const bookings: StoredBooking[] = [];
     for (let i = 0; i < catNames.length; i++) {
       bookings.push(
@@ -86,6 +108,8 @@ async function handlePost(req: NextRequest) {
           lineUserId,
           selfBooked: true,
           groomProgram: programId,
+          // ทั้งบ้านที่จองพร้อมกันได้ยอด/สลิป/สถานะเดียวกันทุกแถว (ยอดของทั้งกลุ่ม ไม่ใช่ต่อตัว)
+          ...deposit,
         })
       );
     }
@@ -98,6 +122,7 @@ async function handlePost(req: NextRequest) {
         น้อง: scheduleText,
         วันที่: date,
         ...(programId ? { โปรแกรม: groomProgram(programId)?.name || programId } : {}),
+        ...depositTelegramLine(deposit),
       })
     );
     return NextResponse.json({ ok: true, booking: bookings[0], bookings });
@@ -138,6 +163,7 @@ async function handlePost(req: NextRequest) {
   if (avail.remaining <= 0) {
     return NextResponse.json({ error: "room_full" }, { status: 409 });
   }
+  const deposit = await depositInfo();
   const booking = await addBooking({
     customerName: customer.name,
     catName,
@@ -148,6 +174,7 @@ async function handlePost(req: NextRequest) {
     room,
     lineUserId,
     selfBooked: true,
+    ...deposit,
   });
   await sendTelegram(
     formatBookingTelegram("🏠 ลูกค้าจองห้องพักเอง (รอยืนยัน)", {
@@ -155,6 +182,7 @@ async function handlePost(req: NextRequest) {
       น้อง: catName,
       เข้าพัก: `${checkin} → ${checkout}`,
       ห้อง: room,
+      ...depositTelegramLine(deposit),
     })
   );
   return NextResponse.json({ ok: true, booking });

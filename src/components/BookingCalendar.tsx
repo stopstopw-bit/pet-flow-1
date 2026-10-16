@@ -25,6 +25,7 @@ import { BOOKING_STATUS_LABELS, type BookingStatus } from "@/lib/business";
 import { effectiveBookingStatus } from "@/lib/booking-status";
 import { GROOM_PROGRAMS, resolveGroomPrograms, type GroomProgram } from "@/lib/grooming-prices";
 import { hasTransport, transportLabel } from "@/lib/transport";
+import { DEPOSIT_STATUS_LABEL } from "@/lib/booking-deposit";
 
 type CalendarDay = EditableBooking & {
   customerId?: string;
@@ -1541,6 +1542,27 @@ export function BookingCalendar() {
                   </div>
                 </div>
                 <CatTags group={group} />
+                {/* มัดจำตอนลูกค้าจองเอง — เห็นทันทีว่าใครโอนแล้ว/ยังไม่โอน (แตะเพื่อเปิดดูสลิป/กดรับมัดจำ) */}
+                {(() => {
+                  const dep = group.find((x) => x.depositAmount);
+                  if (!dep?.depositAmount) return null;
+                  const st = dep.depositStatus || "none";
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => openEdit(dep, group)}
+                      className={`mt-2 flex min-h-[32px] items-center gap-1.5 rounded-full px-3 text-[11px] font-extrabold ${
+                        st === "paid"
+                          ? "bg-sage/20 text-ok"
+                          : st === "pending_review"
+                            ? "bg-honey/25 text-wait"
+                            : "bg-red-50 text-red-600"
+                      }`}
+                    >
+                      💰 มัดจำ {dep.depositAmount.toLocaleString()} ฿ · {DEPOSIT_STATUS_LABEL[st]}
+                    </button>
+                  );
+                })()}
                 {b.service === "room" &&
                   (b.consentAcceptedAt ? (
                     <div className="mt-2 flex items-center gap-2">

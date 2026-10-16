@@ -4,6 +4,14 @@ import type { GroomProgram } from "./grooming-prices";
 import type { RoomClosure } from "./room-board";
 
 /** บล็อกเนื้อหาหน้ากฎระเบียบการฝาก — ใส่ได้ทั้งรูปและ/หรือข้อความ เรียงตามลำดับที่ตั้งไว้ */
+export type BookingDepositConfig = {
+  enabled?: boolean;
+  /** ยอดมัดจำคิวอาบน้ำ (บาท) — 0/ไม่ตั้ง = ไม่เก็บมัดจำอาบน้ำ */
+  groomAmount?: number;
+  /** ยอดมัดจำห้องพัก (บาท) — 0/ไม่ตั้ง = ไม่เก็บมัดจำห้องพัก */
+  roomAmount?: number;
+};
+
 export type BoardingRuleBlock = {
   id: string;
   /** URL รูป หรือ data: URL ที่อัปโหลดไว้ — ไม่ใส่ก็ได้ถ้าบล็อกนี้มีแต่ข้อความ */
@@ -229,6 +237,11 @@ export type SiteConfig = {
     /** พร้อมเพย์ (เบอร์มือถือ 10 หลัก หรือเลขผู้เสียภาษี/บัตร 13 หลัก) — ใช้สร้าง QR ที่หน้าขาย POS */
     promptpayId?: string;
   };
+  /**
+   * มัดจำตอนลูกค้าจองเอง (หน้า /app/book) — ไม่ตั้ง/ปิด = จองได้เหมือนเดิม ไม่มีขั้นมัดจำ
+   * ยอดเป็นบาทต่อ 1 การจอง (ทั้งบ้านที่จองพร้อมกัน = 1 ยอด ไม่คูณจำนวนตัว)
+   */
+  bookingDeposit?: BookingDepositConfig;
   /** ข้อความหัวเรื่อง/ปิดท้าย ของสรุปที่ก๊อป/ส่งให้ลูกค้า (แก้ได้ในตั้งค่า) */
   billing: {
     summaryBookingTitle: string;

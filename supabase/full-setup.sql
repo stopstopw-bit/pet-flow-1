@@ -207,6 +207,9 @@ create table if not exists bookings (
   auto_off text[] not null default array[]::text[],
   self_booked boolean not null default false,
   transport jsonb,
+  deposit_amount numeric,                         -- มัดจำตอนลูกค้าจองเอง (ยอดของทั้งกลุ่ม)
+  deposit_slip_url text,
+  deposit_status text,                            -- none | pending_review | paid
   created_at timestamptz not null default now()
 );
 -- เผื่อตารางเดิมมีอยู่แล้วแต่คอลัมน์ไม่ครบ (no-op บน DB ใหม่)
@@ -238,6 +241,9 @@ alter table bookings
   add column if not exists auto_off text[] not null default array[]::text[],
   add column if not exists self_booked boolean not null default false,
   add column if not exists transport jsonb,
+  add column if not exists deposit_amount numeric,
+  add column if not exists deposit_slip_url text,
+  add column if not exists deposit_status text,
   add column if not exists created_at timestamptz not null default now();
 -- schema.sql เก่าเคยล็อกสถานะไว้แค่ 3 ค่า แต่โค้ดใช้ ready/done/no_show ด้วย — ไม่ล็อกแล้ว
 alter table bookings drop constraint if exists bookings_status_check;

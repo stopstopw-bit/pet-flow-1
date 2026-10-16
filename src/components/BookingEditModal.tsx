@@ -10,6 +10,7 @@ import { TransportPicker } from "@/components/TransportPicker";
 import type { BookingTransport } from "@/lib/transport";
 import { GROOM_PROGRAMS, type GroomProgram } from "@/lib/grooming-prices";
 import { freeUnitsForRange, roomCapacity, compositionOf, type BoardBooking, type RoomClosure } from "@/lib/room-board";
+import { DEPOSIT_STATUS_LABEL, type DepositStatus } from "@/lib/booking-deposit";
 
 export type EditableBooking = Booking & {
   lineUserId?: string;
@@ -38,7 +39,103 @@ export type EditableBooking = Booking & {
   pickupTime?: string;
   /** บริการรับ-ส่ง (ดู transport.ts) */
   transport?: BookingTransport;
+  /** มัดจำตอนลูกค้าจองเอง — ยอดของทั้งกลุ่ม (ดู booking-deposit.ts) */
+  depositAmount?: number;
+  depositSlipUrl?: string;
+  depositStatus?: DepositStatus;
 };
+
+const DEPOSIT_BADGE: Record<DepositStatus, string> = {
+  none: "bg-red-50 text-red-600",
+  pending_review: "bg-honey/25 text-wait",
+  paid: "bg-sage/20 text-ok",
+};
+
+/** มัดจำของนัดนี้ — ยอด สถานะ สลิป และปุ่มกดรับมัดจำ (อัปเดตทั้งกลุ่มที่จองด้วยกัน) */
+function DepositPanel({
+  booking,
+  siblingIds,
+  onChanged,
+}: {
+  booking: EditableBooking;
+  siblingIds: string[];
+  onChanged: () => void;
+}) {
+  const [status, setStatus] = useState<DepositStatus>(booking.depositStatus || "none");
+  const [busy, setBusy] = useState(false);
+  if (!booking.depositAmount) return null;
+  const setTo = async (next: DepositStatus) => {
+    setBusy(true);
+    const res = await fetch("/api/bookings/deposit", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: [booking.id, ...siblingIds], status: next }),
+    }).catch(() => null);
+    setBusy(false);
+    if (!res?.ok) {
+      alert("บันทึกสถานะมัดจำไม่สำเร็จ — ลองกด “อัปเดตฐานข้อมูล” ในหน้าตั้งค่าก่อน");
+      return;
+    }
+    setStatus(next);
+    toast(next === "paid" ? "บันทึกว่าได้รับมัดจำแล้ว ✔️" : "ย้อนสถานะมัดจำแล้ว", "success");
+    onChanged();
+  };
+  return (
+    <div className="mb-4 rounded-petflow-sm border border-petflow-line bg-paper/50 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-extrabold text-petflow-chocolate">
+          💰 มัดจำ {booking.depositAmount.toLocaleString()} บาท
+          {siblingIds.length > 0 && (
+            <span className="font-normal text-brown-faint"> (ทั้งบ้าน {siblingIds.length + 1} ตัว)</span>
+          )}
+        </p>
+        <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-bold ${DEPOSIT_BADGE[status]}`}>
+          {DEPOSIT_STATUS_LABEL[status]}
+        </span>
+      </div>
+      {booking.depositSlipUrl ? (
+        <a
+          href={booking.depositSlipUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-2 flex items-center gap-2.5 text-xs font-bold text-latte-deep"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={booking.depositSlipUrl}
+            alt="สลิปมัดจำ"
+            className="h-16 w-16 shrink-0 rounded-lg border border-petflow-line object-cover"
+          />
+          ดูสลิปเต็ม
+        </a>
+      ) : (
+        <p className="mt-1 text-[11px] text-brown-faint">ลูกค้ายังไม่ได้แนบสลิป (เลือกโอนทีหลัง)</p>
+      )}
+      <div className="mt-2.5 flex flex-wrap gap-2">
+        {status !== "paid" ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => setTo("paid")}
+            className="flex min-h-[40px] items-center gap-1.5 rounded-full bg-ok px-4 text-xs font-extrabold text-white disabled:opacity-50"
+          >
+            <Icon name="check" size={14} strokeWidth={2.4} />
+            {busy ? "กำลังบันทึก…" : "ได้รับมัดจำแล้ว"}
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => setTo(booking.depositSlipUrl ? "pending_review" : "none")}
+            className="min-h-[40px] rounded-full bg-card px-4 text-xs font-bold text-brown-soft ring-1 ring-petflow-line disabled:opacity-50"
+          >
+            ย้อนเป็น “ยังไม่ได้รับ”
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function EditField({
   label,
@@ -310,6 +407,7 @@ export function BookingEditModal({
             <Icon name="x" size={18} />
           </button>
         </div>
+        <DepositPanel booking={booking} siblingIds={siblings.map((s) => s.id)} onChanged={onSaved} />
         <Segmented
           value={service}
           onChange={setService}

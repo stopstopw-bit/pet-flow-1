@@ -66,6 +66,8 @@ export function getDefaultSiteConfig(): SiteConfig {
         accountName: process.env.BANK_ACCOUNT_NAME || "",
         promptpayId: process.env.PROMPTPAY_ID || undefined,
       },
+      // มัดจำตอนลูกค้าจองเอง — ปิดไว้ก่อนเสมอ ร้านเดิมใช้งานเหมือนเดิมจนกว่าจะเปิดเอง
+      bookingDeposit: { enabled: false, groomAmount: 0, roomAmount: 0 },
       billing: {
         summaryBookingTitle: "สรุปการจอง",
         summaryDepositTitle: "แจ้งมัดจำ",

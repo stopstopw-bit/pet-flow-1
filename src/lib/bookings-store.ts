@@ -4,6 +4,7 @@ import { uploadDataUrlToStorage } from "./supabase/storage";
 import { seedEnabled } from "./demo-seed";
 import { requireTenantId } from "./tenant-context";
 import type { BookingTransport } from "./transport";
+import { cleanDepositStatus, type DepositStatus } from "./booking-deposit";
 
 export type StoredBooking = Booking & {
   lineUserId?: string;
@@ -41,6 +42,12 @@ export type StoredBooking = Booking & {
   roomUnit?: number;
   /** บริการรับ-ส่งของนัดนี้ (ดู transport.ts) — ไม่มี = ลูกค้ามาเอง */
   transport?: BookingTransport;
+  /** มัดจำตอนลูกค้าจองเอง — ยอดของ "ทั้งกลุ่ม" ที่จองพร้อมกัน (เก็บซ้ำทุกแถวของกลุ่ม ห้ามรวมข้ามแถว) */
+  depositAmount?: number;
+  /** ลิงก์รูปสลิปโอนมัดจำ (Supabase Storage bucket media) */
+  depositSlipUrl?: string;
+  /** none = ยังไม่โอน, pending_review = แนบสลิปแล้วรอตรวจ, paid = ร้านยืนยันว่าได้รับแล้ว */
+  depositStatus?: DepositStatus;
 };
 
 export { AUTO_MESSAGE_TOPICS, autoMuted } from "./auto-messages";
@@ -74,6 +81,9 @@ type BookingRow = {
   groom_program?: string | null;
   room_unit?: number | null;
   transport?: BookingTransport | null;
+  deposit_amount?: number | string | null;
+  deposit_slip_url?: string | null;
+  deposit_status?: string | null;
 };
 
 const mem: StoredBooking[] = seedEnabled()
@@ -122,6 +132,10 @@ function rowToStored(r: BookingRow): StoredBooking {
     groomProgram: r.groom_program || undefined,
     roomUnit: r.room_unit ?? undefined,
     transport: r.transport || undefined,
+    depositAmount: Number(r.deposit_amount) > 0 ? Number(r.deposit_amount) : undefined,
+    depositSlipUrl: r.deposit_slip_url || undefined,
+    depositStatus:
+      Number(r.deposit_amount) > 0 || r.deposit_status ? cleanDepositStatus(r.deposit_status) : undefined,
   };
 }
 
@@ -372,6 +386,64 @@ export async function setBookingTransportLocation(
   return { ok: true as const, booking: { ...b, transport: next } };
 }
 
+type DepositFields = Pick<StoredBooking, "depositAmount" | "depositSlipUrl" | "depositStatus">;
+
+function depositRow(d: DepositFields) {
+  const row: Record<string, unknown> = {};
+  if (d.depositAmount !== undefined) row.deposit_amount = d.depositAmount || null;
+  if (d.depositSlipUrl !== undefined) row.deposit_slip_url = d.depositSlipUrl || null;
+  if (d.depositStatus !== undefined) row.deposit_status = d.depositStatus;
+  return row;
+}
+
+/**
+ * เขียนข้อมูลมัดจำ — คอลัมน์เพิ่มมาทีหลัง เขียนแยกจากแถวหลักแบบเดียวกับ transport
+ * ยังไม่มีคอลัมน์ → ลอง migrate ให้เองก่อนแล้วเขียนใหม่ · ไม่สำเร็จก็ไม่ทำให้การจองพัง
+ */
+async function writeDeposit(id: string, d: DepositFields) {
+  const sb = getSupabase();
+  if (!sb) return true;
+  const row = depositRow(d);
+  if (!Object.keys(row).length) return true;
+  try {
+    const { error } = await sb.from("bookings").update(row).eq("tenant_id", requireTenantId()).eq("id", id);
+    if (!error) return true;
+    const { ensureMigration } = await import("./migrations");
+    if (await ensureMigration("bookings.deposit")) {
+      const res = await sb.from("bookings").update(row).eq("tenant_id", requireTenantId()).eq("id", id);
+      return !res.error;
+    }
+  } catch {
+    /* ยังไม่มีคอลัมน์มัดจำ */
+  }
+  return false;
+}
+
+/**
+ * อัปเดตมัดจำของนัดหลายแถวพร้อมกัน (ทั้งกลุ่มที่จองด้วยกัน) — ใช้ทั้งตอนลูกค้าแนบสลิปทีหลัง
+ * และตอนร้านกด "มัดจำแล้ว" · ownerLineUserId ส่งมา = ฝั่งลูกค้า แก้ได้เฉพาะนัดของตัวเอง
+ */
+export async function setBookingsDeposit(
+  ids: string[],
+  d: DepositFields,
+  ownerLineUserId?: string
+) {
+  const updated: StoredBooking[] = [];
+  for (const id of ids) {
+    const b = await getBooking(id);
+    if (!b) continue;
+    if (ownerLineUserId !== undefined && b.lineUserId !== ownerLineUserId) continue;
+    if (getSupabase()) {
+      if (!(await writeDeposit(id, d))) return { ok: false as const, error: "need_sql", updated };
+    } else {
+      const m = mem.find((x) => x.id === id);
+      if (m) Object.assign(m, Object.fromEntries(Object.entries(d).filter(([, v]) => v !== undefined)));
+    }
+    updated.push({ ...b, ...d });
+  }
+  return { ok: true as const, updated };
+}
+
 export async function addBooking(
   data: Omit<StoredBooking, "id" | "createdAt" | "status" | "calendarEventId">
 ) {
@@ -405,6 +477,13 @@ export async function addBooking(
         .eq("tenant_id", requireTenantId());
     }
     if (booking.transport) await writeTransport(booking.id, booking.transport);
+    if (booking.depositAmount) {
+      await writeDeposit(booking.id, {
+        depositAmount: booking.depositAmount,
+        depositSlipUrl: booking.depositSlipUrl,
+        depositStatus: booking.depositStatus || "none",
+      });
+    }
     return booking;
   }
 

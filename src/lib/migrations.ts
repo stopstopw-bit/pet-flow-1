@@ -64,6 +64,7 @@ const SCHEMA_CHECKS: { table: string; column: string; feature: string }[] = [
   { table: "pos_closings", column: "counted_cash", feature: "POS ปิดยอดรายวัน" },
   { table: "customer_packages", column: "groom_program", feature: "คอร์สอาบน้ำแยกตามโปรแกรม" },
   { table: "bookings", column: "transport", feature: "บริการรับ-ส่งในนัด" },
+  { table: "bookings", column: "deposit_status", feature: "มัดจำ + สลิปตอนลูกค้าจองเอง" },
 ];
 
 export type SchemaCheckRow = {
@@ -504,6 +505,11 @@ where staff_note like '%🎁%';`,
     // บริการรับ-ส่งของนัด {pickup, dropoff, mapUrl, address} — ว่าง = ลูกค้ามาเอง
     name: "bookings.transport",
     sql: "alter table bookings add column if not exists transport jsonb;",
+  },
+  {
+    // มัดจำตอนลูกค้าจองเอง — ยอด (บาท, ของทั้งกลุ่มที่จองพร้อมกัน), ลิงก์สลิป, สถานะ none | pending_review | paid
+    name: "bookings.deposit",
+    sql: "alter table bookings add column if not exists deposit_amount numeric, add column if not exists deposit_slip_url text, add column if not exists deposit_status text;",
   },
   {
     // POS หน้าร้าน: สินค้า+สต็อก, ประวัติสต็อก, บิลขายเร็ว, ปิดยอดรายวัน — ตารางใหม่ทั้งหมด
