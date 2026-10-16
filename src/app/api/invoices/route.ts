@@ -529,6 +529,36 @@ async function handlePatch(req: NextRequest) {
     return NextResponse.json({ ok: true, invoice: res.invoice });
   }
 
+  // ลูกค้าจ่ายแล้วแต่ไม่มาใช้บริการ (ร้านไม่คืนเงิน) → เก็บยอดที่จ่ายไว้เป็นเครดิต Member ใช้ครั้งหน้า
+  // เงินก้อนนี้ลงรายรับไปแล้วตอนรับเงิน จึงเติมแบบไม่นับรายรับซ้ำ (isLegacy) · บิลยังคงสถานะจ่ายแล้วไว้เป็นหลักฐาน
+  if (action === "to_credit") {
+    if (inv.status !== "paid") {
+      return NextResponse.json({ error: "not_paid" }, { status: 400 });
+    }
+    const amount = Math.max(0, Math.round(inv.total));
+    if (!amount) return NextResponse.json({ error: "zero_amount" }, { status: 400 });
+    const { topupMemberCredit, listAllMemberTopups } = await import("@/lib/customers-store");
+    const marker = `บิล ${inv.id}`;
+    const already = (await listAllMemberTopups()).some(
+      (t) => t.customerId === inv.customerId && (t.note || "").includes(marker)
+    );
+    if (already) return NextResponse.json({ error: "already_credited" }, { status: 400 });
+    const topup = await topupMemberCredit(inv.customerId, {
+      paidAmount: amount,
+      isLegacy: true,
+      note: `โยกเป็นเครดิตจาก${marker} (ไม่มาใช้บริการ)`,
+    });
+    if (!topup) return NextResponse.json({ error: "topup_failed" }, { status: 500 });
+    await sendTelegram(
+      formatBookingTelegram("💰 โยกบิลเป็นเครดิต (ลูกค้าไม่มา)", {
+        ลูกค้า: inv.customerName,
+        บิล: inv.id,
+        เครดิต: `+${amount.toLocaleString()} บาท`,
+      })
+    );
+    return NextResponse.json({ ok: true, amount });
+  }
+
   if (action === "mark_paid") {
     const result = await markInvoicePaid(id, body.paymentMethod || "transfer");
     if (!result.ok) {

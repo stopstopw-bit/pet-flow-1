@@ -1315,7 +1315,14 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
         if (editingId === id) resetForm();
         load();
       } else {
-        toast(data.error === "already_received" ? "รับมัดจำบิลนี้ไปแล้ว" : "ไม่สำเร็จ", "error");
+        toast(
+          data.error === "already_received"
+            ? "รับมัดจำบิลนี้ไปแล้ว"
+            : data.error === "already_credited"
+              ? "บิลนี้โยกเป็นเครดิตไปแล้ว"
+              : "ไม่สำเร็จ",
+          "error"
+        );
       }
     } finally {
       setInvoiceBusy("");
@@ -2793,6 +2800,18 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
                       "unmark_paid",
                       "ยกเลิกการชำระแล้ว ↩️ — บิลกลับเป็น 'รอชำระ' แก้ไขต่อได้",
                       "ยกเลิกการชำระบิลนี้? (กดผิดใช่ไหม)\nจะกลับเป็น 'รอชำระ' + ย้อนรายรับ/แต้ม/เครดิตที่ลงไป"
+                    ),
+                },
+                {
+                  label: "โยกเป็นเครดิต (ลูกค้าไม่มา)",
+                  icon: "wallet",
+                  disabled: invoiceBusy === `${inv.id}:to_credit`,
+                  onClick: () =>
+                    invoiceAction(
+                      inv.id,
+                      "to_credit",
+                      `โยกเป็นเครดิตแล้ว 💰 +${inv.total.toLocaleString()} บาท ใช้ได้ครั้งหน้า`,
+                      `โยกยอด ${inv.total.toLocaleString()} บาท ไปเป็นเครดิต Member ของ ${inv.customerName}?\nลูกค้าจ่ายแล้วแต่ไม่มา — ใช้เครดิตนี้จ่ายครั้งหน้าได้ (ไม่นับรายรับซ้ำ)`
                     ),
                 },
                 { label: "ลบบิล", icon: "trash", danger: true, disabled: invoiceBusy === `${inv.id}:delete`, onClick: del },
