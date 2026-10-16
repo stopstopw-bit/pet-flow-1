@@ -84,13 +84,18 @@ async function handlePost(req: NextRequest) {
     if (myBookings.some((x) => x.service === "groom" && catNames.includes(x.catName) && x.date === date)) {
       return NextResponse.json({ error: "duplicate_booking" }, { status: 409 });
     }
-    const { closed, slots } = await getGroomAvailability(date);
+    const { closed, slots, mode } = await getGroomAvailability(date, catNames.length);
     if (closed) {
       return NextResponse.json({ error: "shop_closed" }, { status: 409 });
     }
-    // น้องแมวกี่ตัวก็ได้ — ตัวแรกลงเวลาที่เลือก ถ้าเต็ม (ตามความสามารถรับที่ตั้งไว้) ตัวถัดไปไหล
-    // ไปสล็อตถัดไปที่ว่างอัตโนมัติ (ร้านตั้งรับพร้อมกัน >1 ต่อสล็อตได้ที่ตั้งค่า → อาบน้ำ)
-    const assignedTimes = assignGroomSlots(slots, time, catNames.length);
+    // โหมดคิดเวลา: ทั้งบ้านเริ่มพร้อมกันเวลาที่เลือก (เช็คแล้วว่าช่วงเวลาทั้งช่วงยังว่าง)
+    // โหมดเดิม: ตัวแรกลงเวลาที่เลือก ถ้าเต็ม ตัวถัดไปไหลไปสล็อตถัดไปที่ว่างอัตโนมัติ
+    const assignedTimes =
+      mode === "together"
+        ? (slots.find((s) => s.time === time)?.remaining ?? 0) > 0
+          ? catNames.map(() => time)
+          : null
+        : assignGroomSlots(slots, time, catNames.length);
     if (!assignedTimes) {
       return NextResponse.json({ error: "slot_full" }, { status: 409 });
     }

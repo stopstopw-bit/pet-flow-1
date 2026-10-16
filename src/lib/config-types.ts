@@ -274,6 +274,12 @@ export type SiteConfig = {
   groomSlotCapacity?: Record<string, number>;
   /** จำนวนคิวเริ่มต้นต่อสล็อต เมื่อไม่ได้ตั้งไว้ใน groomSlotCapacity */
   groomSlotDefaultCapacity?: number;
+  /**
+   * คิดเวลาอาบน้ำตามจำนวนแมวของบ้านเดียวกัน — ตั้ง firstCatMinutes > 0 = เปิดใช้
+   * บ้านที่มา N ตัว เริ่มพร้อมกันเวลาเดียว ใช้เวลา first + (N-1) × extra นาที
+   * และกันคิวทุกรอบที่อยู่ในช่วงนั้น (แทนการกระจายน้องไปรอบถัดๆ ไปทั้งวัน)
+   */
+  groomDuration?: { firstCatMinutes: number; extraCatMinutes?: number };
   /** วันหยุดประจำสัปดาห์ (0=อาทิตย์ … 6=เสาร์) — ลูกค้าจองคิวเอง/ห้องพักเองในวันนี้ไม่ได้ */
   closedWeekdays?: number[];
   /** วันหยุดเฉพาะวัน (ปีใหม่, ปิดพักร้อน ฯลฯ) — เพิ่ม/ลบได้ในหลังบ้าน */

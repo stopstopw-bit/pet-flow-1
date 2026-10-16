@@ -18,7 +18,24 @@ export type GroomSlotAvailability = {
   capacity: number;
   booked: number;
   remaining: number;
+  /** โหมดคิดเวลาตามจำนวนแมว: เวลาเสร็จโดยประมาณของบ้านนี้ถ้าเริ่มรอบนี้ */
+  endTime?: string;
 };
+
+const toMin = (t: string) => {
+  const [h, m] = t.split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+};
+const toClock = (min: number) =>
+  `${String(Math.floor(min / 60) % 24).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+
+/** นาทีที่บ้านหนึ่งใช้ถ้ามา n ตัว — 0 = ร้านไม่ได้เปิดโหมดคิดเวลา (ใช้ 1 แมว = 1 คิวแบบเดิม) */
+export function groomMinutesFor(config: Pick<SiteConfig, "groomDuration">, n: number): number {
+  const d = config.groomDuration;
+  if (!d?.firstCatMinutes || d.firstCatMinutes <= 0 || n <= 0) return 0;
+  const extra = d.extraCatMinutes ?? d.firstCatMinutes;
+  return d.firstCatMinutes + Math.max(0, n - 1) * Math.max(0, extra);
+}
 
 /**
  * ความว่างของแต่ละสล็อตอาบน้ำในวันที่กำหนด
@@ -26,9 +43,18 @@ export type GroomSlotAvailability = {
  * Supabase จริงและโหมด in-memory ตอน dev โดยไม่ต้องเขียน fallback ซ้ำสองที่)
  */
 export async function getGroomAvailability(
-  date: string
-): Promise<{ closed: boolean; slots: GroomSlotAvailability[] }> {
+  date: string,
+  catCount = 1
+): Promise<{
+  closed: boolean;
+  slots: GroomSlotAvailability[];
+  /** "together" = บ้านเดียวกันเริ่มพร้อมกันเวลาเดียว คิดเวลาตามจำนวนตัว; "per_cat" = 1 แมว = 1 คิว */
+  mode: "together" | "per_cat";
+  minutes?: number;
+}> {
   const config = await getSiteConfig();
+  const minutes = groomMinutesFor(config, Math.max(1, catCount));
+  if (minutes > 0) return groomAvailabilityByDuration(config, date, Math.max(1, catCount));
   const slots = config.groomSlots || [];
   const defaultCap = config.groomSlotDefaultCapacity ?? 1;
   const closed = isShopClosedOn(config, date);
@@ -47,6 +73,7 @@ export async function getGroomAvailability(
 
   return {
     closed,
+    mode: "per_cat",
     slots: slots.map((time) => {
       const capacity = config.groomSlotCapacity?.[time] ?? defaultCap;
       const booked = bookedByTime.get(time) || 0;
@@ -57,6 +84,58 @@ export async function getGroomAvailability(
         capacity,
         booked,
         remaining: closed || past ? 0 : Math.max(0, capacity - booked),
+      };
+    }),
+  };
+}
+
+/**
+ * โหมดคิดเวลา: นัดเดิมของแต่ละบ้าน (ลูกค้า + เวลาเริ่ม) กินช่วงเวลา first + (N-1)×extra นาที
+ * รอบที่จะเริ่มได้ = ทุกจุดในช่วง [เริ่ม, เริ่ม + เวลาที่บ้านใหม่ต้องใช้) ยังมีช่างว่างอย่างน้อย 1
+ * (จำนวนที่รับพร้อมกัน = ตัวเลขคิว/รอบเดิมในตั้งค่า แปลว่ารับพร้อมกันได้กี่บ้าน)
+ */
+async function groomAvailabilityByDuration(config: SiteConfig, date: string, catCount: number) {
+  const slots = config.groomSlots || [];
+  const defaultCap = config.groomSlotDefaultCapacity ?? 1;
+  const closed = isShopClosedOn(config, date);
+  const need = groomMinutesFor(config, catCount);
+
+  const households = new Map<string, { start: number; cats: number }>();
+  for (const b of await listBookings()) {
+    if (b.service !== "groom" || b.date !== date || b.status === "cancelled" || !b.time) continue;
+    const key = `${b.customerName}|${b.time}`;
+    const h = households.get(key) || { start: toMin(b.time), cats: 0 };
+    h.cats += 1;
+    households.set(key, h);
+  }
+  const blocks = [...households.values()].map((h) => ({
+    start: h.start,
+    end: h.start + groomMinutesFor(config, h.cats),
+  }));
+
+  const nowBkk = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString();
+  const past = (t: string) => date === nowBkk.slice(0, 10) && t <= nowBkk.slice(11, 16);
+
+  return {
+    closed,
+    mode: "together" as const,
+    minutes: need,
+    slots: slots.map((time): GroomSlotAvailability => {
+      const capacity = config.groomSlotCapacity?.[time] ?? defaultCap;
+      const start = toMin(time);
+      const end = start + need;
+      // จุดที่ต้องเช็ค = ต้นช่วง + ทุกจุดที่มีบ้านอื่นเริ่มอาบกลางช่วง
+      const points = [start, ...blocks.map((b) => b.start).filter((p) => p > start && p < end)];
+      const busiest = Math.max(
+        0,
+        ...points.map((p) => blocks.filter((b) => b.start <= p && b.end > p).length)
+      );
+      return {
+        time,
+        capacity,
+        booked: busiest,
+        endTime: toClock(end),
+        remaining: closed || past(time) ? 0 : Math.max(0, capacity - busiest),
       };
     }),
   };

@@ -11,7 +11,7 @@ import { toJpegDataUrl } from "@/lib/image-convert";
 
 type Service = "groom" | "room";
 
-type GroomSlot = { time: string; capacity: number; booked: number; remaining: number };
+type GroomSlot = { time: string; capacity: number; booked: number; remaining: number; endTime?: string };
 type RoomAvail = { capacity: number; booked: number; remaining: number; closed: boolean } | null;
 type DepositInfo = {
   amount: number;
@@ -94,6 +94,8 @@ function BookPageInner() {
   const [date, setDate] = useState(todayISO());
   const [slots, setSlots] = useState<GroomSlot[] | null>(null);
   const [groomClosed, setGroomClosed] = useState(false);
+  // "together" = ร้านตั้งคิดเวลาตามจำนวนแมว: ทั้งบ้านเริ่มพร้อมกัน แล้วกันช่วงเวลาตามจำนวนตัว
+  const [groomMode, setGroomMode] = useState<"together" | "per_cat">("per_cat");
   const [time, setTime] = useState("");
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [groomProgram, setGroomProgram] = useState("");
@@ -169,19 +171,25 @@ function BookPageInner() {
     if (service !== "groom") return;
     let alive = true;
     setLoadingSlots(true);
-    setTime("");
-    fetch(`/api/bookings/availability?service=groom&date=${date}`)
+    // ส่งจำนวนน้องไปด้วย — โหมดคิดเวลา รอบที่ว่างขึ้นกับว่ามากี่ตัว (ใช้เวลานานแค่ไหน)
+    fetch(`/api/bookings/availability?service=groom&date=${date}&cats=${Math.max(1, catNames.length)}`)
       .then((r) => r.json())
       .then((d) => {
         if (!alive) return;
         setSlots(d.slots || []);
         setGroomClosed(Boolean(d.closed));
+        setGroomMode(d.mode === "together" ? "together" : "per_cat");
       })
       .catch(() => alive && setSlots([]))
       .finally(() => alive && setLoadingSlots(false));
     return () => {
       alive = false;
     };
+  }, [service, date, catNames.length]);
+
+  // เปลี่ยนวัน = รอบเดิมอาจไม่มี/เต็มแล้ว ให้เลือกใหม่
+  useEffect(() => {
+    setTime("");
   }, [service, date]);
 
   useEffect(() => {
@@ -218,8 +226,13 @@ function BookPageInner() {
   // แมวตัวแรกลงเวลาที่เลือก ตัวที่เหลือไหลไปสล็อตถัดไปอัตโนมัติถ้าสล็อตนั้นเต็ม
   const assignedPreview = useMemo(() => {
     if (!slots || !time || !catNames.length) return null;
+    if (groomMode === "together") {
+      const s = slots.find((x) => x.time === time);
+      return s && s.remaining > 0 ? catNames.map(() => time) : null;
+    }
     return assignGroomSlots(slots, time, catNames.length);
-  }, [slots, time, catNames]);
+  }, [slots, time, catNames, groomMode]);
+  const pickedSlot = slots?.find((x) => x.time === time);
 
   const canSubmit = useMemo(() => {
     if (!catNames.length) return false;
@@ -510,7 +523,11 @@ function BookPageInner() {
                         >
                           {s.time}
                           <span className="block text-[9px] font-normal opacity-80">
-                            {full ? "เต็มแล้ว" : `ว่าง ${s.remaining}`}
+                            {full
+                              ? "เต็มแล้ว"
+                              : groomMode === "together" && s.endTime
+                                ? `ถึง ${s.endTime}`
+                                : `ว่าง ${s.remaining}`}
                           </span>
                         </button>
                       );
@@ -524,7 +541,14 @@ function BookPageInner() {
                 )}
 
                 {/* พรีวิวคิวที่จะได้ — ถ้าน้องเกินที่สล็อตนี้รับไหว จะไหลไปสล็อตถัดไปให้เห็นก่อนกดจอง */}
-                {time && catNames.length > 1 && (
+                {time && groomMode === "together" && pickedSlot?.endTime && (
+                  <p className="mt-2 rounded-petflow-sm bg-paper px-3 py-2 text-[11px] font-bold text-brown">
+                    🕒 {catNames.length > 1 ? `น้องทั้ง ${catNames.length} ตัว` : catNames[0]} เริ่ม{" "}
+                    <span className="text-latte-deep">{time}</span> เสร็จประมาณ{" "}
+                    <span className="text-latte-deep">{pickedSlot.endTime}</span>
+                  </p>
+                )}
+                {time && groomMode !== "together" && catNames.length > 1 && (
                   <div className="mt-2 rounded-petflow-sm bg-paper px-3 py-2 text-[11px]">
                     {assignedPreview ? (
                       <>
