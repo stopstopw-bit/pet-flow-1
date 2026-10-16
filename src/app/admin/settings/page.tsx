@@ -11,7 +11,6 @@ import { adminJson } from "@/lib/admin-fetch";
 import { toJpegDataUrl } from "@/lib/image-convert";
 import { extractLogoColors } from "@/lib/color-extract";
 import { contrastRatio, isValidHex } from "@/lib/color-utils";
-import { ExportSheetsButton } from "@/components/ExportSheetsButton";
 import { Icon } from "@/components/Icon";
 
 type Tab =
@@ -65,7 +64,7 @@ const TAB_GROUPS: { title: string; items: { id: Tab; icon: string; hint?: string
       { id: "automation", icon: "clock" },
     ],
   },
-  { title: "System", items: [{ id: "advanced", icon: "settings", hint: "แก้ค่าทั้งหมดแบบ JSON" }] },
+  { title: "System", items: [{ id: "advanced", icon: "download", hint: "ดาวน์โหลดข้อมูลร้านเก็บไว้" }] },
 ];
 
 const TABS: { id: Tab; label: string }[] = [
@@ -82,7 +81,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "grooming", label: "อาบน้ำ" },
   { id: "points", label: "แต้ม" },
   { id: "crm", label: "ลูกค้า" },
-  { id: "advanced", label: "ขั้นสูง" },
+  { id: "advanced", label: "สำรองข้อมูล" },
 ];
 
 // index ต้องตรงกับ Date.prototype.getDay() (0=อาทิตย์ … 6=เสาร์) — ใช้เทียบกับ config.closedWeekdays
@@ -95,7 +94,6 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
-  const [jsonText, setJsonText] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -103,7 +101,6 @@ export default function SettingsPage() {
     const result = await adminJson<{ config: SiteConfig }>("/api/config");
     if (result.ok && result.data.config) {
       setConfig(result.data.config);
-      setJsonText(JSON.stringify(result.data.config, null, 2));
     } else {
       setConfig(null);
       setError(result.ok ? "โหลดข้อมูลไม่สำเร็จ" : result.error);
@@ -126,33 +123,12 @@ export default function SettingsPage() {
     const data = await res.json();
     if (res.ok) {
       setConfig(data.config);
-      setJsonText(JSON.stringify(data.config, null, 2));
       setMsg("บันทึกแล้ว — หน้าลูกค้าอัปเดตทันที");
     } else {
       setMsg("บันทึกไม่สำเร็จ");
     }
     setSaving(false);
     setTimeout(() => setMsg(""), 3000);
-  };
-
-  const saveJson = async () => {
-    try {
-      const parsed = JSON.parse(jsonText) as SiteConfig;
-      setSaving(true);
-      const res = await fetch("/api/config", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "replace", config: parsed }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setConfig(data.config);
-        setMsg("นำเข้า config สำเร็จ");
-      }
-    } catch {
-      setMsg("JSON ไม่ถูกต้อง");
-    }
-    setSaving(false);
   };
 
   if (loading) {
@@ -306,13 +282,7 @@ export default function SettingsPage() {
         <CrmTab config={config} saving={saving} onSave={save} />
       )}
       {tab === "advanced" && (
-        <AdvancedTab
-          jsonText={jsonText}
-          setJsonText={setJsonText}
-          saving={saving}
-          onSaveJson={saveJson}
-          onExport={() => navigator.clipboard.writeText(jsonText)}
-        />
+        <BackupTab />
       )}
     </div>
   );
@@ -2192,31 +2162,10 @@ function CrmTab({
   );
 }
 
-function AdvancedTab({
-  jsonText,
-  setJsonText,
-  saving,
-  onSaveJson,
-  onExport,
-}: {
-  jsonText: string;
-  setJsonText: (s: string) => void;
-  saving: boolean;
-  onSaveJson: () => void;
-  onExport: () => void;
-}) {
+/** ร้านดาวน์โหลดข้อมูลทั้งหมดของร้านตัวเองเก็บไว้ — งานดูแลฐานข้อมูลระบบทำให้อัตโนมัติแล้ว */
+function BackupTab() {
   return (
     <div className="space-y-3 rounded-petflow bg-card p-4 shadow-petflow-sm">
-      <MigrateSection />
-      <MigratePhotosSection />
-      <CleanupBroadcastSection />
-      <ExportSheetsButton />
-      <p className="text-[10px] text-brown-faint">
-        ส่งออก 5 แท็บ: ลูกค้า+น้องแมว · การจอง · บิล · รายรับรายจ่าย · แต้มสะสม
-        ไป Google Sheet เดียว (ต้องตั้ง GOOGLE_SPREADSHEET_ID) · ระบบทำให้อัตโนมัติทุกคืนอยู่แล้ว
-      </p>
-
-      {/* สำรองแบบครบทุกฟิลด์ — เอาไว้กู้คืนจริง ต่างจาก Sheets ที่ยุบข้อมูลให้อ่านง่าย */}
       <a
         href="/api/admin/backup"
         download
@@ -2228,256 +2177,8 @@ function AdvancedTab({
       <p className="text-[10px] text-brown-faint">
         ไฟล์เดียวครบทุกอย่าง ลูกค้า แมว นัด บิล บัญชี แต้ม โปร คูปอง คอร์ส
         บทความ พนักงาน ประวัติเติมเครดิต ประวัติใช้บริการ และการตั้งค่า —
-        เก็บไว้กู้คืนได้จริง — มีข้อมูลส่วนตัวลูกค้าและรหัสพนักงาน เก็บในที่ปลอดภัย
+        มีข้อมูลส่วนตัวลูกค้า เก็บในที่ปลอดภัย
       </p>
-      <p className="text-xs text-brown-soft">
-        แก้ตารางราคากรูมมิ่ง หรือสำรอง/กู้คืน config ทั้งหมด (สำหรับผู้ดูแลระบบ)
-      </p>
-      <textarea
-        value={jsonText}
-        onChange={(e) => setJsonText(e.target.value)}
-        rows={16}
-        className="w-full rounded-petflow-sm border border-petflow-line bg-paper p-3 font-mono text-[10px]"
-      />
-      <div className="flex gap-2">
-        <button type="button" onClick={onExport} className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-full bg-paper text-xs font-bold text-brown">
-          <Icon name="copy" size={16} />
-          คัดลอก
-        </button>
-        <button
-          type="button"
-          disabled={saving}
-          onClick={onSaveJson}
-          className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-full bg-petflow-chocolate text-xs font-bold text-card disabled:opacity-50"
-        >
-          <Icon name="download" size={16} className="rotate-180" />
-          {saving ? "…" : "นำเข้า JSON"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function MigratePhotosSection() {
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState("");
-
-  const run = async () => {
-    setBusy(true);
-    setMsg("");
-    try {
-      const res = await fetch("/api/admin/migrate-photos", { method: "POST" });
-      const d = await res.json();
-      if (!res.ok) {
-        setMsg(`${d.error || "ทำไม่สำเร็จ"}`);
-      } else {
-        const total = d.photos + d.media + d.signatures;
-        setMsg(
-          total === 0
-            ? "ไม่มีรูปเก่าที่ต้องย้ายแล้ว (เก็บเป็นไฟล์หมดแล้ว)"
-            : `ย้ายแล้ว — รูปโปรไฟล์ ${d.photos}, อัลบั้ม ${d.media}, ลายเซ็น ${d.signatures}` +
-              (d.errors?.length ? ` (พลาด ${d.errors.length} รายการ)` : "")
-        );
-      }
-    } catch {
-      setMsg("เชื่อมต่อไม่สำเร็จ");
-    }
-    setBusy(false);
-  };
-
-  return (
-    <div className="rounded-petflow-sm border border-sage/40 bg-sage/10 p-3">
-      <p className="text-xs font-extrabold text-petflow-chocolate">
-        ย้ายรูป/วิดีโอเก่าไป Storage
-      </p>
-      <p className="mb-2 text-[10px] text-brown-soft">
-        รูปโปรไฟล์แมว, อัลบั้มหลังบ้าน, ลายเซ็นยินยอม ที่เคยเก็บเป็น base64 ยัดในฐานข้อมูลตรงๆ
-        (กินพื้นที่เปลือง) — ย้ายไปเก็บเป็นไฟล์แทน ประหยัดพื้นที่กว่าเดิม กดซ้ำได้ปลอดภัย
-      </p>
-      <button
-        type="button"
-        disabled={busy}
-        onClick={run}
-        className="flex h-11 w-full items-center justify-center gap-1.5 rounded-full bg-paper text-xs font-extrabold text-petflow-chocolate disabled:opacity-50"
-      >
-        {busy ? "กำลังย้าย… (อาจใช้เวลาสักครู่)" : "ย้ายรูปเก่าตอนนี้"}
-      </button>
-      {msg && <p className="mt-2 text-[11px] font-bold text-brown">{msg}</p>}
-    </div>
-  );
-}
-
-function CleanupBroadcastSection() {
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState("");
-
-  const run = async () => {
-    setBusy(true);
-    setMsg("");
-    try {
-      const res = await fetch("/api/admin/cleanup-broadcast-images", { method: "POST" });
-      const d = await res.json();
-      if (!res.ok) {
-        setMsg(`${d.error || "ทำไม่สำเร็จ"}`);
-      } else {
-        setMsg(
-          d.removed === 0
-            ? "ไม่มีรูปโปรเก่าค้างในฐานข้อมูลแล้ว"
-            : `ลบรูปโปรเก่าออกจากฐานข้อมูลแล้ว ${d.removed} รูป`
-        );
-      }
-    } catch {
-      setMsg("เชื่อมต่อไม่สำเร็จ");
-    }
-    setBusy(false);
-  };
-
-  return (
-    <div className="rounded-petflow-sm border border-sage/40 bg-sage/10 p-3">
-      <p className="text-xs font-extrabold text-petflow-chocolate">
-        ล้างรูปโปร broadcast เก่า
-      </p>
-      <p className="mb-2 text-[10px] text-brown-soft">
-        รูปโปรที่เคยยิงเข้า LINE แล้วเก็บ base64 ค้างในฐานข้อมูล — ลบเฉพาะที่เก่ากว่า 30 วัน
-        (LINE ดึงรูปไป cache ตั้งแต่ตอนส่งแล้ว) รีดพื้นที่ DB คืน · กดซ้ำได้ปลอดภัย
-      </p>
-      <button
-        type="button"
-        disabled={busy}
-        onClick={run}
-        className="flex h-11 w-full items-center justify-center gap-1.5 rounded-full bg-paper text-xs font-extrabold text-petflow-chocolate disabled:opacity-50"
-      >
-        {busy ? "กำลังล้าง…" : "ล้างรูปโปรเก่าตอนนี้"}
-      </button>
-      {msg && <p className="mt-2 text-[11px] font-bold text-brown">{msg}</p>}
-    </div>
-  );
-}
-
-type SchemaCheckRow = {
-  table: string;
-  column: string;
-  feature: string;
-  ok: boolean;
-  error?: string;
-};
-
-function MigrateSection() {
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState("");
-  const [bootSql, setBootSql] = useState("");
-  const [checkRows, setCheckRows] = useState<SchemaCheckRow[] | null>(null);
-
-  // ตรวจซ้ำจากของจริงใน DB — ปุ่มตอบว่า "สำเร็จ" ไม่ได้แปลว่าคอลัมน์มาจริง
-  const verify = async () => {
-    try {
-      const res = await fetch("/api/admin/migrate?check=1");
-      const d = await res.json();
-      setCheckRows(d.check?.connected ? d.check.rows : null);
-    } catch {
-      setCheckRows(null);
-    }
-  };
-
-  useEffect(() => {
-    verify();
-  }, []);
-
-  const run = async () => {
-    setBusy(true);
-    setMsg("");
-    setBootSql("");
-    try {
-      const res = await fetch("/api/admin/migrate", { method: "POST" });
-      const d = await res.json();
-      if (d.bootstrapNeeded) {
-        setBootSql(d.bootstrapSql || "");
-        setMsg(
-          "ต้องตั้งค่าครั้งแรกก่อน (ครั้งเดียว) — ก๊อป SQL ด้านล่างไปวางใน Supabase → SQL Editor → Run แล้วกดปุ่มนี้อีกครั้ง"
-        );
-      } else if (d.ok) {
-        setMsg(
-          d.applied.length > 0
-            ? `อัปเดตฐานข้อมูลเรียบร้อย (${d.applied.length} รายการ) — ทุกฟีเจอร์พร้อมใช้แล้ว`
-            : "ฐานข้อมูลเป็นเวอร์ชันล่าสุดอยู่แล้ว"
-        );
-      } else {
-        setMsg(
-          "บางรายการไม่สำเร็จ: " +
-            (d.errors || []).map((e: { name: string }) => e.name).join(", ")
-        );
-      }
-    } catch {
-      setMsg("เชื่อมต่อไม่สำเร็จ");
-    }
-    await verify();
-    setBusy(false);
-  };
-
-  const missing = (checkRows || []).filter((r) => !r.ok);
-
-  return (
-    <div className="rounded-petflow-sm border border-honey/50 bg-honey/10 p-3">
-      <p className="text-xs font-extrabold text-petflow-chocolate">
-        อัปเดตฐานข้อมูล (อัตโนมัติ)
-      </p>
-      <p className="mb-2 text-[10px] text-brown-soft">
-        เพิ่มคอลัมน์/ตารางที่ฟีเจอร์ใหม่ต้องใช้ให้เอง — ไม่ต้องไปพิมพ์ SQL ใน Supabase อีก
-        (ปลอดภัย กดซ้ำได้)
-      </p>
-      <button
-        type="button"
-        disabled={busy}
-        onClick={run}
-        className="flex h-11 w-full items-center justify-center gap-1.5 rounded-full bg-paper text-xs font-extrabold text-petflow-chocolate disabled:opacity-50"
-      >
-        {busy ? "กำลังอัปเดต…" : "อัปเดตฐานข้อมูลตอนนี้"}
-      </button>
-      {msg && (
-        <p className="mt-2 text-[11px] font-bold text-brown">{msg}</p>
-      )}
-
-      {checkRows && (
-        <div className="mt-2 rounded-petflow-sm bg-paper px-2.5 py-2">
-          {missing.length === 0 ? (
-            <p className="text-[11px] font-bold text-brown">
-              ตรวจแล้ว: ครบทุกรายการ ({checkRows.length}/{checkRows.length}) — ฟีเจอร์ทั้งหมดใช้ได้จริง
-            </p>
-          ) : (
-            <>
-              <p className="text-[11px] font-bold text-brown">
-                ยังขาด {missing.length} รายการ — กดปุ่มด้านบนอีกครั้ง ถ้ายังขาดอยู่แปลว่า
-                รันไม่ผ่านจริง
-              </p>
-              <ul className="mt-1 space-y-0.5">
-                {missing.map((r) => (
-                  <li key={`${r.table}.${r.column}`} className="text-[10px] text-brown-soft">
-                    • {r.feature} <span className="font-mono">({r.table}.{r.column})</span>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </div>
-      )}
-      {bootSql && (
-        <div className="mt-2">
-          <textarea
-            readOnly
-            value={bootSql}
-            rows={10}
-            className="w-full rounded-petflow-sm border border-petflow-line bg-paper p-2 font-mono text-[9px]"
-          />
-          <button
-            type="button"
-            onClick={() => navigator.clipboard.writeText(bootSql)}
-            className="mt-1 flex h-10 w-full items-center justify-center gap-1.5 rounded-full bg-paper text-[11px] font-bold text-brown"
-          >
-            <Icon name="copy" size={14} />
-            คัดลอก SQL (วางใน Supabase ครั้งเดียว)
-          </button>
-        </div>
-      )}
     </div>
   );
 }
