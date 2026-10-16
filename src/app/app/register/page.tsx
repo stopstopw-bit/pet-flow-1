@@ -9,6 +9,7 @@ import { BTN_PRIMARY, PageHeader } from "@/components/PageHeader";
 import { SectionLabel } from "@/components/ui";
 import { Icon } from "@/components/Icon";
 import { LoadingScreen } from "@/components/LoadingScreen";
+import { toJpegDataUrl } from "@/lib/image-convert";
 
 type CatGender = "male" | "female";
 type CatInput = {
@@ -23,6 +24,8 @@ type CatInput = {
   birthday: string;
   medical: string;
   note: string;
+  /** รูปน้อง (JPEG data URL) — อัปขึ้นหลังสมัครเสร็จ เพราะต้องรู้ id แมวก่อน */
+  photo?: string;
 };
 
 const REFERRAL_OPTIONS = [
@@ -90,6 +93,15 @@ export default function RegisterPage() {
     setCats((prev) => prev.map((c, i) => (i === idx ? { ...c, ...patch } : c)));
   };
 
+  const pickPhoto = async (idx: number, file: File | undefined) => {
+    if (!file) return;
+    try {
+      updateCat(idx, { photo: await toJpegDataUrl(file) });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "เปิดไฟล์รูปนี้ไม่ได้ — ลองเลือกรูปอื่นนะคะ");
+    }
+  };
+
   const removeCat = (idx: number) => {
     if (cats.length <= 1) return;
     setCats((prev) => prev.filter((_, i) => i !== idx));
@@ -150,6 +162,24 @@ export default function RegisterPage() {
       if (!res.ok) {
         setError(data.error || "ลงทะเบียนไม่สำเร็จ — ลองใหม่อีกครั้งนะคะ");
         return;
+      }
+
+      // รูปน้อง: ต้องรู้ id แมวจากผลสมัครก่อน แล้วค่อยอัปทีละตัว (อัปไม่ผ่านก็ไม่ขวางการสมัคร
+      // ลูกค้าเพิ่มรูปทีหลังได้ที่หน้าโปรไฟล์)
+      const savedCats: { id: string; name: string }[] = data.customer?.cats || [];
+      const used = new Set<string>();
+      for (const c of named) {
+        if (!c.photo) continue;
+        const match = [...savedCats]
+          .reverse()
+          .find((sc) => !used.has(sc.id) && sc.name.trim() === c.name.trim());
+        if (!match) continue;
+        used.add(match.id);
+        await fetch("/api/customers/cat-photo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ catId: match.id, photoDataUrl: c.photo }),
+        }).catch(() => null);
       }
 
       await refreshCustomer();
@@ -282,6 +312,31 @@ export default function RegisterPage() {
                     ตัวที่ {idx + 1}
                   </p>
                 )}
+                <label className="flex cursor-pointer items-center gap-3">
+                  <span className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border border-dashed border-latte bg-paper text-latte-deep">
+                    {cat.photo ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={cat.photo} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <Icon name="image" size={22} />
+                    )}
+                  </span>
+                  <span className="text-xs font-bold text-brown-soft">
+                    {cat.photo ? "เปลี่ยนรูปน้อง" : "ใส่รูปน้อง (ไม่บังคับ)"}
+                    <span className="block text-[10px] font-normal text-brown-faint">
+                      พี่เลี้ยงจะจำหน้าน้องได้ตั้งแต่วันแรก
+                    </span>
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      pickPhoto(idx, e.target.files?.[0]);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
                 <input
                   required={idx === 0}
                   value={cat.name}
