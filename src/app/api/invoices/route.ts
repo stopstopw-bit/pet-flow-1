@@ -258,6 +258,13 @@ async function handlePost(req: NextRequest) {
         coupon_invalid: "คูปองนี้ใช้ไม่ได้แล้ว (หมดอายุ/ใช้ไปแล้ว/ไม่ใช่ของลูกค้าคนนี้)",
         coupon_race: "คูปองนี้เพิ่งถูกใช้ไปหมาดๆ — เลือกใหม่อีกครั้ง",
       };
+      const stock = message.match(/^out_of_stock:(.*):(-?\d+)$/);
+      if (stock) {
+        return NextResponse.json(
+          { error: `สต็อก ${stock[1]} ไม่พอ (เหลือ ${stock[2]} ชิ้น)` },
+          { status: 400 }
+        );
+      }
       return NextResponse.json(
         { error: known[message] || "ออกบิลไม่สำเร็จ" },
         { status: 400 }
@@ -734,7 +741,10 @@ async function handlePatch(req: NextRequest) {
       promoId: body.promoId,
     });
     if (!res.ok) {
-      return NextResponse.json({ error: res.error }, { status: 400 });
+      return NextResponse.json(
+        { error: res.error, message: "message" in res ? res.message : undefined },
+        { status: 400 }
+      );
     }
     return NextResponse.json({ ok: true, invoice: res.invoice });
   }

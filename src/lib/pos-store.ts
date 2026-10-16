@@ -533,6 +533,62 @@ export async function createSale(input: SaleInput): Promise<{ sale: PosSale } | 
   return { sale };
 }
 
+/** รายการในบิลคิดเงินที่เป็นสินค้าหน้าร้าน (kind "product" + productId) */
+type BillLine = { kind?: string; productId?: string; qty?: number };
+
+/** นับจำนวนสินค้าหน้าร้านในบิล — รวมตาม productId */
+function billProductQty(items: BillLine[] = []): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const it of items) {
+    if (it.kind !== "product" || !it.productId) continue;
+    const qty = Math.max(1, Math.round(Number(it.qty) || 1));
+    m.set(it.productId, (m.get(it.productId) || 0) + qty);
+  }
+  return m;
+}
+
+/**
+ * ตรวจว่าสต็อกพอไหม ถ้าบิลเปลี่ยนรายการจาก before เป็น after
+ * (ไม่แตะสต็อก — ใช้เช็คก่อนบันทึกบิล)
+ */
+export async function checkBillStock(
+  before: BillLine[] = [],
+  after: BillLine[] = []
+): Promise<{ ok: true } | { ok: false; name: string; stock: number }> {
+  const prev = billProductQty(before);
+  const next = billProductQty(after);
+  for (const [id, qty] of next) {
+    const extra = qty - (prev.get(id) || 0);
+    if (extra <= 0) continue;
+    const p = await getProduct(id);
+    if (p?.trackStock && p.stock < extra) return { ok: false, name: p.name, stock: p.stock };
+  }
+  return { ok: true };
+}
+
+/**
+ * ตัด/คืนสต็อกตามส่วนต่างของรายการบิลคิดเงิน (ออกบิล = before ว่าง, ลบบิล = after ว่าง)
+ * รายรับไม่ลงที่นี่ — บิลคิดเงินลงรายรับเองตอนรับเงินอยู่แล้ว
+ */
+export async function syncBillStock(refId: string, before: BillLine[] = [], after: BillLine[] = []) {
+  const prev = billProductQty(before);
+  const next = billProductQty(after);
+  for (const id of new Set([...prev.keys(), ...next.keys()])) {
+    const delta = (next.get(id) || 0) - (prev.get(id) || 0);
+    if (!delta) continue;
+    const p = await getProduct(id);
+    if (!p?.trackStock) continue;
+    await setStock(id, p.stock - delta);
+    await recordMove({
+      productId: id,
+      qty: -delta,
+      reason: delta > 0 ? "sale" : "void",
+      refId,
+      note: "บิลคิดเงิน",
+    });
+  }
+}
+
 /** ยกเลิกบิลขาย: คืนสต็อก + ลบรายรับของบิลนี้ */
 export async function voidSale(id: string): Promise<PosSale | null> {
   const sale = await getSale(id);

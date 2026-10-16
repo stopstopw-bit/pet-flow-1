@@ -372,7 +372,7 @@ export const ADMIN_TAB_EN: Record<string, string> = {
 export const ADMIN_TAB_GROUPS: { title: string; hrefs: string[] }[] = [
   {
     title: "Daily",
-    hrefs: ["/admin", "/admin/schedule", "/admin/bookings/new", "/admin/customers", "/admin/billing", "/admin/pos"],
+    hrefs: ["/admin", "/admin/schedule", "/admin/bookings/new", "/admin/customers", "/admin/billing"],
   },
   { title: "Finance", hrefs: ["/admin/finance", "/admin/tax", "/admin/insights"] },
   {
