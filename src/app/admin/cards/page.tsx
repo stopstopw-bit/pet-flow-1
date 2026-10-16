@@ -8,9 +8,10 @@ import {
   type GroomFormConfig,
 } from "@/lib/groom-form";
 import { toast } from "@/components/Toast";
+import { Icon } from "@/components/Icon";
 
 /**
- * 🎴 ปรับแต่งการ์ด LINE — สี ขนาดตัวอักษร ข้อความ เงื่อนไข และส่วนประกอบของการ์ดแต่ละใบ
+ * ปรับแต่งการ์ด LINE — สี ขนาดตัวอักษร ข้อความ เงื่อนไข และส่วนประกอบของการ์ดแต่ละใบ
  * พร้อมพรีวิวสดข้างๆ — ค่าเก็บใน site config (cards + messages + billing)
  */
 
@@ -52,7 +53,7 @@ type CardMeta = {
 const CARDS: CardMeta[] = [
   {
     key: "bookingConfirm",
-    name: "📅 ยืนยันนัด",
+    name: "ยืนยันนัด",
     desc: "ส่งให้ลูกค้ากดยืนยันนัดหมาย",
     colors: [
       { key: "headerColor", label: "สีแถบหัว", fallback: "#6e2f48" },
@@ -61,11 +62,11 @@ const CARDS: CardMeta[] = [
       { key: "buttonColor", label: "สีปุ่มยืนยัน", fallback: "#bd3a6a" },
     ],
     fields: [
-      { key: "location", label: "📍 สถานที่ร้าน" },
-      { key: "notes", label: "📝 หมายเหตุ" },
-      { key: "map", label: "🗺️ ปุ่มดูแผนที่" },
-      { key: "groomPrep", label: "🧺 เตือนพกขนม + ให้อยู่ในตะกร้า (เฉพาะนัดอาบน้ำ)" },
-      { key: "roomPrep", label: "🧺 เตือนให้อยู่ในตะกร้า (เฉพาะเข้าพักโรงแรม)" },
+      { key: "location", label: "สถานที่ร้าน" },
+      { key: "notes", label: "หมายเหตุ" },
+      { key: "map", label: "ปุ่มดูแผนที่" },
+      { key: "groomPrep", label: "เตือนพกขนม + ให้อยู่ในตะกร้า (เฉพาะนัดอาบน้ำ)" },
+      { key: "roomPrep", label: "เตือนให้อยู่ในตะกร้า (เฉพาะเข้าพักโรงแรม)" },
     ],
     texts: [],
     styleTexts: [
@@ -101,7 +102,7 @@ const CARDS: CardMeta[] = [
   },
   {
     key: "billSummary",
-    name: "💳 สรุปยอด / แจ้งชำระ",
+    name: "สรุปยอด / แจ้งชำระ",
     desc: "การ์ดสรุปรายการ + ยอดเงิน + บัญชีโอน",
     colors: [
       { key: "headerColor", label: "สีหัวข้อ", fallback: "#5C4033" },
@@ -109,10 +110,10 @@ const CARDS: CardMeta[] = [
       { key: "buttonColor", label: "สีปุ่มคัดลอกบัญชี", fallback: "#bd3a6a" },
     ],
     fields: [
-      { key: "schedule", label: "🗓️ วัน-เวลานัด" },
-      { key: "freebies", label: "🎁 กล่องของแถมฟรี" },
-      { key: "bank", label: "🏦 กล่องเลขบัญชี + ปุ่มคัดลอก" },
-      { key: "closing", label: "💬 ข้อความปิดท้าย" },
+      { key: "schedule", label: "วัน-เวลานัด" },
+      { key: "freebies", label: "กล่องของแถมฟรี" },
+      { key: "bank", label: "กล่องเลขบัญชี + ปุ่มคัดลอก" },
+      { key: "closing", label: "ข้อความปิดท้าย" },
     ],
     texts: [
       { stateKey: "summaryBookingTitle", label: "หัวข้อการ์ดสรุปการจอง" },
@@ -138,7 +139,7 @@ const CARDS: CardMeta[] = [
   },
   {
     key: "depositRequest",
-    name: "💰 เรียกเก็บมัดจำ",
+    name: "เรียกเก็บมัดจำ",
     desc: "การ์ดแจ้งยอดมัดจำ + บัญชีโอน",
     colors: [
       { key: "headerColor", label: "สีหัวข้อ", fallback: "#5C4033" },
@@ -146,8 +147,8 @@ const CARDS: CardMeta[] = [
       { key: "buttonColor", label: "สีปุ่มคัดลอกบัญชี", fallback: "#bd3a6a" },
     ],
     fields: [
-      { key: "note", label: "📝 โน้ตเพิ่มเติม" },
-      { key: "bank", label: "🏦 กล่องเลขบัญชี" },
+      { key: "note", label: "โน้ตเพิ่มเติม" },
+      { key: "bank", label: "กล่องเลขบัญชี" },
     ],
     texts: [
       { stateKey: "depositRequestTitle", label: "หัวข้อการ์ด" },
@@ -168,7 +169,7 @@ const CARDS: CardMeta[] = [
   },
   {
     key: "receipt",
-    name: "🧾 ใบเสร็จรับเงิน",
+    name: "ใบเสร็จรับเงิน",
     desc: "ส่งอัตโนมัติหลังรับชำระ (แนบขอรีวิวใน push เดียว)",
     colors: [
       { key: "headerColor", label: "สีแถบหัว", fallback: "#C4956A" },
@@ -176,10 +177,10 @@ const CARDS: CardMeta[] = [
       { key: "accentColor", label: "สียอดที่ชำระ", fallback: "#bd3a6a" },
     ],
     fields: [
-      { key: "invoiceNo", label: "🔖 เลขที่บิล" },
-      { key: "points", label: "🎁 แต้มสะสมที่ได้รับ" },
-      { key: "closing", label: "💬 ข้อความขอบคุณ" },
-      { key: "reviewBundle", label: "⭐ แนบการ์ดขอรีวิวไปด้วย (นับ 1 ข้อความ)" },
+      { key: "invoiceNo", label: "เลขที่บิล" },
+      { key: "points", label: "แต้มสะสมที่ได้รับ" },
+      { key: "closing", label: "ข้อความขอบคุณ" },
+      { key: "reviewBundle", label: "แนบการ์ดขอรีวิวไปด้วย (นับ 1 ข้อความ)" },
     ],
     texts: [],
     styleTexts: [
@@ -194,7 +195,7 @@ const CARDS: CardMeta[] = [
   },
   {
     key: "review",
-    name: "⭐ ขอรีวิว",
+    name: "ขอรีวิว",
     desc: "ส่งหลังใช้บริการ ชวนกดรีวิว",
     colors: [
       { key: "headerColor", label: "สีพื้นหัวการ์ด", fallback: "#FBF4E9" },
@@ -202,7 +203,7 @@ const CARDS: CardMeta[] = [
       { key: "accentColor", label: "สีดาว", fallback: "#C4956A" },
       { key: "buttonColor", label: "สีปุ่มรีวิว", fallback: "#C4956A" },
     ],
-    fields: [{ key: "stars", label: "⭐ แถวดาว 5 ดวงบนหัวการ์ด" }],
+    fields: [{ key: "stars", label: "แถวดาว 5 ดวงบนหัวการ์ด" }],
     texts: [
       {
         stateKey: "reviewRequest",
@@ -254,7 +255,7 @@ const CARDS: CardMeta[] = [
   },
   {
     key: "groomInfo",
-    name: "🩺 สอบถามประวัติก่อนอาบน้ำ",
+    name: "สอบถามประวัติก่อนอาบน้ำ",
     desc: "การ์ดลิงก์ให้ลูกค้ากรอกประวัติน้อง",
     colors: [
       { key: "headerColor", label: "สีแถบหัว", fallback: "#6e2f48" },
@@ -262,7 +263,7 @@ const CARDS: CardMeta[] = [
       { key: "accentColor", label: "สีชื่อน้อง", fallback: "#5C4033" },
       { key: "buttonColor", label: "สีปุ่มแจ้งประวัติ", fallback: "#bd3a6a" },
     ],
-    fields: [{ key: "date", label: "📅 วันเวลานัด" }],
+    fields: [{ key: "date", label: "วันเวลานัด" }],
     texts: [
       {
         stateKey: "groomInfoIntro",
@@ -281,7 +282,7 @@ const CARDS: CardMeta[] = [
   },
   {
     key: "prestay",
-    name: "🏠 เตรียมตัวก่อนเข้าพัก",
+    name: "เตรียมตัวก่อนเข้าพัก",
     desc: "การ์ดใหญ่ก่อนวันเข้าพัก — วันที่ ห้อง ของที่ต้องเตรียม + ปุ่มเซ็นข้อตกลง",
     colors: [
       { key: "headerColor", label: "สีแถบหัว", fallback: "#6e2f48" },
@@ -290,12 +291,12 @@ const CARDS: CardMeta[] = [
       { key: "buttonColor", label: "สีปุ่มยืนยันเข้าพัก", fallback: "#bd3a6a" },
     ],
     fields: [
-      { key: "dates", label: "📅 กล่องวันเข้าพัก" },
-      { key: "room", label: "🏠 ห้องพัก" },
-      { key: "prep", label: "🧳 รายการของที่ต้องเตรียม" },
-      { key: "carrier", label: "🧺 เตือนให้อยู่ในตะกร้า/กระเป๋า" },
-      { key: "litter", label: "⚠️ แจ้งเตรียมทราย (กรณีไม่แถมฟรี)" },
-      { key: "care", label: "💗 ชวนแจ้งการดูแลพิเศษ" },
+      { key: "dates", label: "กล่องวันเข้าพัก" },
+      { key: "room", label: "ห้องพัก" },
+      { key: "prep", label: "รายการของที่ต้องเตรียม" },
+      { key: "carrier", label: "เตือนให้อยู่ในตะกร้า/กระเป๋า" },
+      { key: "litter", label: "แจ้งเตรียมทราย (กรณีไม่แถมฟรี)" },
+      { key: "care", label: "ชวนแจ้งการดูแลพิเศษ" },
     ],
     texts: [
       {
@@ -344,7 +345,7 @@ const CARDS: CardMeta[] = [
   },
   {
     key: "timePicker",
-    name: "🕒 เลือกเวลาเช็คอิน / เช็คเอาท์",
+    name: "เลือกเวลาเช็คอิน / เช็คเอาท์",
     desc: "การ์ดให้ลูกค้ากดเลือกเวลามาส่ง-รับน้อง",
     colors: [
       { key: "headerColor", label: "สีแถบหัว", fallback: "#6e2f48" },
@@ -375,16 +376,16 @@ const CARDS: CardMeta[] = [
   },
   {
     key: "depositThanks",
-    name: "💚 ขอบคุณ (รับมัดจำแล้ว)",
+    name: "ขอบคุณ (รับมัดจำแล้ว)",
     desc: "ส่งหลังรับเงินมัดจำ — ยืนยันยอด + เงื่อนไขมัดจำ",
     colors: [
       { key: "headerColor", label: "สีหัวข้อ", fallback: "#5C4033" },
       { key: "accentColor", label: "สียอดมัดจำ", fallback: "#bd3a6a" },
     ],
     fields: [
-      { key: "percent", label: "🔢 บรรทัดบอกเปอร์เซ็นต์" },
-      { key: "note", label: "📝 โน้ตเพิ่มเติม" },
-      { key: "terms", label: "🐾 เงื่อนไขมัดจำ" },
+      { key: "percent", label: "บรรทัดบอกเปอร์เซ็นต์" },
+      { key: "note", label: "โน้ตเพิ่มเติม" },
+      { key: "terms", label: "เงื่อนไขมัดจำ" },
     ],
     texts: [
       { stateKey: "depositThanksTitle", label: "หัวข้อการ์ด" },
@@ -409,15 +410,15 @@ const CARDS: CardMeta[] = [
   },
   {
     key: "memberBalance",
-    name: "💎 ยอด Member คงเหลือ",
+    name: "ยอด Member คงเหลือ",
     desc: "แนบท้ายใบเสร็จให้ลูกค้า Member — แจ้งเครดิตคงเหลือ",
     colors: [
       { key: "headerColor", label: "สีหัวข้อ", fallback: "#5C4033" },
       { key: "accentColor", label: "สียอดคงเหลือ", fallback: "#C4956A" },
     ],
     fields: [
-      { key: "customerName", label: "👤 ชื่อลูกค้า" },
-      { key: "usedToday", label: "💸 บรรทัด “ใช้วันนี้ … บาท”" },
+      { key: "customerName", label: "ชื่อลูกค้า" },
+      { key: "usedToday", label: "บรรทัด “ใช้วันนี้ … บาท”" },
     ],
     texts: [],
     styleTexts: [
@@ -430,7 +431,7 @@ const CARDS: CardMeta[] = [
   },
   {
     key: "payment",
-    name: "💳 แจ้งชำระเงิน (จากบิล)",
+    name: "แจ้งชำระเงิน (จากบิล)",
     desc: "ส่งจากหน้าบิล — รายการ + ยอดรวม + บัญชีโอน",
     colors: [
       { key: "headerColor", label: "สีหัวข้อ", fallback: "#5C4033" },
@@ -438,8 +439,8 @@ const CARDS: CardMeta[] = [
       { key: "buttonColor", label: "สีปุ่มคัดลอกบัญชี", fallback: "#bd3a6a" },
     ],
     fields: [
-      { key: "items", label: "🧾 รายการสินค้า/บริการ" },
-      { key: "bank", label: "🏦 กล่องเลขบัญชี + ปุ่มคัดลอก" },
+      { key: "items", label: "รายการสินค้า/บริการ" },
+      { key: "bank", label: "กล่องเลขบัญชี + ปุ่มคัดลอก" },
     ],
     texts: [],
     styleTexts: [
@@ -454,7 +455,7 @@ const CARDS: CardMeta[] = [
   },
   {
     key: "coupon",
-    name: "🎟️ คูปองส่วนลด",
+    name: "คูปองส่วนลด",
     desc: "ยิงแคมเปญคูปองให้ลูกค้ากดรับ",
     colors: [
       { key: "headerColor", label: "สีแถบหัว", fallback: "#6e2f48" },
@@ -474,7 +475,7 @@ const CARDS: CardMeta[] = [
   },
   {
     key: "promo",
-    name: "✨ โปรโมชั่น (บรอดแคสต์)",
+    name: "โปรโมชั่น (บรอดแคสต์)",
     desc: "การ์ดโปรที่ยิงหาลูกค้าหลายคนพร้อมกัน",
     colors: [
       { key: "headerColor", label: "สีแถบหัว (เมื่อไม่ใส่รูป)", fallback: "#6e2f48" },
@@ -493,7 +494,7 @@ const CARDS: CardMeta[] = [
   },
   {
     key: "groomFormFields",
-    name: "🩺 ฟอร์มถามประวัติน้อง",
+    name: "ฟอร์มถามประวัติน้อง",
     desc: "คำถามที่ลูกค้าเห็นในฟอร์มก่อนอาบน้ำ — เปิด/ปิด แก้คำถาม เพิ่ม-ลบตัวเลือกเองได้",
     colors: [],
     fields: [],
@@ -501,7 +502,7 @@ const CARDS: CardMeta[] = [
   },
   {
     key: "consent",
-    name: "📋 เงื่อนไขเข้าพัก + ลายเซ็น",
+    name: "เงื่อนไขเข้าพัก + ลายเซ็น",
     desc: "หัวข้อและข้อตกลงที่ลูกค้าต้องอ่านและเซ็นยอมรับ — เขียนเองได้ทุกข้อ",
     colors: [],
     fields: [],
@@ -1150,14 +1151,13 @@ export default function CardsStudioPage() {
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h1 className="text-lg font-extrabold text-petflow-chocolate">🎴 ปรับแต่งการ์ด LINE</h1>
-          <p className="mt-1 text-xs text-brown-soft">
-            สี ขนาดตัวอักษร ข้อความ เงื่อนไข และส่วนประกอบของการ์ดแต่ละใบ — พรีวิวสดทางขวา
-          </p>
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">LINE cards</p>
+          <h1 className="text-xl font-extrabold text-petflow-chocolate">ปรับแต่งการ์ด LINE</h1>
+          <p className="mt-0.5 text-xs text-brown-soft">สี ข้อความ และส่วนประกอบของการ์ดแต่ละใบ พร้อมพรีวิวสด</p>
         </div>
-        <div className="flex gap-2">
+        <div className="sticky top-2 z-20 flex shrink-0 flex-wrap justify-end gap-2">
           <button
             type="button"
             onClick={() => {
@@ -1177,43 +1177,45 @@ export default function CardsStudioPage() {
                 return next;
               });
               setDirty(true);
-              toast("🎨 ปรับสีการ์ดทุกใบตามสีร้านแล้ว — อย่าลืมกดบันทึก", "success");
+              toast("ปรับสีการ์ดทุกใบตามสีร้านแล้ว — อย่าลืมกดบันทึก", "success");
             }}
-            className="rounded-petflow-sm border border-petflow-line bg-card px-4 py-2.5 text-xs font-extrabold text-latte-deep"
+            className="flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-petflow-line bg-card px-4 text-xs font-bold text-latte-deep shadow-petflow-sm"
           >
-            🎨 ใช้สีร้านกับการ์ดทุกใบ
+            ใช้สีร้านกับการ์ดทุกใบ
           </button>
           <button
             type="button"
             disabled={saving || !dirty}
             onClick={save}
-            className="rounded-petflow-sm bg-gradient-to-r from-latte-deep to-petflow-chocolate px-5 py-2.5 text-sm font-extrabold text-white disabled:opacity-40"
+            className="flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-petflow-chocolate px-4 text-sm font-bold text-card shadow-petflow-sm disabled:bg-card disabled:text-brown-soft"
           >
-            {saving ? "กำลังบันทึก…" : dirty ? "💾 บันทึกการเปลี่ยนแปลง" : "✅ บันทึกแล้ว"}
+            <Icon name="check" size={18} strokeWidth={2.2} />
+            {saving ? "กำลังบันทึก…" : dirty ? "บันทึก" : "บันทึกแล้ว"}
           </button>
         </div>
       </div>
 
-      <div className="mb-4 flex flex-wrap gap-1.5">
-        {CARDS.map((c) => (
-          <button
-            key={c.key}
-            type="button"
-            onClick={() => setActiveKey(c.key)}
-            className={`rounded-full px-3 py-1.5 text-xs font-bold ${
-              activeKey === c.key
-                ? "bg-latte-deep text-white"
-                : "bg-card text-brown-soft border border-petflow-line"
-            }`}
-          >
-            {c.name}
-          </button>
-        ))}
-      </div>
+      {/* เลือกการ์ดจากรายการเดียว แทนปุ่ม 15 ปุ่มเรียงกัน */}
+      <label className="mb-4 block rounded-petflow bg-card px-4 py-3 shadow-petflow-sm">
+        <span className="block text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">
+          Card · {CARDS.findIndex((c) => c.key === activeKey) + 1}/{CARDS.length}
+        </span>
+        <select
+          value={activeKey}
+          onChange={(e) => setActiveKey(e.target.value as typeof activeKey)}
+          className="mt-1 w-full border-0 bg-transparent p-0 text-base font-extrabold text-petflow-chocolate focus:shadow-none"
+        >
+          {CARDS.map((c) => (
+            <option key={c.key} value={c.key}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </label>
 
       <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
         {/* ── ตัวแก้ไข ── */}
-        <div className="space-y-4 rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm">
+        <div className="space-y-5 rounded-petflow bg-card p-4 shadow-petflow-sm">
           <div>
             <p className="text-sm font-extrabold text-petflow-chocolate">{meta.name}</p>
             <p className="text-[11px] text-brown-soft">{meta.desc}</p>
@@ -1308,9 +1310,10 @@ export default function CardsStudioPage() {
                                     options: options.filter((_, j) => j !== i),
                                   })
                                 }
-                                className="shrink-0 rounded-full bg-wait/10 px-2 py-1 text-[10px] font-bold text-wait"
+                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-wait/10 text-wait"
+                                aria-label="ลบตัวเลือก"
                               >
-                                ลบ
+                                <Icon name="trash" size={14} />
                               </button>
                             </div>
                           ))}
@@ -1324,9 +1327,10 @@ export default function CardsStudioPage() {
                               options: [...options, { key: label.trim(), label: label.trim() }],
                             });
                           }}
-                          className="mt-1.5 rounded-full bg-sage/20 px-3 py-1 text-[10px] font-bold text-ok"
+                          className="mt-1.5 flex h-9 items-center gap-1 rounded-full bg-sage/20 px-3 text-[11px] font-bold text-ok"
                         >
-                          ➕ เพิ่มตัวเลือก
+                          <Icon name="plus" size={14} />
+                          เพิ่มตัวเลือก
                         </button>
                       </div>
                     )}
@@ -1340,16 +1344,17 @@ export default function CardsStudioPage() {
                   setGroomForm({});
                   setDirty(true);
                 }}
-                className="rounded-full bg-paper px-3.5 py-1.5 text-[11px] font-bold text-wait"
+                className="flex h-10 items-center gap-1.5 rounded-full bg-paper px-4 text-[11px] font-bold text-wait"
               >
-                ↩️ รีเซ็ตฟอร์มกลับค่าเริ่มต้นทั้งหมด
+                <Icon name="back" size={14} />
+                รีเซ็ตฟอร์มกลับค่าเริ่มต้นทั้งหมด
               </button>
             </div>
           )}
 
           {meta.colors.length > 0 && (
             <div>
-              <p className="mb-2 text-xs font-extrabold text-brown">🎨 สีของการ์ด</p>
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Colors · สีของการ์ด</p>
               <div className="space-y-2.5">
                 {meta.colors.map((role) => (
                   <div key={role.key} className="flex flex-wrap items-center gap-2">
@@ -1358,7 +1363,7 @@ export default function CardsStudioPage() {
                       type="color"
                       value={styleValue(st, role)}
                       onChange={(e) => patch({ [role.key]: e.target.value })}
-                      className="h-8 w-12 cursor-pointer rounded border border-petflow-line bg-paper"
+                      className="h-9 w-12 cursor-pointer rounded-lg border border-petflow-line bg-paper"
                     />
                     <span className="font-mono text-[10px] text-brown-faint">{styleValue(st, role)}</span>
                     <div className="flex gap-1">
@@ -1368,7 +1373,7 @@ export default function CardsStudioPage() {
                           type="button"
                           title={sw}
                           onClick={() => patch({ [role.key]: sw })}
-                          className="h-5 w-5 rounded-full border border-white shadow"
+                          className="h-7 w-7 rounded-full border-2 border-white shadow"
                           style={{ background: sw }}
                         />
                       ))}
@@ -1390,16 +1395,16 @@ export default function CardsStudioPage() {
 
           {meta.hasTitleSize && (
             <div>
-              <p className="mb-1.5 text-xs font-extrabold text-brown">🔠 ขนาดตัวอักษรหัวข้อ</p>
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Title size · ขนาดหัวข้อ</p>
               <div className="flex flex-wrap gap-1.5">
                 {TITLE_SIZES.map((s) => (
                   <button
                     key={s.value}
                     type="button"
                     onClick={() => patch({ titleSize: s.value || undefined })}
-                    className={`rounded-full px-3 py-1.5 text-[11px] font-bold ${
+                    className={`h-9 rounded-full px-3.5 text-xs font-bold ${
                       (st.titleSize || "") === s.value
-                        ? "bg-latte-deep text-white"
+                        ? "bg-petflow-chocolate text-card"
                         : "bg-paper text-brown-soft"
                     }`}
                   >
@@ -1412,12 +1417,12 @@ export default function CardsStudioPage() {
 
           {meta.fields.length > 0 && (
             <div>
-              <p className="mb-2 text-xs font-extrabold text-brown">🧩 ในการ์ดจะมีอะไรบ้าง</p>
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Parts · ในการ์ดจะมีอะไรบ้าง</p>
               <div className="grid gap-1.5 sm:grid-cols-2">
                 {meta.fields.map((f) => (
                   <label
                     key={f.key}
-                    className="flex items-center gap-2 rounded-petflow-sm bg-paper px-2.5 py-2 text-[11px] font-bold text-brown"
+                    className="flex min-h-[44px] items-center gap-2.5 rounded-petflow-sm bg-paper px-3 py-2 text-xs font-bold text-brown"
                   >
                     <input
                       type="checkbox"
@@ -1434,7 +1439,7 @@ export default function CardsStudioPage() {
 
           {meta.texts.length > 0 && (
             <div>
-              <p className="mb-2 text-xs font-extrabold text-brown">📝 ข้อความในการ์ด (เขียนเองได้)</p>
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Text · ข้อความในการ์ด</p>
               <div className="space-y-2.5">
                 {meta.texts.map((t) => (
                   <label key={t.stateKey} className="block text-[11px] font-bold text-brown-soft">
@@ -1462,7 +1467,7 @@ export default function CardsStudioPage() {
 
           {!!meta.styleTexts?.length && (
             <div>
-              <p className="mb-2 text-xs font-extrabold text-brown">📝 ข้อความในการ์ด (เขียนเองได้)</p>
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Text · ข้อความในการ์ด</p>
               <div className="space-y-2.5">
                 {meta.styleTexts.map((sx) => {
                   const val = st.texts?.[sx.key] || "";
@@ -1499,7 +1504,7 @@ export default function CardsStudioPage() {
 
           {meta.closingLabel && (
             <div>
-              <p className="mb-1 text-xs font-extrabold text-brown">💬 {meta.closingLabel}</p>
+              <p className="mb-1.5 text-[11px] font-bold text-brown-soft">{meta.closingLabel}</p>
               <textarea
                 value={st.closing || ""}
                 onChange={(e) => patch({ closing: e.target.value || undefined })}
@@ -1514,19 +1519,19 @@ export default function CardsStudioPage() {
             <button
               type="button"
               onClick={resetCard}
-              className="rounded-full bg-paper px-3.5 py-1.5 text-[11px] font-bold text-wait"
+              className="flex h-10 items-center gap-1.5 rounded-full bg-paper px-4 text-[11px] font-bold text-wait"
             >
-              ↩️ รีเซ็ตสี/ส่วนประกอบการ์ดนี้กลับค่าเริ่มต้น
+              <Icon name="back" size={14} />
+              รีเซ็ตสี/ส่วนประกอบการ์ดนี้กลับค่าเริ่มต้น
             </button>
           )}
         </div>
 
         {/* ── พรีวิวสด ── */}
         <div className="lg:sticky lg:top-24 lg:self-start">
-          <p className="mb-2 text-center text-[11px] font-extrabold text-brown-soft">
-            {activeKey === "groomFormFields"
-              ? "👀 ฟอร์มที่ลูกค้าจะเห็น (อัปเดตสดตามที่แก้)"
-              : "👀 ตัวอย่างที่ลูกค้าจะเห็นใน LINE (อัปเดตสดตามที่แก้)"}
+          <p className="mb-2 flex items-center justify-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">
+            <Icon name="eye" size={14} />
+            {activeKey === "groomFormFields" ? "Preview · ฟอร์มที่ลูกค้าเห็น" : "Preview · ตัวอย่างใน LINE"}
           </p>
           {activeKey === "groomFormFields" ? (
             <div className="rounded-2xl bg-[#efe6d6] p-3">

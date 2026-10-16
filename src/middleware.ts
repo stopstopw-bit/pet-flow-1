@@ -28,9 +28,12 @@ const PUBLIC_API = [
   "/api/bookings/consent",
   "/api/bookings/groom-info",
   "/api/bookings/time",
+  "/api/bookings/transport",
   "/api/coupons/claim",
   "/api/promos/claim",
   "/api/line/liff",
+  // ลิงก์เอกสาร (ใบเสร็จ/ใบกำกับภาษี) ที่ส่งให้ลูกค้าทาง LINE — ตรวจโทเคนที่เซ็นไว้ใน route
+  "/api/doc-public",
   // ระบบภายนอกเรียกเข้ามา
   "/api/line/webhook",
   "/api/telegram/webhook",

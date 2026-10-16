@@ -6,6 +6,8 @@ import { useLocale } from "@/components/LocaleProvider";
 import { useLiff } from "@/components/LiffProvider";
 import { t } from "@/lib/i18n";
 import type { CustomerPromoView } from "@/lib/promos-store";
+import { Icon } from "@/components/Icon";
+import { EmptyState, SectionLabel } from "@/components/ui";
 
 type Props = {
   compact?: boolean;
@@ -79,15 +81,15 @@ export function CustomerExclusivePromos({ compact, onHasPromos }: Props) {
   if (compact) {
     return (
       <section className="mb-4">
-        <h2 className="mb-2 text-sm font-extrabold text-petflow-chocolate">🎁 {m.title}</h2>
-        <div className="flex gap-3 overflow-x-auto pb-1">
+        <SectionLabel>For you · {m.title}</SectionLabel>
+        <div className="flex gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {promos.map((promo) => (
             <Link
               key={promo.id}
               href="/app/promos"
               className="w-36 shrink-0"
             >
-              <div className="h-36 w-36 overflow-hidden rounded-petflow border-2 border-lavender-deep/30 bg-lavender shadow-petflow-sm">
+              <div className="h-36 w-36 overflow-hidden rounded-petflow border border-lavender-deep/30 bg-lavender shadow-petflow-sm">
                 {promo.imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -96,7 +98,9 @@ export function CustomerExclusivePromos({ compact, onHasPromos }: Props) {
                     className="h-full w-full object-cover"
                   />
                 ) : (
-                  <div className="flex h-full items-center justify-center text-4xl">🎁</div>
+                  <div className="flex h-full items-center justify-center text-petflow-chocolate">
+                    <Icon name="gift" size={36} />
+                  </div>
                 )}
               </div>
               <p className="mt-1.5 truncate text-center text-xs font-bold text-brown">
@@ -111,14 +115,14 @@ export function CustomerExclusivePromos({ compact, onHasPromos }: Props) {
 
   return (
     <section className={compact ? "mb-4" : ""}>
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-extrabold text-petflow-chocolate">🎁 {m.title}</h2>
-      </div>
+      <SectionLabel>For you · {m.title}</SectionLabel>
 
       {loading ? (
-        <p className="text-xs text-brown-soft">{t(locale).common.loading}</p>
+        <p className="rounded-petflow bg-card p-4 text-center text-xs text-brown-soft">{t(locale).common.loading}</p>
       ) : promos.length === 0 ? (
-        <p className="rounded-petflow bg-card p-4 text-center text-xs text-brown-soft">{m.empty}</p>
+        <div className="rounded-petflow border border-petflow-line bg-card shadow-petflow-sm">
+          <EmptyState icon="gift" title={m.empty} />
+        </div>
       ) : (
         <div className="space-y-3">
           {promos.map((promo, i) => {
@@ -130,8 +134,9 @@ export function CustomerExclusivePromos({ compact, onHasPromos }: Props) {
                 }`}
               >
                 {i === 0 && (
-                  <div className="bg-gradient-to-r from-petflow-yellow/60 to-honey/50 px-3 py-1 text-[10px] font-extrabold text-petflow-chocolate">
-                    ✨ {m.featured}
+                  <div className="flex items-center gap-1.5 bg-gradient-to-r from-petflow-yellow/60 to-honey/50 px-3 py-1.5 text-[11px] font-extrabold text-petflow-chocolate">
+                    <Icon name="sparkle" size={13} />
+                    {m.featured}
                   </div>
                 )}
                 {promo.imageUrl && (
@@ -164,20 +169,29 @@ export function CustomerExclusivePromos({ compact, onHasPromos }: Props) {
                     onClick={() =>
                       setExpandedId((cur) => (cur === promo.id ? null : promo.id))
                     }
-                    className="mt-1 text-xs font-bold text-latte-deep"
+                    aria-expanded={expandedId === promo.id}
+                    className="-ml-1 mt-0.5 flex min-h-[44px] items-center gap-1 px-1 text-xs font-bold text-latte-deep"
                   >
                     {expandedId === promo.id
                       ? locale === "th"
-                        ? "▲ ย่อ"
-                        : "▲ Show less"
+                        ? "ย่อ"
+                        : "Show less"
                       : locale === "th"
-                        ? "รายละเอียดเพิ่มเติม ▾"
-                        : "More details ▾"}
+                        ? "รายละเอียดเพิ่มเติม"
+                        : "More details"}
+                    <Icon
+                      name="chevron"
+                      size={14}
+                      className={expandedId === promo.id ? "-rotate-90" : "rotate-90"}
+                    />
                   </button>
 
                   {promo.claimed ? (
-                    <div className="mt-3 rounded-petflow-sm bg-sage/15 px-3 py-2 text-center">
-                      <p className="text-xs font-bold text-ok">✅ {m.claimed}</p>
+                    <div className="mt-2 rounded-petflow-sm bg-sage/15 px-3 py-2.5 text-center">
+                      <p className="flex items-center justify-center gap-1.5 text-xs font-bold text-ok">
+                        <Icon name="check" size={14} strokeWidth={2.4} />
+                        {m.claimed}
+                      </p>
                       {promo.couponCode && (
                         <p className="mt-1 text-sm font-extrabold tracking-wide text-petflow-chocolate">
                           {promo.couponCode}
@@ -194,12 +208,12 @@ export function CustomerExclusivePromos({ compact, onHasPromos }: Props) {
                       type="button"
                       disabled={claimingId === promo.id}
                       onClick={() => claim(promo)}
-                      className="mt-3 w-full rounded-petflow-sm bg-gradient-to-r from-honey to-honey-deep py-2.5 text-xs font-extrabold text-petflow-chocolate disabled:opacity-50"
+                      className="mt-2 flex min-h-[48px] w-full items-center justify-center gap-2 rounded-petflow-sm bg-latte-deep py-3 text-sm font-extrabold text-card shadow-petflow-sm transition active:scale-[0.98] disabled:opacity-50"
                     >
                       {claimingId === promo.id ? m.claiming : m.claim}
                     </button>
                   ) : (
-                    <p className="mt-3 rounded-petflow-sm bg-paper px-3 py-2 text-center text-[10px] font-bold text-brown-soft">
+                    <p className="mt-2 rounded-petflow-sm bg-paper px-3 py-2.5 text-center text-[11px] font-bold text-brown-soft">
                       {promo.reason || m.notEligible}
                     </p>
                   )}
@@ -211,9 +225,12 @@ export function CustomerExclusivePromos({ compact, onHasPromos }: Props) {
       )}
 
       {claimedInfo && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:items-center">
           <div className="w-full max-w-sm rounded-petflow bg-card p-5 shadow-petflow">
-            <p className="text-center text-sm font-extrabold text-ok">✅ {m.claimOk}</p>
+            <span className="mx-auto mb-2 flex h-11 w-11 items-center justify-center rounded-full bg-sage/25 text-ok">
+              <Icon name="check" size={22} strokeWidth={2.4} />
+            </span>
+            <p className="text-center text-sm font-extrabold text-ok">{m.claimOk}</p>
             <p className="mt-2 text-center text-xs text-brown-soft">{claimedInfo.title}</p>
             {claimedInfo.pointsAwarded ? (
               <p className="mt-3 text-center text-2xl font-extrabold text-latte-deep">
@@ -229,7 +246,7 @@ export function CustomerExclusivePromos({ compact, onHasPromos }: Props) {
             <button
               type="button"
               onClick={() => setClaimedInfo(null)}
-              className="mt-4 w-full rounded-petflow-sm bg-latte/25 py-2.5 text-xs font-bold text-petflow-chocolate"
+              className="mt-4 min-h-[48px] w-full rounded-petflow-sm bg-latte-deep py-3 text-sm font-extrabold text-card"
             >
               {t(locale).points.dismiss}
             </button>

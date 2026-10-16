@@ -18,7 +18,37 @@ export type BoardRoomType = {
   maxCats?: number;
   /** ห้องเชื่อมประกอบจากห้องจริงอะไรบ้าง — ตั้งได้ต่อร้านในหน้าตั้งค่า */
   composedOf?: { typeId: string; units: number }[];
+  /** ช่วงที่ปิดห้อง (ซ่อม/ใช้งานไม่ได้) — ไม่รับแมวเข้าห้องนั้นในช่วงนี้ */
+  closures?: RoomClosure[];
 };
+
+/**
+ * ปิดห้องรายห้อง เช่น Mid Cozy #3 ซ่อมแอร์ — เก็บใน config.roomClosures
+ * from/to เป็นวันที่ (YYYY-MM-DD) ปิดทั้งวัน to ว่าง = ปิดจนกว่าจะกดเปิด
+ */
+export type RoomClosure = {
+  id: string;
+  typeId: string;
+  unit: number;
+  from: string;
+  to?: string;
+  reason: string;
+};
+
+/** แนบช่วงปิดห้องเข้ากับประเภทห้องแต่ละแบบ (config.rooms + config.roomClosures) */
+export function attachClosures<T extends { id: string }>(rooms: T[], closures?: RoomClosure[]): (T & { closures: RoomClosure[] })[] {
+  return rooms.map((r) => ({ ...r, closures: (closures || []).filter((c) => c.typeId === r.id) }));
+}
+
+/** ห้องนี้ปิดอยู่ในวันนี้ไหม */
+export function closureOn(closures: RoomClosure[] | undefined, unit: number, date: string) {
+  return (closures || []).find((c) => c.unit === unit && c.from <= date && (!c.to || date <= c.to));
+}
+
+/** ช่วงปิดเป็น [เริ่ม, วันถัดจากวันสุดท้าย) ให้เทียบกับช่วงเข้าพักได้ */
+function closureRange(c: RoomClosure): [string, string] {
+  return [c.from, c.to ? nextDay(c.to) : "9999-12-31"];
+}
 
 /**
  * ห้องเชื่อม = เอาห้องจริงที่อยู่ติดกันมาเปิดทะลุถึงกัน ไม่ใช่ห้องเพิ่ม
@@ -67,6 +97,8 @@ export type UnitState = {
   overCapacity: boolean;
   /** ห้องนี้ถูกใช้เป็นส่วนหนึ่งของห้องเชื่อม (เช่น Mini Duo) — ชื่อห้องเชื่อมที่ยึดอยู่ */
   partOf?: string;
+  /** ห้องปิดอยู่วันนี้ (ซ่อม/ใช้งานไม่ได้) — ไม่นับเป็นห้องว่าง */
+  closed?: RoomClosure;
 };
 
 export type RoomBoard = {
@@ -77,12 +109,15 @@ export type RoomBoard = {
     total: number;
     /** ห้องที่มีแมวอยู่ (นับเป็นห้อง ไม่ใช่จำนวนตัว) */
     occupied: number;
+    /** ห้องที่ปิดอยู่ (ซ่อม/ใช้งานไม่ได้) */
+    closed: number;
     free: number;
     cats: number;
     units: UnitState[];
   }[];
   totalUnits: number;
   occupied: number;
+  closed: number;
   free: number;
   /** จำนวนแมวที่พักอยู่ทั้งหมดในวันนั้น */
   cats: number;
@@ -118,8 +153,186 @@ export function isLeavingOn(b: BoardBooking, date: string): boolean {
 const householdKey = (b: BoardBooking) =>
   [b.customerId || b.customerName, b.checkin || "", b.checkout || ""].join("|");
 
+/** วันถัดไป (YYYY-MM-DD) */
+function nextDay(d: string) {
+  const x = new Date(`${d}T12:00:00`);
+  x.setDate(x.getDate() + 1);
+  return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(
+    x.getDate()
+  ).padStart(2, "0")}`;
+}
+
+/** ช่วงคืนที่ใช้ห้อง [เข้า, ออก) — ไม่มีวันออก = คืนเดียว */
+function stayRange(b: BoardBooking): [string, string] {
+  const ci = b.checkin || "";
+  const co = b.checkout && b.checkout > ci ? b.checkout : nextDay(ci);
+  return [ci, co];
+}
+
+const overlaps = (a: [string, string], b: [string, string]) => a[0] < b[1] && b[0] < a[1];
+
+const typeMatches = (b: BoardBooking, type: { id: string; name: string }) => {
+  const r = (b.room || "").trim();
+  return r === type.id || r === type.name;
+};
+
+type Occupant = { range: [string, string]; hh: string; composite: boolean };
+
+export type StayAssignment = {
+  /** ห้องจริงที่นัดนี้ใช้ทั้งการเข้าพัก (ห้องเชื่อม = หลายห้อง ห้องแรกคือห้องหลัก) */
+  units: { typeId: string; unit: number }[];
+  /** ชื่อห้องเชื่อม ถ้าเป็นห้องเชื่อม */
+  partOf?: string;
+};
+
+const assignCache = new WeakMap<
+  BoardBooking[],
+  { key: string; result: { assign: Map<string, StayAssignment>; overflow: Set<string> } }
+>();
+
 /**
- * สร้างผังห้องของวันหนึ่ง
+ * จัดห้องให้ "ทั้งการเข้าพัก" ไม่ใช่รายวัน — เข้าห้องไหนอยู่ห้องนั้นจนออก ไม่ย้ายแมวกลางคัน
+ *
+ * เมื่อก่อนจัดห้องใหม่ทุกวัน วันที่มีแมวออกจากห้อง #1 ระบบก็ขยับแมวที่ยังพักอยู่ไปห้องอื่น
+ * ทั้งที่ความจริงน้องต้องอยู่ห้องเดิม ตอนนี้จัดครั้งเดียวต่อการเข้าพัก:
+ * 1) ห้องที่ปักหมุดเลขไว้ได้ก่อนเสมอ
+ * 2) ที่เหลือเรียงตามวันเข้า (มาก่อนได้ก่อน) แล้วหาห้องที่ว่าง "ตลอดทั้งช่วง"
+ *    แมวบ้านเดียวกันช่วงเดียวกันนอนรวมห้องจนเต็มความจุ · วันออกของคนหนึ่ง = วันเข้าของอีกคนได้
+ */
+export function assignStays(rooms: BoardRoomType[], bookings: BoardBooking[]) {
+  const key = rooms
+    .map((r) => `${r.id}:${r.count}:${r.maxCats || 1}:${(r.composedOf || []).map((c) => `${c.typeId}*${c.units}`).join("+")}:${(r.closures || []).map((c) => `${c.unit}@${c.from}-${c.to || ""}`).join("|")}`)
+    .join(",");
+  const cached = assignCache.get(bookings);
+  if (cached && cached.key === key) return cached.result;
+
+  const physical = rooms.filter((r) => (r.count || 0) > 0);
+  const capOf = new Map(physical.map((r) => [r.id, Math.max(1, r.maxCats || 1)]));
+  const occ = new Map<string, Occupant[]>(); // "typeId#unit" → ผู้ใช้ห้องตามช่วง
+  const slot = (t: string, u: number) => `${t}#${u}`;
+  const add = (t: string, u: number, o: Occupant) => {
+    const k = slot(t, u);
+    const list = occ.get(k);
+    if (list) list.push(o);
+    else occ.set(k, [o]);
+  };
+  // ห้องนี้รับบ้านนี้ได้ตลอดช่วงไหม (ว่าง หรือมีแต่บ้านเดียวกันและยังไม่เต็ม)
+  const fits = (t: string, u: number, range: [string, string], hh: string, exclusive: boolean) => {
+    const cap = capOf.get(t) || 1;
+    let same = 0;
+    for (const o of occ.get(slot(t, u)) || []) {
+      if (!overlaps(o.range, range)) continue;
+      if (exclusive || o.composite || o.hh !== hh) return false;
+      same++;
+    }
+    return same < cap;
+  };
+
+  const assign = new Map<string, StayAssignment>();
+  const overflow = new Set<string>();
+  const live = bookings.filter((b) => b.service === "room" && isLive(b) && b.checkin);
+
+  // 0) ห้องที่ปิดอยู่ — กันไว้ก่อน ไม่ให้ระบบจัดแมวลงห้องนี้ในช่วงที่ปิด
+  for (const t of physical) {
+    for (const c of t.closures || []) {
+      if (c.unit >= 1 && c.unit <= t.count) add(t.id, c.unit, { range: closureRange(c), hh: "__closed__", composite: true });
+    }
+  }
+
+  // 1) ปักหมุด — ห้องเดี่ยวที่ระบุเลขห้องไว้
+  const rest: BoardBooking[] = [];
+  for (const b of live) {
+    const type = physical.find((t) => typeMatches(b, t));
+    const u = b.roomUnit;
+    if (type && u && u >= 1 && u <= type.count) {
+      add(type.id, u, { range: stayRange(b), hh: householdKey(b), composite: false });
+      assign.set(b.id, { units: [{ typeId: type.id, unit: u }] });
+    } else rest.push(b);
+  }
+
+  // 2) ที่เหลือ — มาก่อนได้ก่อน (เรียงวันเข้า แล้ว id เพื่อให้ผลเหมือนเดิมทุกครั้ง)
+  rest.sort((a, b) => (a.checkin || "").localeCompare(b.checkin || "") || a.id.localeCompare(b.id));
+  for (const b of rest) {
+    const range = stayRange(b);
+    const hh = householdKey(b);
+    const type = physical.find((t) => typeMatches(b, t));
+    if (type) {
+      // แมวบ้านเดียวกันที่จัดไปแล้ว อยู่ห้องไหน → ลองห้องนั้นก่อน
+      let picked = 0;
+      for (let u = 1; u <= type.count && !picked; u++) {
+        const hasHousemate = (occ.get(slot(type.id, u)) || []).some(
+          (o) => o.hh === hh && overlaps(o.range, range)
+        );
+        if (hasHousemate && fits(type.id, u, range, hh, false)) picked = u;
+      }
+      for (let u = 1; u <= type.count && !picked; u++) {
+        if (fits(type.id, u, range, hh, false)) picked = u;
+      }
+      if (picked) {
+        add(type.id, picked, { range, hh, composite: false });
+        assign.set(b.id, { units: [{ typeId: type.id, unit: picked }] });
+      } else overflow.add(b.id);
+      continue;
+    }
+
+    const compType = rooms.find((t) => compositionOf(t.id, rooms) && typeMatches(b, t));
+    const parts = compType ? compositionOf(compType.id, rooms) : undefined;
+    if (!compType || !parts) continue;
+
+    // ห้องเชื่อม — บ้านเดียวกันช่วงเดียวกันที่จองห้องเชื่อมนี้ไปแล้ว ใช้ชุดเดิม
+    const mate = rest.find(
+      (x) => x.id !== b.id && assign.has(x.id) && householdKey(x) === hh && typeMatches(x, compType)
+    );
+    if (mate) {
+      assign.set(b.id, assign.get(mate.id)!);
+      continue;
+    }
+
+    const claimed: { typeId: string; unit: number }[] = [];
+    let ok = true;
+    for (const part of parts) {
+      const t = physical.find((x) => x.id === part.typeId);
+      const free: number[] = [];
+      for (let u = 1; u <= (t?.count || 0); u++) {
+        if (
+          !claimed.some((c) => c.typeId === part.typeId && c.unit === u) &&
+          fits(part.typeId, u, range, hh, true)
+        )
+          free.push(u);
+      }
+      // ห้องเชื่อมต้องเป็นห้องติดกัน (เปิดทะลุถึงกันได้จริง) — ไม่มีชุดติดกันค่อยเอาที่ว่าง
+      let pick = free.slice(0, part.units);
+      if (part.units > 1) {
+        for (let i = 0; i + part.units - 1 < free.length; i++) {
+          const w = free.slice(i, i + part.units);
+          if (w.every((u, j) => j === 0 || u === w[j - 1] + 1)) {
+            pick = w;
+            break;
+          }
+        }
+      }
+      if (pick.length < part.units) {
+        ok = false;
+        break;
+      }
+      claimed.push(...pick.map((unit) => ({ typeId: part.typeId, unit })));
+    }
+    if (!ok) {
+      overflow.add(b.id);
+      continue;
+    }
+    for (const c of claimed) add(c.typeId, c.unit, { range, hh, composite: true });
+    assign.set(b.id, { units: claimed, partOf: compType.name });
+  }
+
+  const result = { assign, overflow };
+  assignCache.set(bookings, { key, result });
+  return result;
+}
+
+/**
+ * สร้างผังห้องของวันหนึ่ง — อ่านจากการจัดห้องทั้งการเข้าพัก (assignStays)
+ * แมวจึงอยู่ห้องเดิมทุกวันตั้งแต่เข้าจนออก
  * @param rooms ประเภทห้อง + จำนวนยูนิต + ความจุ (จาก config)
  * @param bookings นัดทั้งหมด (กรอง service/ยกเลิก ให้เองข้างใน)
  */
@@ -128,6 +341,7 @@ export function buildRoomBoard(
   bookings: BoardBooking[],
   date: string
 ): RoomBoard {
+  const { assign, overflow: overflowIds } = assignStays(rooms, bookings);
   const relevant = bookings.filter(
     (b) => b.service === "room" && isLive(b) && (isStayingOn(b, date) || isLeavingOn(b, date))
   );
@@ -136,10 +350,8 @@ export function buildRoomBoard(
   const byType: RoomBoard["byType"] = [];
   const overflow: BoardBooking[] = [];
 
-  // ห้องเชื่อมไม่มีห้องของตัวเอง — โผล่ในผังโดยกินห้องจริงที่เป็นส่วนประกอบ
   const physical = rooms.filter((r) => (r.count || 0) > 0);
   const unitsByType = new Map<string, UnitState[]>();
-
   for (const type of physical) {
     const count = Math.max(0, type.count || 0);
     const capacity = Math.max(1, type.maxCats || 1);
@@ -153,127 +365,33 @@ export function buildRoomBoard(
       arriving: false,
       turnover: false,
       overCapacity: false,
+      closed: closureOn(type.closures, i + 1, date),
     }));
-
     unitsByType.set(type.id, typeUnits);
-
-    // จองของห้องประเภทนี้ — เทียบทั้ง id และชื่อ เพราะข้อมูลเก่าบางแถวเก็บเป็นชื่อ
-    const mine = relevant
-      .filter((b) => {
-        const r = (b.room || "").trim();
-        return r === type.id || r === type.name;
-      })
-      .sort((a, b) => a.id.localeCompare(b.id));
-
-    const put = (b: BoardBooking, slot: UnitState) => {
-      if (isLeavingOn(b, date)) slot.leaving.push(b);
-      else {
-        slot.staying.push(b);
-        if (b.checkin === date) slot.arriving = true;
-      }
-    };
-
-    // 1) ปักหมุดห้องที่ระบุเลขไว้ก่อน — คนที่จัดห้องเองต้องได้ห้องนั้นจริง
-    const unpinned: BoardBooking[] = [];
-    for (const b of mine) {
-      const u = b.roomUnit;
-      const slot = u && u >= 1 && u <= count ? typeUnits[u - 1] : undefined;
-      if (slot) put(b, slot);
-      else unpinned.push(b);
-    }
-
-    // 2) ที่เหลือ จัดเป็นบ้านๆ — แมวบ้านเดียวกันอยู่ห้องเดียวกันจนเต็มความจุ
-    const households = new Map<string, BoardBooking[]>();
-    for (const b of unpinned) {
-      const k = householdKey(b);
-      const list = households.get(k);
-      if (list) list.push(b);
-      else households.set(k, [b]);
-    }
-
-    for (const group of households.values()) {
-      for (const b of group) {
-        const leaving = isLeavingOn(b, date);
-        const roomFor = (s: UnitState) => {
-          const here = leaving ? s.leaving : s.staying;
-          if (here.length >= s.capacity) return false;
-          // ห้องที่มีคนอื่นอยู่แล้ว ห้ามเอาแมวคนละบ้านไปยัดรวม
-          return here.length === 0 || householdKey(here[0]) === householdKey(b);
-        };
-        const slot = typeUnits.find(roomFor);
-        if (slot) put(b, slot);
-        else overflow.push(b);
-      }
-    }
-
     units.push(...typeUnits);
   }
 
-  // ── ห้องเชื่อม — กินห้องจริงตามส่วนประกอบ (Mini Duo = MiNi Meow 2 ห้องติดกัน) ──
-  // เลือกห้องที่ติดกันก่อนเสมอ เพราะเปิดทะลุถึงกันได้จริงเฉพาะห้องที่อยู่ติดกัน
-  for (const type of rooms) {
-    const parts = compositionOf(type.id, rooms);
-    if (!parts) continue;
-    const mine = relevant
-      .filter((b) => {
-        const r = (b.room || "").trim();
-        return r === type.id || r === type.name;
-      })
-      .sort((a, b) => a.id.localeCompare(b.id));
-    if (mine.length === 0) continue;
-
-    // แมวบ้านเดียวกันช่วงเดียวกัน = อยู่ห้องเชื่อมชุดเดียวกัน ไม่ต้องกินห้องเพิ่ม
-    const households = new Map<string, BoardBooking[]>();
-    for (const b of mine) {
-      const k = householdKey(b);
-      const list = households.get(k);
-      if (list) list.push(b);
-      else households.set(k, [b]);
+  const sorted = [...relevant].sort((a, b) => a.id.localeCompare(b.id));
+  for (const b of sorted) {
+    const a = assign.get(b.id);
+    if (!a || overflowIds.has(b.id)) {
+      if (overflowIds.has(b.id)) overflow.push(b);
+      continue;
     }
-
-    for (const group of households.values()) {
-      const claimed: UnitState[] = [];
-      let ok = true;
-      for (const part of parts) {
-        const pool = unitsByType.get(part.typeId) || [];
-        const freeUnits = pool.filter(
-          (s) => s.staying.length === 0 && s.leaving.length === 0 && !s.partOf
-        );
-        // หาชุดที่เลขห้องติดกันก่อน ถ้าไม่มีค่อยเอาห้องว่างเท่าที่มี
-        let pick = freeUnits.slice(0, part.units);
-        if (part.units > 1) {
-          const adjacent: UnitState[] = [];
-          for (let i = 0; i + part.units - 1 < freeUnits.length; i++) {
-            const window = freeUnits.slice(i, i + part.units);
-            const contiguous = window.every(
-              (s, j) => j === 0 || s.unit === window[j - 1].unit + 1
-            );
-            if (contiguous) {
-              adjacent.push(...window);
-              break;
-            }
-          }
-          if (adjacent.length === part.units) pick = adjacent;
-        }
-        if (pick.length < part.units) {
-          ok = false;
-          break;
-        }
-        claimed.push(...pick);
-      }
-
-      if (!ok) {
-        overflow.push(...group);
-        continue;
-      }
-      // ห้องแรกของชุดเก็บรายชื่อแมว ที่เหลือทำเครื่องหมายว่าถูกยึดโดยห้องเชื่อมนี้
-      for (const s of claimed) s.partOf = type.name;
-      const host = claimed[0];
-      for (const b of group) {
-        if (isLeavingOn(b, date)) host.leaving.push(b);
-        else {
-          host.staying.push(b);
-          if (b.checkin === date) host.arriving = true;
+    const leaving = isLeavingOn(b, date);
+    const [first, ...others] = a.units;
+    const host = unitsByType.get(first.typeId)?.[first.unit - 1];
+    if (!host) continue;
+    if (leaving) host.leaving.push(b);
+    else {
+      host.staying.push(b);
+      if (b.checkin === date) host.arriving = true;
+      // ห้องเชื่อม: ห้องที่เปิดทะลุถูกยึดไว้ด้วยตลอดการเข้าพัก
+      if (a.partOf) {
+        host.partOf = a.partOf;
+        for (const o of others) {
+          const u = unitsByType.get(o.typeId)?.[o.unit - 1];
+          if (u) u.partOf = a.partOf;
         }
       }
     }
@@ -287,12 +405,15 @@ export function buildRoomBoard(
     }
     // ห้องที่ถูกห้องเชื่อมยึดไว้ ถือว่าไม่ว่าง แม้แถวนั้นจะไม่มีชื่อแมว
     const occupied = typeUnits.filter((s) => s.staying.length > 0 || s.partOf).length;
+    // ห้องปิดที่ยังมีแมวค้างอยู่ (ปักหมุดไว้ก่อนปิด) นับเป็นห้องที่ใช้อยู่ ไม่นับซ้ำ
+    const closed = typeUnits.filter((s) => s.closed && !(s.staying.length > 0 || s.partOf)).length;
     byType.push({
       typeId: type.id,
       typeName: type.name,
       total: type.count || 0,
       occupied,
-      free: (type.count || 0) - occupied,
+      closed,
+      free: (type.count || 0) - occupied - closed,
       cats: typeUnits.reduce((n, s) => n + s.staying.length, 0),
       units: typeUnits,
     });
@@ -300,14 +421,16 @@ export function buildRoomBoard(
 
   const totalUnits = units.length;
   const occupied = units.filter((s) => s.staying.length > 0 || s.partOf).length;
+  const closed = units.filter((s) => s.closed && !(s.staying.length > 0 || s.partOf)).length;
   return {
     units,
     byType,
     totalUnits,
     occupied,
-    free: totalUnits - occupied,
+    closed,
+    free: totalUnits - occupied - closed,
     cats: units.reduce((n, s) => n + s.staying.length, 0),
-    isFull: totalUnits > 0 && occupied >= totalUnits,
+    isFull: totalUnits > 0 && occupied + closed >= totalUnits,
     turnovers: units.filter((s) => s.turnover),
     overflow,
   };
@@ -377,14 +500,15 @@ export function freeUnitsForRange(
   if (!type || compositionOf(typeId, rooms)) return [];
   const pool = ignoreBookingId ? bookings.filter((b) => b.id !== ignoreBookingId) : bookings;
   const nights = nightsBetween(checkin, checkout);
-  if (nights.length === 0) return Array.from({ length: type.count || 0 }, (_, i) => i + 1);
+  if (nights.length === 0)
+    return Array.from({ length: type.count || 0 }, (_, i) => i + 1).filter((u) => !closureOn(type.closures, u, checkin));
 
   let free: number[] | null = null;
   for (const d of nights) {
     const board = buildRoomBoard(rooms, pool, d);
     const freeToday = new Set(
       board.units
-        .filter((u) => u.typeId === typeId && u.staying.length === 0 && !u.partOf)
+        .filter((u) => u.typeId === typeId && u.staying.length === 0 && !u.partOf && !u.closed)
         .map((u) => u.unit)
     );
     free = free ? free.filter((u) => freeToday.has(u)) : [...freeToday];

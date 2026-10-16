@@ -5,6 +5,8 @@ import Link from "next/link";
 import { adminJson } from "@/lib/admin-fetch";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { resolveRange, type RangeId } from "@/lib/date-range";
+import { IconChip, ListRowContent } from "@/components/HeaderBand";
+import { Icon } from "@/components/Icon";
 
 type Stats = {
   today: string;
@@ -26,9 +28,20 @@ type Stats = {
 
 type Tasks = { unpaidCount: number; unpaidDue: number; pendingConsent: number };
 
+/** นัดของวันนี้ที่โชว์ในแดชบอร์ด (อ่านอย่างเดียว จาก /api/bookings ที่โหลดอยู่แล้ว) */
+type TodayItem = {
+  id: string;
+  kind: "groom" | "checkin" | "checkout";
+  time: string;
+  catName: string;
+  customerName: string;
+  status: string;
+};
+
 export default function AdminDashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [tasks, setTasks] = useState<Tasks | null>(null);
+  const [todayItems, setTodayItems] = useState<TodayItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   /** ช่วงเวลาของตัวเลขยอดขาย/บัญชี — คิว "รอยืนยัน" กับ "นัดวันนี้" ยึดวันนี้เสมอ */
@@ -60,11 +73,40 @@ export default function AdminDashboard() {
       ]);
       const invs = (invR.invoices || []) as { status: string; total: number; deposit?: number }[];
       const bks = (bkR.bookings || []) as {
+        id?: string;
         service?: string;
+        date?: string;
+        time?: string;
         checkin?: string;
+        checkout?: string;
+        arrivalTime?: string;
+        pickupTime?: string;
+        catName?: string;
+        customerName?: string;
         consentAcceptedAt?: string;
         status?: string;
       }[];
+      // นัดวันนี้ — นับแบบเดียวกับตัวเลข "นัดวันนี้" (date/checkin = วันนี้) + น้องที่ออกวันนี้
+      const items: TodayItem[] = [];
+      for (const b of bks) {
+        if (b.status === "cancelled") continue;
+        const base = {
+          id: b.id || "",
+          catName: b.catName || "-",
+          customerName: b.customerName || "",
+          status: b.status || "",
+        };
+        if (b.service === "room") {
+          if ((b.checkin || b.date) === today)
+            items.push({ ...base, kind: "checkin", time: b.arrivalTime || b.time || "" });
+          if (b.checkout === today)
+            items.push({ ...base, id: `${base.id}-out`, kind: "checkout", time: b.pickupTime || "" });
+        } else if (b.date === today) {
+          items.push({ ...base, kind: "groom", time: b.time || "" });
+        }
+      }
+      items.sort((a, b) => (a.time || "99").localeCompare(b.time || "99"));
+      setTodayItems(items);
       const pending = invs.filter((i) => i.status === "pending");
       setTasks({
         unpaidCount: pending.length,
@@ -107,141 +149,178 @@ export default function AdminDashboard() {
     );
   }
 
-  return (
-    <div className="space-y-5">
-      <DateRangePicker
-        value={rangeId}
-        onChange={setRangeId}
-        custom={customRange}
-        onCustomChange={setCustomRange}
-      />
+  const hasTasks =
+    stats.queue > 0 || (tasks && (tasks.unpaidCount > 0 || tasks.pendingConsent > 0));
 
-      <div className="grid grid-cols-2 gap-3">
-        <StatCard
-          emoji="💰"
-          label={`รายรับ · ${range.label}`}
-          value={`${stats.financeToday.income.toLocaleString()} ฿`}
-          sub={
-            // ใช้ยอดจากบัญชีรายรับ ไม่ใช่เฉพาะบิล — ขายคอร์ส/เติมเครดิตก็คือเงินเข้าเหมือนกัน
-            // (เมื่อก่อนการ์ดนี้นับเฉพาะบิล เลยไม่ตรงกับ "สุทธิ" ที่นับทุกอย่าง)
-            [
-              `${stats.salesToday.count} บิล`,
-              stats.salesToday.creditTotal > 0
-                ? `ตัดเครดิต ${stats.salesToday.creditTotal.toLocaleString()} ฿`
-                : "",
-            ]
-              .filter(Boolean)
-              .join(" · ")
-          }
-        />
-        <StatCard emoji="⏳" label="คิวรอยืนยัน" value={String(stats.queue)} sub="นัด" />
-        <StatCard emoji="📅" label="นัดวันนี้" value={String(stats.todayAppointments)} sub={`ยืนยัน ${stats.todayConfirmed}`} />
-        <StatCard
-          emoji="📒"
-          label={`สุทธิ · ${range.label}`}
-          value={`${stats.financeToday.net.toLocaleString()} ฿`}
-          sub={
+  return (
+    <div className="space-y-6">
+      {/* การ์ดสรุป — เกยขึ้นไปบนแถบหัว */}
+      <section className="relative rounded-petflow bg-card p-5 shadow-petflow">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">
+              Revenue · {range.label}
+            </p>
+            <p className="mt-1 text-3xl font-extrabold tracking-tight text-petflow-chocolate">
+              {stats.financeToday.income.toLocaleString()}
+              <span className="ml-1 text-base font-bold text-latte-deep">฿</span>
+            </p>
+            <p className="mt-0.5 text-[11px] text-brown-soft">
+              {
+                // ใช้ยอดจากบัญชีรายรับ ไม่ใช่เฉพาะบิล — ขายคอร์ส/เติมเครดิตก็คือเงินเข้าเหมือนกัน
+                // (เมื่อก่อนการ์ดนี้นับเฉพาะบิล เลยไม่ตรงกับ "สุทธิ" ที่นับทุกอย่าง)
+                [
+                  `${stats.salesToday.count} บิล`,
+                  stats.salesToday.creditTotal > 0
+                    ? `ตัดเครดิต ${stats.salesToday.creditTotal.toLocaleString()} ฿`
+                    : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
+              }
+            </p>
+          </div>
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-honey/35 text-petflow-chocolate">
+            <Icon name="wallet" size={22} />
+          </span>
+        </div>
+        <div className="mt-4 grid grid-cols-3 divide-x divide-petflow-line rounded-petflow-sm bg-paper/70 py-3 text-center">
+          <MiniStat label="Net" value={`${stats.financeToday.net.toLocaleString()} ฿`} sub={
             stats.financeToday.expense > 0
-              ? `หักรายจ่าย ${stats.financeToday.expense.toLocaleString()} ฿`
+              ? `หักจ่าย ${stats.financeToday.expense.toLocaleString()}`
               : "ยังไม่มีรายจ่าย"
-          }
-        />
-      </div>
+          } />
+          <MiniStat label="Today" value={String(stats.todayAppointments)} sub={`ยืนยัน ${stats.todayConfirmed}`} />
+          <MiniStat label="Pending" value={String(stats.queue)} sub="รอยืนยัน" highlight={stats.queue > 0} />
+        </div>
+        <div className="mt-3">
+          <DateRangePicker
+            value={rangeId}
+            onChange={setRangeId}
+            custom={customRange}
+            onCustomChange={setCustomRange}
+          />
+        </div>
+      </section>
+
+      {/* เมนูลัด — 4 อย่างที่ใช้บ่อยสุด (ที่เหลืออยู่ในปุ่ม Menu ด้านล่าง) */}
+      <nav aria-label="เมนูลัด" className="grid grid-cols-4 gap-2">
+        <Link href="/admin/billing"><IconChip icon="card" label="คิดเงิน" tone="honey" /></Link>
+        <Link href="/admin/pending"><IconChip icon="inbox" label="รอยืนยัน" tone="latte" badge={stats.queue || undefined} /></Link>
+        <Link href="/admin/finance"><IconChip icon="wallet" label="รายรับ-จ่าย" tone="sage" /></Link>
+        <Link href="/admin/insights"><IconChip icon="chart" label="สรุปข้อมูล" tone="paper" /></Link>
+      </nav>
 
       {/* งานที่ต้องทำ */}
-      {(stats.queue > 0 ||
-        (tasks && (tasks.unpaidCount > 0 || tasks.pendingConsent > 0))) && (
-        <div className="rounded-petflow border border-honey/50 bg-honey/10 p-4">
-          <p className="mb-2 text-sm font-extrabold text-petflow-chocolate">
-            📌 งานที่ต้องทำ
-          </p>
-          <div className="space-y-1.5 text-sm">
+      {hasTasks && (
+        <section>
+          <SectionTitle title="To-do" sub="งานที่ต้องทำ" />
+          <div className="divide-y divide-petflow-line rounded-petflow bg-card px-4 shadow-petflow-sm">
             {stats.queue > 0 && (
-              <Link
-                href="/admin/pending"
-                className="flex items-center justify-between rounded-petflow-sm bg-card px-3 py-2"
-              >
-                <span className="font-bold text-brown">⏳ นัดรอยืนยัน</span>
-                <span className="font-extrabold text-wait">{stats.queue} นัด →</span>
+              <Link href="/admin/pending" className="block py-3">
+                <ListRowContent icon="inbox" title="นัดรอยืนยัน" sub="ลูกค้ายังไม่กดยืนยัน" value={`${stats.queue} นัด`} valueClass="text-wait" />
               </Link>
             )}
             {tasks && tasks.unpaidCount > 0 && (
-              <Link
-                href="/admin/billing"
-                className="flex items-center justify-between rounded-petflow-sm bg-card px-3 py-2"
-              >
-                <span className="font-bold text-brown">💳 บิลค้างชำระ</span>
-                <span className="font-extrabold text-wait">
-                  {tasks.unpaidDue.toLocaleString()} ฿ ({tasks.unpaidCount}) →
-                </span>
+              <Link href="/admin/billing" className="block py-3">
+                <ListRowContent icon="card" title="บิลค้างชำระ" sub={`${tasks.unpaidCount} บิล`} value={`${tasks.unpaidDue.toLocaleString()} ฿`} valueClass="text-wait" />
               </Link>
             )}
             {tasks && tasks.pendingConsent > 0 && (
-              <Link
-                href="/admin/schedule"
-                className="flex items-center justify-between rounded-petflow-sm bg-card px-3 py-2"
-              >
-                <span className="font-bold text-brown">📋 ยังไม่กดยอมรับเงื่อนไข</span>
-                <span className="font-extrabold text-latte-deep">
-                  {tasks.pendingConsent} คน →
-                </span>
+              <Link href="/admin/schedule" className="block py-3">
+                <ListRowContent icon="doc" title="ยังไม่กดยอมรับเงื่อนไข" sub="ห้องพักที่กำลังจะมาถึง" value={`${tasks.pendingConsent} คน`} valueClass="text-latte-deep" />
               </Link>
             )}
           </div>
-        </div>
+        </section>
       )}
 
-      {/* เปิดตารางนัด (แยกหน้า) */}
-      <Link
-        href="/admin/schedule"
-        className="flex items-center justify-between rounded-petflow bg-card p-4 shadow-petflow-sm"
-      >
-        <div>
-          <p className="text-base font-extrabold text-petflow-chocolate">🗓️ ตารางนัด</p>
-          <p className="text-xs text-brown-soft">
-            วันนี้ {stats.todayAppointments} นัด · รอยืนยัน {stats.queue}
-          </p>
-        </div>
-        <span className="rounded-full bg-honey/30 px-4 py-2 text-xs font-extrabold text-petflow-chocolate">
-          เปิดตาราง →
-        </span>
-      </Link>
-
-      <div className="grid grid-cols-2 gap-2">
-        <Link href="/admin/bookings/new" className="rounded-petflow-sm bg-latte/25 py-3 text-center text-xs font-bold text-petflow-chocolate">
-          ➕ จองใหม่
-        </Link>
-        <Link href="/admin/billing" className="rounded-petflow-sm bg-honey/30 py-3 text-center text-xs font-bold text-petflow-chocolate">
-          💳 คิดเงิน
-        </Link>
-        <Link href="/admin/customers" className="rounded-petflow-sm bg-paper py-3 text-center text-xs font-bold text-petflow-chocolate">
-          👤 ลูกค้า
-        </Link>
-        <Link href="/admin/finance" className="rounded-petflow-sm bg-latte/20 py-3 text-center text-xs font-bold text-petflow-chocolate">
-          📒 รายรับ-จ่าย
-        </Link>
-      </div>
+      {/* นัดวันนี้ */}
+      <section>
+        <SectionTitle
+          title="Today"
+          sub={`นัดวันนี้ ${todayItems.length} รายการ`}
+          action={<Link href="/admin/schedule" className="text-xs font-bold text-latte-deep">ดูตารางนัด</Link>}
+        />
+        {todayItems.length === 0 ? (
+          <div className="flex flex-col items-center rounded-petflow bg-card px-4 py-8 text-center shadow-petflow-sm">
+            <span className="mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-paper text-brown-soft">
+              <Icon name="paw" size={24} />
+            </span>
+            <p className="text-sm font-bold text-brown">วันนี้ยังไม่มีนัด</p>
+            <p className="text-xs text-brown-soft">กดปุ่ม + ด้านล่างเพื่อจองให้ลูกค้า</p>
+          </div>
+        ) : (
+          <ul className="divide-y divide-petflow-line rounded-petflow bg-card px-4 shadow-petflow-sm">
+            {todayItems.slice(0, 8).map((it) => (
+              <li key={it.id} className="flex items-center gap-3 py-3">
+                <span className="w-11 shrink-0 text-center text-xs font-extrabold text-petflow-chocolate">
+                  {it.time || "–"}
+                </span>
+                <span
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                    it.kind === "groom" ? "bg-sage/30" : it.kind === "checkin" ? "bg-honey/35" : "bg-latte/30"
+                  } text-petflow-chocolate`}
+                >
+                  <Icon name={it.kind === "groom" ? "bath" : "bed"} size={18} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-bold text-petflow-chocolate">{it.catName}</span>
+                  <span className="block truncate text-[11px] text-brown-soft">
+                    {it.kind === "groom" ? "อาบน้ำ" : it.kind === "checkin" ? "เช็คอิน" : "เช็คเอาท์"} · {it.customerName}
+                  </span>
+                </span>
+                {it.status === "pending" ? (
+                  <span className="shrink-0 rounded-full bg-wait/15 px-2 py-0.5 text-[10px] font-bold text-wait">รอยืนยัน</span>
+                ) : it.status === "confirmed" ? (
+                  <span className="shrink-0 rounded-full bg-ok/15 px-2 py-0.5 text-[10px] font-bold text-ok">ยืนยันแล้ว</span>
+                ) : null}
+              </li>
+            ))}
+            {todayItems.length > 8 && (
+              <li className="py-3 text-center">
+                <Link href="/admin/schedule" className="text-xs font-bold text-latte-deep">
+                  ดูอีก {todayItems.length - 8} รายการ
+                </Link>
+              </li>
+            )}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }
 
-function StatCard({
-  emoji,
+function SectionTitle({ title, sub, action }: { title: string; sub?: string; action?: React.ReactNode }) {
+  return (
+    <div className="mb-2 flex items-end justify-between gap-3 px-1">
+      <div>
+        <h2 className="text-base font-extrabold text-petflow-chocolate">{title}</h2>
+        {sub ? <p className="text-[11px] text-brown-soft">{sub}</p> : null}
+      </div>
+      {action}
+    </div>
+  );
+}
+
+function MiniStat({
   label,
   value,
   sub,
+  highlight,
 }: {
-  emoji: string;
   label: string;
   value: string;
   sub: string;
+  highlight?: boolean;
 }) {
   return (
-    <div className="rounded-petflow-sm bg-card p-4 shadow-petflow-sm">
-      <p className="text-lg">{emoji}</p>
-      <p className="text-lg font-extrabold text-latte-deep">{value}</p>
-      <p className="text-xs font-bold text-brown-soft">{label}</p>
-      <p className="text-[10px] text-brown-faint">{sub}</p>
+    <div className="min-w-0 px-2">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-brown-soft">{label}</p>
+      <p className={`truncate text-base font-extrabold ${highlight ? "text-wait" : "text-petflow-chocolate"}`}>
+        {value}
+      </p>
+      <p className="truncate text-[10px] text-brown-faint">{sub}</p>
     </div>
   );
 }

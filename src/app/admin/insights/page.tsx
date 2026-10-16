@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { DateRangePicker } from "@/components/DateRangePicker";
+import { Icon } from "@/components/Icon";
 import { resolveRange, inRange, type RangeId } from "@/lib/date-range";
 
 type Cat = { name?: string; breed?: string };
@@ -57,10 +58,17 @@ function Bar({ label, value, max, suffix }: { label: string; value: number; max:
   );
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function Card({ title, icon, children }: { title: string; icon?: string; children: React.ReactNode }) {
   return (
     <section className="rounded-petflow bg-card p-4 shadow-petflow-sm">
-      <h2 className="mb-3 text-sm font-extrabold text-petflow-chocolate">{title}</h2>
+      <h2 className="mb-3 flex items-center gap-2.5 text-sm font-extrabold text-petflow-chocolate">
+        {icon && (
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-honey/30">
+            <Icon name={icon} size={16} />
+          </span>
+        )}
+        {title}
+      </h2>
       {children}
     </section>
   );
@@ -209,7 +217,10 @@ export default function InsightsPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-lg font-extrabold text-petflow-chocolate">📊 สรุปข้อมูลร้าน</h1>
+      <div>
+        <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Insights</p>
+        <h1 className="text-xl font-extrabold text-petflow-chocolate">สรุปข้อมูลร้าน</h1>
+      </div>
 
       <DateRangePicker
         value={rangeId}
@@ -221,22 +232,26 @@ export default function InsightsPage() {
 
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-petflow-sm bg-card p-4 shadow-petflow-sm">
-          <p className="text-lg">👥</p>
-          <p className="text-lg font-extrabold text-latte-deep">{stats.totalCustomers}</p>
-          <p className="text-xs font-bold text-brown-soft">ลูกค้า · 🐱 {stats.totalCats} แมว</p>
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-honey/30 text-petflow-chocolate">
+            <Icon name="users" size={18} />
+          </span>
+          <p className="mt-2 text-xl font-extrabold text-petflow-chocolate">{stats.totalCustomers}</p>
+          <p className="text-[11px] font-bold text-brown-soft">ลูกค้า · {stats.totalCats} แมว</p>
         </div>
         <div className="rounded-petflow-sm bg-card p-4 shadow-petflow-sm">
-          <p className="text-lg">💰</p>
-          <p className="text-lg font-extrabold text-latte-deep">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-sage/30 text-petflow-chocolate">
+            <Icon name="money" size={18} />
+          </span>
+          <p className="mt-2 text-xl font-extrabold text-petflow-chocolate">
             {stats.revenuePaid.toLocaleString()} ฿
           </p>
-          <p className="text-xs font-bold text-brown-soft">
-            ยอดขายรวม · {stats.paidCount} บิล · 💎 {stats.members} member
+          <p className="text-[11px] font-bold text-brown-soft">
+            ยอดขายรวม · {stats.paidCount} บิล · {stats.members} member
           </p>
         </div>
       </div>
 
-      <Card title="🐱 พันธุ์แมวยอดฮิต (ใช้ตัดสินใจทำสินค้า)">
+      <Card icon="paw" title="พันธุ์แมวยอดฮิต (ใช้ตัดสินใจทำสินค้า)">
         {stats.breeds.length ? (
           <div className="space-y-2">
             {stats.breeds.map(([b, n]) => (
@@ -248,7 +263,7 @@ export default function InsightsPage() {
         )}
       </Card>
 
-      <Card title="✨ บริการขายดี">
+      <Card icon="sparkle" title="บริการขายดี">
         {stats.services.length ? (
           <div className="space-y-2">
             {stats.services.map(([s, n]) => (
@@ -260,7 +275,7 @@ export default function InsightsPage() {
         )}
       </Card>
 
-      <Card title="🏆 ลูกค้าใช้จ่ายสูงสุด">
+      <Card icon="star" title="ลูกค้าใช้จ่ายสูงสุด">
         {stats.topSpenders.length ? (
           <div className="space-y-2">
             {stats.topSpenders.map((s, i) => (
@@ -272,7 +287,7 @@ export default function InsightsPage() {
         )}
       </Card>
 
-      <Card title="🎫 คอร์ส/แพ็กเกจที่ขายได้">
+      <Card icon="ticket" title="คอร์ส/แพ็กเกจที่ขายได้">
         {stats.coursesSold.length ? (
           <>
             <div className="mb-2 grid grid-cols-2 gap-2 text-center">
@@ -299,7 +314,7 @@ export default function InsightsPage() {
               ))}
             </div>
             <p className="mt-2 text-[10px] text-brown-faint">
-              💡 &quot;สิทธิ์ค้าง&quot; คือครั้ง/คืนที่ลูกค้าจ่ายมาแล้วแต่ยังไม่ได้ใช้ —
+              &quot;สิทธิ์ค้าง&quot; คือครั้ง/คืนที่ลูกค้าจ่ายมาแล้วแต่ยังไม่ได้ใช้ —
               เป็นบริการที่ร้านติดค้างอยู่ ไม่ใช่กำไรที่ใช้ได้เลย
             </p>
           </>
@@ -308,7 +323,7 @@ export default function InsightsPage() {
         )}
       </Card>
 
-      <Card title="🎁 โปรโมชั่น — ใช้ไปเท่าไหร่ เสียส่วนลดเท่าไหร่">
+      <Card icon="gift" title="โปรโมชั่น — ใช้ไปเท่าไหร่ เสียส่วนลดเท่าไหร่">
         {stats.promoRows.length ? (
           <>
             <div className="mb-2 grid grid-cols-2 gap-2 text-center">
@@ -342,7 +357,7 @@ export default function InsightsPage() {
         )}
       </Card>
 
-      <Card title="📣 ลูกค้ารู้จักร้านจากไหน">
+      <Card icon="users" title="ลูกค้ารู้จักร้านจากไหน">
         {stats.knownSources.length ? (
           <>
             <div className="space-y-2">
@@ -357,7 +372,7 @@ export default function InsightsPage() {
               ))}
             </div>
             <p className="mt-2 text-[10px] text-brown-faint">
-              💡 ช่องทางที่ได้ลูกค้าเยอะสุดคือที่ควรลงแรง/ลงเงินต่อ
+              ช่องทางที่ได้ลูกค้าเยอะสุดคือที่ควรลงแรง/ลงเงินต่อ
             </p>
           </>
         ) : (

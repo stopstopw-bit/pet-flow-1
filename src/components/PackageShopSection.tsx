@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLiff } from "@/components/LiffProvider";
 import { toJpegDataUrl } from "@/lib/image-convert";
+import { Icon } from "@/components/Icon";
 
 type Offer = {
   id: string;
@@ -161,18 +162,26 @@ export function PackageShopSection() {
   if (offers.length === 0 && pending.length === 0) return null;
 
   return (
-    <section className="mb-4 rounded-petflow border-2 border-mint-deep/30 bg-mint p-4 shadow-petflow">
-      <p className="mb-1 text-sm font-extrabold text-mint-deep">
-        🛍️ คอร์สที่เปิดขาย
-      </p>
-      <p className="mb-3 text-[10px] text-brown-faint">
+    <section className="mb-4 rounded-petflow border border-mint-deep/30 bg-mint p-4 shadow-petflow">
+      <div className="mb-3 flex items-center gap-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-mint-deep/15 text-mint-deep">
+          <Icon name="bag" size={20} />
+        </span>
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Packages</p>
+          <p className="text-sm font-extrabold text-mint-deep">คอร์สที่เปิดขาย</p>
+        </div>
+      </div>
+      <p className="-mt-1 mb-3 text-[11px] text-brown-soft">
         ซื้อล่วงหน้าคุ้มกว่า · ใช้ได้ทุกครั้งที่มาใช้บริการ
       </p>
 
       {offers.length > 0 && (
         <>
         {offers.length > 1 && (
-          <p className="mb-1.5 text-[10px] text-brown-faint">← เลื่อนดูคอร์สทั้งหมด →</p>
+          <p className="mb-1.5 flex items-center gap-1 text-[11px] text-brown-faint">
+            เลื่อนดูคอร์สทั้งหมด <Icon name="chevron" size={12} />
+          </p>
         )}
         {/* เลื่อนซ้าย-ขวาแบบเดียวกับโปรโมชั่น — เพิ่มคอร์สใหม่แล้วไม่ดันหน้ายาว */}
         <div className="-mx-1 mb-3 flex gap-3 overflow-x-auto px-1 pb-2 scroll-smooth snap-x snap-mandatory overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
@@ -210,7 +219,7 @@ export function PackageShopSection() {
                     ) : o.kind === "nights" ? (
                       <>
                         <span className="rounded-full bg-sage/20 px-2 py-0.5 text-ok">
-                          🏠 เข้าพักได้ {o.totalUses} คืน
+                          เข้าพักได้ {o.totalUses} คืน
                         </span>
                         {o.totalUses > 0 && (
                           <span className="text-brown-faint">
@@ -245,7 +254,7 @@ export function PackageShopSection() {
                       type="button"
                       disabled={buying === o.id}
                       onClick={() => buy(o)}
-                      className="rounded-full bg-latte-deep px-4 py-1.5 text-[11px] font-extrabold text-card shadow-petflow-sm disabled:opacity-40"
+                      className="min-h-[44px] rounded-full bg-latte-deep px-5 text-sm font-extrabold text-card shadow-petflow-sm transition active:scale-[0.97] disabled:opacity-40"
                     >
                       {buying === o.id ? "…" : "ซื้อเลย"}
                     </button>
@@ -262,10 +271,13 @@ export function PackageShopSection() {
       {pending.map((o) => (
         <div
           key={o.id}
-          className="mb-2 rounded-petflow-sm border border-wait/40 bg-paper/70 px-3 py-2.5"
+          className="mb-2 rounded-petflow-sm border border-wait/40 bg-card/80 p-3"
         >
-          <p className="text-xs font-extrabold text-wait">⏳ รอโอนเงิน · {o.name}</p>
-          <p className="mt-0.5 text-[10px] text-brown-soft">
+          <p className="flex items-center gap-1.5 text-xs font-extrabold text-wait">
+            <Icon name="clock" size={14} />
+            <span className="min-w-0 truncate">รอโอนเงิน · {o.name}</span>
+          </p>
+          <p className="mt-1 text-[11px] text-brown-soft">
             ยอดที่ต้องโอน{" "}
             <span className="text-sm font-extrabold text-petflow-chocolate">
               {o.price.toLocaleString()} บาท
@@ -273,31 +285,39 @@ export function PackageShopSection() {
           </p>
 
           {payment?.accountNumber && (
-            <div className="mt-2 rounded-petflow-sm bg-card px-2.5 py-2">
-              <p className="text-[10px] font-bold text-brown-soft">{payment.bankName}</p>
-              <p className="text-sm font-extrabold text-ok">{payment.accountNumber}</p>
-              {payment.accountName && (
-                <p className="text-[10px] text-brown-faint">
-                  ชื่อบัญชี: {payment.accountName}
+            <div className="mt-2 flex items-center gap-3 rounded-petflow-sm bg-paper px-3 py-2.5">
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-bold text-brown-soft">{payment.bankName}</p>
+                <p className="text-base font-extrabold tracking-wide text-petflow-chocolate">
+                  {payment.accountNumber}
                 </p>
-              )}
+                {payment.accountName && (
+                  <p className="truncate text-[11px] text-brown-faint">
+                    ชื่อบัญชี: {payment.accountName}
+                  </p>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={copyAccount}
-                className="mt-1.5 w-full rounded-petflow-sm bg-latte/25 py-1.5 text-[10px] font-extrabold text-petflow-chocolate"
+                aria-label="คัดลอกเลขบัญชี"
+                className="flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-full bg-card px-3.5 text-xs font-extrabold text-petflow-chocolate shadow-petflow-sm"
               >
-                {copied ? "คัดลอกแล้ว ✓" : "📋 คัดลอกเลขบัญชี"}
+                <Icon name={copied ? "check" : "copy"} size={15} />
+                {copied ? "คัดลอกแล้ว" : "คัดลอก"}
               </button>
             </div>
           )}
 
           {o.slipUrl ? (
-            <p className="mt-2 rounded-petflow-sm bg-sage/15 px-2.5 py-1.5 text-[10px] font-bold text-ok">
-              ✅ ส่งสลิปแล้ว — รอร้านยืนยันรับเงิน คอร์สจะเข้าให้อัตโนมัติค่ะ
+            <p className="mt-2 flex items-start gap-1.5 rounded-petflow-sm bg-sage/15 px-3 py-2 text-[11px] font-bold text-ok">
+              <Icon name="check" size={14} strokeWidth={2.4} className="mt-px" />
+              ส่งสลิปแล้ว — รอร้านยืนยันรับเงิน คอร์สจะเข้าให้อัตโนมัติค่ะ
             </p>
           ) : (
-            <label className="mt-2 block cursor-pointer rounded-petflow-sm bg-honey/40 py-2 text-center text-[11px] font-extrabold text-petflow-chocolate">
-              {uploading === o.id ? "กำลังส่ง…" : "📎 แนบสลิปโอนเงิน"}
+            <label className="mt-2 flex min-h-[48px] cursor-pointer items-center justify-center gap-2 rounded-petflow-sm bg-latte-deep text-sm font-extrabold text-card shadow-petflow-sm transition active:scale-[0.98]">
+              <Icon name="image" size={18} />
+              {uploading === o.id ? "กำลังส่ง…" : "แนบสลิปโอนเงิน"}
               <input
                 type="file"
                 accept="image/*"
@@ -315,7 +335,7 @@ export function PackageShopSection() {
       ))}
 
       {msg && (
-        <p className="mt-1 rounded-petflow-sm bg-card px-2.5 py-1.5 text-[10px] font-bold text-brown-soft">
+        <p className="mt-1 rounded-petflow-sm bg-card px-3 py-2 text-[11px] font-bold text-brown-soft">
           {msg}
         </p>
       )}

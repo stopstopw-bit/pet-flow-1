@@ -1,12 +1,14 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useLiff } from "@/components/LiffProvider";
 import { useConfig } from "@/components/ConfigProvider";
 import { resolveGroomForm, type GroomField } from "@/lib/groom-form";
 import { LoadingScreen } from "@/components/LoadingScreen";
+import { BTN_PRIMARY, PageHeader } from "@/components/PageHeader";
+import { EmptyState } from "@/components/ui";
+import { Icon } from "@/components/Icon";
 
 type Answers = Record<string, string | string[]>;
 
@@ -186,8 +188,9 @@ function GroomInfoContent() {
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full px-3 py-2 text-xs font-bold ${
-        active ? "bg-latte-deep text-card" : "bg-paper text-brown-soft"
+      aria-pressed={active}
+      className={`min-h-[44px] rounded-full px-4 text-xs font-bold transition ${
+        active ? "bg-latte-deep text-card shadow-petflow-sm" : "bg-paper text-brown-soft"
       }`}
     >
       {label}
@@ -196,8 +199,11 @@ function GroomInfoContent() {
 
   if (done) {
     return (
-      <div className="px-6 py-16 text-center">
-        <div className="text-5xl">🧡</div>
+      <div className="px-4 pb-6 pt-10">
+        <div className="rounded-petflow border border-petflow-line bg-card p-6 text-center shadow-petflow">
+        <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-sage/25 text-ok">
+          <Icon name="check" size={28} strokeWidth={2.4} />
+        </span>
         <h1 className="mt-4 text-lg font-extrabold text-petflow-chocolate">
           ขอบคุณที่แจ้งประวัติน้องนะคะ!
         </h1>
@@ -206,33 +212,36 @@ function GroomInfoContent() {
           <br />
           กลับไปที่แชท LINE ได้เลยค่ะ
         </p>
+        </div>
       </div>
     );
   }
 
   const inputClass =
-    "w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm";
+    "min-h-[44px] w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm";
 
   return (
-    <div className="px-4 pb-10 pt-5">
-      <Link href="/app" className="mb-3 inline-block text-xs font-bold text-brown-soft">
-        ← กลับหน้าแรก
-      </Link>
-      <h1 className="text-lg font-extrabold text-petflow-chocolate">
-        🩺 ประวัติน้องก่อนอาบน้ำ
-      </h1>
+    <div className="px-4 pb-6 pt-5">
+      <PageHeader
+        eyebrow="Before grooming"
+        title="ประวัติน้องก่อนอาบน้ำ"
+        back="/app"
+        backLabel="กลับหน้าแรก"
+        showLang={false}
+      />
 
       {loading ? (
         <LoadingScreen />
       ) : forms.length === 0 ? (
-        <p className="mt-6 rounded-petflow-sm bg-paper px-4 py-3 text-sm text-brown-soft">
-          ไม่พบข้อมูลการนัด
-        </p>
+        <div className="rounded-petflow border border-petflow-line bg-card shadow-petflow-sm">
+          <EmptyState icon="calendar" title="ไม่พบข้อมูลการนัด" />
+        </div>
       ) : (
         <>
           {forms.length > 1 && (
-            <p className="mt-2 text-xs font-bold text-latte-deep">
-              🐾 มีน้อง {forms.length} ตัว — รบกวนกรอกให้ครบทุกตัวนะคะ
+            <p className="flex items-center gap-1.5 rounded-petflow-sm bg-honey/20 px-3 py-2 text-xs font-bold text-petflow-chocolate">
+              <Icon name="paw" size={14} />
+              มีน้อง {forms.length} ตัว — รบกวนกรอกให้ครบทุกตัวนะคะ
             </p>
           )}
 
@@ -243,7 +252,12 @@ function GroomInfoContent() {
                 key={f.id}
                 className="mt-4 rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm"
               >
-                <p className="text-sm font-extrabold text-brown">🐱 {f.catName}</p>
+                <p className="flex items-center gap-2 text-sm font-extrabold text-petflow-chocolate">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-honey/25">
+                    <Icon name="paw" size={16} />
+                  </span>
+                  {f.catName}
+                </p>
                 {forms.length === 1 && (
                   <p className="mt-1 text-xs text-brown-soft">
                     เพื่อความปลอดภัยของน้อง 🧡 รบกวนแจ้งข้อมูลสั้นๆ ให้เราเตรียมดูแลน้องได้ถูกวิธีนะคะ
@@ -307,7 +321,7 @@ function GroomInfoContent() {
                             className={`${inputClass} disabled:bg-paper/50 disabled:text-brown-faint`}
                           />
                           {fd.hasUnknownToggle && (
-                            <label className="mt-1.5 flex items-center gap-2 text-[11px] font-bold text-brown-soft">
+                            <label className="mt-1 flex min-h-[44px] cursor-pointer items-center gap-2 text-xs font-bold text-brown-soft">
                               <input
                                 type="checkbox"
                                 checked={f.weightUnknown}
@@ -320,7 +334,7 @@ function GroomInfoContent() {
                                     )
                                   )
                                 }
-                                className="h-4 w-4 accent-latte-deep"
+                                className="h-5 w-5 accent-latte-deep"
                               />
                               ไม่ทราบน้ำหนัก
                             </label>
@@ -345,21 +359,23 @@ function GroomInfoContent() {
           })}
 
           {saveError && (
-            <p className="mt-4 rounded-petflow-sm bg-wait/10 px-3 py-2 text-xs font-bold text-wait">
-              😿 {saveError}
+            <p className="mt-4 flex gap-2 rounded-petflow-sm bg-wait/10 px-3 py-2 text-xs font-bold text-wait">
+              <Icon name="alert" size={15} className="mt-px" />
+              {saveError}
             </p>
           )}
           <button
             type="button"
             onClick={submit}
             disabled={saving}
-            className="mt-5 w-full rounded-petflow-sm bg-latte-deep py-3 text-sm font-extrabold text-card active:scale-[0.98] disabled:opacity-50"
+            className={`mt-5 ${BTN_PRIMARY}`}
           >
+            {!saving && <Icon name="send" size={18} />}
             {saving
               ? "กำลังบันทึก…"
               : forms.length > 1
-                ? `💛 ส่งข้อมูลให้ร้าน (${forms.length} ตัว)`
-                : "💛 ส่งข้อมูลให้ร้าน"}
+                ? `ส่งข้อมูลให้ร้าน (${forms.length} ตัว)`
+                : "ส่งข้อมูลให้ร้าน"}
           </button>
         </>
       )}

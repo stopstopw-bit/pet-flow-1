@@ -20,6 +20,21 @@ export type CustomerPackage = {
   createdAt: string;
   /** ไม่ระบุ = "use" (คอร์สเดิมทั้งหมดเป็นแบบนับครั้ง) */
   unit?: PackageUnit;
+  /**
+   * คอร์สคืนที่ผูกกับประเภทห้อง (id ห้องในตั้งค่า) — หักได้เฉพาะตอนพักห้องประเภทนี้
+   * ไม่ระบุ = คอร์สคืนแบบเดิม ใช้กับห้องไหนก็ได้
+   */
+  roomType?: string;
+  /** ชื่อห้องตอนขาย เช่น "ห้อง Mid Cozy Room" — ใช้จับคู่กับบรรทัดห้องในบิล */
+  roomLabel?: string;
+  /** มาจากแพ็กห้องรายเดือนใบไหน (ดู room-plans-store) */
+  planId?: string;
+  /**
+   * คอร์สนับครั้งที่ผูกโปรแกรมอาบน้ำ (id โปรแกรมในตั้งค่า) — หักได้เฉพาะโปรแกรมนี้
+   * หักตามจำนวนตัวที่อาบโปรแกรมนี้ในบิล (บ้านมา 2 ตัว = หัก 2 ครั้ง) ใช้ร่วมกันได้ทั้งบ้าน
+   * ไม่ระบุ = คอร์สนับครั้งแบบเดิม หัก 1 ครั้งแล้วบิลนั้นฟรี
+   */
+  groomProgram?: string;
 };
 
 type PackageRow = {
@@ -32,6 +47,10 @@ type PackageRow = {
   status: string;
   created_at: string;
   unit?: string | null;
+  room_type?: string | null;
+  room_label?: string | null;
+  plan_id?: string | null;
+  groom_program?: string | null;
 };
 
 const mem: CustomerPackage[] = [];
@@ -47,6 +66,10 @@ function rowToPackage(r: PackageRow): CustomerPackage {
     status: r.status as CustomerPackage["status"],
     createdAt: r.created_at,
     unit: r.unit === "night" ? "night" : "use",
+    roomType: r.room_type || undefined,
+    roomLabel: r.room_label || undefined,
+    planId: r.plan_id || undefined,
+    groomProgram: r.groom_program || undefined,
   };
 }
 
@@ -61,6 +84,17 @@ export async function sellPackage(data: {
   unit?: PackageUnit;
   /** คอร์สที่ยกมาจากระบบเก่า — ลูกค้าได้สิทธิ์ตามปกติ แต่ไม่ใช่รายรับของร้านเดือนนี้ */
   isLegacy?: boolean;
+  /** ผูกประเภทห้อง (คอร์สคืนเท่านั้น) */
+  roomType?: string;
+  roomLabel?: string;
+  planId?: string;
+  /** ผูกโปรแกรมอาบน้ำ (คอร์สนับครั้งเท่านั้น) */
+  groomProgram?: string;
+  /**
+   * ไม่ลงรายรับตอนสร้าง — ใช้กับแพ็กที่แบ่งจ่ายเป็นงวด (ลงรายรับทีละงวดตอนรับเงินจริง)
+   * ถ้าลงตอนสร้างด้วย ยอดขายจะนับซ้ำสองรอบ
+   */
+  noIncome?: boolean;
 }): Promise<CustomerPackage> {
   const pkg: CustomerPackage = {
     id: `PKG${Date.now()}${Math.floor(Math.random() * 1000)}`,
@@ -72,6 +106,10 @@ export async function sellPackage(data: {
     status: "active",
     createdAt: new Date().toISOString(),
     unit: data.unit === "night" ? "night" : "use",
+    roomType: data.unit === "night" ? data.roomType || undefined : undefined,
+    roomLabel: data.unit === "night" ? data.roomLabel || undefined : undefined,
+    planId: data.planId || undefined,
+    groomProgram: data.unit === "night" ? undefined : data.groomProgram || undefined,
   };
 
   const sb = getSupabase();
@@ -93,13 +131,39 @@ export async function sellPackage(data: {
       .from("customer_packages")
       .insert({ ...row, unit: pkg.unit });
     if (error) await sb.from("customer_packages").insert(row);
+    // ห้อง/แพ็กที่ผูก — คอลัมน์เพิ่มมาทีหลัง เขียนแยก ถ้ายังไม่มีลองอัปเดตฐานข้อมูลให้เองก่อน
+    if (pkg.roomType || pkg.planId) {
+      const extra = {
+        room_type: pkg.roomType ?? null,
+        room_label: pkg.roomLabel ?? null,
+        plan_id: pkg.planId ?? null,
+      };
+      const res = await sb.from("customer_packages").update(extra).eq("tenant_id", requireTenantId()).eq("id", pkg.id);
+      if (res.error) {
+        const { ensureMigration } = await import("./migrations");
+        if (await ensureMigration("room_plans.setup")) {
+          await sb.from("customer_packages").update(extra).eq("tenant_id", requireTenantId()).eq("id", pkg.id);
+        }
+      }
+    }
+    // โปรแกรมอาบน้ำที่ผูก — คอลัมน์เพิ่มมาทีหลังเหมือนกัน
+    if (pkg.groomProgram) {
+      const extra = { groom_program: pkg.groomProgram };
+      const res = await sb.from("customer_packages").update(extra).eq("tenant_id", requireTenantId()).eq("id", pkg.id);
+      if (res.error) {
+        const { ensureMigration } = await import("./migrations");
+        if (await ensureMigration("packages.groom_program")) {
+          await sb.from("customer_packages").update(extra).eq("tenant_id", requireTenantId()).eq("id", pkg.id);
+        }
+      }
+    }
   } else {
     mem.unshift(pkg);
   }
 
   // ยกมาจากระบบเก่า: ลูกค้าได้ครั้งครบ แต่เงินรับไปตั้งแต่ระบบเดิมแล้ว
   // ไม่ลงรายรับซ้ำ กันยอดขายเดือนนี้บวมจากเงินที่ไม่ได้รับจริง
-  if (pkg.price > 0 && !data.isLegacy) {
+  if (pkg.price > 0 && !data.isLegacy && !data.noIncome) {
     await addFinanceEntry({
       type: "income",
       amount: pkg.price,

@@ -64,6 +64,7 @@ export function getDefaultSiteConfig(): SiteConfig {
         accountNumber: process.env.BANK_ACCOUNT_NUMBER || "XXX-X-XXXXX-X",
         // ห้าม default เป็นชื่อร้านใดร้านหนึ่ง — ร้านที่ยังไม่ตั้งค่าจะโชว์ชื่อบัญชีคนอื่นบนการ์ดโอนเงิน
         accountName: process.env.BANK_ACCOUNT_NAME || "",
+        promptpayId: process.env.PROMPTPAY_ID || undefined,
       },
       billing: {
         summaryBookingTitle: "สรุปการจอง",

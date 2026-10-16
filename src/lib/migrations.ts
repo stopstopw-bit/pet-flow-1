@@ -56,6 +56,14 @@ const SCHEMA_CHECKS: { table: string; column: string; feature: string }[] = [
   { table: "birthday_greetings", column: "status", feature: "คิววันเกิดรอตรวจ" },
   { table: "bookings", column: "flea_tick_treated", feature: "หลักฐานหยดยาเห็บหมัด" },
   { table: "bookings", column: "room_unit", feature: "ระบุห้องจริงตอนจอง" },
+  { table: "room_plans", column: "payments", feature: "แพ็กห้องรายเดือน (แบ่งจ่าย)" },
+  { table: "customer_packages", column: "room_type", feature: "คอร์สคืนผูกประเภทห้อง" },
+  { table: "invoice_docs", column: "receipt_no", feature: "ใบเสร็จ/ใบเสนอราคาในนามบริษัท" },
+  { table: "pos_products", column: "image_url", feature: "POS สินค้า/สต็อก" },
+  { table: "pos_sales", column: "method", feature: "POS บิลขายหน้าร้าน" },
+  { table: "pos_closings", column: "counted_cash", feature: "POS ปิดยอดรายวัน" },
+  { table: "customer_packages", column: "groom_program", feature: "คอร์สอาบน้ำแยกตามโปรแกรม" },
+  { table: "bookings", column: "transport", feature: "บริการรับ-ส่งในนัด" },
 ];
 
 export type SchemaCheckRow = {
@@ -457,6 +465,80 @@ where staff_note like '%🎁%';`,
         and not exists (
           select 1 from jsonb_array_elements(sc.data->'rooms') e where e ? 'maxCats'
         );
+    `,
+  },
+  {
+    // แพ็กห้องรายเดือน — ลูกค้าเลือกห้องแต่ละประเภทกี่คืน ลดราคา แบ่งจ่ายเป็นงวดได้
+    // คอร์สคืนผูกประเภทห้อง: หักได้เฉพาะตอนพักห้องประเภทนั้น
+    name: "room_plans.setup",
+    sql: `
+      alter table customer_packages add column if not exists room_type text, add column if not exists room_label text, add column if not exists plan_id text;
+      create table if not exists room_plans (id text primary key, tenant_id text not null, customer_id text, customer_name text, line_user_id text, name text, items jsonb not null default '[]'::jsonb, full_price numeric not null default 0, discount_pct numeric not null default 0, price numeric not null default 0, installments integer not null default 1, payments jsonb not null default '[]'::jsonb, status text not null default 'active', created_at timestamptz not null default now());
+      alter table room_plans add column if not exists tenant_id text;
+      create index if not exists room_plans_tenant_idx on room_plans (tenant_id, customer_id);
+      alter table room_plans enable row level security;
+    `,
+  },
+  {
+    // เอกสารทางการของบิล: ข้อมูลผู้ซื้อ (ในนามบริษัท) + เลขที่ใบเสนอราคา/ใบแจ้งหนี้/ใบเสร็จ
+    // แยกตารางจาก invoices — ไม่แตะคอลัมน์บิลเดิม เลขที่ออกครั้งเดียวแล้วคงที่
+    name: "invoice_docs.setup",
+    sql: `
+      create table if not exists invoice_docs (invoice_id text primary key, tenant_id text not null, customer_id text, buyer jsonb, quote_no text, quote_at timestamptz, invoice_no text, invoice_at timestamptz, receipt_no text, receipt_at timestamptz, note text, updated_at timestamptz not null default now());
+      alter table invoice_docs add column if not exists tenant_id text;
+      create index if not exists invoice_docs_customer_idx on invoice_docs (tenant_id, customer_id);
+      alter table invoice_docs enable row level security;
+    `,
+  },
+  {
+    // คอร์สนับครั้งผูกโปรแกรมอาบน้ำ (อาบน้ำ 10 ครั้ง / สปา 5 ครั้ง) — ว่าง = คอร์สแบบเดิม
+    // ร้านตั้งคอร์สในแอปผูกโปรแกรมได้ด้วย ออร์เดอร์ก๊อปโปรแกรมไว้ ณ ตอนสั่ง
+    name: "packages.groom_program",
+    sql: `
+      alter table customer_packages add column if not exists groom_program text;
+      alter table package_offers add column if not exists groom_program text;
+      alter table package_orders add column if not exists groom_program text;
+    `,
+  },
+  {
+    // บริการรับ-ส่งของนัด {pickup, dropoff, mapUrl, address} — ว่าง = ลูกค้ามาเอง
+    name: "bookings.transport",
+    sql: "alter table bookings add column if not exists transport jsonb;",
+  },
+  {
+    // POS หน้าร้าน: สินค้า+สต็อก, ประวัติสต็อก, บิลขายเร็ว, ปิดยอดรายวัน — ตารางใหม่ทั้งหมด
+    name: "pos.setup",
+    sql: `
+      create table if not exists pos_products (id text primary key, tenant_id text not null, name text not null, sku text, category text, price numeric not null default 0, cost numeric, track_stock boolean not null default true, stock integer not null default 0, low_stock integer, active boolean not null default true, created_at timestamptz not null default now(), updated_at timestamptz not null default now());
+      alter table pos_products add column if not exists image_url text;
+      create index if not exists pos_products_sku_idx on pos_products (tenant_id, sku);
+      create table if not exists pos_stock_moves (id text primary key, tenant_id text not null, product_id text not null, qty integer not null, reason text not null, ref_id text, note text, created_at timestamptz not null default now());
+      create index if not exists pos_stock_moves_product_idx on pos_stock_moves (product_id, created_at desc);
+      create table if not exists pos_sales (id text primary key, tenant_id text not null, no text not null, date date not null, items jsonb not null default '[]'::jsonb, subtotal numeric not null default 0, discount numeric not null default 0, total numeric not null default 0, method text not null, cash_received numeric, change numeric, customer_id text, customer_name text, note text, status text not null default 'paid', created_at timestamptz not null default now(), voided_at timestamptz);
+      create index if not exists pos_sales_date_idx on pos_sales (tenant_id, date, created_at desc);
+      create table if not exists pos_closings (id text primary key, tenant_id text not null, date date not null, expected_cash numeric not null default 0, counted_cash numeric not null default 0, diff numeric not null default 0, opening_cash numeric not null default 0, totals jsonb, note text, created_at timestamptz not null default now());
+      create unique index if not exists pos_closings_tenant_date_idx on pos_closings (tenant_id, date);
+      alter table pos_products enable row level security;
+      alter table pos_stock_moves enable row level security;
+      alter table pos_sales enable row level security;
+      alter table pos_closings enable row level security;
+    `,
+  },
+  {
+    // ย้ายสินค้าจากหน้า "สินค้าหน้าร้าน" เดิม (ตาราง products) เข้า POS — ใช้ id เดิม
+    // บิลเก่าที่ผูก productId ไว้จึงยังคืน/ตัดสต็อกถูกตัว · ซ้ำได้ (ข้ามแถวที่ย้ายแล้ว)
+    name: "pos.import_products",
+    sql: `
+      do $$
+      begin
+        if to_regclass('public.products') is not null then
+          insert into pos_products (id, tenant_id, name, category, price, image_url, track_stock, stock, active, created_at, updated_at)
+          select id, tenant_id, name, nullif(category, ''), price, image_url, true, greatest(stock_count, 0), active, created_at, now()
+          from products
+          where tenant_id is not null
+          on conflict (id) do nothing;
+        end if;
+      end $$;
     `,
   },
 ];

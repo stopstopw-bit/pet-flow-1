@@ -9,6 +9,7 @@ import {
   markInvoiceSent,
   receiveDepositCredit,
   receiveInvoiceDeposit,
+  receiveInvoicePayment,
   updateInvoice,
   deleteInvoice,
   restoreInvoice,
@@ -38,6 +39,7 @@ import {
 } from "@/lib/line";
 import { renderTemplate } from "@/lib/messages";
 import { consumePackage, refundPackageUse, getPackage } from "@/lib/packages-store";
+import { roomPlanOutstanding } from "@/lib/room-plans-store";
 import { getBooking } from "@/lib/bookings-store";
 import { bookingScheduleText } from "@/lib/booking-reminders";
 import type { InvoiceRecord } from "@/lib/invoices-store";
@@ -179,6 +181,46 @@ async function handlePost(req: NextRequest) {
     // คอร์สแบบคืนหักหลายหน่วยในบิลเดียว (พัก 5 คืน = หัก 5) ไม่ระบุ = 1 เหมือนเดิม
     const packageUnits = Math.max(1, Math.round(Number(body.packageUnits) || 1));
     if (body.packageId) {
+      // คอร์สคืนผูกประเภทห้อง (แพ็กห้องรายเดือน) — หักได้ไม่เกินคืนของห้องประเภทนั้นในบิลนี้
+      // กันเอาคืนห้องเล็ก (ราคาถูก) ไปคลุมห้องใหญ่ (ราคาแพง)
+      const pk = await getPackage(String(body.packageId));
+      // แพ็กห้องรายเดือนต้องจ่ายครบทุกงวดก่อนถึงจะเริ่มใช้คืนได้
+      const owed = await roomPlanOutstanding(pk?.planId);
+      if (owed > 0) {
+        return NextResponse.json(
+          { error: `แพ็กนี้ยังค้างจ่าย ${owed.toLocaleString()} บาท — ต้องจ่ายครบก่อนถึงจะใช้คืนได้` },
+          { status: 400 }
+        );
+      }
+      if (pk?.unit === "night" && pk.roomType && pk.roomLabel) {
+        const items: { label?: string; kind?: string; qty?: number }[] = Array.isArray(body.items)
+          ? body.items
+          : [];
+        const nightsOfRoom = items
+          .filter((it) => it.kind === "room" && String(it.label || "").includes(pk.roomLabel!))
+          .reduce((n, it) => n + Math.max(1, Math.round(Number(it.qty) || 1)), 0);
+        if (nightsOfRoom < packageUnits) {
+          return NextResponse.json(
+            { error: `คอร์สนี้ใช้ได้กับ${pk.roomLabel}เท่านั้น (บิลนี้มี ${nightsOfRoom} คืน)` },
+            { status: 400 }
+          );
+        }
+      }
+      // คอร์สอาบน้ำผูกโปรแกรม — หักได้ไม่เกินจำนวนตัวที่อาบโปรแกรมนั้นในบิลนี้
+      if (pk && pk.unit !== "night" && pk.groomProgram) {
+        const items: { kind?: string; program?: string; qty?: number }[] = Array.isArray(body.items)
+          ? body.items
+          : [];
+        const usesOfProgram = items
+          .filter((it) => it.kind === "grooming" && it.program === pk.groomProgram)
+          .reduce((n, it) => n + Math.max(1, Math.round(Number(it.qty) || 1)), 0);
+        if (usesOfProgram < packageUnits) {
+          return NextResponse.json(
+            { error: `คอร์สนี้ใช้ได้กับโปรแกรมที่ผูกไว้เท่านั้น (บิลนี้มี ${usesOfProgram} ครั้ง)` },
+            { status: 400 }
+          );
+        }
+      }
       try {
         const used = await consumePackage(String(body.packageId), packageUnits);
         if (used.ok) consumedPackageId = String(body.packageId);
@@ -584,6 +626,45 @@ async function handlePatch(req: NextRequest) {
       }, (await getSiteConfig()).cards?.memberBalance),
     ]);
     return NextResponse.json({ ok: true });
+  }
+
+  // ── รับเงินบางส่วน (จ่ายเป็นงวด) — ลงรายรับตามวันที่รับจริง ยังไม่ปิดบิล ──
+  // จ่ายครบเมื่อไหร่ หน้าเว็บจะเรียก mark_paid ต่อ ซึ่งเก็บเฉพาะยอดที่ยังค้าง (เท่ากับ 0) — ไม่ลงซ้ำ
+  if (action === "receive_payment") {
+    const method = body.paymentMethod === "cash" ? "cash" : "transfer";
+    const res = await receiveInvoicePayment(id, Number(body.amount), method);
+    if (!res.ok) {
+      return NextResponse.json(
+        { error: res.error, due: "due" in res ? res.due : undefined },
+        { status: 400 }
+      );
+    }
+    await logAudit({
+      tenantId: requireTenantId(),
+      actorType: "tenant",
+      actorId: await actorName(req),
+      action: "receive_payment",
+      resourceType: "invoice",
+      resourceId: id,
+      afterState: {
+        ลูกค้า: inv.customerName,
+        รับรอบนี้: Number(body.amount),
+        รับแล้วรวม: res.received,
+        คงเหลือ: res.remaining,
+        วิธีจ่าย: method,
+      },
+    });
+    await sendTelegram(
+      formatBookingTelegram("💵 รับเงินบางส่วน", {
+        ลูกค้า: inv.customerName,
+        น้องแมว: inv.catName,
+        รับรอบนี้: `${Number(body.amount)} บาท`,
+        รับแล้วรวม: `${res.received} บาท`,
+        คงเหลือ: `${res.remaining} บาท`,
+        บิล: inv.id,
+      })
+    );
+    return NextResponse.json(res);
   }
 
   if (action === "receive_deposit") {

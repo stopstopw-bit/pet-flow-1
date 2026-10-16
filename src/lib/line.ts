@@ -4,6 +4,7 @@
  */
 
 import { formatBookingWhen, formatThaiDate } from "./format-thai-date";
+import { hasTransport, transportLabel, type BookingTransport } from "./transport";
 import { getLineCredentials } from "./line-config";
 import type { CardStyleConfig } from "./config-types";
 
@@ -174,6 +175,9 @@ export function buildAppointmentConfirmFlex(booking: {
   checkout?: string;
   room?: string;
   notes?: string;
+  /** บริการรับ-ส่ง — โชว์แถวรับ-ส่ง + ปุ่มให้ลูกค้าส่งจุดรับ-ส่ง (ลิงก์ Google Maps) */
+  transport?: BookingTransport;
+  transportUrl?: string;
   confirmUrl: string;
   /** แผนที่/ที่อยู่ของร้าน — มาจาก config ไม่ใช่ค่าตายตัว ไม่มีก็ซ่อนแถวนั้นไป */
   mapsUrl?: string;
@@ -260,6 +264,20 @@ export function buildAppointmentConfirmFlex(booking: {
           ...(show("notes")
             ? [flexDetailRow("📝", st.texts?.notesLabel || "หมายเหตุ", noteText)]
             : []),
+          ...(hasTransport(booking.transport)
+            ? [
+                flexDetailRow(
+                  "🚗",
+                  st.texts?.transportLabel || "รับ-ส่งน้อง",
+                  `${transportLabel(booking.transport)}\n${
+                    booking.transport.address ||
+                    (booking.transport.mapUrl
+                      ? "ได้รับแผนที่จุดรับ-ส่งแล้ว"
+                      : "ยังไม่ได้ส่งจุดรับ-ส่ง กดปุ่มด้านล่างได้เลยค่ะ")
+                  }`
+                ),
+              ]
+            : []),
           // เฉพาะนัดอาบน้ำ — เตือนเรื่องขนมกับตะกร้า ให้เห็นเด่นแยกจากหมายเหตุทั่วไป
           ...(!isRoom && show("groomPrep")
             ? [
@@ -329,6 +347,23 @@ export function buildAppointmentConfirmFlex(booking: {
               uri: booking.confirmUrl,
             },
           },
+          ...(booking.transportUrl
+            ? [
+                {
+                  type: "button",
+                  style: "secondary",
+                  height: "sm",
+                  action: {
+                    type: "uri",
+                    label:
+                      booking.transport?.mapUrl || booking.transport?.address
+                        ? "📍 แก้จุดรับ-ส่ง"
+                        : "📍 ส่งจุดรับ-ส่ง (Google Maps)",
+                    uri: booking.transportUrl,
+                  },
+                },
+              ]
+            : []),
           ...(show("map") && booking.mapsUrl
             ? [
                 {
@@ -2320,6 +2355,150 @@ export function buildMemberBalanceFlex(data: {
   return {
     type: "flex",
     altText: `ยอด Member ${data.memberCredit} บาท`,
+    contents: {
+      type: "bubble",
+      body: { type: "box", layout: "vertical", contents },
+    },
+  };
+}
+
+/**
+ * การ์ดแพ็กห้องรายเดือน — คืนคงเหลือแยกตามห้อง (แบบการ์ด Member แต่เป็นคืน)
+ * + สถานะการจ่าย (จ่ายแล้ว / คงเหลือ / เหลือกี่งวด) — ส่งตอนรับเงินงวด หรือกดส่งเองเพื่อแจ้งคืนคงเหลือ
+ */
+export function buildRoomPlanFlex(data: {
+  customerName: string;
+  planName: string;
+  nights: { roomLabel: string; total: number; left: number }[];
+  price: number;
+  paid: number;
+  remaining: number;
+  installmentsLeft: number;
+  nextInstallment: number;
+  /** ยอดที่เพิ่งรับรอบนี้ (ไม่ใส่ = การ์ดแจ้งคืนคงเหลืออย่างเดียว) */
+  thisPayment?: number;
+  installmentNo?: number;
+}) {
+  const row = (label: string, value: string, bold = false, color = "#4E3E32") => ({
+    type: "box",
+    layout: "horizontal",
+    margin: "sm",
+    contents: [
+      { type: "text", text: label, size: "sm", color: "#A2907E", flex: 5, wrap: true },
+      {
+        type: "text",
+        text: value,
+        size: "sm",
+        color,
+        align: "end",
+        flex: 4,
+        weight: bold ? "bold" : "regular",
+      },
+    ],
+  });
+  const fmt = (n: number) => `${Math.round(n).toLocaleString()} บาท`;
+  const totalLeft = data.nights.reduce((n, x) => n + x.left, 0);
+
+  const contents: Record<string, unknown>[] = [
+    {
+      type: "text",
+      text: data.thisPayment ? "🧾 รับชำระแพ็กห้องแล้ว" : "🏠 คืนคงเหลือของคุณ",
+      weight: "bold",
+      size: "lg",
+      color: "#5C4033",
+      wrap: true,
+    },
+    {
+      type: "text",
+      text: politeName(data.customerName),
+      size: "sm",
+      color: "#A2907E",
+      margin: "md",
+      wrap: true,
+    },
+    {
+      type: "text",
+      text: data.planName,
+      weight: "bold",
+      size: "md",
+      color: "#4E3E32",
+      margin: "md",
+      wrap: true,
+    },
+  ];
+
+  if (data.thisPayment) {
+    contents.push({
+      type: "text",
+      text: `รับ${data.installmentNo ? `งวดที่ ${data.installmentNo}` : "ชำระ"} ${fmt(data.thisPayment)} เรียบร้อยค่ะ 🧡`,
+      size: "sm",
+      color: "#6E8B5E",
+      weight: "bold",
+      margin: "md",
+      wrap: true,
+    });
+  }
+
+  contents.push({
+    type: "box",
+    layout: "vertical",
+    margin: "lg",
+    paddingAll: "14px",
+    backgroundColor: "#FBF4E9",
+    cornerRadius: "12px",
+    contents: [
+      { type: "text", text: "คืนที่ใช้ได้อีก", size: "xs", color: "#A2907E", align: "center" },
+      {
+        type: "text",
+        text: `${totalLeft} คืน`,
+        weight: "bold",
+        size: "xxl",
+        color: "#C4956A",
+        align: "center",
+      },
+      ...data.nights.map((n) => row(n.roomLabel, `${n.left} / ${n.total} คืน`, true)),
+    ],
+  });
+
+  contents.push({ type: "separator", margin: "lg" });
+  contents.push(row("ยอดแพ็ก", fmt(data.price)));
+  contents.push(row("จ่ายแล้ว", fmt(data.paid), false, "#6E8B5E"));
+  if (data.remaining > 0) {
+    contents.push(row("คงเหลือ", fmt(data.remaining), true, "#C0703A"));
+    contents.push(
+      row(
+        "เหลืออีก",
+        data.installmentsLeft > 1
+          ? `${data.installmentsLeft} งวด (งวดละ ~${data.nextInstallment.toLocaleString()})`
+          : "1 งวด",
+        false
+      )
+    );
+    contents.push({
+      type: "text",
+      text: "เริ่มใช้คืนได้เมื่อชำระครบทุกงวดนะคะ",
+      size: "xs",
+      color: "#C0703A",
+      margin: "md",
+      wrap: true,
+    });
+  } else {
+    contents.push(row("สถานะ", "ชำระครบ ใช้ได้เลย ✅", true, "#6E8B5E"));
+  }
+  contents.push({
+    type: "text",
+    text: "พักห้องไหน ระบบหักคืนของห้องนั้นให้ตามจริงนะคะ 🐾",
+    size: "xs",
+    color: "#A2907E",
+    margin: "lg",
+    wrap: true,
+  });
+
+  return {
+    type: "flex",
+    altText: data.thisPayment
+      ? `รับชำระแพ็กห้อง ${data.thisPayment} บาท · คงเหลือ ${data.remaining} บาท`
+      : `คืนคงเหลือ ${totalLeft} คืน`,
     contents: {
       type: "bubble",
       body: { type: "box", layout: "vertical", contents },

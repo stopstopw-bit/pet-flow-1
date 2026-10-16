@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { use } from "react";
 import Link from "next/link";
 import { bahtText } from "@/lib/baht-text";
+import { Icon } from "@/components/Icon";
+import { EmptyState } from "@/components/ui";
 
 type Rec = {
   id: string;
@@ -57,10 +59,14 @@ export default function VoucherPage({ params }: { params: Promise<{ id: string }
   }
   if (!rec) {
     return (
-      <div className="py-10 text-center">
-        <p className="text-sm text-brown-soft">ไม่พบรายการนี้ (อาจถูกลบไปแล้ว)</p>
-        <Link href="/admin/finance" className="mt-3 inline-block text-xs font-bold text-latte-deep underline">
-          ← กลับหน้ารายรับ-รายจ่าย
+      <div className="rounded-petflow bg-card pb-6 text-center shadow-petflow-sm">
+        <EmptyState icon="receipt" title="ไม่พบรายการนี้" sub="อาจถูกลบไปแล้ว" />
+        <Link
+          href="/admin/finance"
+          className="inline-flex min-h-[40px] items-center gap-1.5 rounded-full bg-paper px-4 text-xs font-bold text-brown"
+        >
+          <Icon name="back" size={15} />
+          กลับหน้ารายรับ-รายจ่าย
         </Link>
       </div>
     );
@@ -69,21 +75,30 @@ export default function VoucherPage({ params }: { params: Promise<{ id: string }
   return (
     <div>
       <div className="mb-4 flex items-center justify-between gap-2 print:hidden">
-        <Link href="/admin/finance" className="text-xs font-bold text-latte-deep">
-          ← กลับ
+        <Link
+          href="/admin/finance"
+          aria-label="กลับ"
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-paper text-brown"
+        >
+          <Icon name="back" size={18} />
         </Link>
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Voucher</p>
+          <p className="truncate text-sm font-extrabold text-petflow-chocolate">{docTitle}</p>
+        </div>
         <button
           type="button"
           onClick={() => window.print()}
-          className="rounded-petflow-sm bg-latte-deep px-4 py-2 text-sm font-extrabold text-card"
+          className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full bg-latte-deep px-4 text-sm font-extrabold text-card"
         >
-          🖨️ พิมพ์ / บันทึก PDF
+          <Icon name="download" size={16} />
+          พิมพ์ / PDF
         </button>
       </div>
 
-      <div className="mx-auto max-w-2xl rounded-petflow bg-card p-6 text-brown shadow-petflow-sm print:max-w-none print:rounded-none print:p-0 print:shadow-none">
+      <div className="mx-auto max-w-2xl rounded-petflow bg-card p-4 text-brown sm:p-6 shadow-petflow-sm print:max-w-none print:rounded-none print:p-0 print:shadow-none">
         {/* หัวเอกสาร */}
-        <div className="flex items-start justify-between gap-4 border-b-2 border-petflow-chocolate pb-3">
+        <div className="flex items-start justify-between gap-3 border-b-2 border-petflow-chocolate pb-3">
           <div className="min-w-0">
             <p className="text-lg font-extrabold text-petflow-chocolate">{shop.name}</p>
             {shop.address && <p className="text-[11px] text-brown-soft">{shop.address}</p>}
@@ -163,18 +178,18 @@ export default function VoucherPage({ params }: { params: Promise<{ id: string }
 
         {!rec.receiptUrl && isExpense && (
           <p className="mt-4 rounded-petflow-sm bg-honey/15 px-3 py-2 text-[11px] text-brown-soft">
-            📌 ใบนี้ใช้แทนใบเสร็จกรณีไม่มีใบเสร็จจากผู้รับเงิน — ผู้จ่ายรับรองว่าได้จ่ายจริงตามรายการข้างต้น
+            ใบนี้ใช้แทนใบเสร็จกรณีไม่มีใบเสร็จจากผู้รับเงิน — ผู้จ่ายรับรองว่าได้จ่ายจริงตามรายการข้างต้น
           </p>
         )}
 
         {/* ช่องเซ็นชื่อ */}
-        <div className="mt-10 grid grid-cols-2 gap-8 text-center text-xs text-brown-soft">
+        <div className="mt-10 grid grid-cols-2 gap-4 text-center sm:gap-8 text-xs text-brown-soft">
           <div>
-            <div className="mx-auto mb-1 w-44 border-b border-dashed border-petflow-line" />
+            <div className="mx-auto mb-1 w-full max-w-44 border-b border-dashed border-petflow-line" />
             ผู้จ่ายเงิน / ผู้จัดทำ
           </div>
           <div>
-            <div className="mx-auto mb-1 w-44 border-b border-dashed border-petflow-line" />
+            <div className="mx-auto mb-1 w-full max-w-44 border-b border-dashed border-petflow-line" />
             ผู้รับเงิน / ผู้อนุมัติ
           </div>
         </div>

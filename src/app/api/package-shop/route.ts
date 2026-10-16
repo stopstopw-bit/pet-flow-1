@@ -167,6 +167,7 @@ async function handlePost(req: NextRequest, isAdminSession: boolean) {
       price: Number(body.price) || 0,
       creditAmount: body.creditAmount !== undefined ? Number(body.creditAmount) : undefined,
       description: body.description ? String(body.description) : undefined,
+      groomProgram: body.groomProgram ? String(body.groomProgram) : undefined,
       image: body.image ? String(body.image) : undefined,
     });
     if (!offer) {
@@ -272,6 +273,7 @@ async function handlePatch(req: NextRequest) {
       price: body.price !== undefined ? Number(body.price) : undefined,
       creditAmount: body.creditAmount !== undefined ? Number(body.creditAmount) : undefined,
       description: body.description !== undefined ? String(body.description) : undefined,
+      groomProgram: body.groomProgram !== undefined ? String(body.groomProgram) : undefined,
     });
     if (!res.ok) {
       return NextResponse.json({ error: res.error }, { status: 400 });

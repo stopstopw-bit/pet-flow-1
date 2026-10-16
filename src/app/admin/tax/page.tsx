@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ExportSheetsButton } from "@/components/ExportSheetsButton";
+import { Icon } from "@/components/Icon";
+import { EmptyState, Segmented } from "@/components/ui";
 
 type Rec = {
   id: string;
@@ -110,13 +112,15 @@ export default function TaxPage() {
   return (
     <div>
       {/* แถบเครื่องมือ — ซ่อนตอนพิมพ์ */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2 print:hidden">
-        <h1 className="text-lg font-extrabold text-petflow-chocolate">📑 เอกสารรายได้ / ภาษี</h1>
-        <div className="flex items-center gap-2">
+      <div className="mb-4 print:hidden">
+        <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Tax documents</p>
+        <h1 className="text-xl font-extrabold text-petflow-chocolate">เอกสารรายได้ / ภาษี</h1>
+        <div className="mt-3 flex items-center gap-2">
           <select
             value={year}
             onChange={(e) => setYear(Number(e.target.value))}
-            className="rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm font-bold"
+            aria-label="ปี"
+            className="h-10 shrink-0 rounded-full border border-petflow-line bg-card px-4 text-sm font-bold text-brown"
           >
             {years.map((y) => (
               <option key={y} value={y}>
@@ -127,30 +131,23 @@ export default function TaxPage() {
           <button
             type="button"
             onClick={() => window.print()}
-            className="rounded-petflow-sm bg-latte-deep px-4 py-2 text-sm font-extrabold text-card"
+            className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-full bg-petflow-chocolate px-4 text-sm font-bold text-card shadow-petflow-sm"
           >
-            🖨️ พิมพ์ / บันทึก PDF
+            <Icon name="download" size={18} />
+            พิมพ์ / บันทึก PDF
           </button>
         </div>
       </div>
 
-      <div className="mb-4 flex gap-2 print:hidden">
-        {([
-          { id: "summary", label: "📊 สรุปรายเดือน / รายปี" },
-          { id: "ledger", label: "📋 บัญชีรายรับ-รายจ่าย รายวัน" },
-        ] as const).map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setView(t.id)}
-            className={`flex-1 rounded-petflow-sm py-2.5 text-xs font-bold ${
-              view === t.id ? "bg-honey/45 text-petflow-chocolate shadow-petflow-sm" : "bg-paper text-brown-soft"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <Segmented
+        value={view}
+        onChange={setView}
+        className="mb-4 print:hidden"
+        options={[
+          { id: "summary", label: "สรุปรายเดือน", icon: "chart" },
+          { id: "ledger", label: "บัญชีรายวัน", icon: "doc" },
+        ]}
+      />
 
       {/* เอกสาร — โชว์บนจอและตอนพิมพ์ */}
       <div className="rounded-petflow bg-card p-5 text-brown shadow-petflow-sm print:rounded-none print:p-0 print:shadow-none">
@@ -176,7 +173,7 @@ export default function TaxPage() {
         {loading ? (
           <p className="py-8 text-center text-sm text-brown-soft">กำลังโหลด…</p>
         ) : records.length === 0 ? (
-          <p className="py-8 text-center text-sm text-brown-soft">ปีนี้ยังไม่มีรายการในบัญชีค่ะ</p>
+          <EmptyState icon="receipt" title="ปีนี้ยังไม่มีรายการในบัญชี" />
         ) : view === "summary" ? (
           <>
             {/* ยอดรวมทั้งปี */}
@@ -276,21 +273,23 @@ export default function TaxPage() {
                     {r.category && !r.displayTitle.includes(r.category) && (
                       <span className="block text-brown-faint">หมวด: {r.category}</span>
                     )}
-                    <span className="flex flex-wrap gap-2 print:hidden">
+                    <span className="mt-0.5 flex flex-wrap gap-3 print:hidden">
                       <a
                         href={`/admin/voucher/${r.id}`}
-                        className="text-[10px] font-bold text-latte-deep underline"
+                        className="inline-flex items-center gap-1 py-1 text-[10px] font-bold text-latte-deep"
                       >
-                        📄 ใบสำคัญ
+                        <Icon name="doc" size={12} />
+                        ใบสำคัญ
                       </a>
                       {r.receiptUrl && (
                         <a
                           href={r.receiptUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-[10px] font-bold text-latte-deep underline"
+                          className="inline-flex items-center gap-1 py-1 text-[10px] font-bold text-latte-deep"
                         >
-                          🧾 ดูรูปบิล
+                          <Icon name="receipt" size={12} />
+                          ดูรูปบิล
                         </a>
                       )}
                     </span>
@@ -337,10 +336,10 @@ export default function TaxPage() {
       </div>
 
       {/* ส่งออกเข้า Google Sheet — แท็บ "รายรับรายจ่าย" มีคอลัมน์เดือน + ลิงก์รูปบิลให้ด้วย */}
-      <div className="mt-4 print:hidden">
+      <div className="mt-4 rounded-petflow bg-card p-4 shadow-petflow-sm print:hidden">
         <ExportSheetsButton />
         <p className="mt-2 text-[11px] text-brown-faint">
-          💡 “พิมพ์ / บันทึก PDF” = ออกเอกสารยื่นภาษี/ส่งบัญชี · “ส่งออก Google Sheets” =
+          “พิมพ์ / บันทึก PDF” = ออกเอกสารยื่นภาษี/ส่งบัญชี · “ส่งออก Google Sheets” =
           ยกทุกรายการเข้าชีต (แท็บรายรับรายจ่าย มีคอลัมน์เดือนไว้สรุป + ลิงก์รูปบิลกดเปิดได้)
         </p>
       </div>

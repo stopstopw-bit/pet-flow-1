@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { SERVICE_PRESETS, type ServicePreset } from "@/lib/service-presets";
 import { CustomerSendButtons } from "@/components/CustomerSendButtons";
 import { toast } from "@/components/Toast";
+import { Icon } from "@/components/Icon";
+import { Avatar, EmptyState, MoreMenu, SearchField, Segmented, SectionLabel } from "@/components/ui";
 import { groupBookings, groupCatNames } from "@/lib/booking-group";
 import { formatThaiDateShort } from "@/lib/format-thai-date";
 import {
@@ -13,6 +15,7 @@ import {
   groomProgram,
   groomSizeLabel,
   resolveGroomPrograms,
+  groomProgramName,
   type GroomSize,
   type GroomProgram,
 } from "@/lib/grooming-prices";
@@ -275,12 +278,12 @@ function scheduleLabelFor(bk?: {
 }
 
 const KIND_OPTIONS: { id: ItemKind; label: string }[] = [
-  { id: "grooming", label: "🛁 อาบน้ำ / กรูม" },
-  { id: "room", label: "🏠 ห้องพัก" },
-  { id: "service", label: "✨ บริการเสริม" },
-  { id: "freebie", label: "🎁 ของแถม (ฟรี)" },
-  { id: "package", label: "🎫 ขายคอร์ส/เครดิต (ไม่ได้แต้ม)" },
-  { id: "custom", label: "✏️ พิมพ์เอง" },
+  { id: "grooming", label: "อาบน้ำ / กรูม" },
+  { id: "room", label: "ห้องพัก" },
+  { id: "service", label: "บริการเสริม" },
+  { id: "freebie", label: "ของแถม (ฟรี)" },
+  { id: "package", label: "ขายคอร์ส/เครดิต (ไม่ได้แต้ม)" },
+  { id: "custom", label: "พิมพ์เอง" },
 ];
 
 const FREEBIE_PRESETS = [
@@ -348,7 +351,7 @@ export default function BillingPage() {
 
   const [customerId, setCustomerId] = useState("");
   const [search, setSearch] = useState("");
-  const [showList, setShowList] = useState(false);
+  const [, setShowList] = useState(false);
 
   const [promoId, setPromoId] = useState("");
   const [autoPromoLabel, setAutoPromoLabel] = useState("");
@@ -359,8 +362,24 @@ export default function BillingPage() {
   >([]);
   const [packageId, setPackageId] = useState("");
   const [customerPackages, setCustomerPackages] = useState<
-    { id: string; name: string; totalUses: number; usedUses: number; unit?: "use" | "night" }[]
+    {
+      id: string;
+      name: string;
+      totalUses: number;
+      usedUses: number;
+      unit?: "use" | "night";
+      /** คอร์สคืนที่ผูกประเภทห้อง (แพ็กห้องรายเดือน) — หักได้เฉพาะห้องประเภทนี้ */
+      roomType?: string;
+      roomLabel?: string;
+      /** คอร์สนับครั้งที่ผูกโปรแกรมอาบน้ำ — หักตามจำนวนตัวที่อาบโปรแกรมนี้ในบิล */
+      groomProgram?: string;
+      /** แพ็กห้องรายเดือนที่ยังจ่ายไม่ครบ — ยังใช้ไม่ได้ */
+      locked?: boolean;
+      outstanding?: number;
+    }[]
   >([]);
+  /** พนักงานกดเลือก/ยกเลิกคอร์สเองแล้ว — ไม่เลือกคอร์สห้องให้อัตโนมัติทับอีก */
+  const [packageTouched, setPackageTouched] = useState(false);
   const [billDeposit, setBillDeposit] = useState("");
   const [billDepPct, setBillDepPct] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -401,6 +420,10 @@ export default function BillingPage() {
   });
   const [copied, setCopied] = useState(false);
   const [sending, setSending] = useState(false);
+  // UI ล้วน: สรุปแบบไหนที่จะก๊อป/ส่ง · บิลที่เปิดแผ่นรับชำระ · บิลที่เปิดแผ่นส่ง LINE
+  const [summaryMode, setSummaryMode] = useState<"booking" | "deposit" | "full">("booking");
+  const [payFor, setPayFor] = useState<Invoice | null>(null);
+  const [sendFor, setSendFor] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [c, p, i, cfg, b] = await Promise.all([
@@ -451,9 +474,21 @@ export default function BillingPage() {
   // โหลดสินค้าหน้าร้านตอนเปิดตัวเลือกครั้งแรกเท่านั้น (ไม่ใช่ทุกบิล) — ยอดขายส่วนใหญ่ไม่มีสินค้า
   useEffect(() => {
     if (!showProductPicker) return;
-    fetch("/api/products?activeOnly=1")
+    // สินค้าชุดเดียวกับ POS (ขายหน้าร้าน) — สินค้าที่ไม่นับสต็อกถือว่ามีของเสมอ
+    fetch("/api/pos/products")
       .then((r) => r.json())
-      .then((d) => setProducts(d.products || []))
+      .then((d) =>
+        setProducts(
+          ((d.products || []) as { id: string; name: string; category?: string; price: number; imageUrl?: string; stock: number; trackStock: boolean }[]).map((p) => ({
+            id: p.id,
+            name: p.name,
+            category: p.category || "",
+            price: p.price,
+            imageUrl: p.imageUrl,
+            stockCount: p.trackStock ? p.stock : Number.POSITIVE_INFINITY,
+          }))
+        )
+      )
       .catch(() => {});
   }, [showProductPicker]);
 
@@ -481,6 +516,7 @@ export default function BillingPage() {
   useEffect(() => {
     setCouponId("");
     setPackageId("");
+    setPackageTouched(false);
     if (!customerId) {
       setCustomerCoupons([]);
       setCustomerPackages([]);
@@ -564,9 +600,20 @@ export default function BillingPage() {
    * (ค่าอาบน้ำ/ของเสริมในบิลเดียวกันยังต้องจ่าย) ถ้าคืนที่เหลือไม่พอ
    * จะคลุมเท่าที่เหลือ แล้วส่วนที่เกินลูกค้าจ่ายเพิ่มตามปกติ
    */
+  // คอร์สผูกประเภทห้อง → นับเฉพาะบรรทัดห้องประเภทนั้น (หักตามห้องที่พักจริง)
+  const lineMatchesRoom = (
+    it: Item | undefined,
+    pk?: { roomType?: string; roomLabel?: string }
+  ) => {
+    if (!it || it.kind !== "room") return false;
+    if (!pk?.roomType) return true;
+    const rid = rooms.find((r) => r.label === it.roomLabel)?.id;
+    return rid === pk.roomType || (!!pk.roomLabel && it.roomLabel === pk.roomLabel);
+  };
   const roomLines = lines
-    .map((l, i) => ({ ...l, kind: items[i]?.kind }))
-    .filter((l) => l.kind === "room");
+    .map((l, i) => ({ ...l, kind: items[i]?.kind, match: lineMatchesRoom(items[i], pickedPackage) }))
+    .filter((l) => l.kind === "room" && l.match);
+  const billHasRoom = items.some((it) => it.kind === "room");
   const nightsOnBill = roomLines.reduce((n, l) => n + Math.max(1, l.qty || 1), 0);
   const nightsToUse =
     pickedPackage?.unit === "night" ? Math.min(packageLeft, nightsOnBill) : 0;
@@ -583,12 +630,76 @@ export default function BillingPage() {
     return covered;
   })();
 
+  /**
+   * คอร์สนับครั้งผูกโปรแกรม: หักตามจำนวนตัว (qty) ที่อาบโปรแกรมนั้นในบิล
+   * บ้านมา 2 ตัวอาบโปรแกรมเดียวกัน = หัก 2 ครั้ง · คลุมเฉพาะค่าโปรแกรมนั้น
+   * โปรแกรมอื่น/ห้องพัก/ของเสริมในบิลเดียวกันยังคิดตามปกติ
+   */
+  const groomLinesOf = (pk?: { groomProgram?: string }) =>
+    pk?.groomProgram
+      ? lines.filter(
+          (_, i) => items[i]?.kind === "grooming" && items[i]?.program === pk.groomProgram
+        )
+      : [];
+  const programLines = groomLinesOf(pickedPackage);
+  const programUsesOnBill = programLines.reduce((n, l) => n + Math.max(1, l.qty || 1), 0);
+  const programUsesToUse = pickedPackage?.groomProgram
+    ? Math.min(packageLeft, programUsesOnBill)
+    : 0;
+  const programCover = (() => {
+    let left = programUsesToUse;
+    let covered = 0;
+    for (const l of programLines) {
+      if (left <= 0) break;
+      const take = Math.min(left, Math.max(1, l.qty || 1));
+      covered += take * (l.unitAmount || 0);
+      left -= take;
+    }
+    return covered;
+  })();
+  /** หน่วยที่จะหักจากคอร์สในบิลนี้ (คืน หรือ ครั้งของโปรแกรม) — ไม่ระบุ = 1 แบบเดิม */
+  const packageUnitsToUse = nightsToUse || programUsesToUse;
+
+  // ลูกค้ามีแพ็กห้องรายเดือนตรงกับห้องในบิล → เลือกคอร์สให้เลย (แบบ Member ที่หักอัตโนมัติ)
+  // ถ้ามีหลายห้องในบิล เลือกคอร์สที่คลุมคืนได้มากสุด · พนักงานกดยกเลิกได้ ไม่เลือกทับอีก
+  const autoRoomPackageId = (() => {
+    if (packageTouched || packageId || editingId) return "";
+    let best = "";
+    let bestNights = 0;
+    for (const pk of customerPackages) {
+      if (pk.locked) continue;
+      const isRoomPack = pk.unit === "night" && !!pk.roomType;
+      // คอร์สอาบน้ำที่ผูกโปรแกรม เลือกให้อัตโนมัติด้วย (หักตามตัวที่อาบโปรแกรมนั้น)
+      const isProgramPack = pk.unit !== "night" && !!pk.groomProgram;
+      if (!isRoomPack && !isProgramPack) continue;
+      const left = pk.totalUses - pk.usedUses;
+      const onBill = isRoomPack
+        ? items
+            .filter((it) => lineMatchesRoom(it, pk))
+            .reduce((n, it) => n + Math.max(1, it.nights || 1), 0)
+        : items
+            .filter((it) => it.kind === "grooming" && it.program === pk.groomProgram)
+            .reduce((n, it) => n + Math.max(1, Math.round(it.qty || 1)), 0);
+      const n = Math.min(left, onBill);
+      if (n > bestNights) {
+        best = pk.id;
+        bestNights = n;
+      }
+    }
+    return best;
+  })();
+  useEffect(() => {
+    if (autoRoomPackageId) setPackageId(autoRoomPackageId);
+  }, [autoRoomPackageId]);
+
   // คอร์สนับครั้ง: หัก 1 ครั้ง → คลุมยอดที่เหลือทั้งบิลให้เป็น 0 (จ่ายไปแล้วตอนซื้อคอร์ส)
   const packageCovers = !packageId
     ? 0
     : pickedPackage?.unit === "night"
       ? Math.min(nightsCover, Math.max(0, subtotal - promoDiscount - manualDiscount - couponAmount))
-      : Math.max(0, subtotal - promoDiscount - manualDiscount - couponAmount);
+      : pickedPackage?.groomProgram
+        ? Math.min(programCover, Math.max(0, subtotal - promoDiscount - manualDiscount - couponAmount))
+        : Math.max(0, subtotal - promoDiscount - manualDiscount - couponAmount);
   const total = Math.max(
     0,
     subtotal - promoDiscount - manualDiscount - couponAmount - packageCovers
@@ -760,7 +871,10 @@ export default function BillingPage() {
     const existing = matches.find((i) => i.status !== "paid") || matches[0];
     if (existing) {
       if (existing.status === "paid") {
-        toast("นัดนี้ออกบิลและชำระแล้ว — แก้ไขไม่ได้ (1 นัดออกบิลได้ 1 ใบเท่านั้น)", "error");
+        toast(
+          "นัดนี้ออกบิลและชำระแล้ว — ถ้าลูกค้าอยู่ต่อ ให้แก้ \"วันออก\" ที่นัด ระบบจะออกบิลต่อคืนเฉพาะคืนที่เพิ่มให้เอง",
+          "error"
+        );
         return;
       }
       toast("นัดนี้มีบิลค้างอยู่แล้ว — เปิดมาแก้ไขบิลเดิมให้แทน", "info");
@@ -913,8 +1027,13 @@ export default function BillingPage() {
     const cat =
       billedCatNames.join(CAT_SEP) || cust?.cats[0]?.name || "น้องแมว";
     // เก็บของแถม (ฟรี) ด้วย — label มี แต่ยอด 0
+    // โปรแกรมอาบน้ำติดไปกับรายการ — ให้เซิร์ฟเวอร์เช็คคอร์สที่ผูกโปรแกรมได้
     const payloadItems = items
-      .map((it, i) => ({ ...lines[i], kind: it.kind }))
+      .map((it, i) => ({
+        ...lines[i],
+        kind: it.kind,
+        ...(it.kind === "grooming" ? { program: it.program } : {}),
+      }))
       .filter((l) => l.label.trim());
 
     if (editingId) {
@@ -961,7 +1080,7 @@ export default function BillingPage() {
         bookingId: bookingId || undefined,
         couponId: couponId || undefined,
         packageId: packageId || undefined,
-        packageUnits: nightsToUse || undefined,
+        packageUnits: packageUnitsToUse || undefined,
       }),
     });
     const data = await res.json();
@@ -1087,8 +1206,9 @@ export default function BillingPage() {
           className="w-full max-w-sm rounded-petflow bg-card p-4 shadow-petflow"
           onClick={(e) => e.stopPropagation()}
         >
-          <p className="mb-3 text-center text-sm font-extrabold text-petflow-chocolate">
-            💎 ตัดจากเครดิต Member
+          <p className="mb-3 flex items-center justify-center gap-1.5 text-center text-sm font-extrabold text-petflow-chocolate">
+            <Icon name="card" size={18} />
+            ตัดจากเครดิต Member
           </p>
           <div className="space-y-1.5 rounded-petflow-sm bg-paper px-3 py-2.5 text-xs">
             <div className="flex justify-between">
@@ -1109,8 +1229,9 @@ export default function BillingPage() {
             </div>
           </div>
           {short && (
-            <p className="mt-2 rounded-petflow-sm bg-red-50 px-3 py-2 text-[11px] font-bold text-red-700">
-              ⚠️ เครดิตไม่พอ ขาดอีก {Math.abs(after).toLocaleString()} ฿ —
+            <p className="mt-2 flex items-start gap-2 rounded-petflow-sm bg-red-50 px-3 py-2 text-[11px] font-bold text-red-700">
+              <Icon name="alert" size={16} />
+              เครดิตไม่พอ ขาดอีก {Math.abs(after).toLocaleString()} ฿ —
               เติมเครดิตก่อน หรือเก็บเป็นเงินสด/โอนแทน
             </p>
           )}
@@ -1118,7 +1239,7 @@ export default function BillingPage() {
             <button
               type="button"
               onClick={() => setConfirmCredit(null)}
-              className="flex-1 rounded-petflow-sm bg-paper py-2.5 text-xs font-bold text-brown-soft"
+              className="min-h-[44px] flex-1 rounded-petflow-sm bg-paper py-3 text-sm font-bold text-brown-soft"
             >
               ยกเลิก
             </button>
@@ -1130,7 +1251,7 @@ export default function BillingPage() {
                 setConfirmCredit(null);
                 markPaid(id, "member_credit");
               }}
-              className="flex-1 rounded-petflow-sm bg-honey/45 py-2.5 text-xs font-extrabold text-petflow-chocolate disabled:opacity-40"
+              className="min-h-[44px] flex-1 rounded-petflow-sm bg-gradient-to-r from-honey to-honey-deep py-3 text-sm font-extrabold text-petflow-chocolate disabled:opacity-40"
             >
               ยืนยันตัดเครดิต
             </button>
@@ -1156,7 +1277,7 @@ export default function BillingPage() {
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         // ปุ่มนี้เป็นแค่สถานะหลังบ้าน — ไม่ส่งอะไรหาลูกค้า ต้องบอกให้ร้านรู้ว่าใบเสร็จต้องกดส่งเอง
-        toast("รับเงินแล้ว — ลงบัญชี + แต้ม ✅ (ใบเสร็จกดส่งเองที่ปุ่ม 🧾)", "success");
+        toast("รับเงินแล้ว — ลงบัญชี + แต้ม ✅ (ใบเสร็จกดส่งเองที่ปุ่ม ส่ง LINE)", "success");
         load();
       } else if (data.error === "insufficient_credit") {
         toast("เครดิต Member ไม่พอ", "error");
@@ -1171,6 +1292,176 @@ export default function BillingPage() {
     }
   };
 
+  /**
+   * รับเงินบางส่วน — ลูกค้าพักยาว/ต่อคืน จ่ายเป็นงวด ลงรายรับตามวันที่รับจริง บิลยังเปิดอยู่
+   * งวดที่ทำให้จ่ายครบ จะปิดบิลต่อให้เลย (ตอนปิดเก็บแค่ยอดที่ยังค้าง = 0 ไม่ลงบัญชีซ้ำ)
+   */
+  const receivePartial = async (inv: Invoice) => {
+    if (invoiceBusy) return;
+    const remaining = Math.max(0, inv.total - (inv.deposit || 0));
+    const raw = prompt(
+      `รับเงินบางส่วน — ${inv.customerName}\nยอดบิล ${inv.total.toLocaleString()} · ค้างอยู่ ${remaining.toLocaleString()} บาท\n\nรับรอบนี้กี่บาท?`,
+      ""
+    );
+    if (raw == null) return;
+    const amount = Math.round(Number(raw.replace(/[,\s฿]/g, "")) || 0);
+    if (amount <= 0) {
+      toast("ใส่จำนวนเงินให้ถูกนะ", "error");
+      return;
+    }
+    const method: "transfer" | "cash" = confirm("รับเป็นเงินสดใช่ไหม?\n(ตกลง = เงินสด · ยกเลิก = โอน)")
+      ? "cash"
+      : "transfer";
+    setInvoiceBusy(`${inv.id}:receive_payment`);
+    let fullyPaid = false;
+    try {
+      const res = await fetch("/api/invoices", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: inv.id, action: "receive_payment", amount, paymentMethod: method }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        fullyPaid = !!data.fullyPaid;
+        toast(
+          fullyPaid
+            ? "รับครบแล้ว — กำลังปิดบิล"
+            : `รับแล้ว ${amount.toLocaleString()} · ค้างอีก ${Number(data.remaining).toLocaleString()} บาท`,
+          "success"
+        );
+      } else if (data.error === "over_due") {
+        toast(`เกินยอดที่ค้าง — ค้างอยู่ ${Number(data.due).toLocaleString()} บาท`, "error");
+      } else if (data.error === "nothing_due") {
+        toast("บิลนี้ไม่มียอดค้างแล้ว — กดปิดบิลได้เลย", "info");
+      } else {
+        toast("ไม่สำเร็จ", "error");
+      }
+    } finally {
+      setInvoiceBusy("");
+    }
+    if (fullyPaid) await markPaid(inv.id, method);
+    else load();
+  };
+
+  /**
+   * แผ่นรับชำระ (bottom sheet) — ปุ่มรับเงินทุกแบบของบิลรวมไว้ที่เดียว แทนปุ่มเรียงยาวบนการ์ด
+   * แต่ละแถวเรียกฟังก์ชันเดิมทั้งหมด (markPaid / invoiceAction / receivePartial / หัก Member)
+   */
+  const PaySheet = () => {
+    if (!payFor) return null;
+    const inv = payFor;
+    const hasDep = (inv.deposit ?? 0) > 0;
+    const isMember = !!customers.find((c) => c.id === inv.customerId)?.isMember;
+    const due = Math.max(0, inv.total - (inv.deposit || 0));
+    const close = () => setPayFor(null);
+    const rows: { key: string; icon: string; title: string; sub?: string; run: () => void; when: boolean }[] = [
+      {
+        key: "receive_deposit",
+        icon: "money",
+        title: "รับมัดจำแล้ว",
+        sub: `${(inv.deposit || 0).toLocaleString()} ฿ · ลงบัญชี + ส่งการ์ดขอบคุณให้ลูกค้า`,
+        when: hasDep && !inv.depositReceivedAt,
+        run: () =>
+          invoiceAction(
+            inv.id,
+            "receive_deposit",
+            "รับมัดจำแล้ว 💰 (ลงบัญชี + ส่งการ์ดขอบคุณให้ลูกค้า)"
+          ),
+      },
+      {
+        key: "transfer",
+        icon: "wallet",
+        title: hasDep ? "รับเงินที่เหลือ · โอน (ปิดบิล)" : "รับเงินแล้ว · โอน",
+        sub: `${due.toLocaleString()} ฿ · ปิดบิล ลงบัญชี + แต้ม`,
+        when: true,
+        run: () => markPaid(inv.id, "transfer"),
+      },
+      {
+        key: "cash",
+        icon: "money",
+        title: "เงินสด (ปิดบิล)",
+        sub: `${due.toLocaleString()} ฿`,
+        when: true,
+        run: () => markPaid(inv.id, "cash"),
+      },
+      {
+        key: "member",
+        icon: "card",
+        title: "หักเครดิต Member",
+        sub: "ดูยอดก่อนยืนยัน",
+        when: isMember,
+        run: () => setConfirmCredit(inv),
+      },
+      {
+        key: "partial",
+        icon: "chart",
+        title: "รับเงินบางส่วน",
+        sub: "ลูกค้าพักยาว / จ่ายเป็นงวด",
+        when: true,
+        run: () => receivePartial(inv),
+      },
+    ];
+    return (
+      <div
+        className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center sm:p-3"
+        onClick={close}
+      >
+        <div
+          className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-[28px] bg-card px-4 pb-6 pt-3 shadow-petflow sm:rounded-petflow"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-petflow-line sm:hidden" />
+          <div className="mb-3 flex items-center gap-3">
+            <Avatar name={inv.customerName} />
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Payment · รับชำระ</p>
+              <p className="truncate text-sm font-extrabold text-petflow-chocolate">
+                {inv.customerName} · {inv.catName}
+              </p>
+            </div>
+            <div className="shrink-0 text-right">
+              <p className="text-base font-extrabold text-petflow-chocolate">{due.toLocaleString()} ฿</p>
+              <p className="text-[10px] text-brown-soft">ยอดค้าง</p>
+            </div>
+          </div>
+          <ul className="divide-y divide-petflow-line overflow-hidden rounded-petflow-sm border border-petflow-line">
+            {rows
+              .filter((r) => r.when)
+              .map((r) => (
+                <li key={r.key}>
+                  <button
+                    type="button"
+                    disabled={!!invoiceBusy}
+                    onClick={() => {
+                      close();
+                      r.run();
+                    }}
+                    className="flex min-h-[52px] w-full items-center gap-3 px-3 py-2.5 text-left active:bg-paper disabled:opacity-40"
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-honey/25 text-petflow-chocolate">
+                      <Icon name={r.icon} size={20} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-extrabold text-petflow-chocolate">{r.title}</span>
+                      {r.sub && <span className="block truncate text-[11px] text-brown-soft">{r.sub}</span>}
+                    </span>
+                    <Icon name="chevron" size={16} className="text-brown-faint" />
+                  </button>
+                </li>
+              ))}
+          </ul>
+          <button
+            type="button"
+            onClick={close}
+            className="mt-3 min-h-[44px] w-full rounded-petflow-sm bg-paper text-sm font-bold text-brown-soft"
+          >
+            ยกเลิก
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   const sub = "w-full rounded-lg border border-petflow-line bg-paper px-3 py-2 text-sm";
   const field =
     "w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm";
@@ -1178,21 +1469,55 @@ export default function BillingPage() {
   return (
     <div>
       <CreditConfirmModal />
-      <h1 className="mb-4 text-lg font-extrabold text-petflow-chocolate">💳 คิดเงิน</h1>
+      <PaySheet />
+      <div className="mb-4 flex items-end justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Billing</p>
+          <h1 className="text-lg font-extrabold text-petflow-chocolate">
+            {editingId ? "แก้ไขบิล" : "คิดเงิน · ออกบิล"}
+          </h1>
+        </div>
+        {/* เรียกดูใบเสร็จ / ใบกำกับภาษี / ใบเสนอราคา ที่เคยออกไปแล้ว */}
+        <a
+          href="/admin/billing/docs"
+          className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full border border-petflow-line bg-card px-3.5 text-xs font-extrabold text-petflow-chocolate shadow-petflow-sm"
+        >
+          <Icon name="doc" size={15} />
+          เอกสารที่ออกแล้ว
+        </a>
+      </div>
 
-      <div className="mb-4 space-y-3 rounded-petflow bg-card p-4 shadow-petflow-sm">
+      <div className="mb-6 space-y-5 rounded-petflow bg-card p-4 shadow-petflow-sm">
         {/* ── ดึงจากนัด ── */}
         {bookings.length > 0 && (
           <div>
             <button
               type="button"
               onClick={() => setShowBookings((v) => !v)}
-              className="w-full rounded-petflow-sm border border-dashed border-latte/60 bg-latte/10 py-2 text-xs font-extrabold text-latte-deep"
+              className="flex min-h-[48px] w-full items-center gap-3 rounded-petflow-sm border border-latte/50 bg-latte/10 px-3 py-2 text-left"
             >
-              📅 ดึงจากนัด ({bookingGroups.length}) {showBookings ? "▲" : "▼"}
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-latte/30 text-petflow-chocolate">
+                <Icon name="calendar" size={18} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-extrabold text-petflow-chocolate">ดึงจากนัด</span>
+                <span className="block text-[11px] text-brown-soft">
+                  {bookingGroups.length} นัดที่ยังไม่ได้ออกบิล
+                </span>
+              </span>
+              <Icon
+                name="chevron"
+                size={16}
+                className={`text-brown-faint transition ${showBookings ? "rotate-90" : ""}`}
+              />
             </button>
             {showBookings && (
-              <ul className="mt-2 max-h-52 space-y-1 overflow-y-auto">
+              <ul className="mt-2 max-h-72 divide-y divide-petflow-line overflow-y-auto rounded-petflow-sm border border-petflow-line bg-card">
+                {bookingGroups.length === 0 && (
+                  <li>
+                    <EmptyState icon="calendar" title="ไม่มีนัดค้างออกบิล" />
+                  </li>
+                )}
                 {bookingGroups.map((group) => {
                   const bk = group[0];
                   return (
@@ -1200,22 +1525,30 @@ export default function BillingPage() {
                       <button
                         type="button"
                         onClick={() => pickBooking(group)}
-                        className="block w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-left text-xs"
+                        className="flex w-full items-center gap-3 px-3 py-2.5 text-left active:bg-paper"
                       >
-                        <span className="font-bold text-brown">
-                          {bk.service === "room" ? "🏠" : "🛁"} {groupCatNames(group)} ·{" "}
-                          {bk.customerName}
-                          {group.length > 1 && (
-                            <span className="ml-1 rounded-full bg-latte/25 px-1.5 py-0.5 text-[10px] font-extrabold text-latte-deep">
-                              {group.length} ตัว · บิลใบเดียว
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-honey/25 text-petflow-chocolate">
+                          <Icon name={bk.service === "room" ? "bed" : "bath"} size={20} />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-1.5">
+                            <span className="truncate text-sm font-bold text-petflow-chocolate">
+                              {groupCatNames(group)} · {bk.customerName}
                             </span>
-                          )}
+                            {group.length > 1 && (
+                              <span className="shrink-0 rounded-full bg-latte/25 px-1.5 py-px text-[10px] font-extrabold text-latte-deep">
+                                {group.length} ตัว
+                              </span>
+                            )}
+                          </span>
+                          <span className="block truncate text-[11px] text-brown-soft">
+                            {bk.service === "room"
+                              ? `${bk.checkin || "?"} → ${bk.checkout || "?"}${bk.room ? ` · ${bk.room}` : ""}`
+                              : bk.date || ""}
+                            {group.length > 1 ? " · บิลใบเดียว" : ""}
+                          </span>
                         </span>
-                        <span className="block text-[10px] text-brown-faint">
-                          {bk.service === "room"
-                            ? `${bk.checkin || "?"} → ${bk.checkout || "?"}${bk.room ? ` · ${bk.room}` : ""}`
-                            : bk.date || ""}
-                        </span>
+                        <Icon name="chevron" size={16} className="text-brown-faint" />
                       </button>
                     </li>
                   );
@@ -1225,28 +1558,41 @@ export default function BillingPage() {
           </div>
         )}
 
-        {/* ── ค้นหาลูกค้า ── */}
-        <div>
-          <p className="mb-1 text-xs font-bold text-brown-soft">ลูกค้า</p>
+        {/* ── ค้นหาลูกค้า (แบบเดียวกับหน้าจองคิว) ── */}
+        <section>
+          <SectionLabel>Customer · ลูกค้า</SectionLabel>
           {selected ? (
-            <div className="rounded-petflow-sm border border-latte/50 bg-latte/10 px-3 py-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="min-w-0 truncate text-sm font-bold text-brown">
-                  🐱 {selected.cats[0]?.name || "—"} · {selected.name}
-                  {selected.isMember ? ` · 💎 ${selected.memberCredit}฿` : ""}
-                </span>
+            <div className="rounded-petflow-sm border border-honey/60 bg-honey/10 px-3 py-3">
+              <div className="flex items-center gap-3">
+                <Avatar name={selected.name} />
+                <div className="min-w-0 flex-1">
+                  <p className="flex items-center gap-1.5">
+                    <span className="truncate text-sm font-extrabold text-petflow-chocolate">{selected.name}</span>
+                    {selected.isMember && (
+                      <span className="shrink-0 rounded-full bg-honey/50 px-1.5 py-px text-[9px] font-extrabold text-petflow-chocolate">
+                        MEMBER {selected.memberCredit.toLocaleString()}฿
+                      </span>
+                    )}
+                  </p>
+                  <p className="truncate text-[11px] text-brown-soft">
+                    {[
+                      selected.cats.map((c) => c.name).join(", ") || "—",
+                      selected.lineUserId ? "LINE ✓" : "ยังไม่ผูก LINE",
+                    ].join(" · ")}
+                  </p>
+                </div>
                 <button
                   type="button"
                   onClick={clearCustomer}
-                  className="shrink-0 text-xs font-bold text-wait"
+                  className="min-h-[40px] shrink-0 rounded-full bg-card px-3.5 text-xs font-bold text-latte-deep shadow-petflow-sm"
                 >
-                  ✕ เปลี่ยน
+                  เปลี่ยน
                 </button>
               </div>
               {(selected.depositCredit ?? 0) > 0 && (
-                <p className="mt-1.5 text-[11px] font-bold text-ok">
-                  💰 มีเครดิตมัดจำล่วงหน้า {selected.depositCredit!.toLocaleString()} บาท —
-                  ออกบิลนี้จะหักให้อัตโนมัติ
+                <p className="mt-2 flex items-center gap-1.5 rounded-lg bg-ok/10 px-2.5 py-1.5 text-[11px] font-bold text-ok">
+                  <Icon name="money" size={14} />
+                  มีเครดิตมัดจำล่วงหน้า {selected.depositCredit!.toLocaleString()} บาท — ออกบิลนี้จะหักให้อัตโนมัติ
                 </p>
               )}
             </div>
@@ -1268,7 +1614,7 @@ export default function BillingPage() {
               </button>
             </div>
           ) : (
-            <div className="relative">
+            <>
               <button
                 type="button"
                 onClick={() => {
@@ -1277,56 +1623,71 @@ export default function BillingPage() {
                   // ไม่งั้นค้างเป็นรายการ 450฿ ที่ไม่มีใครตั้งใจขาย ติดไปในบิลโดยไม่รู้ตัว
                   setItems([]);
                 }}
-                className="mb-1.5 w-full rounded-petflow-sm bg-honey/25 py-2 text-xs font-extrabold text-petflow-chocolate"
+                className="mb-2 flex min-h-[40px] w-full items-center justify-center gap-1.5 rounded-petflow-sm bg-honey/25 py-2 text-xs font-extrabold text-petflow-chocolate"
               >
-                ⚡ ขายเร็ว ไม่ระบุลูกค้า (ขายของหน้าร้านอย่างเดียว)
+                <Icon name="sparkle" size={14} />
+                ขายเร็ว ไม่ระบุลูกค้า (ขายของหน้าร้านอย่างเดียว)
               </button>
-              <input
+              <SearchField
                 value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
+                onChange={(v) => {
+                  setSearch(v);
                   setShowList(true);
                 }}
-                onFocus={() => setShowList(true)}
-                placeholder="🔍 พิมพ์ชื่อลูกค้า / ชื่อแมว / เบอร์"
-                className={field}
+                placeholder="ค้นหาชื่อ เบอร์ หรือชื่อน้องแมว"
               />
-              {showList && (
-                <ul className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-petflow-sm border border-petflow-line bg-card shadow-petflow">
-                  {filtered.length === 0 ? (
-                    <li className="px-3 py-2 text-xs text-brown-soft">ไม่พบลูกค้า</li>
-                  ) : (
-                    filtered.map((c) => (
-                      <li key={c.id}>
-                        <button
-                          type="button"
-                          onClick={() => pickCustomer(c)}
-                          className="block w-full px-3 py-2 text-left text-sm hover:bg-paper"
-                        >
-                          <span className="font-bold text-brown">
-                            {c.cats[0]?.name || "👤"}
-                          </span>{" "}
-                          · {c.name}
-                          {c.isMember ? " 💎" : ""}
-                          <span className="block text-[10px] text-brown-faint">
-                            {c.phone || "ไม่มีเบอร์"}
-                            {c.lineUserId ? " · LINE ✓" : ""}
+              <p className="mb-1 mt-3 px-1 text-[11px] font-bold text-brown-soft">
+                {search.trim() ? `ผลการค้นหา ${filtered.length} ราย` : "ลูกค้าล่าสุด"}
+              </p>
+              <ul className="max-h-80 divide-y divide-petflow-line overflow-y-auto rounded-petflow-sm border border-petflow-line bg-card">
+                {filtered.length === 0 ? (
+                  <li>
+                    <EmptyState icon="users" title="ไม่พบลูกค้า" sub="ลองค้นด้วยเบอร์ หรือชื่อน้องแมว" />
+                  </li>
+                ) : (
+                  filtered.map((c) => (
+                    <li key={c.id}>
+                      <button
+                        type="button"
+                        onClick={() => pickCustomer(c)}
+                        className="flex w-full items-center gap-3 px-3 py-2.5 text-left active:bg-paper"
+                      >
+                        <Avatar name={c.name} />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-1.5">
+                            <span className="truncate text-sm font-bold text-petflow-chocolate">{c.name}</span>
+                            {c.lineUserId && (
+                              <span className="shrink-0 rounded-full bg-ok/15 px-1.5 py-px text-[9px] font-bold text-ok">
+                                LINE
+                              </span>
+                            )}
+                            {c.isMember && (
+                              <span className="shrink-0 rounded-full bg-honey/40 px-1.5 py-px text-[9px] font-bold text-petflow-chocolate">
+                                MEMBER
+                              </span>
+                            )}
                           </span>
-                        </button>
-                      </li>
-                    ))
-                  )}
-                </ul>
-              )}
-            </div>
+                          <span className="block truncate text-[11px] text-brown-soft">
+                            {[
+                              c.phone || "ไม่มีเบอร์",
+                              c.cats.length ? c.cats.map((cat) => cat.name).join(", ") : "ยังไม่มีน้องในระบบ",
+                            ].join(" · ")}
+                          </span>
+                        </span>
+                        <Icon name="chevron" size={16} className="text-brown-faint" />
+                      </button>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </>
           )}
-        </div>
-
+        </section>
 
         {/* ── รายการ ── */}
-        <div>
-          <p className="mb-1 text-xs font-bold text-brown-soft">รายการ</p>
-          <div className="space-y-2">
+        <section>
+          <SectionLabel>Items · รายการ</SectionLabel>
+          <div className="space-y-3">
             {items.map((item, i) => {
               const line = computeLine(item, groomPrograms);
               const prog = groomProgram(item.program, groomPrograms);
@@ -1346,13 +1707,13 @@ export default function BillingPage() {
               return (
                 <div
                   key={i}
-                  className="space-y-2 rounded-petflow-sm border border-petflow-line bg-paper/40 p-2.5"
+                  className="space-y-2.5 rounded-petflow-sm border border-petflow-line bg-paper/40 p-3"
                 >
                   <div className="flex items-center gap-2">
                     <select
                       value={item.kind}
                       onChange={(e) => changeKind(i, e.target.value as ItemKind)}
-                      className="min-w-0 flex-1 rounded-lg border border-petflow-line bg-card px-3 py-2 text-sm font-bold"
+                      className="min-h-[40px] min-w-0 flex-1 rounded-lg border border-petflow-line bg-card px-3 py-2 text-sm font-bold"
                     >
                       {/* รายการสินค้าจากกริดเท่านั้นที่มี kind นี้ — ไม่ให้เลือกเองจาก dropdown
                           (เปลี่ยนจาก dropdown จะล้าง productId ทิ้งเสมอ ดู changeKind) แต่ยังต้อง
@@ -1372,10 +1733,10 @@ export default function BillingPage() {
                       <button
                         type="button"
                         onClick={() => removeItem(i)}
-                        className="shrink-0 px-1 text-brown-faint"
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-brown-soft active:bg-paper"
                         aria-label="ลบรายการ"
                       >
-                        ✕
+                        <Icon name="trash" size={18} />
                       </button>
                     )}
                   </div>
@@ -1384,8 +1745,9 @@ export default function BillingPage() {
                       โชว์เฉพาะตอนที่ลูกค้ามีแมวมากกว่า 1 ตัว จะได้ไม่รกโดยไม่จำเป็น */}
                   {(selected?.cats.length || 0) > 1 && item.kind !== "freebie" && (
                     <div className="rounded-petflow-sm border border-petflow-line bg-paper px-2.5 py-2">
-                      <p className="mb-1.5 text-[10px] font-bold text-brown-soft">
-                        🐱 รายการนี้ของน้องตัวไหน — ติ๊กได้หลายตัว (เช่น นอนห้องเดียวกัน)
+                      <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold text-brown-soft">
+                        <Icon name="paw" size={14} />
+                        รายการนี้ของน้องตัวไหน — เลือกได้หลายตัว (เช่น นอนห้องเดียวกัน)
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {selected?.cats.map((c) => {
@@ -1405,13 +1767,13 @@ export default function BillingPage() {
                                   ),
                                 })
                               }
-                              className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                              className={`flex min-h-[36px] items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold ${
                                 on
                                   ? "bg-latte-deep text-white"
                                   : "bg-card text-brown-soft"
                               }`}
                             >
-                              {on ? "✓ " : ""}
+                              {on && <Icon name="check" size={13} strokeWidth={2.4} />}
                               {c.name}
                             </button>
                           );
@@ -1532,7 +1894,7 @@ export default function BillingPage() {
                   )}
                   {item.kind === "package" && (
                     <p className="text-[10px] text-brown-faint">
-                      💡 ยอดนี้ไม่นับเป็นฐานแต้ม — ลูกค้าจะได้แต้มตอนเอาคอร์สมาใช้บริการ
+                      ยอดนี้ไม่นับเป็นฐานแต้ม — ลูกค้าจะได้แต้มตอนเอาคอร์สมาใช้บริการ
                       (คอร์สแบบเครดิตได้แต้มตอนเติมอยู่แล้ว)
                     </p>
                   )}
@@ -1564,7 +1926,7 @@ export default function BillingPage() {
                         onClick={() =>
                           updateItem(i, { qty: Math.max(1, (item.qty || 1) - 1) })
                         }
-                        className="h-8 w-8 shrink-0 rounded-lg border border-petflow-line bg-card text-sm font-extrabold text-brown disabled:opacity-40"
+                        className="h-10 w-10 shrink-0 rounded-full border border-petflow-line bg-card text-base font-extrabold text-brown disabled:opacity-40"
                         disabled={(item.qty || 1) <= 1}
                         aria-label="ลดจำนวน"
                       >
@@ -1574,15 +1936,15 @@ export default function BillingPage() {
                         value={item.qty || 1}
                         min={1}
                         onCommit={(n) => updateItem(i, { qty: n })}
-                        className="w-14 rounded-lg border border-petflow-line bg-paper px-2 py-1.5 text-center text-sm font-bold"
+                        className="h-10 w-14 rounded-lg border border-petflow-line bg-paper px-2 text-center text-sm font-bold"
                       />
                       <button
                         type="button"
                         onClick={() => updateItem(i, { qty: (item.qty || 1) + 1 })}
-                        className="h-8 w-8 shrink-0 rounded-lg border border-petflow-line bg-card text-sm font-extrabold text-brown"
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-petflow-line bg-card text-brown"
                         aria-label="เพิ่มจำนวน"
                       >
-                        +
+                        <Icon name="plus" size={16} strokeWidth={2.2} />
                       </button>
                       {(item.qty || 1) > 1 && (
                         <span className="text-[11px] text-brown-faint">
@@ -1597,8 +1959,9 @@ export default function BillingPage() {
                       {line.label}
                     </span>
                     {item.kind === "freebie" ? (
-                      <span className="shrink-0 text-sm font-extrabold text-ok">
-                        ฟรี 🎁
+                      <span className="flex shrink-0 items-center gap-1 text-sm font-extrabold text-ok">
+                        <Icon name="gift" size={16} />
+                        ฟรี
                       </span>
                     ) : (
                       <div className="flex shrink-0 items-center gap-1.5">
@@ -1611,7 +1974,7 @@ export default function BillingPage() {
                           value={line.unitAmount}
                           min={0}
                           onCommit={(n) => setUnitPrice(i, n)}
-                          className={`w-24 rounded-lg border bg-paper px-3 py-1.5 text-right text-sm font-bold ${
+                          className={`h-10 w-24 rounded-lg border bg-paper px-3 text-right text-sm font-bold ${
                             isSpecial
                               ? "border-honey-deep text-honey-deep"
                               : "border-petflow-line"
@@ -1622,20 +1985,23 @@ export default function BillingPage() {
                   </div>
 
                   {item.kind !== "freebie" && (
-                    <div className="flex items-center gap-1.5 text-[10px] font-bold text-brown-soft">
-                      <span>🏷️ ลดเฉพาะรายการนี้</span>
+                    <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold text-brown-soft">
+                      <span className="flex items-center gap-1">
+                        <Icon name="ticket" size={14} />
+                        ลดเฉพาะรายการนี้
+                      </span>
                       <NumField
                         value={item.discount || 0}
                         min={0}
                         onCommit={(n) => updateItem(i, { discount: n || undefined })}
-                        className="w-16 rounded-lg border border-petflow-line bg-paper px-2 py-1 text-right text-xs font-bold"
+                        className="h-9 w-16 rounded-lg border border-petflow-line bg-paper px-2 text-right text-xs font-bold"
                       />
                       <select
                         value={item.discountMode || "baht"}
                         onChange={(e) =>
                           updateItem(i, { discountMode: e.target.value as "baht" | "percent" })
                         }
-                        className="rounded-lg border border-petflow-line bg-paper px-1.5 py-1 text-xs"
+                        className="h-9 rounded-lg border border-petflow-line bg-paper px-1.5 text-xs"
                       >
                         <option value="baht">บาท</option>
                         <option value="percent">%</option>
@@ -1649,14 +2015,15 @@ export default function BillingPage() {
                   )}
 
                   {isSpecial && (
-                    <div className="flex items-center justify-between gap-2 rounded-lg bg-honey/15 px-2 py-1">
-                      <span className="text-[10px] font-bold text-brown">
-                        ⭐ ราคาพิเศษ (ปกติ {stdUnit.toLocaleString()} ฿)
+                    <div className="flex items-center justify-between gap-2 rounded-lg bg-honey/15 px-2.5 py-1">
+                      <span className="flex items-center gap-1 text-[11px] font-bold text-brown">
+                        <Icon name="star" size={14} />
+                        ราคาพิเศษ (ปกติ {stdUnit.toLocaleString()} ฿)
                       </span>
                       <button
                         type="button"
                         onClick={() => updateItem(i, { priceOverride: undefined })}
-                        className="text-[10px] font-bold text-latte-deep underline"
+                        className="min-h-[32px] px-1 text-[11px] font-bold text-latte-deep underline"
                       >
                         ใช้ราคาปกติ
                       </button>
@@ -1667,23 +2034,24 @@ export default function BillingPage() {
                       เพราะราคาพิเศษครั้งก่อนอาจเป็นโปรที่จบไปแล้ว */}
                   {recall && (
                     <div className="rounded-lg border border-honey-deep/40 bg-honey/10 px-2 py-1.5">
-                      <p className="text-[10px] font-bold text-brown">
-                        💡 ครั้งก่อนลูกค้าคนนี้จ่าย {recall.unitAmount.toLocaleString()} ฿
+                      <p className="flex items-start gap-1 text-[11px] font-bold text-brown">
+                        <Icon name="clock" size={14} />
+                        ครั้งก่อนลูกค้าคนนี้จ่าย {recall.unitAmount.toLocaleString()} ฿
                         {recall.when ? ` (${recall.when.slice(0, 10)})` : ""} · ราคาปกติ{" "}
                         {stdUnit.toLocaleString()} ฿
                       </p>
-                      <div className="mt-1 flex gap-1.5">
+                      <div className="mt-1.5 flex gap-1.5">
                         <button
                           type="button"
                           onClick={() => setUnitPrice(i, recall.unitAmount)}
-                          className="rounded-md bg-honey-deep/80 px-2 py-1 text-[10px] font-extrabold text-petflow-chocolate"
+                          className="min-h-[36px] flex-1 rounded-full bg-honey-deep/80 px-3 text-[11px] font-extrabold text-petflow-chocolate"
                         >
                           ใช้ราคาเดิม {recall.unitAmount.toLocaleString()} ฿
                         </button>
                         <button
                           type="button"
                           onClick={() => dismissRecall(sig)}
-                          className="rounded-md border border-petflow-line px-2 py-1 text-[10px] font-bold text-brown-soft"
+                          className="min-h-[36px] flex-1 rounded-full border border-petflow-line bg-card px-3 text-[11px] font-bold text-brown-soft"
                         >
                           ใช้ราคาปกติ
                         </button>
@@ -1695,30 +2063,29 @@ export default function BillingPage() {
             })}
           </div>
 
-          <div className="mt-2 flex gap-2">
+          <div className="mt-3 flex gap-2">
             <button
               type="button"
               onClick={() => setItems((prev) => [...prev, newGrooming(undefined, groomPrograms)])}
-              className="flex flex-1 items-center justify-center gap-2 rounded-petflow-sm border-2 border-dashed border-latte/60 bg-latte/10 py-2.5 text-sm font-extrabold text-latte-deep transition active:scale-[.98]"
+              className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-petflow-sm border border-dashed border-latte/60 bg-latte/10 py-2.5 text-sm font-extrabold text-latte-deep transition active:scale-[.98]"
             >
-              <span className="text-lg">➕</span> เพิ่มรายการ
-              <span className="text-lg">🧾</span>
+              <Icon name="plus" size={18} />
+              เพิ่มรายการ
             </button>
             <button
               type="button"
               onClick={() => setShowProductPicker((v) => !v)}
-              className="flex flex-1 items-center justify-center gap-2 rounded-petflow-sm border-2 border-dashed border-sky-deep/50 bg-sky/20 py-2.5 text-sm font-extrabold text-sky-deep transition active:scale-[.98]"
+              className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-petflow-sm border border-dashed border-sky-deep/50 bg-sky/20 py-2.5 text-sm font-extrabold text-sky-deep transition active:scale-[.98]"
             >
-              <span className="text-lg">🛒</span> เพิ่มสินค้า
+              <Icon name="cart" size={18} />
+              เพิ่มสินค้า
             </button>
           </div>
 
           {showProductPicker && (
             <div className="mt-2 rounded-petflow-sm border border-petflow-line bg-card p-2.5">
               {products.length === 0 ? (
-                <p className="py-4 text-center text-xs text-brown-soft">
-                  ยังไม่มีสินค้า — ไปเพิ่มที่เมนู &quot;สินค้าหน้าร้าน&quot; ก่อน
-                </p>
+                <EmptyState icon="bag" title="ยังไม่มีสินค้า" sub="ไปเพิ่มที่เมนู “สินค้าหน้าร้าน” ก่อน" />
               ) : (
                 <>
                   <div className="mb-2 flex gap-1.5 overflow-x-auto">
@@ -1761,7 +2128,7 @@ export default function BillingPage() {
                                   className="h-full w-full object-cover"
                                 />
                               ) : (
-                                <span className="text-xl">📦</span>
+                                <Icon name="bag" size={20} className="text-brown-soft" />
                               )}
                               {outOfStock && (
                                 <span className="absolute inset-0 flex items-center justify-center bg-black/40 text-[10px] font-extrabold text-white">
@@ -1783,16 +2150,18 @@ export default function BillingPage() {
               )}
             </div>
           )}
-        </div>
+        </section>
 
         {/* ── โปร + ส่วนลด ── */}
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <section>
+        <SectionLabel>Discount · โปร / ส่วนลด</SectionLabel>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="block text-xs font-bold text-brown-soft">
             โปรโมชั่น
             <select
               value={promoId}
               onChange={(e) => setPromoId(e.target.value)}
-              className={`mt-1 ${field}`}
+              className={`mt-1 min-h-[40px] ${field}`}
             >
               <option value="">ไม่ใช้โปร</option>
               {promos.map((p) => (
@@ -1815,24 +2184,17 @@ export default function BillingPage() {
                 value={discount}
                 onChange={(e) => setDiscount(e.target.value)}
                 placeholder="0"
-                className={`min-w-0 flex-1 ${field}`}
+                className={`min-h-[40px] min-w-0 flex-1 ${field}`}
               />
-              <div className="flex shrink-0 overflow-hidden rounded-petflow-sm border border-petflow-line">
-                {(["baht", "percent"] as const).map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => setDiscountMode(m)}
-                    className={`px-3 py-2 text-xs font-extrabold transition ${
-                      discountMode === m
-                        ? "bg-latte-deep text-white"
-                        : "bg-paper text-brown-soft"
-                    }`}
-                  >
-                    {m === "baht" ? "฿" : "%"}
-                  </button>
-                ))}
-              </div>
+              <Segmented
+                value={discountMode}
+                onChange={setDiscountMode}
+                options={[
+                  { id: "baht", label: "฿" },
+                  { id: "percent", label: "%" },
+                ]}
+                className="w-28 shrink-0"
+              />
             </div>
             {discountMode === "percent" && discountInput > 0 && (
               <span className="mt-1 block text-[10px] font-normal text-brown-faint">
@@ -1843,8 +2205,9 @@ export default function BillingPage() {
 
           {customerCoupons.length > 0 && (
             <div>
-              <span className="mb-1 block text-xs font-bold text-brown-soft">
-                🎟️ คูปองของลูกค้า (กดใช้)
+              <span className="mb-1.5 flex items-center gap-1.5 text-xs font-bold text-brown-soft">
+                <Icon name="ticket" size={14} />
+                คูปองของลูกค้า (แตะเพื่อใช้)
               </span>
               <div className="flex flex-wrap gap-2">
                 {customerCoupons.map((cp) => (
@@ -1852,13 +2215,13 @@ export default function BillingPage() {
                     key={cp.id}
                     type="button"
                     onClick={() => setCouponId((prev) => (prev === cp.id ? "" : cp.id))}
-                    className={`rounded-full px-3 py-1.5 text-xs font-bold ${
+                    className={`flex min-h-[40px] items-center gap-1 rounded-full px-3.5 py-2 text-xs font-bold ${
                       couponId === cp.id
                         ? "bg-latte-deep text-card"
                         : "bg-paper text-brown-soft"
                     }`}
                   >
-                    {couponId === cp.id ? "✓ " : ""}฿{cp.amount} · {cp.reason}
+                    {couponId === cp.id && <Icon name="check" size={13} strokeWidth={2.4} />}฿{cp.amount} · {cp.reason}
                   </button>
                 ))}
               </div>
@@ -1867,37 +2230,56 @@ export default function BillingPage() {
 
           {customerPackages.length > 0 && (
             <div>
-              <span className="mb-1 block text-xs font-bold text-brown-soft">
-                🎫 คอร์สของลูกค้า (นับครั้ง = บิลนี้ฟรี · นับคืน = หักตามคืนที่พัก)
+              <span className="mb-1.5 flex items-start gap-1.5 text-xs font-bold text-brown-soft">
+                <Icon name="ticket" size={14} />
+                คอร์สของลูกค้า (ใช้ร่วมกันได้ทั้งบ้าน)
               </span>
               <div className="flex flex-wrap gap-2">
                 {customerPackages.map((pk) => (
                   <button
                     key={pk.id}
                     type="button"
-                    onClick={() => setPackageId((prev) => (prev === pk.id ? "" : pk.id))}
-                    className={`rounded-full px-3 py-1.5 text-xs font-bold ${
+                    disabled={pk.locked && packageId !== pk.id}
+                    title={
+                      pk.locked
+                        ? `ค้างจ่าย ${(pk.outstanding || 0).toLocaleString()} บาท — ต้องจ่ายครบก่อนใช้`
+                        : undefined
+                    }
+                    onClick={() => {
+                      setPackageTouched(true);
+                      setPackageId((prev) => (prev === pk.id ? "" : pk.id));
+                    }}
+                    className={`flex min-h-[40px] items-center gap-1 rounded-full px-3.5 py-2 text-left text-xs font-bold disabled:opacity-50 ${
                       packageId === pk.id ? "bg-sage text-card" : "bg-paper text-brown-soft"
                     }`}
                   >
-                    {packageId === pk.id ? "✓ " : ""}
-                    {pk.name} (เหลือ {pk.totalUses - pk.usedUses}/{pk.totalUses}{" "}
-                    {pk.unit === "night" ? "คืน" : "ครั้ง"})
+                    {packageId === pk.id && <Icon name="check" size={13} strokeWidth={2.4} />}
+                    {pk.roomType && <Icon name="bed" size={14} />}
+                    {pk.roomType ? pk.roomLabel || pk.name : pk.name}
+                    {pk.groomProgram &&
+                      !pk.name.includes(groomProgramName(pk.groomProgram, groomPrograms) || "\u0000") &&
+                      ` · ${groomProgramName(pk.groomProgram, groomPrograms) || "โปรแกรมที่ลบไปแล้ว"}`}{" "}
+                    (เหลือ{" "}
+                    {pk.totalUses - pk.usedUses}/{pk.totalUses} {pk.unit === "night" ? "คืน" : "ครั้ง"})
+                    {pk.locked && ` · ค้างจ่าย ${(pk.outstanding || 0).toLocaleString()}`}
                   </button>
                 ))}
               </div>
             </div>
           )}
         </div>
+        </section>
 
         {pickedPackage?.unit === "night" && (
-          <p className="rounded-petflow-sm bg-sage/15 px-3 py-1.5 text-[11px] font-bold text-ok">
+          <p className="rounded-petflow-sm bg-sage/15 px-3 py-2 text-[11px] font-bold text-ok">
             {nightsToUse > 0
-              ? `🏠 หักคอร์ส ${nightsToUse} คืน (คลุมค่าห้าง ${nightsCover.toLocaleString()} บาท)`.replace(
+              ? `หักคอร์ส ${nightsToUse} คืน (คลุมค่าห้าง ${nightsCover.toLocaleString()} บาท)`.replace(
                   "ค่าห้าง",
                   "ค่าห้อง"
                 )
-              : "⚠️ บิลนี้ไม่มีรายการห้องพัก หรือคอร์สหมดคืนแล้ว — ยังหักไม่ได้"}
+              : pickedPackage.roomType && billHasRoom
+                ? `คอร์สนี้ใช้ได้กับ${pickedPackage.roomLabel || "ห้องอีกประเภท"}เท่านั้น — ห้องในบิลนี้ไม่ตรง`
+                : "บิลนี้ไม่มีรายการห้องพัก หรือคอร์สหมดคืนแล้ว — ยังหักไม่ได้"}
             {nightsToUse > 0 && nightsOnBill > nightsToUse && (
               <span className="block font-normal text-brown-soft">
                 บิลนี้พัก {nightsOnBill} คืน แต่คอร์สเหลือ {nightsToUse} คืน — ส่วนที่เกินคิดเงินตามปกติ
@@ -1906,14 +2288,32 @@ export default function BillingPage() {
           </p>
         )}
 
+        {pickedPackage?.groomProgram && (
+          <p className="rounded-petflow-sm bg-sage/15 px-3 py-2 text-[11px] font-bold text-ok">
+            {programUsesToUse > 0
+              ? `หักคอร์ส ${programUsesToUse} ครั้ง (คลุมค่า${
+                  groomProgramName(pickedPackage.groomProgram, groomPrograms) || "โปรแกรมนี้"
+                } ${programCover.toLocaleString()} บาท)`
+              : `คอร์สนี้ใช้ได้กับ${
+                  groomProgramName(pickedPackage.groomProgram, groomPrograms) || "โปรแกรมอื่น"
+                }เท่านั้น — บิลนี้ยังไม่มีรายการโปรแกรมนี้`}
+            {programUsesToUse > 0 && programUsesOnBill > programUsesToUse && (
+              <span className="block font-normal text-brown-soft">
+                บิลนี้อาบ {programUsesOnBill} ครั้ง แต่คอร์สเหลือ {programUsesToUse} ครั้ง — ส่วนที่เกินคิดเงินตามปกติ
+              </span>
+            )}
+          </p>
+        )}
+
         {autoPromoLabel && promoId && (
-          <p className="rounded-petflow-sm bg-sage/15 px-3 py-1.5 text-[11px] font-bold text-ok">
-            ⚡ ใช้โปร &quot;{autoPromoLabel}&quot; อัตโนมัติ (ลูกค้าคนนี้มีสิทธิ์)
+          <p className="flex items-center gap-1.5 rounded-petflow-sm bg-sage/15 px-3 py-2 text-[11px] font-bold text-ok">
+            <Icon name="sparkle" size={14} />
+            ใช้โปร &quot;{autoPromoLabel}&quot; อัตโนมัติ (ลูกค้าคนนี้มีสิทธิ์)
           </p>
         )}
 
         {/* ── สรุปยอด ── */}
-        <div className="space-y-1 rounded-petflow-sm bg-paper/60 px-3 py-2 text-sm">
+        <div className="space-y-1.5 rounded-petflow-sm bg-paper/70 px-3.5 py-3 text-sm">
           <div className="flex justify-between text-brown-soft">
             <span>ยอดรวม</span>
             <span>{subtotal.toLocaleString()} ฿</span>
@@ -1930,7 +2330,7 @@ export default function BillingPage() {
           </div>
           {/* มัดจำของบิลนี้ (ถ้ามี) — กด % หรือใส่เอง */}
           <div className="flex items-center justify-between gap-2 border-t border-petflow-line pt-1.5">
-            <span className="text-xs font-bold text-brown-soft">💰 มัดจำ (ถ้ามี)</span>
+            <span className="text-xs font-bold text-brown-soft">มัดจำ (ถ้ามี)</span>
             <input
               type="number"
               min="0"
@@ -1941,7 +2341,7 @@ export default function BillingPage() {
                 setBillDeposit(e.target.value);
                 setBillDepPct(null);
               }}
-              className="w-24 rounded-lg border border-petflow-line bg-paper px-3 py-1.5 text-right text-sm"
+              className="h-10 w-24 rounded-lg border border-petflow-line bg-card px-3 text-right text-sm"
             />
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
@@ -1956,10 +2356,10 @@ export default function BillingPage() {
                     setBillDeposit(String(amt));
                     setBillDepPct(pct);
                   }}
-                  className={`rounded-full px-2.5 py-1 text-[10px] font-bold disabled:opacity-40 ${
+                  className={`min-h-[36px] flex-1 rounded-full px-2.5 py-1.5 text-xs font-bold disabled:opacity-40 ${
                     billDepPct === pct
                       ? "bg-honey text-petflow-chocolate"
-                      : "bg-paper text-brown-soft"
+                      : "bg-card text-brown-soft"
                   }`}
                 >
                   {pct}%
@@ -1973,7 +2373,7 @@ export default function BillingPage() {
                   setBillDeposit("");
                   setBillDepPct(null);
                 }}
-                className="rounded-full px-2.5 py-1 text-[10px] font-bold text-wait"
+                className="min-h-[36px] rounded-full px-2.5 py-1.5 text-xs font-bold text-wait"
               >
                 ล้าง
               </button>
@@ -1987,129 +2387,104 @@ export default function BillingPage() {
           )}
         </div>
 
-        {/* ── สรุป (ก๊อป / ส่ง LINE ให้ลูกค้า) ── */}
-        <div className="space-y-2 rounded-petflow-sm border border-petflow-line bg-card/80 p-2.5">
-          <p className="text-[10px] font-bold text-brown-soft">
-            สรุปให้ลูกค้า — ก๊อปไปแปะ หรือส่งเข้า LINE เลย
-          </p>
-          {(
-            [
-              ["booking", "📋 สรุปการจอง"],
-              ["deposit", "💰 แจ้งมัดจำ"],
-              ["full", "💳 แจ้งยอดเต็ม"],
-            ] as const
-          ).map(([mode, label]) => (
-            <div key={mode} className="flex items-center gap-2">
-              <span className="min-w-0 flex-1 truncate text-[11px] font-bold text-brown">
-                {label}
-              </span>
-              <button
-                type="button"
-                onClick={() => copySummary(mode)}
-                disabled={!selected}
-                className="shrink-0 rounded-full bg-paper px-3 py-1.5 text-[10px] font-bold text-brown-soft disabled:opacity-40"
-              >
-                📋 ก๊อป
-              </button>
-              <button
-                type="button"
-                onClick={() => sendSummaryLine(mode)}
-                disabled={!selected || sending}
-                className="shrink-0 rounded-full bg-[#06C755]/15 px-3 py-1.5 text-[10px] font-bold text-[#06883c] disabled:opacity-40"
-              >
-                💬 ส่ง LINE
-              </button>
-            </div>
-          ))}
-        </div>
-        {copied && (
-          <p className="text-center text-[11px] font-bold text-ok">✅ ก๊อปข้อความแล้ว — เอาไปแปะแชทลูกค้าได้เลย</p>
-        )}
+        {/* ── สรุป (ก๊อป / ส่ง LINE ให้ลูกค้า) — เลือกแบบ แล้วกดส่งปุ่มเดียว ── */}
+        <section className="rounded-petflow-sm border border-petflow-line bg-card p-3">
+          <SectionLabel>Summary · สรุปให้ลูกค้า</SectionLabel>
+          <Segmented
+            value={summaryMode}
+            onChange={setSummaryMode}
+            options={[
+              { id: "booking", label: "การจอง" },
+              { id: "deposit", label: "มัดจำ" },
+              { id: "full", label: "ยอดเต็ม" },
+            ]}
+          />
+          <div className="mt-2.5 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => sendSummaryLine(summaryMode)}
+              disabled={!selected || sending}
+              className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-full bg-[#06C755]/15 px-4 text-sm font-extrabold text-[#06883c] disabled:opacity-40"
+            >
+              <Icon name="send" size={16} />
+              {sending ? "กำลังส่ง…" : "ส่ง LINE"}
+            </button>
+            <button
+              type="button"
+              onClick={() => copySummary(summaryMode)}
+              disabled={!selected}
+              aria-label="ก๊อปข้อความสรุป"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-paper text-brown disabled:opacity-40"
+            >
+              <Icon name={copied ? "check" : "copy"} size={18} />
+            </button>
+          </div>
+          {copied && (
+            <p className="mt-2 text-center text-[11px] font-bold text-ok">ก๊อปข้อความแล้ว — เอาไปแปะแชทลูกค้าได้เลย</p>
+          )}
+        </section>
 
         <button
           type="button"
           disabled={creating}
           onClick={createBill}
-          className="w-full rounded-petflow-sm bg-gradient-to-r from-honey to-honey-deep py-3 text-sm font-extrabold text-petflow-chocolate disabled:opacity-60"
+          className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-petflow-sm bg-gradient-to-r from-honey to-honey-deep py-3 text-sm font-extrabold text-petflow-chocolate shadow-petflow-sm disabled:opacity-60"
         >
+          {!creating && <Icon name={editingId ? "check" : "receipt"} size={18} />}
           {creating
             ? "กำลังบันทึก…"
             : editingId
-              ? "💾 บันทึกการแก้ไขบิล"
-              : "🧾 ออกบิล"}
+              ? "บันทึกการแก้ไขบิล"
+              : `ออกบิล · ${total.toLocaleString()} ฿`}
         </button>
         {editingId && (
           <button
             type="button"
             onClick={resetForm}
-            className="w-full rounded-petflow-sm bg-paper py-2 text-xs font-bold text-brown-soft"
+            className="-mt-2 min-h-[40px] w-full rounded-petflow-sm py-2 text-xs font-bold text-brown-soft"
           >
             ยกเลิกการแก้ไข
           </button>
         )}
       </div>
 
-      <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-sm font-extrabold">บิล</h2>
-        {(() => {
+      <SectionLabel
+        action={(() => {
           const pending = invoices.filter((i) => i.status === "pending");
           const due = pending.reduce((s, i) => s + (i.total - (i.deposit || 0)), 0);
           return due > 0 ? (
             <span className="rounded-full bg-wait/15 px-2.5 py-1 text-[11px] font-extrabold text-wait">
-              ยอดค้างรวม {due.toLocaleString()} ฿ ({pending.length} บิล)
+              ค้างรวม {due.toLocaleString()} ฿ · {pending.length} บิล
             </span>
           ) : null;
         })()}
-      </div>
-      <div className="mb-2 flex gap-1.5">
-        {(
+      >
+        Invoices · บิล
+      </SectionLabel>
+      <Segmented
+        value={billFilter}
+        onChange={setBillFilter}
+        className="mb-3"
+        options={(
           [
-            ["all", "ทั้งหมด"],
             ["pending", "รอชำระ"],
             ["paid", "จ่ายแล้ว"],
+            ["all", "ทั้งหมด"],
           ] as const
-        ).map(([f, label]) => {
-          const n =
-            f === "all"
-              ? invoices.length
-              : invoices.filter((i) => i.status === f).length;
-          return (
-            <button
-              key={f}
-              type="button"
-              onClick={() => setBillFilter(f)}
-              className={`rounded-full px-3 py-1.5 text-xs font-bold ${
-                billFilter === f
-                  ? "bg-honey/45 text-petflow-chocolate"
-                  : "bg-paper text-brown-soft"
-              }`}
-            >
-              {label} {n}
-            </button>
-          );
-        })}
-      </div>
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <input
-          value={billSearch}
-          onChange={(e) => setBillSearch(e.target.value)}
-          placeholder="🔍 ค้นหาชื่อน้อง / ลูกค้า / เลขบิล"
-          className="min-w-0 flex-1 rounded-petflow-sm border border-petflow-line bg-paper px-3 py-1.5 text-xs"
-        />
-        <select
-          value={billSort}
-          onChange={(e) => setBillSort(e.target.value as typeof billSort)}
-          className="rounded-petflow-sm border border-petflow-line bg-paper px-2 py-1.5 text-xs font-bold text-brown-soft"
-        >
-          <option value="issued-desc">🧾 ออกบิลล่าสุดก่อน</option>
-          <option value="issued-asc">🧾 ออกบิลเก่าก่อน</option>
-          <option value="date-desc">📅 วันนัดล่าสุดก่อน</option>
-          <option value="date-asc">📅 วันนัดเก่าก่อน</option>
-          <option value="amount-desc">💰 ยอดมากสุด</option>
-          <option value="due-desc">⏳ ค้างชำระมากสุด</option>
-          <option value="name-asc">🔤 ชื่อลูกค้า ก–ฮ</option>
-        </select>
-      </div>
+        ).map(([f, label]) => ({
+          id: f,
+          label,
+          badge:
+            (f === "all" ? invoices.length : invoices.filter((i) => i.status === f).length) ||
+            undefined,
+        }))}
+      />
+      <SearchField
+        value={billSearch}
+        onChange={setBillSearch}
+        placeholder="ค้นหาชื่อน้อง / ลูกค้า / เลขบิล"
+        className="mb-2"
+      />
       {(() => {
         const linkedFor = (inv: Invoice) =>
           bookings.find((b) => b.id === inv.bookingId) ||
@@ -2167,18 +2542,72 @@ export default function BillingPage() {
           // ผูกนัดโดยตรง หรือถ้าไม่ได้ผูก → เดาจากนัดของลูกค้า/น้องตัวเดียวกัน
           const linkedBk = linkedFor(inv);
           const sched = scheduleLabelFor(linkedBk);
+          const paid = inv.status === "paid";
+          const hasDep = (inv.deposit ?? 0) > 0;
+          const busyHere = invoiceBusy.startsWith(`${inv.id}:`);
+          const openSend = () => setSendFor(inv.id);
+          const del = () =>
+            invoiceAction(
+              inv.id,
+              "delete",
+              "ลบบิลแล้ว 🗑️",
+              `ลบบิลนี้? (${inv.total.toLocaleString()} บาท) — ลบรายการบัญชีที่ผูกด้วย กู้คืนไม่ได้`
+            );
+          // เอกสารทางการ (ใบเสร็จ/ใบกำกับภาษี · ใบเสนอราคา · ใบแจ้งหนี้) ออกในนามบริษัทได้
+          const openDocs = () => window.open(`/admin/billing/doc/${inv.id}`, "_self");
+          const menu = paid
+            ? [
+                { label: "ใบเสร็จ / ใบกำกับภาษี", icon: "receipt", onClick: openDocs },
+                {
+                  label: "ยกเลิกการชำระ (กดผิด)",
+                  icon: "back",
+                  disabled: invoiceBusy === `${inv.id}:unmark_paid`,
+                  onClick: () =>
+                    invoiceAction(
+                      inv.id,
+                      "unmark_paid",
+                      "ยกเลิกการชำระแล้ว ↩️ — บิลกลับเป็น 'รอชำระ' แก้ไขต่อได้",
+                      "ยกเลิกการชำระบิลนี้? (กดผิดใช่ไหม)\nจะกลับเป็น 'รอชำระ' + ย้อนรายรับ/แต้ม/เครดิตที่ลงไป"
+                    ),
+                },
+                { label: "ลบบิล", icon: "trash", danger: true, disabled: invoiceBusy === `${inv.id}:delete`, onClick: del },
+              ]
+            : [
+                { label: "ส่ง LINE หาลูกค้า", icon: "send", onClick: openSend },
+                { label: "ใบเสนอราคา / ใบแจ้งหนี้", icon: "doc", onClick: openDocs },
+                { label: "แก้ไขบิล", icon: "edit", onClick: () => editInvoice(inv) },
+                { label: "ลบบิล", icon: "trash", danger: true, disabled: invoiceBusy === `${inv.id}:delete`, onClick: del },
+              ];
           return (
-          <div key={inv.id} className="rounded-petflow border border-petflow-line bg-card p-4">
-            <p className="font-bold text-brown">
-              {inv.catName} · {inv.customerName}
-            </p>
-
-            {sched ? (
-              <p className="mt-1 text-xs font-bold text-latte-deep">{sched}</p>
-            ) : null}
+          <div key={inv.id} className="p-4">
+            <div className="flex items-start gap-3">
+              <Avatar name={inv.customerName} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-extrabold text-petflow-chocolate">{inv.customerName}</p>
+                <p className="truncate text-[11px] text-brown-soft">{inv.catName}</p>
+                {sched ? (
+                  // ข้อความ sched ใช้ส่งให้ลูกค้าด้วย (มีอีโมจินำหน้า) — บนจอตัดอีโมจิออกแล้วใช้ไอคอนเส้นแทน
+                  <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] font-bold text-latte-deep">
+                    <Icon name={linkedBk?.service === "room" || linkedBk?.checkin ? "bed" : "bath"} size={13} />
+                    <span className="truncate">{sched.replace(/^\S+\s/, "")}</span>
+                  </p>
+                ) : null}
+              </div>
+              <div className="shrink-0 text-right">
+                <p className="text-base font-extrabold text-petflow-chocolate">{inv.total.toLocaleString()} ฿</p>
+                <span
+                  className={`mt-0.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold ${
+                    paid ? "bg-ok/15 text-ok" : "bg-wait/15 text-wait"
+                  }`}
+                >
+                  <Icon name={paid ? "check" : "clock"} size={11} strokeWidth={2.4} />
+                  {paid ? "ชำระแล้ว" : "รอชำระ"}
+                </span>
+              </div>
+            </div>
 
             {inv.items && inv.items.length > 0 && (
-              <div className="mt-2 space-y-0.5 rounded-petflow-sm bg-paper/50 px-3 py-2 text-xs text-brown-soft">
+              <div className="mt-3 space-y-1 rounded-petflow-sm bg-paper/60 px-3 py-2 text-xs text-brown-soft">
                 {inv.items.map((it, k) => (
                   <div key={k} className="flex justify-between gap-2">
                     <span className="min-w-0 truncate">{it.label}</span>
@@ -2186,184 +2615,140 @@ export default function BillingPage() {
                   </div>
                 ))}
                 {inv.discount ? (
-                  <div className="flex justify-between border-t border-petflow-line pt-0.5 text-wait">
+                  <div className="flex justify-between border-t border-petflow-line pt-1 text-wait">
                     <span>ส่วนลด{inv.promoLabel ? ` (${inv.promoLabel})` : ""}</span>
                     <span>-{inv.discount.toLocaleString()} ฿</span>
                   </div>
                 ) : null}
+                {hasDep && (
+                  <div className="flex justify-between border-t border-petflow-line pt-1 font-bold">
+                    <span className={inv.depositReceivedAt ? "text-ok" : "text-brown"}>
+                      มัดจำ {inv.depositReceivedAt ? "(รับแล้ว)" : "(รอรับ)"}
+                    </span>
+                    <span className={inv.depositReceivedAt ? "text-ok" : "text-brown"}>
+                      {inv.deposit!.toLocaleString()} ฿
+                    </span>
+                  </div>
+                )}
+                {hasDep && inv.status === "pending" && (
+                  <div className="flex justify-between font-extrabold text-wait">
+                    <span>คงเหลือ</span>
+                    <span>{(inv.total - inv.deposit!).toLocaleString()} ฿</span>
+                  </div>
+                )}
               </div>
             )}
-
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <span className="text-sm font-extrabold text-latte-deep">
-                {inv.total.toLocaleString()} บาท
-              </span>
-              {inv.status === "paid" ? (
-                <span className="rounded-full bg-ok/20 px-2.5 py-1 text-xs font-extrabold text-ok">
-                  ✅ ชำระแล้ว
-                </span>
-              ) : (
-                <span className="rounded-full bg-wait/20 px-2.5 py-1 text-xs font-extrabold text-wait">
-                  ⏳ รอชำระ
-                </span>
-              )}
-            </div>
-            {(inv.deposit ?? 0) > 0 && (
-              <p className="text-[11px] font-bold text-ok">
-                {inv.depositReceivedAt ? "✅ รับมัดจำแล้ว " : "💰 มัดจำ (รอรับ) "}
+            {(!inv.items || inv.items.length === 0) && hasDep && (
+              <p className="mt-2 text-[11px] font-bold text-ok">
+                มัดจำ{inv.depositReceivedAt ? " (รับแล้ว) " : " (รอรับ) "}
                 {inv.deposit!.toLocaleString()}
                 {inv.status === "pending" && (
-                  <span className="text-wait">
-                    {" "}
-                    · คงเหลือ {(inv.total - inv.deposit!).toLocaleString()} บาท
-                  </span>
+                  <span className="text-wait"> · คงเหลือ {(inv.total - inv.deposit!).toLocaleString()} บาท</span>
                 )}
               </p>
             )}
 
-            {/* ส่งการ์ดให้ลูกค้า — ชุดปุ่มรวม (เหมือนในปฏิทิน กดจากบิลนี้ได้) */}
-            <div className="mt-2 rounded-petflow-sm bg-paper/50 p-2">
-              <CustomerSendButtons
-                invoiceId={inv.id}
-                bookingId={inv.bookingId || linkedBk?.id}
-                customerId={inv.customerId}
-                lineUserId={inv.lineUserId}
-                service={billServiceKind(inv.items)}
-                invoiceDeposit={inv.deposit ?? 0}
-                invoiceStatus={inv.status}
-                initialAutoOff={linkedBk?.autoOff}
-                onDone={load}
-              />
-              {/* บิลนี้ไม่มีนัดผูกอยู่ — ปุ่มแจ้งเตือนนัด/ส่งชุดการ์ดข้างบนเลยหายไปหมด
-                  ให้เลือกผูกนัดของลูกค้าคนนี้เองได้ ไม่ต้องแก้ที่ไหนเพิ่ม */}
-              {!inv.bookingId && !linkedBk && (
-                <div className="mt-2 rounded-petflow-sm border border-dashed border-latte/60 bg-latte/10 px-2.5 py-2">
-                  <p className="mb-1.5 text-[10px] font-bold text-brown-soft">
-                    ⚠️ บิลนี้ไม่มีนัดผูกอยู่ — ปุ่มแจ้งเตือนนัด/ส่งชุดการ์ดเลยไม่ขึ้น
-                    เลือกผูกนัดได้ที่นี่:
-                  </p>
-                  <select
-                    disabled={invoiceBusy === `${inv.id}:link_booking`}
-                    value=""
-                    onChange={(e) => {
-                      if (e.target.value) linkInvoiceToBooking(inv.id, e.target.value);
-                    }}
-                    className="w-full rounded-lg border border-petflow-line bg-paper px-2.5 py-1.5 text-xs"
-                  >
-                    <option value="">🔗 เลือกนัดของ {inv.customerName}...</option>
-                    {bookings
-                      .filter((b) => b.customerId === inv.customerId)
-                      .map((b) => (
-                        <option key={b.id} value={b.id}>
-                          {b.service === "room" ? "🏠" : "🛁"} {b.catName} ·{" "}
-                          {b.service === "room"
-                            ? `${b.checkin || "?"} → ${b.checkout || "?"}`
-                            : b.date || ""}
-                        </option>
-                      ))}
-                  </select>
-                </div>
+            {/* บิลนี้ไม่มีนัดผูกอยู่ — การ์ดที่อิงนัด (แจ้งเตือนนัด/ส่งชุดการ์ด) เลยไม่ขึ้น
+                ให้เลือกผูกนัดของลูกค้าคนนี้เองได้ ไม่ต้องแก้ที่ไหนเพิ่ม */}
+            {!inv.bookingId && !linkedBk && (
+              <label className="mt-2 flex min-h-[40px] items-center gap-2 rounded-full border border-dashed border-latte/60 bg-latte/10 px-3">
+                <Icon name="link" size={15} className="shrink-0 text-latte-deep" />
+                <select
+                  disabled={invoiceBusy === `${inv.id}:link_booking`}
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value) linkInvoiceToBooking(inv.id, e.target.value);
+                  }}
+                  aria-label="ผูกบิลกับนัด"
+                  className="min-w-0 flex-1 !border-0 !bg-transparent p-0 text-[11px] font-bold text-latte-deep"
+                >
+                  <option value="">ยังไม่ผูกนัด — เลือกนัดของ {inv.customerName}…</option>
+                  {bookings
+                    .filter((b) => b.customerId === inv.customerId)
+                    .map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.service === "room" ? "ห้องพัก" : "อาบน้ำ"} · {b.catName} ·{" "}
+                        {b.service === "room"
+                          ? `${b.checkin || "?"} → ${b.checkout || "?"}`
+                          : b.date || ""}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            )}
+
+            {/* ปุ่มหลักปุ่มเดียว: รอชำระ = รับชำระ · จ่ายแล้ว = ส่ง LINE (ใบเสร็จ/รีวิว) — ที่เหลืออยู่ในเมนู ⋯ */}
+            <div className="mt-3 flex items-center gap-2">
+              {paid ? (
+                <button
+                  type="button"
+                  onClick={openSend}
+                  className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-full bg-[#06C755]/15 px-4 text-sm font-extrabold text-[#06883c]"
+                >
+                  <Icon name="send" size={16} />
+                  ส่ง LINE
+                  {!inv.lineUserId && <span className="text-[11px] font-bold text-brown-soft">· ยังไม่ผูก</span>}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={!!invoiceBusy}
+                  onClick={() => setPayFor(inv)}
+                  className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-honey to-honey-deep px-4 text-sm font-extrabold text-petflow-chocolate disabled:opacity-50"
+                >
+                  <Icon name="money" size={16} />
+                  {busyHere ? "กำลังบันทึก…" : "รับชำระ"}
+                </button>
               )}
+              <MoreMenu items={menu} />
             </div>
 
-            {inv.status === "pending" && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {(inv.deposit ?? 0) > 0 && !inv.depositReceivedAt && (
-                  <button
-                    type="button"
-                    disabled={invoiceBusy === `${inv.id}:receive_deposit`}
-                    onClick={() =>
-                      invoiceAction(
-                        inv.id,
-                        "receive_deposit",
-                        "รับมัดจำแล้ว 💰 (ลงบัญชี + ส่งการ์ดขอบคุณให้ลูกค้า)"
-                      )
-                    }
-                    className="rounded-full bg-honey/40 px-3 py-1.5 text-xs font-bold text-petflow-chocolate disabled:opacity-50"
-                  >
-                    💰 รับมัดจำแล้ว
-                  </button>
-                )}
-                <button
-                  type="button"
-                  disabled={!!invoiceBusy}
-                  onClick={() => markPaid(inv.id, "transfer")}
-                  className="rounded-full bg-sage/20 px-3 py-1.5 text-xs font-bold text-ok disabled:opacity-50"
-                >
-                  ✅ {(inv.deposit ?? 0) > 0 ? "รับเงินที่เหลือ (ปิดบิล)" : "รับเงินแล้ว"}
-                </button>
-                {customers.find((c) => c.id === inv.customerId)?.isMember && (
-                  <button
-                    type="button"
-                    disabled={!!invoiceBusy}
-                    onClick={() => setConfirmCredit(inv)}
-                    className="rounded-full bg-honey/30 px-3 py-1.5 text-xs font-bold disabled:opacity-50"
-                  >
-                    💎 หัก Member
-                  </button>
-                )}
-                <button
-                  type="button"
-                  disabled={!!invoiceBusy}
-                  onClick={() => markPaid(inv.id, "cash")}
-                  className="rounded-full bg-paper px-3 py-1.5 text-xs font-bold disabled:opacity-50"
-                >
-                  💵 เงินสด
-                </button>
-                <button
-                  type="button"
-                  onClick={() => editInvoice(inv)}
-                  className="rounded-full bg-latte/25 px-3 py-1.5 text-xs font-bold text-petflow-chocolate"
-                >
-                  ✏️ แก้ไข
-                </button>
-              </div>
-            )}
-            {inv.status === "paid" && (
-              <div className="mt-2">
-                <button
-                  type="button"
-                  disabled={invoiceBusy === `${inv.id}:unmark_paid`}
-                  onClick={() =>
-                    invoiceAction(
-                      inv.id,
-                      "unmark_paid",
-                      "ยกเลิกการชำระแล้ว ↩️ — บิลกลับเป็น 'รอชำระ' แก้ไขต่อได้",
-                      "ยกเลิกการชำระบิลนี้? (กดผิดใช่ไหม)\nจะกลับเป็น 'รอชำระ' + ย้อนรายรับ/แต้ม/เครดิตที่ลงไป"
-                    )
-                  }
-                  className="rounded-full bg-wait/15 px-3 py-1.5 text-xs font-bold text-wait disabled:opacity-50"
-                >
-                  ↩️ ยกเลิกการชำระ (กดผิด)
-                </button>
-              </div>
-            )}
-            <button
-              type="button"
-              disabled={invoiceBusy === `${inv.id}:delete`}
-              onClick={() =>
-                invoiceAction(
-                  inv.id,
-                  "delete",
-                  "ลบบิลแล้ว 🗑️",
-                  `ลบบิลนี้? (${inv.total.toLocaleString()} บาท) — ลบรายการบัญชีที่ผูกด้วย กู้คืนไม่ได้`
-                )
-              }
-              className="mt-2 text-[11px] font-bold text-wait"
-            >
-              🗑️ ลบบิล
-            </button>
+            {/* แผ่นส่งการ์ด LINE ของบิลนี้ — เปิดจากปุ่ม/เมนูด้านบน (ชุดปุ่มรวม เหมือนในปฏิทิน) */}
+            <CustomerSendButtons
+              invoiceId={inv.id}
+              bookingId={inv.bookingId || linkedBk?.id}
+              customerId={inv.customerId}
+              lineUserId={inv.lineUserId}
+              service={billServiceKind(inv.items)}
+              invoiceDeposit={inv.deposit ?? 0}
+              invoiceStatus={inv.status}
+              initialAutoOff={linkedBk?.autoOff}
+              onDone={load}
+              hideTrigger
+              open={sendFor === inv.id}
+              onOpenChange={(v) => setSendFor(v ? inv.id : null)}
+            />
           </div>
           );
         };
 
         const monthBar = (
-          <div className="mb-3 flex flex-wrap items-center gap-2 rounded-petflow-sm bg-paper/60 px-3 py-2">
-            <span className="text-[11px] font-extrabold text-petflow-chocolate">🗓️ เดือน</span>
+          <div className="mb-3">
+          <div className="grid grid-cols-2 gap-2">
+            <label className="flex min-h-[40px] items-center gap-1.5 rounded-full border border-petflow-line bg-paper px-3">
+              <Icon name="filter" size={15} className="shrink-0 text-brown-soft" />
+              <select
+                value={billSort}
+                onChange={(e) => setBillSort(e.target.value as typeof billSort)}
+                aria-label="เรียงบิล"
+                className="min-w-0 flex-1 !border-0 !bg-transparent p-0 text-xs font-bold text-brown"
+              >
+                <option value="issued-desc">ออกบิลล่าสุดก่อน</option>
+                <option value="issued-asc">ออกบิลเก่าก่อน</option>
+                <option value="date-desc">วันนัดล่าสุดก่อน</option>
+                <option value="date-asc">วันนัดเก่าก่อน</option>
+                <option value="amount-desc">ยอดมากสุด</option>
+                <option value="due-desc">ค้างชำระมากสุด</option>
+                <option value="name-asc">ชื่อลูกค้า ก–ฮ</option>
+              </select>
+            </label>
+            <label className="flex min-h-[40px] items-center gap-1.5 rounded-full border border-petflow-line bg-paper px-3">
+              <Icon name="calendar" size={15} className="shrink-0 text-brown-soft" />
             <select
               value={billMonth}
               onChange={(e) => setBillMonth(e.target.value)}
-              className="rounded-petflow-sm border border-petflow-line bg-card px-2 py-1 text-xs font-bold text-brown-soft"
+              aria-label="เดือน"
+              className="min-w-0 flex-1 !border-0 !bg-transparent p-0 text-xs font-bold text-brown"
             >
               <option value="">ทุกเดือน</option>
               {monthOptions.map((m) => (
@@ -2372,7 +2757,9 @@ export default function BillingPage() {
                 </option>
               ))}
             </select>
-            <span className="text-[11px] font-bold text-brown-soft">
+            </label>
+          </div>
+            <p className="mt-2 px-1 text-[11px] font-bold text-brown-soft">
               {list.length} บิล · รวม {list.reduce((n, i) => n + i.total, 0).toLocaleString()} ฿
               {list.some((i) => i.status === "pending")
                 ? ` · ค้าง ${list
@@ -2380,7 +2767,7 @@ export default function BillingPage() {
                     .reduce((n, i) => n + dueOf(i), 0)
                     .toLocaleString()} ฿`
                 : ""}
-            </span>
+            </p>
           </div>
         );
 
@@ -2407,7 +2794,9 @@ export default function BillingPage() {
             return (
               <>
                 {monthBar}
-                <p className="py-6 text-center text-xs text-brown-soft">ไม่พบบิล</p>
+                <div className="rounded-petflow bg-card shadow-petflow-sm">
+                  <EmptyState icon="receipt" title="ไม่พบบิล" sub="ลองเปลี่ยนตัวกรอง หรือเดือน" />
+                </div>
               </>
             );
           }
@@ -2422,9 +2811,9 @@ export default function BillingPage() {
                   .reduce((s, i) => s + dueOf(i), 0);
                 return (
                   <div key={g.date || "no-date"}>
-                    <div className="mb-2 flex items-center justify-between border-b border-petflow-line pb-1">
-                      <span className="text-xs font-extrabold text-petflow-chocolate">
-                        {isIssuedSort ? "🧾" : "📅"}{" "}
+                    <div className="mb-2 flex items-center justify-between gap-2 px-1">
+                      <span className="flex items-center gap-1.5 text-xs font-extrabold text-petflow-chocolate">
+                        <Icon name={isIssuedSort ? "receipt" : "calendar"} size={14} />
                         {g.date ? formatThaiDateShort(g.date) : "ไม่ระบุวัน"} ·{" "}
                         {g.bills.length} บิล
                       </span>
@@ -2433,7 +2822,9 @@ export default function BillingPage() {
                         {dayDue > 0 ? ` · ค้าง ${dayDue.toLocaleString()}` : ""}
                       </span>
                     </div>
-                    <div className="space-y-3">{g.bills.map(renderBill)}</div>
+                    <div className="divide-y divide-petflow-line rounded-petflow bg-card shadow-petflow-sm">
+                      {g.bills.map(renderBill)}
+                    </div>
                   </div>
                 );
               })}
@@ -2446,14 +2837,18 @@ export default function BillingPage() {
           return (
             <>
               {monthBar}
-              <p className="py-6 text-center text-xs text-brown-soft">ไม่พบบิล</p>
+              <div className="rounded-petflow bg-card shadow-petflow-sm">
+                <EmptyState icon="receipt" title="ไม่พบบิล" sub="ลองเปลี่ยนตัวกรอง หรือเดือน" />
+              </div>
             </>
           );
         }
         return (
           <>
             {monthBar}
-            <div className="space-y-3">{list.map(renderBill)}</div>
+            <div className="divide-y divide-petflow-line rounded-petflow bg-card shadow-petflow-sm">
+              {list.map(renderBill)}
+            </div>
           </>
         );
       })()}

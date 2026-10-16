@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import type { RoomType } from "@/lib/business";
@@ -8,8 +8,14 @@ import type { CustomerRecord } from "@/lib/customers-store";
 import { GROOM_PROGRAMS, resolveGroomPrograms, type GroomProgram } from "@/lib/grooming-prices";
 import { CustomerSendButtons } from "@/components/CustomerSendButtons";
 import { toast } from "@/components/Toast";
+import { Icon } from "@/components/Icon";
+import { TransportPicker } from "@/components/TransportPicker";
+import type { BookingTransport } from "@/lib/transport";
+import { Avatar, SearchField, Segmented } from "@/components/ui";
 import {
   typeAvailability,
+  attachClosures,
+  type RoomClosure,
   compositionOf,
   roomCapacity,
   freeUnitsForRange,
@@ -20,33 +26,52 @@ type CustomerListItem = CustomerRecord & { upcomingAppointments?: number };
 
 const FREEBIE_OPTIONS = ["กล้องวงจรปิด (CCTV)", "น้ำพุแมว", "รับ-ส่ง", "ขนม/ทรีท"];
 
-function CustomerPicker({
-  onSelect,
+const UNKNOWN_CAT = "น้องไม่ระบุชื่อ";
+const isUnknownCat = (name: string) => name === UNKNOWN_CAT || name.startsWith(`${UNKNOWN_CAT} (`);
+
+/**
+ * เลือกลูกค้า + น้องแมว แบบแอปจองคิวทั่วไป (Fresha / Booksy / แอปโรงแรมสัตว์เลี้ยง)
+ * 1) ค้นหา → แตะแถวลูกค้า → กลายเป็นการ์ดลูกค้าที่เลือกแล้ว (กด "เปลี่ยน" ได้)
+ * 2) น้องแมวของลูกค้าขึ้นเป็นชิปให้แตะเลือก/ยกเลิกได้ทันที ไม่ต้องกดยืนยันซ้ำ
+ * ไม่เจอในระบบ → แตะ "ลูกค้าใหม่" ใช้ชื่อที่พิมพ์ แล้วพิมพ์ชื่อน้องเองได้
+ */
+function ClientPetPicker({
+  picked,
+  customerName,
+  catNames,
+  catInput,
+  setCatInput,
+  onPickCustomer,
+  onNewCustomer,
+  onClearCustomer,
+  onToggleCat,
+  onAddTyped,
+  onSetUnknownCount,
+  onRemoveCat,
+  onSelectAll,
 }: {
-  onSelect: (data: {
-    customerId: string;
-    customerName: string;
-    catNames: string[];
-    lineUserId?: string;
-  }) => void;
+  picked: CustomerListItem | null;
+  customerName: string;
+  catNames: string[];
+  catInput: string;
+  setCatInput: (v: string) => void;
+  onPickCustomer: (c: CustomerListItem) => void;
+  onNewCustomer: (name: string) => void;
+  onClearCustomer: () => void;
+  onToggleCat: (name: string) => void;
+  onAddTyped: () => void;
+  onSetUnknownCount: (n: number) => void;
+  onRemoveCat: (name: string) => void;
+  onSelectAll: (names: string[]) => void;
 }) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<CustomerListItem[]>([]);
   const [recent, setRecent] = useState<CustomerListItem[]>([]);
   const [loading, setLoading] = useState(false);
-  // เก็บทั้งก้อนลูกค้าที่เปิดอยู่ ไม่ใช่แค่ id — ผลค้นหาโหลดช้า/รีเฟรชแล้วทับลิสต์ได้
-  // ถ้าเปิดจาก id อย่างเดียว แผงติ๊กแมวจะหายไปกลางทางจนเหมือน "กดแล้วไม่ติด"
-  const [openCustomer_, setOpenCustomer_] = useState<CustomerListItem | null>(null);
-  const openCustomerId = openCustomer_?.id ?? null;
-  const setOpenCustomerId = (id: string | null) => {
-    if (id === null) setOpenCustomer_(null);
-  };
-  const [checked, setChecked] = useState<Record<string, boolean>>({});
-  const recentRef = useRef<CustomerListItem[]>([]);
-  // แมวบางตัวข้อมูลเก่าไม่มี id — ใช้ชื่อแทน ไม่งั้นทุกตัวใช้ key เดียวกัน ติ๊กตัวหนึ่งกลายเป็นติ๊กหมด/ไม่ติด
-  const catKey = (cat: { id?: string; name: string }) => cat.id || `name:${cat.name}`;
+  const [typing, setTyping] = useState(false);
+  const [recentLoaded, setRecentLoaded] = useState(false);
 
-  // โหลดลูกค้าสมัครล่าสุดไว้ล่วงหน้า — โชว์เป็นลิสต์ให้เลือกได้ทันทีโดยไม่ต้องพิมพ์ค้นหา
+  // ลูกค้าล่าสุดโหลดไว้ก่อน — เปิดหน้ามาก็แตะเลือกได้เลยโดยไม่ต้องพิมพ์
   useEffect(() => {
     fetch("/api/customers")
       .then((r) => r.json())
@@ -54,179 +79,283 @@ function CustomerPicker({
         const sorted = [...((d.customers || []) as CustomerListItem[])].sort(
           (a, b) => (b.createdAt || "").localeCompare(a.createdAt || "")
         );
-        const top = sorted.slice(0, 20);
-        setRecent(top);
-        recentRef.current = top;
-        setResults((prev) => (prev.length === 0 ? top : prev));
+        setRecent(sorted.slice(0, 8));
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setRecentLoaded(true));
   }, []);
 
-  const search = useCallback(
-    async (query: string) => {
-      const trimmed = query.trim();
-      if (!trimmed) {
-        setResults(recentRef.current);
-        return;
-      }
-      setLoading(true);
-      const res = await fetch(`/api/customers?q=${encodeURIComponent(trimmed)}`);
-      const data = await res.json();
-      setResults(data.customers || []);
-      setLoading(false);
-    },
-    []
-  );
-
   useEffect(() => {
-    const t = setTimeout(() => search(q), 250);
-    return () => clearTimeout(t);
-  }, [q, search]);
-
-  const openCustomer = (c: CustomerListItem) => {
-    if (c.cats.length === 0) {
-      onSelect({
-        customerId: c.id,
-        customerName: c.name,
-        catNames: [],
-        lineUserId: c.lineUserId,
-      });
-      setQ("");
-      setResults(recentRef.current);
+    const query = q.trim();
+    if (!query) {
+      setResults([]);
+      setLoading(false);
       return;
     }
-    setOpenCustomer_(c);
-    setChecked({});
-  };
+    setLoading(true);
+    let alive = true;
+    const t = setTimeout(async () => {
+      const res = await fetch(`/api/customers?q=${encodeURIComponent(query)}`).catch(() => null);
+      const data = res ? await res.json().catch(() => ({})) : {};
+      if (!alive) return;
+      setResults((data.customers || []).slice(0, 20));
+      setLoading(false);
+    }, 250);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [q]);
 
-  const confirmPick = (c: CustomerListItem) => {
-    const names = c.cats.filter((cat) => checked[catKey(cat)]).map((cat) => cat.name);
-    onSelect({
-      customerId: c.id,
-      customerName: c.name,
-      catNames: names,
-      lineUserId: c.lineUserId,
-    });
+  const hasCustomer = !!picked || !!customerName.trim();
+  const list = q.trim() ? results : recent;
+  const knownCats = picked?.cats.map((c) => c.name) ?? [];
+  const unknownCount = catNames.filter(isUnknownCat).length;
+  const extraCats = catNames.filter((n) => !knownCats.includes(n) && !isUnknownCat(n));
+
+  const pick = (c: CustomerListItem) => {
+    onPickCustomer(c);
     setQ("");
-    setResults(recentRef.current);
-    setOpenCustomerId(null);
-    setChecked({});
   };
 
   return (
-    <div className="rounded-petflow-sm border border-latte/40 bg-honey/10 p-3">
-      <label className="block text-xs font-extrabold text-petflow-chocolate">
-        🔍 ค้นหาลูกค้า (ชื่อแมว / ชื่อใน LINE)
-        <input
-          value={q}
-          onChange={(e) => {
-            setQ(e.target.value);
-            setOpenCustomerId(null);
-          }}
-          placeholder="เช่น น้องจู๊ด หรือ ชื่อที่เห็นใน LINE"
-          className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm"
-        />
-      </label>
-      <p className="mt-1 text-[10px] text-brown-soft">
-        เลือกลูกค้า → ติ๊กแมวที่มา (เลือกได้หลายตัว/ทั้งบ้าน) → ระบบผูกนัดให้อัตโนมัติ
-      </p>
-
-      {loading && <p className="mt-2 text-[10px] text-brown-faint">กำลังค้นหา…</p>}
-
-      {!loading && !q.trim() && results.length > 0 && (
-        <p className="mt-2 text-[10px] font-bold text-latte-deep">
-          🆕 ลูกค้าสมัครล่าสุด — เลือกจากลิสต์ได้เลย
+    <div className="space-y-5">
+      {/* ── 1. ลูกค้า ── */}
+      <section>
+        <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">
+          Customer · ลูกค้า
         </p>
-      )}
+        {hasCustomer ? (
+          <div className="flex items-center gap-3 rounded-petflow-sm border border-honey/60 bg-honey/10 px-3 py-3">
+            <Avatar name={picked?.name || customerName} />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-extrabold text-petflow-chocolate">
+                {picked?.name || customerName}
+              </p>
+              <p className="truncate text-[11px] text-brown-soft">
+                {picked
+                  ? [picked.phone, picked.lineUserId ? "LINE ✓" : "ยังไม่ผูก LINE"]
+                      .filter(Boolean)
+                      .join(" · ")
+                  : "ลูกค้าใหม่ (ยังไม่มีในระบบ)"}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClearCustomer}
+              className="shrink-0 rounded-full bg-card px-3 py-1.5 text-xs font-bold text-latte-deep shadow-petflow-sm"
+            >
+              เปลี่ยน
+            </button>
+          </div>
+        ) : (
+          <>
+            <SearchField value={q} onChange={setQ} placeholder="ค้นหาชื่อ เบอร์ หรือชื่อน้องแมว" />
 
-      {results.length > 0 && (
-        <ul className="mt-2 max-h-64 space-y-1 overflow-y-auto">
-          {(openCustomer_ && !results.some((r) => r.id === openCustomer_.id)
-            ? [openCustomer_, ...results]
-            : results
-          ).map((c) => (
-            <li key={c.id}>
-              {openCustomerId === c.id ? (
-                <div className="rounded-petflow-sm border border-honey/50 bg-card p-2.5">
-                  <p className="mb-1.5 text-xs font-extrabold text-petflow-chocolate">
-                    {c.name}
-                    {c.lineUserId && (
-                      <span className="ml-1 text-[10px] text-ok">LINE ✓</span>
-                    )}
-                  </p>
-                  <div className="space-y-1">
-                    {c.cats.map((cat) => (
-                      <label
-                        key={catKey(cat)}
-                        className="flex items-center gap-2 rounded-petflow-sm bg-paper px-2.5 py-1.5 text-xs"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={!!checked[catKey(cat)]}
-                          onChange={(e) =>
-                            setChecked((prev) => ({ ...prev, [catKey(cat)]: e.target.checked }))
-                          }
-                        />
-                        <span className="font-bold text-brown">🐱 {cat.name}</span>
-                      </label>
-                    ))}
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setChecked(
-                          Object.fromEntries(c.cats.map((cat) => [catKey(cat), true]))
-                        )
-                      }
-                      className="rounded-full bg-honey/30 px-3 py-1 text-[10px] font-bold text-petflow-chocolate"
-                    >
-                      ✅ เลือกทั้งบ้าน ({c.cats.length} ตัว)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => confirmPick(c)}
-                      disabled={!Object.values(checked).some(Boolean)}
-                      className="rounded-full bg-latte-deep px-3 py-1 text-[10px] font-extrabold text-white disabled:opacity-40"
-                    >
-                      ➕ ใช้แมวที่เลือก
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setOpenCustomerId(null)}
-                      className="rounded-full bg-paper px-3 py-1 text-[10px] font-bold text-brown-soft"
-                    >
-                      ยกเลิก
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => openCustomer(c)}
-                  className="w-full rounded-petflow-sm bg-card px-3 py-2 text-left text-xs hover:bg-paper"
-                >
-                  <span className="font-bold text-brown">{c.name}</span>
-                  {c.lineUserId && (
-                    <span className="ml-1 text-[10px] text-ok">LINE ✓</span>
-                  )}
-                  <span className="block text-[10px] text-brown-faint">
-                    {c.cats.length > 0
-                      ? `🐱 ${c.cats.map((cat) => cat.name).join(", ")}`
-                      : "ยังไม่มีชื่อแมวในระบบ"}
-                  </span>
-                </button>
+            <p className="mb-1 mt-3 px-1 text-[11px] font-bold text-brown-soft">
+              {q.trim() ? (loading ? "กำลังค้นหา…" : `ผลการค้นหา ${results.length} ราย`) : "ลูกค้าล่าสุด"}
+            </p>
+            <ul className="max-h-80 divide-y divide-petflow-line overflow-y-auto rounded-petflow-sm border border-petflow-line bg-card">
+              {list.map((c) => (
+                <li key={c.id}>
+                  <button
+                    type="button"
+                    onClick={() => pick(c)}
+                    className="flex w-full items-center gap-3 px-3 py-2.5 text-left active:bg-paper"
+                  >
+                    <Avatar name={c.name} />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-1.5">
+                        <span className="truncate text-sm font-bold text-petflow-chocolate">{c.name}</span>
+                        {c.lineUserId && (
+                          <span className="shrink-0 rounded-full bg-ok/15 px-1.5 py-px text-[9px] font-bold text-ok">
+                            LINE
+                          </span>
+                        )}
+                      </span>
+                      <span className="block truncate text-[11px] text-brown-soft">
+                        {[c.phone, c.cats.length ? c.cats.map((cat) => cat.name).join(", ") : "ยังไม่มีน้องในระบบ"]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                    </span>
+                    <Icon name="chevron" size={16} className="text-brown-faint" />
+                  </button>
+                </li>
+              ))}
+              {q.trim() && !loading && (
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onNewCustomer(q.trim());
+                      setQ("");
+                    }}
+                    className="flex w-full items-center gap-3 px-3 py-2.5 text-left"
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-dashed border-latte-deep text-latte-deep">
+                      <Icon name="plus" size={18} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-bold text-latte-deep">
+                        ลูกค้าใหม่ “{q.trim()}”
+                      </span>
+                      <span className="block text-[11px] text-brown-soft">
+                        ยังไม่มีในระบบ ใส่ข้อมูลเพิ่มทีหลังได้
+                      </span>
+                    </span>
+                  </button>
+                </li>
               )}
-            </li>
-          ))}
-        </ul>
-      )}
+              {!q.trim() && list.length === 0 && (
+                <li className="px-3 py-4 text-center text-xs text-brown-faint">
+                  {recentLoaded ? "พิมพ์ค้นหาด้านบน หรือพิมพ์ชื่อลูกค้าใหม่ได้เลย" : "กำลังโหลด…"}
+                </li>
+              )}
+            </ul>
+          </>
+        )}
+      </section>
 
-      {q.trim() && !loading && results.length === 0 && (
-        <p className="mt-2 text-[10px] text-brown-faint">
-          ไม่พบในระบบ — กรอกชื่อแมวด้านล่างได้เลย (ชื่อเจ้าของใส่ทีหลังในประวัติ)
+      {/* ── 2. น้องแมว ── */}
+      <section>
+        <div className="mb-2 flex items-end justify-between gap-2">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">
+            Cats · น้องแมวที่มา *
+          </p>
+          {knownCats.length > 1 && (
+            <button
+              type="button"
+              onClick={() => onSelectAll(knownCats)}
+              className="text-xs font-bold text-latte-deep"
+            >
+              เลือกทั้งบ้าน ({knownCats.length})
+            </button>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {knownCats.map((name) => {
+            const on = catNames.includes(name);
+            return (
+              <button
+                key={name}
+                type="button"
+                aria-pressed={on}
+                onClick={() => onToggleCat(name)}
+                className={`flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm font-bold transition ${
+                  on
+                    ? "border-petflow-chocolate bg-petflow-chocolate text-card"
+                    : "border-petflow-line bg-card text-brown"
+                }`}
+              >
+                {on ? <Icon name="check" size={15} strokeWidth={2.4} /> : <Icon name="paw" size={15} />}
+                {name}
+              </button>
+            );
+          })}
+          {extraCats.map((name) => (
+            <span
+              key={name}
+              className="flex items-center gap-1.5 rounded-full border border-petflow-chocolate bg-petflow-chocolate py-2 pl-3.5 pr-2 text-sm font-bold text-card"
+            >
+              <Icon name="check" size={15} strokeWidth={2.4} />
+              {name}
+              <button
+                type="button"
+                onClick={() => onRemoveCat(name)}
+                aria-label={`เอา ${name} ออก`}
+                className="flex h-5 w-5 items-center justify-center rounded-full bg-card/20 text-[10px]"
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+          {typing ? (
+            <span className="flex items-center gap-1 rounded-full border border-honey-deep bg-card py-1 pl-3 pr-1">
+              <input
+                autoFocus
+                value={catInput}
+                onChange={(e) => setCatInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    onAddTyped();
+                  }
+                  if (e.key === "Escape") setTyping(false);
+                }}
+                placeholder="ชื่อน้อง"
+                className="w-24 !border-0 !bg-transparent p-0 text-sm !shadow-none !outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  onAddTyped();
+                  setTyping(false);
+                }}
+                disabled={!catInput.trim()}
+                className="rounded-full bg-petflow-chocolate px-3 py-1 text-xs font-bold text-card disabled:opacity-40"
+              >
+                เพิ่ม
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setTyping(true)}
+              className="flex items-center gap-1 rounded-full border border-dashed border-latte-deep px-3.5 py-2 text-sm font-bold text-latte-deep"
+            >
+              <Icon name="plus" size={15} />
+              {knownCats.length ? "น้องตัวใหม่" : "พิมพ์ชื่อน้อง"}
+            </button>
+          )}
+          {unknownCount === 0 && (
+            <button
+              type="button"
+              onClick={() => onSetUnknownCount(1)}
+              className="rounded-full border border-dashed border-petflow-line px-3.5 py-2 text-sm font-bold text-brown-soft"
+            >
+              ยังไม่ทราบตัว
+            </button>
+          )}
+        </div>
+        {/* ยังไม่รู้ว่าตัวไหนมา แต่ต้องรู้จำนวน — ระบบล็อกคิวทีละตัว จำนวนจึงต้องตรงกับที่จะมาจริง */}
+        {unknownCount > 0 && (
+          <div className="mt-3 flex items-center gap-3 rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-card text-brown-soft">
+              <Icon name="paw" size={18} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-extrabold text-petflow-chocolate">ยังไม่ทราบตัว</p>
+              <p className="text-[11px] text-brown-soft">มากี่ตัว — ล็อกคิวตามจำนวนนี้ ใส่ชื่อทีหลังได้</p>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                aria-label={unknownCount === 1 ? "เอาออก" : "ลดจำนวน"}
+                onClick={() => onSetUnknownCount(unknownCount - 1)}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-card text-petflow-chocolate shadow-petflow-sm"
+              >
+                {unknownCount === 1 ? <Icon name="x" size={16} /> : <span className="text-lg font-bold leading-none">−</span>}
+              </button>
+              <span className="w-8 text-center text-lg font-extrabold text-petflow-chocolate">{unknownCount}</span>
+              <button
+                type="button"
+                aria-label="เพิ่มจำนวน"
+                onClick={() => onSetUnknownCount(unknownCount + 1)}
+                disabled={unknownCount >= 10}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-petflow-chocolate text-card disabled:opacity-40"
+              >
+                <Icon name="plus" size={16} strokeWidth={2.4} />
+              </button>
+            </div>
+          </div>
+        )}
+        <p className="mt-2 text-[11px] text-brown-faint">
+          {catNames.length > 0
+            ? `รวม ${catNames.length} ตัว · ล็อกคิว ${catNames.length} ที่ · ระบบสร้างนัดให้ทีละตัวและผูกเป็นบ้านเดียวกัน`
+            : "แตะชื่อน้องเพื่อเลือก เลือกได้หลายตัว · ไม่รู้ว่าตัวไหนมา กด “ยังไม่ทราบตัว”"}
         </p>
-      )}
+      </section>
     </div>
   );
 }
@@ -250,6 +379,7 @@ export default function NewBookingPage() {
   const [groomPrograms, setGroomPrograms] = useState<GroomProgram[]>(GROOM_PROGRAMS);
   const [freebies_, setFreebies_] = useState<string[]>(FREEBIE_OPTIONS);
   const [customerId, setCustomerId] = useState("");
+  const [pickedCustomer, setPickedCustomer] = useState<CustomerListItem | null>(null);
   const [customerName, setCustomerName] = useState("");
   const [catNames, setCatNames] = useState<string[]>([]);
   const [catInput, setCatInput] = useState("");
@@ -277,7 +407,7 @@ export default function NewBookingPage() {
     fetch("/api/config")
       .then((r) => r.json())
       .then((d) => {
-        if (d.config?.rooms) setRooms(d.config.rooms);
+        if (d.config?.rooms) setRooms(attachClosures(d.config.rooms as RoomType[], d.config.roomClosures));
         if (d.config?.groomSlots) setGroomSlots(d.config.groomSlots);
         if (d.config?.options?.freebies?.length) setFreebies_(d.config.options.freebies);
         setGroomPrograms(resolveGroomPrograms(d.config?.groomPricePrograms));
@@ -298,12 +428,14 @@ export default function NewBookingPage() {
   const [roomId, setRoomId] = useState("");
   // ห้องจริงที่ปักหมุด (เลขห้อง) — เฉพาะห้องเดี่ยว ไม่ใช่ห้องเชื่อม (ห้องเชื่อมจัดให้อัตโนมัติเหมือนเดิม)
   const [roomUnit, setRoomUnit] = useState<number | null>(null);
+  const [transport, setTransport] = useState<BookingTransport>({});
   const boardRooms = rooms.map((r) => ({
     id: r.id,
     name: r.name,
     count: r.count || 0,
     maxCats: roomCapacity(r),
     composedOf: r.composedOf,
+    closures: (r as RoomType & { closures?: RoomClosure[] }).closures,
   }));
   /** ห้องแต่ละแบบว่างกี่ห้องตลอดช่วงที่ขอ (ติดคืนไหนบอกคืนนั้น) */
   const availability = useMemo(() => {
@@ -363,14 +495,16 @@ export default function NewBookingPage() {
     setCatInput("");
   };
 
-  const addUnknownCat = () => {
-    let name = "น้องไม่ระบุชื่อ";
-    let n = 2;
-    while (catNames.includes(name)) {
-      name = `น้องไม่ระบุชื่อ (${n})`;
-      n += 1;
-    }
-    setCatNames((prev) => [...prev, name]);
+  // ตั้งจำนวนน้องที่ยังไม่รู้ตัว — แต่ละตัวเป็นนัดหนึ่งที่ (ชื่อชั่วคราว แก้ทีหลังในนัดได้)
+  const setUnknownCount = (count: number) => {
+    setCatNames((prev) => {
+      const known = prev.filter((c) => !isUnknownCat(c));
+      const n = Math.max(0, Math.min(10, count));
+      const placeholders = Array.from({ length: n }, (_, i) =>
+        i === 0 ? UNKNOWN_CAT : `${UNKNOWN_CAT} (${i + 1})`
+      );
+      return [...known, ...placeholders];
+    });
   };
 
   const removeCat = (name: string) => {
@@ -412,6 +546,7 @@ export default function NewBookingPage() {
       checkout: service === "room" ? String(fd.get("checkout") || "") : undefined,
       groomProgram: service === "groom" ? groomProgram || undefined : undefined,
       notes,
+      transport: transport.pickup || transport.dropoff ? transport : undefined,
     };
 
     const created: {
@@ -449,11 +584,13 @@ export default function NewBookingPage() {
       setSaved(true);
       setLastBookings(created);
       setCustomerId("");
+      setPickedCustomer(null);
       setCustomerName("");
       setCatNames([]);
       setCatInput("");
       setLineUserId("");
       setFreebies([]);
+      setTransport({});
       setRoomUnit(null);
       setGroomProgram("");
       form.reset();
@@ -471,34 +608,46 @@ export default function NewBookingPage() {
 
   return (
     <div>
-      <h1 className="mb-1 text-lg font-extrabold text-petflow-chocolate">
-        ➕ บันทึกจองให้ลูกค้า
-      </h1>
+      <div className="mb-4">
+        <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">New booking</p>
+        <h1 className="text-xl font-extrabold text-petflow-chocolate">บันทึกจองให้ลูกค้า</h1>
+      </div>
 
       {/* จองเสร็จแล้ว → ทำต่อได้เลยจากตรงนี้ */}
       {lastBookings.length > 0 && (
-        <div className="mb-4 space-y-3 rounded-petflow border border-sage/50 bg-sage/10 p-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-extrabold text-ok">
-              ✅ จองแล้ว {lastBookings.length} ตัว: {lastBookings.map((b) => b.catName).join(", ")}
-            </p>
+        <div className="mb-4 space-y-3 rounded-petflow border border-sage/50 bg-sage/10 p-4 shadow-petflow-sm">
+          <div className="flex items-center gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ok text-card">
+              <Icon name="check" size={22} strokeWidth={2.4} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-extrabold text-ok">จองแล้ว {lastBookings.length} ตัว</p>
+              <p className="truncate text-xs text-brown-soft">
+                {lastBookings.map((b) => b.catName).join(", ")}
+              </p>
+            </div>
             <button
               type="button"
               onClick={() => setLastBookings([])}
-              className="shrink-0 rounded-petflow-sm bg-paper px-3 py-2 text-xs font-bold text-brown-soft"
+              className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full bg-card px-3.5 text-xs font-bold text-brown shadow-petflow-sm"
             >
+              <Icon name="plus" size={16} />
               จองอีกคน
             </button>
           </div>
           {lastBookings.map((b) => (
             <div key={b.id} className="rounded-petflow-sm border border-sage/30 bg-card p-3">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-extrabold text-petflow-chocolate">🐱 {b.catName}</p>
+                <p className="flex min-w-0 items-center gap-1.5 text-sm font-extrabold text-petflow-chocolate">
+                  <Icon name="paw" size={16} className="text-brown-soft" />
+                  <span className="truncate">{b.catName}</span>
+                </p>
                 <Link
                   href={`/admin/billing?bookingId=${b.id}`}
-                  className="shrink-0 rounded-petflow-sm bg-honey/45 px-3 py-1.5 text-[11px] font-extrabold text-petflow-chocolate"
+                  className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full bg-petflow-chocolate px-3.5 text-xs font-extrabold text-card"
                 >
-                  🧾 ออกบิลเลย
+                  <Icon name="receipt" size={16} />
+                  ออกบิลเลย
                 </Link>
               </div>
               <div className="mt-2 border-t border-petflow-line pt-2">
@@ -514,118 +663,68 @@ export default function NewBookingPage() {
         </div>
       )}
       {appointmentDate && (
-        <p className="mb-4 text-xs font-bold text-latte-deep">
-          📅 จองวันที่ {appointmentDate}
+        <p className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-latte/20 px-3 py-1.5 text-xs font-bold text-latte-deep">
+          <Icon name="calendar" size={14} />
+          จองวันที่ {appointmentDate}
         </p>
       )}
 
-      <div className="mb-4 flex gap-2">
-        {(
-          [
-            { id: "groom" as const, label: "🛁 อาบน้ำ" },
-            { id: "room" as const, label: "🏠 ห้องพัก" },
-          ] as const
-        ).map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => setService(s.id)}
-            className={`flex-1 rounded-petflow-sm py-3 text-sm font-bold ${
-              service === s.id
-                ? "bg-honey/45 text-petflow-chocolate shadow-petflow-sm"
-                : "bg-paper text-brown-soft"
-            }`}
-          >
-            {s.label}
-          </button>
-        ))}
-      </div>
+      <Segmented
+        value={service}
+        onChange={setService}
+        className="mb-4"
+        options={[
+          { id: "groom", label: "อาบน้ำ", icon: "bath" },
+          { id: "room", label: "ห้องพัก", icon: "bed" },
+        ]}
+      />
 
-      <form onSubmit={submit} className="space-y-4 rounded-petflow bg-card p-5 shadow-petflow-sm">
-        <CustomerPicker
-          onSelect={(data) => {
-            setCustomerId(data.customerId);
-            setCustomerName(data.customerName);
-            setLineUserId(data.lineUserId || "");
-            setCatNames((prev) => {
-              const merged = [...prev];
-              for (const n of data.catNames) {
-                if (!merged.includes(n)) merged.push(n);
-              }
-              return merged;
-            });
+      <form onSubmit={submit} className="space-y-4 rounded-petflow bg-card p-4 shadow-petflow-sm sm:p-5">
+        <ClientPetPicker
+          picked={pickedCustomer}
+          customerName={customerName}
+          catNames={catNames}
+          catInput={catInput}
+          setCatInput={setCatInput}
+          onPickCustomer={(c) => {
+            setPickedCustomer(c);
+            setCustomerId(c.id);
+            setCustomerName(c.name);
+            setLineUserId(c.lineUserId || "");
+            // มีน้องตัวเดียว เลือกให้เลย — ลดการแตะหนึ่งครั้ง
+            setCatNames(c.cats.length === 1 ? [c.cats[0].name] : []);
           }}
+          onNewCustomer={(name) => {
+            setPickedCustomer(null);
+            setCustomerId("");
+            setCustomerName(name);
+            setLineUserId("");
+            setCatNames([]);
+          }}
+          onClearCustomer={() => {
+            setPickedCustomer(null);
+            setCustomerId("");
+            setCustomerName("");
+            setLineUserId("");
+            setCatNames([]);
+          }}
+          onToggleCat={(name) =>
+            setCatNames((prev) =>
+              prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]
+            )
+          }
+          onAddTyped={addCatFromInput}
+          onSetUnknownCount={setUnknownCount}
+          onRemoveCat={removeCat}
+          onSelectAll={(names) =>
+            setCatNames((prev) => [...prev, ...names.filter((n) => !prev.includes(n))])
+          }
         />
-
-        <Field
-          label="ชื่อใน LINE (ไม่บังคับ — เลือกจากค้นหาด้านบนได้)"
-          name="customer"
-          value={customerName}
-          onChange={setCustomerName}
-          placeholder="ชื่อที่เห็นใน LINE"
-        />
-
-        <div>
-          <label className="block text-xs font-bold text-brown-soft">น้องแมวที่มา *</label>
-
-          {catNames.length > 0 && (
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {catNames.map((name) => (
-                <span
-                  key={name}
-                  className="flex items-center gap-1 rounded-full bg-honey/30 px-3 py-1 text-xs font-bold text-petflow-chocolate"
-                >
-                  🐱 {name}
-                  <button
-                    type="button"
-                    onClick={() => removeCat(name)}
-                    className="ml-0.5 text-brown-faint hover:text-wait"
-                    aria-label={`เอา ${name} ออก`}
-                  >
-                    ✕
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
-
-          <div className="mt-1.5 flex gap-2">
-            <input
-              value={catInput}
-              onChange={(e) => setCatInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  addCatFromInput();
-                }
-              }}
-              placeholder="พิมพ์ชื่อแมว แล้วกด Enter หรือ ➕"
-              className="min-w-0 flex-1 rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm outline-none focus:border-latte-deep"
-            />
-            <button
-              type="button"
-              onClick={addCatFromInput}
-              disabled={!catInput.trim()}
-              className="shrink-0 rounded-petflow-sm bg-latte/25 px-3 py-2.5 text-sm font-extrabold text-petflow-chocolate disabled:opacity-40"
-            >
-              ➕
-            </button>
-          </div>
-          <button
-            type="button"
-            onClick={addUnknownCat}
-            className="mt-1.5 rounded-full bg-paper px-3 py-1.5 text-[11px] font-bold text-brown-soft"
-          >
-            ❓ ยังไม่ทราบตัว (จะแจ้งภายหลัง)
-          </button>
-          <p className="mt-1 text-[10px] text-brown-faint">
-            ทราบว่ามากี่ตัวแต่ไม่รู้ว่าตัวไหน กดปุ่มนี้ได้เลย — ใส่ชื่อจริงทีหลังตอนเช็คอินได้
-          </p>
-        </div>
 
         {lineUserId && (
-          <p className="rounded-petflow-sm bg-sage/15 px-3 py-2 text-[10px] font-bold text-ok">
-            ✅ ผูก LINE แล้ว — ลูกค้าเห็นนัดในแอบอัตโนมัติ
+          <p className="flex items-center gap-2 rounded-petflow-sm bg-sage/15 px-3 py-2 text-[11px] font-bold text-ok">
+            <Icon name="check" size={14} strokeWidth={2.4} />
+            ผูก LINE แล้ว — ลูกค้าเห็นนัดในแอปอัตโนมัติ
           </p>
         )}
 
@@ -646,7 +745,7 @@ export default function NewBookingPage() {
                 type="time"
                 list="groom-slots"
                 defaultValue="12:30"
-                className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm"
+                className="mt-1 min-h-[44px] w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm text-brown"
               />
               <datalist id="groom-slots">
                 {groomSlots.map((t) => (
@@ -662,7 +761,7 @@ export default function NewBookingPage() {
               <select
                 value={groomProgram}
                 onChange={(e) => setGroomProgram(e.target.value)}
-                className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm"
+                className="mt-1 min-h-[44px] w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm text-brown"
               >
                 <option value="">ยังไม่เลือก — ถามหน้างาน</option>
                 {groomPrograms.map((p) => (
@@ -697,7 +796,8 @@ export default function NewBookingPage() {
                       type="button"
                       disabled={full}
                       onClick={() => setRoomId(r.id)}
-                      className={`flex w-full items-center justify-between gap-2 rounded-petflow-sm px-3 py-2.5 text-left transition ${
+                      aria-pressed={picked}
+                      className={`flex min-h-[52px] w-full items-center justify-between gap-2 rounded-petflow-sm px-3 py-2.5 text-left transition ${
                         full
                           ? "cursor-not-allowed bg-paper/50 opacity-60"
                           : picked
@@ -706,9 +806,11 @@ export default function NewBookingPage() {
                       }`}
                     >
                       <span className="min-w-0">
-                        <span className="block truncate text-xs font-extrabold text-petflow-chocolate">
-                          {picked && !full ? "✓ " : ""}
-                          {r.name} ({r.size})
+                        <span className="flex items-center gap-1 truncate text-xs font-extrabold text-petflow-chocolate">
+                          {picked && !full && <Icon name="check" size={14} strokeWidth={2.4} />}
+                          <span className="truncate">
+                            {r.name} ({r.size})
+                          </span>
                         </span>
                         <span className="block text-[10px] text-brown-soft">
                           {r.price} บาท/คืน
@@ -732,8 +834,9 @@ export default function NewBookingPage() {
               </div>
               {Object.keys(availability).length > 0 &&
                 Object.values(availability).every((a) => a.free <= 0) && (
-                <p className="mt-2 rounded-petflow-sm bg-red-50 px-3 py-2 text-[10px] font-bold text-red-700">
-                  🔴 ช่วงวันนี้ห้องเต็มทุกแบบ — ต้องเลื่อนวันหรือเช็คห้องที่จะเช็คเอาท์ก่อน
+                <p className="mt-2 flex items-start gap-1.5 rounded-petflow-sm bg-red-50 px-3 py-2 text-[11px] font-bold text-red-700">
+                  <Icon name="alert" size={14} className="mt-px" />
+                  ช่วงวันนี้ห้องเต็มทุกแบบ — ต้องเลื่อนวันหรือเช็คห้องที่จะเช็คเอาท์ก่อน
                 </p>
               )}
 
@@ -741,8 +844,9 @@ export default function NewBookingPage() {
               {roomId && !compositionOf(roomId, boardRooms) && (
                 <div className="mt-3 rounded-petflow-sm border border-petflow-line bg-paper/50 p-3">
                   <input type="hidden" name="roomUnit" value={roomUnit ?? ""} />
-                  <p className="text-xs font-bold text-brown-soft">
-                    🗺️ เลือกห้องจริง (ไม่บังคับ)
+                  <p className="flex items-center gap-1.5 text-xs font-bold text-brown-soft">
+                    <Icon name="grid" size={14} />
+                    เลือกห้องจริง (ไม่บังคับ)
                   </p>
                   <p className="mb-2 text-[10px] text-brown-faint">
                     ไม่เลือก = ให้ระบบจัดห้องให้อัตโนมัติตอนถึงวันจริง
@@ -756,13 +860,15 @@ export default function NewBookingPage() {
                           key={u}
                           type="button"
                           onClick={() => setRoomUnit(roomUnit === u ? null : u)}
-                          className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${
+                          aria-pressed={roomUnit === u}
+                          className={`flex min-h-[40px] items-center gap-1 rounded-full px-3.5 text-xs font-bold transition ${
                             roomUnit === u
-                              ? "bg-honey-deep text-white"
-                              : "bg-card text-brown-soft hover:bg-honey/20"
+                              ? "bg-petflow-chocolate text-card"
+                              : "bg-card text-brown-soft ring-1 ring-petflow-line hover:bg-honey/20"
                           }`}
                         >
-                          {roomUnit === u ? "✓ " : ""}ห้อง {u}
+                          {roomUnit === u && <Icon name="check" size={14} strokeWidth={2.4} />}
+                          ห้อง {u}
                         </button>
                       ))}
                     </div>
@@ -791,8 +897,9 @@ export default function NewBookingPage() {
 
         {service === "room" && (
         <div className="rounded-petflow-sm border border-honey/40 bg-honey/10 p-3">
-          <p className="text-xs font-extrabold text-petflow-chocolate">
-            🎁 ของแถมฟรี (ถ้าตกลงกับลูกค้าไว้)
+          <p className="flex items-center gap-1.5 text-xs font-extrabold text-petflow-chocolate">
+            <Icon name="gift" size={15} />
+            ของแถมฟรี (ถ้าตกลงกับลูกค้าไว้)
           </p>
           <p className="mb-2 text-[10px] text-brown-soft">
             ติ๊กแล้วจะติดไปในใบจอง + การ์ดยืนยันให้ลูกค้าเห็นเลย
@@ -809,13 +916,14 @@ export default function NewBookingPage() {
                       prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f]
                     )
                   }
-                  className={`rounded-full px-3 py-1.5 text-[11px] font-bold ${
+                  aria-pressed={on}
+                  className={`flex min-h-[40px] items-center gap-1 rounded-full px-3.5 text-xs font-bold ${
                     on
-                      ? "bg-honey text-petflow-chocolate"
-                      : "bg-paper text-brown-soft"
+                      ? "bg-petflow-chocolate text-card"
+                      : "bg-card text-brown-soft ring-1 ring-petflow-line"
                   }`}
                 >
-                  {on ? "✓ " : ""}
+                  {on && <Icon name="check" size={14} strokeWidth={2.4} />}
                   {f}
                 </button>
               );
@@ -824,13 +932,16 @@ export default function NewBookingPage() {
         </div>
         )}
 
+        <TransportPicker value={transport} onChange={setTransport} />
+
         <Field label="โน้ตนิสัยน้อง (ลูกค้าใหม่)" name="notes" textarea />
 
         <button
           type="submit"
-          className="w-full rounded-petflow-sm bg-gradient-to-r from-honey to-honey-deep py-3.5 text-sm font-extrabold text-petflow-chocolate"
+          className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-honey to-honey-deep text-sm font-extrabold text-petflow-chocolate shadow-petflow-sm"
         >
-          {saved ? "✅ บันทึกแล้ว + สร้างนัด Calendar" : "🗓️ บันทึกการจอง"}
+          <Icon name={saved ? "check" : "calendar"} size={18} strokeWidth={2.2} />
+          {saved ? "บันทึกแล้ว + สร้างนัด Calendar" : "บันทึกการจอง"}
         </button>
       </form>
     </div>
@@ -857,7 +968,7 @@ function Field({
   onChange?: (v: string) => void;
 }) {
   const cls =
-    "mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm outline-none focus:border-latte-deep";
+    "mt-1 min-h-[44px] w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm text-brown outline-none focus:border-latte-deep";
   return (
     <label className="block text-xs font-bold text-brown-soft">
       {label}

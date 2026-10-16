@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Icon } from "@/components/Icon";
+import { EmptyState } from "@/components/ui";
 
 type Row = {
   id: string;
@@ -14,14 +16,26 @@ type Row = {
 
 /** ชื่อไทยของแต่ละการกระทำ — ให้อ่านออกโดยไม่ต้องรู้ชื่อ action ในโค้ด */
 const ACTION_LABEL: Record<string, string> = {
-  mark_paid: "💰 รับเงิน / ปิดบิล",
-  delete_invoice: "🗑️ ลบบิล",
-  add_points: "🎁 เพิ่มแต้ม",
-  reduce_points: "➖ ลดแต้ม",
-  delete_points_history: "🗑️ ลบประวัติแต้ม",
-  exclude_finance: "🚫 ตั้งไม่นับเป็นรายได้",
-  include_finance: "↩️ กลับมานับเป็นรายได้",
-  send_birthday_greetings: "🎂 ส่งการ์ดวันเกิด",
+  mark_paid: "รับเงิน / ปิดบิล",
+  delete_invoice: "ลบบิล",
+  add_points: "เพิ่มแต้ม",
+  reduce_points: "ลดแต้ม",
+  delete_points_history: "ลบประวัติแต้ม",
+  exclude_finance: "ตั้งไม่นับเป็นรายได้",
+  include_finance: "กลับมานับเป็นรายได้",
+  send_birthday_greetings: "ส่งการ์ดวันเกิด",
+};
+
+/** ไอคอนเส้นของแต่ละการกระทำ */
+const ACTION_ICON: Record<string, string> = {
+  mark_paid: "money",
+  delete_invoice: "trash",
+  add_points: "star",
+  reduce_points: "star",
+  delete_points_history: "trash",
+  exclude_finance: "x",
+  include_finance: "check",
+  send_birthday_greetings: "cake",
 };
 
 function when(iso: string) {
@@ -54,74 +68,67 @@ export default function AuditPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-6">
       <div>
-        <h1 className="text-lg font-extrabold text-petflow-chocolate">🔍 ประวัติการใช้งาน</h1>
-        <p className="mt-1 text-xs text-brown-soft">
+        <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Audit log</p>
+        <h1 className="text-xl font-extrabold text-petflow-chocolate">ประวัติการใช้งาน</h1>
+        <p className="mt-0.5 text-xs text-brown-soft">
           บันทึกเฉพาะการกระทำที่กระทบเงินและสิทธิ์ลูกค้า — ไว้ไล่ย้อนตอนยอดไม่ตรง
         </p>
       </div>
 
       {logs.length === 0 ? (
-        <div className="rounded-petflow border border-dashed border-petflow-line py-10 text-center">
-          <p className="text-sm font-bold text-brown-soft">ยังไม่มีบันทึก</p>
-          <p className="mt-1 text-xs text-brown-faint">
-            ถ้าเพิ่งอัปเดต ให้กด &quot;🔄 อัปเดตฐานข้อมูล&quot; ที่ ตั้งค่า → ขั้นสูง
-            หนึ่งครั้งก่อน แล้วระบบจะเริ่มเก็บให้เอง
-          </p>
+        <div className="rounded-petflow bg-card shadow-petflow-sm">
+          <EmptyState
+            icon="clock"
+            title="ยังไม่มีบันทึก"
+            sub="ถ้าเพิ่งอัปเดต ให้กด “อัปเดตฐานข้อมูล” ที่ ตั้งค่า → ขั้นสูง หนึ่งครั้งก่อน แล้วระบบจะเริ่มเก็บให้เอง"
+          />
         </div>
       ) : (
         <>
           {actors.length > 1 && (
-            <div className="flex flex-wrap gap-1.5">
-              <button
-                type="button"
-                onClick={() => setActor("")}
-                className={`rounded-full px-3 py-1.5 text-[11px] font-bold ${
-                  actor === "" ? "bg-latte-deep text-white" : "bg-paper text-brown-soft"
-                }`}
-              >
-                ทุกคน
-              </button>
+            <select
+              value={actor}
+              onChange={(e) => setActor(e.target.value)}
+              aria-label="กรองตามผู้ใช้"
+              className="h-10 w-full rounded-full border border-petflow-line bg-card px-4 text-sm font-bold text-brown"
+            >
+              <option value="">ทุกคน ({logs.length})</option>
               {actors.map((a) => (
-                <button
-                  key={a}
-                  type="button"
-                  onClick={() => setActor(a)}
-                  className={`rounded-full px-3 py-1.5 text-[11px] font-bold ${
-                    actor === a ? "bg-latte-deep text-white" : "bg-paper text-brown-soft"
-                  }`}
-                >
+                <option key={a} value={a}>
                   {a}
-                </button>
+                </option>
               ))}
-            </div>
+            </select>
           )}
 
-          <ul className="space-y-2">
+          <ul className="divide-y divide-petflow-line rounded-petflow bg-card shadow-petflow-sm">
             {shown.map((l) => (
-              <li
-                key={l.id}
-                className="rounded-petflow-sm border border-petflow-line bg-card px-3 py-2.5 text-xs"
-              >
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <span className="font-extrabold text-petflow-chocolate">
-                    {ACTION_LABEL[l.action] || l.action}
-                  </span>
-                  <span className="text-[10px] text-brown-faint">{when(l.createdAt)}</span>
-                </div>
-                <p className="mt-0.5 text-brown-soft">
-                  👤 {l.actor || "ไม่ทราบ"}
-                  {l.resourceId ? ` · ${l.resourceType} ${l.resourceId}` : ` · ${l.resourceType}`}
-                </p>
-                {l.detail && Object.keys(l.detail).length > 0 && (
-                  <p className="mt-1 rounded bg-paper px-2 py-1 text-[10px] text-brown">
-                    {Object.entries(l.detail)
-                      .filter(([, v]) => v !== undefined && v !== null && v !== "")
-                      .map(([k, v]) => `${k}: ${String(v)}`)
-                      .join(" · ")}
+              <li key={l.id} className="flex items-start gap-3 px-4 py-3 text-xs">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-honey/25 text-petflow-chocolate">
+                  <Icon name={ACTION_ICON[l.action] || "doc"} size={16} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-2">
+                    <span className="text-sm font-extrabold text-petflow-chocolate">
+                      {ACTION_LABEL[l.action] || l.action}
+                    </span>
+                    <span className="text-[10px] text-brown-faint">{when(l.createdAt)}</span>
+                  </div>
+                  <p className="mt-0.5 break-words text-[11px] text-brown-soft">
+                    {l.actor || "ไม่ทราบ"}
+                    {l.resourceId ? ` · ${l.resourceType} ${l.resourceId}` : ` · ${l.resourceType}`}
                   </p>
-                )}
+                  {l.detail && Object.keys(l.detail).length > 0 && (
+                    <p className="mt-1.5 break-words rounded-petflow-sm bg-paper px-2.5 py-1.5 text-[10px] text-brown">
+                      {Object.entries(l.detail)
+                        .filter(([, v]) => v !== undefined && v !== null && v !== "")
+                        .map(([k, v]) => `${k}: ${String(v)}`)
+                        .join(" · ")}
+                    </p>
+                  )}
+                </div>
               </li>
             ))}
           </ul>

@@ -32,6 +32,8 @@ export type PackageOffer = {
   description?: string;
   /** รูปหน้าปกที่ลูกค้าเห็นในแอป — ไม่มีก็ไม่เป็นไร แอปจะโชว์แบบไม่มีรูปแทน */
   imageUrl?: string;
+  /** เฉพาะ kind==="package" — ผูกโปรแกรมอาบน้ำ (id ในตั้งค่า) ไม่ระบุ = ใช้ได้ทุกโปรแกรม */
+  groomProgram?: string;
   active: boolean;
   createdAt: string;
 };
@@ -51,6 +53,8 @@ export type PackageOrder = {
   price: number;
   /** เฉพาะ kind = "credit" */
   creditAmount?: number;
+  /** ก๊อปจากคอร์สที่ขาย ณ ตอนสั่ง */
+  groomProgram?: string;
   status: PackageOrderStatus;
   slipUrl?: string;
   /** id ของคอร์สที่สร้างให้ตอนยืนยัน — กันยืนยันซ้ำแล้วได้คอร์สสองใบ (เฉพาะ kind = "package") */
@@ -69,6 +73,7 @@ type OfferRow = {
   image_url?: string | null;
   kind?: string | null;
   credit_amount?: number | null;
+  groom_program?: string | null;
   active: boolean;
   created_at: string;
 };
@@ -84,6 +89,7 @@ type OrderRow = {
   price: number;
   kind?: string | null;
   credit_amount?: number | null;
+  groom_program?: string | null;
   status: string;
   slip_url: string | null;
   package_id: string | null;
@@ -104,6 +110,7 @@ function rowToOffer(r: OfferRow): PackageOffer {
     creditAmount: r.credit_amount != null ? Number(r.credit_amount) : undefined,
     description: r.description || undefined,
     imageUrl: r.image_url || undefined,
+    groomProgram: r.groom_program || undefined,
     active: r.active !== false,
     createdAt: r.created_at,
   };
@@ -121,12 +128,37 @@ function rowToOrder(r: OrderRow): PackageOrder {
     totalUses: Number(r.total_uses) || 0,
     price: Number(r.price) || 0,
     creditAmount: r.credit_amount != null ? Number(r.credit_amount) : undefined,
+    groomProgram: r.groom_program || undefined,
     status: (r.status as PackageOrderStatus) || "pending",
     slipUrl: r.slip_url || undefined,
     packageId: r.package_id || undefined,
     createdAt: r.created_at,
     paidAt: r.paid_at || undefined,
   };
+}
+
+/**
+ * เขียนโปรแกรมอาบน้ำที่ผูกกับคอร์ส — คอลัมน์เพิ่มมาทีหลัง เขียนแยกจากแถวหลัก
+ * ถ้ายังไม่มีคอลัมน์ ลองอัปเดตฐานข้อมูลให้เองก่อนแล้วเขียนใหม่
+ */
+async function writeGroomProgram(
+  table: "package_offers" | "package_orders",
+  id: string,
+  groomProgram: string | null
+) {
+  const sb = getSupabase();
+  if (!sb) return;
+  try {
+    const { error } = await sb.from(table).update({ groom_program: groomProgram }).eq("tenant_id", requireTenantId()).eq("id", id);
+    if (error) {
+      const { ensureMigration } = await import("./migrations");
+      if (await ensureMigration("packages.groom_program")) {
+        await sb.from(table).update({ groom_program: groomProgram }).eq("tenant_id", requireTenantId()).eq("id", id);
+      }
+    }
+  } catch {
+    /* ยังไม่มีคอลัมน์ — คอร์สยังขายได้ แค่กลายเป็นใช้ได้ทุกโปรแกรม */
+  }
 }
 
 /* ───────── แพ็กเกจที่เปิดขาย ───────── */
@@ -160,6 +192,8 @@ export async function createPackageOffer(data: {
   /** เฉพาะ kind = "credit" — ถ้าไม่ใส่ ใช้เท่ากับ price (ไม่มีโบนัส) */
   creditAmount?: number;
   description?: string;
+  /** เฉพาะ kind==="package" */
+  groomProgram?: string;
   /** data URL จากช่องอัปโหลด — จะถูกเก็บขึ้น Storage ให้ ไม่ยัด base64 ลง DB */
   image?: string;
 }): Promise<PackageOffer | null> {
@@ -196,6 +230,7 @@ export async function createPackageOffer(data: {
     creditAmount,
     description: data.description?.trim() || undefined,
     imageUrl,
+    groomProgram: kind === "package" ? data.groomProgram || undefined : undefined,
     active: true,
     createdAt: new Date().toISOString(),
   };
@@ -221,6 +256,7 @@ export async function createPackageOffer(data: {
       await sb.from("package_offers").insert(baseRow);
     }
     // เขียนแยกเพราะร้านที่ยังไม่ได้รันคอลัมน์นี้จะ insert ไม่ผ่านทั้งแถว
+    if (offer.groomProgram) await writeGroomProgram("package_offers", offer.id, offer.groomProgram);
     if (offer.imageUrl) {
       try {
         const { error } = await sb
@@ -299,6 +335,8 @@ export async function updatePackageOffer(
     price?: number;
     creditAmount?: number;
     description?: string;
+    /** "" = ใช้ได้ทุกโปรแกรม */
+    groomProgram?: string;
   }
 ) {
   const patch: Record<string, unknown> = {};
@@ -313,10 +351,13 @@ export async function updatePackageOffer(
     patch.credit_amount = Math.max(0, Math.round(data.creditAmount) || 0);
   }
   if (data.description !== undefined) patch.description = data.description.trim() || null;
-  if (Object.keys(patch).length === 0) return { ok: true as const };
+  const groomProgram =
+    data.groomProgram !== undefined ? data.groomProgram.trim() || null : undefined;
+  if (Object.keys(patch).length === 0 && groomProgram === undefined) return { ok: true as const };
 
   const sb = getSupabase();
   if (sb) {
+    if (groomProgram !== undefined) await writeGroomProgram("package_offers", id, groomProgram);
     const { error } = await sb
       .from("package_offers")
       .update(patch)
@@ -341,6 +382,7 @@ export async function updatePackageOffer(
       if (patch.price !== undefined) o.price = patch.price as number;
       if (patch.credit_amount !== undefined) o.creditAmount = patch.credit_amount as number;
       if (patch.description !== undefined) o.description = (patch.description as string) || undefined;
+      if (groomProgram !== undefined) o.groomProgram = groomProgram || undefined;
     }
   }
   return { ok: true as const };
@@ -448,6 +490,7 @@ export async function createPackageOrder(data: {
     totalUses: data.offer.totalUses,
     price: data.offer.price,
     creditAmount: data.offer.creditAmount,
+    groomProgram: data.offer.kind === "package" ? data.offer.groomProgram : undefined,
     status: "pending",
     createdAt: new Date().toISOString(),
   };
@@ -474,6 +517,7 @@ export async function createPackageOrder(data: {
       // ร้านยังไม่อัปเดตฐานข้อมูล — ยังไม่มีคอลัมน์ kind/credit_amount
       await sb.from("package_orders").insert(baseRow);
     }
+    if (order.groomProgram) await writeGroomProgram("package_orders", order.id, order.groomProgram);
   } else {
     memOrders.unshift(order);
   }
@@ -569,6 +613,7 @@ export async function confirmPackageOrder(
     price: order.price,
     // ซื้อวันเข้าพัก = หน่วยเป็นคืน หักตามจำนวนคืนที่พักจริงตอนคิดเงิน
     unit: order.kind === "nights" ? "night" : "use",
+    groomProgram: order.kind === "package" ? order.groomProgram : undefined,
     isLegacy: opts?.isLegacy,
   });
 

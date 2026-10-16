@@ -114,6 +114,7 @@ async function runForTenant() {
           room: primary.room,
           notes: primary.notes,
           groomProgram: primary.groomProgram,
+          transport: primary.transport,
         }),
       ];
 

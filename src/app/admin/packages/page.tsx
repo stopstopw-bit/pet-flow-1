@@ -4,18 +4,25 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { toast } from "@/components/Toast";
 import { toJpegDataUrl } from "@/lib/image-convert";
+import { Icon } from "@/components/Icon";
+import { EmptyState, MoreMenu, SectionLabel, Segmented } from "@/components/ui";
+import { GroomProgramPicker, useGroomPrograms } from "@/components/GroomProgramPicker";
+import { groomProgramName, type GroomProgram } from "@/lib/grooming-prices";
 
 type OfferKind = "package" | "credit" | "nights";
 
 type Offer = {
   id: string;
-  kind: OfferKind;
   name: string;
+  kind: OfferKind;
   totalUses: number;
   price: number;
+  /** เฉพาะ kind==="credit" — เครดิตที่ลูกค้าได้รับ (ตั้งสูงกว่า price ได้เพื่อแถมโบนัส) */
   creditAmount?: number;
   description?: string;
   imageUrl?: string;
+  /** เฉพาะ kind==="package" — ผูกโปรแกรมอาบน้ำ ไม่ระบุ = ทุกโปรแกรม */
+  groomProgram?: string;
   active: boolean;
 };
 
@@ -23,8 +30,8 @@ type Order = {
   id: string;
   customerId: string;
   customerName: string;
-  kind: OfferKind;
   name: string;
+  kind: OfferKind;
   totalUses: number;
   price: number;
   creditAmount?: number;
@@ -39,21 +46,25 @@ function OfferRow({
   offer,
   patch,
   pickImage,
+  programs,
 }: {
   offer: Offer;
+  programs: GroomProgram[];
   patch: (body: Record<string, unknown>, okMsg: string, key: string) => Promise<void>;
   pickImage: (file: File, onDone: (dataUrl: string) => void) => Promise<void>;
 }) {
   const o = offer;
-  const isCredit = o.kind === "credit";
-  const isNights = o.kind === "nights";
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(o.name);
   const [uses, setUses] = useState(String(o.totalUses));
   const [price, setPrice] = useState(String(o.price));
   const [creditAmount, setCreditAmount] = useState(String(o.creditAmount ?? o.price));
   const [desc, setDesc] = useState(o.description || "");
+  const [program, setProgram] = useState(o.groomProgram || "");
   const [saving, setSaving] = useState(false);
+  const isCredit = o.kind === "credit";
+  const isNights = o.kind === "nights";
+  const unitWord = isNights ? "คืน" : "ครั้ง";
 
   const startEdit = () => {
     setName(o.name);
@@ -61,6 +72,7 @@ function OfferRow({
     setPrice(String(o.price));
     setCreditAmount(String(o.creditAmount ?? o.price));
     setDesc(o.description || "");
+    setProgram(o.groomProgram || "");
     setEditing(true);
   };
 
@@ -70,7 +82,7 @@ function OfferRow({
       return;
     }
     if (!isCredit && Math.round(Number(uses) || 0) <= 0) {
-      toast("กรอกจำนวนครั้ง", "error");
+      toast(`กรอกจำนวน${unitWord}`, "error");
       return;
     }
     setSaving(true);
@@ -84,8 +96,9 @@ function OfferRow({
           price: Math.round(Number(price) || 0),
           ...(isCredit ? { creditAmount: Math.round(Number(creditAmount) || 0) } : {}),
           description: desc.trim(),
+          ...(o.kind === "package" ? { groomProgram: program } : {}),
         },
-        (isCredit ? "แก้ไขรายการเติมเครดิตแล้ว ✏️" : "แก้ไขคอร์สแล้ว ✏️"),
+        isCredit ? "แก้ไขรายการเติมเครดิตแล้ว ✏️" : "แก้ไขคอร์สแล้ว ✏️",
         o.id
       );
       setEditing(false);
@@ -95,13 +108,14 @@ function OfferRow({
   };
 
   const field =
-    "w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm";
+    "w-full min-w-0 rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm";
 
   if (editing) {
     return (
-      <li className="rounded-petflow-sm border border-latte/50 bg-paper/70 p-3">
-        <p className="mb-2 text-[11px] font-extrabold text-petflow-chocolate">
-          ✏️ {isCredit ? "แก้ไขรายการเติมเครดิต" : "แก้ไขคอร์ส"}
+      <li className="bg-paper/60 px-4 py-3">
+        <p className="mb-2 flex items-center gap-1.5 text-xs font-extrabold text-petflow-chocolate">
+          <Icon name="edit" size={14} />
+          {isCredit ? "แก้ไขรายการเติมเครดิต" : "แก้ไขคอร์ส"}
         </p>
         <div className="space-y-2">
           <input
@@ -155,11 +169,14 @@ function OfferRow({
             placeholder="คำโปรย (ถ้ามี)"
             className={field}
           />
-          <div className="flex gap-2">
+          {o.kind === "package" && (
+            <GroomProgramPicker value={program} onChange={setProgram} programs={programs} />
+          )}
+          <div className="flex gap-2 pt-1">
             <button
               type="button"
               onClick={() => setEditing(false)}
-              className="flex-1 rounded-petflow-sm bg-paper py-2 text-xs font-bold text-brown-soft"
+              className="h-10 flex-1 rounded-full bg-card text-xs font-bold text-brown-soft"
             >
               ยกเลิก
             </button>
@@ -167,9 +184,9 @@ function OfferRow({
               type="button"
               disabled={saving}
               onClick={save}
-              className="flex-1 rounded-petflow-sm bg-latte-deep py-2 text-xs font-extrabold text-card disabled:opacity-40"
+              className="h-10 flex-[2] rounded-full bg-petflow-chocolate text-xs font-extrabold text-card disabled:opacity-40"
             >
-              {saving ? "…" : "💾 บันทึก"}
+              {saving ? "…" : "บันทึก"}
             </button>
           </div>
         </div>
@@ -178,103 +195,90 @@ function OfferRow({
   }
 
   return (
-    <li
-      className={`rounded-petflow-sm border px-3 py-2 ${
-        o.active
-          ? "border-petflow-line bg-paper/50"
-          : "border-petflow-line bg-paper/30 opacity-60"
-      }`}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 gap-2">
-          <label className="relative h-12 w-12 shrink-0 cursor-pointer overflow-hidden rounded-petflow-sm bg-paper">
-            {o.imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={o.imageUrl} alt="" className="h-full w-full object-cover" />
-            ) : (
-              <span className="flex h-full w-full items-center justify-center text-lg">
-                📷
-              </span>
-            )}
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                e.target.value = "";
-                if (!f) return;
-                pickImage(f, (dataUrl) =>
-                  patch(
-                    { action: "set_offer_image", offerId: o.id, image: dataUrl },
-                    "เปลี่ยนรูปแล้ว 📷",
-                    o.id
-                  )
-                );
-              }}
-            />
-          </label>
-          <div className="min-w-0">
-            <p className="text-xs font-bold text-brown">
-              {isCredit && "💰 "}
-              {o.name} {!o.active && "(ปิดขายอยู่)"}
-            </p>
-            <p className="text-[10px] text-brown-soft">
-              {isCredit
-                ? `จ่าย ${o.price.toLocaleString()}฿ ได้เครดิต ${(o.creditAmount ?? o.price).toLocaleString()}฿`
-                : `${o.totalUses} ครั้ง · ${o.price.toLocaleString()} ฿`}
-              {o.description ? ` · ${o.description}` : ""}
-            </p>
-            <p className="text-[10px] text-brown-faint">
-              แตะรูปเพื่อ{o.imageUrl ? "เปลี่ยน" : "ใส่"}รูป
-            </p>
-          </div>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1.5">
-          <button
-            type="button"
-            onClick={startEdit}
-            className="text-[10px] font-bold text-latte-deep"
-          >
-            ✏️ แก้ไข
-          </button>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() =>
-                patch(
-                  { action: "set_offer_active", offerId: o.id, active: !o.active },
-                  o.active ? "ปิดขายแล้ว" : "เปิดขายแล้ว",
-                  o.id
-                )
-              }
-              className="text-[10px] font-bold text-latte-deep"
-            >
-              {o.active ? "ปิดขาย" : "เปิดขาย"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (!confirm(`ลบ "${o.name}" ออกจากรายการขาย?`)) return;
-                patch(
-                  { action: "delete_offer", offerId: o.id },
-                  "ลบออกจากรายการขายแล้ว",
-                  o.id
-                );
-              }}
-              className="text-[10px] font-bold text-wait"
-            >
-              🗑️
-            </button>
-          </div>
-        </div>
-      </div>
+    <li className="flex items-center gap-3 px-4 py-3">
+      <label
+        className={`relative h-12 w-12 shrink-0 cursor-pointer overflow-hidden rounded-xl bg-paper ${
+          o.active ? "" : "opacity-50"
+        }`}
+        aria-label={o.imageUrl ? "เปลี่ยนรูป" : "ใส่รูป"}
+      >
+        {o.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={o.imageUrl} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <span className="flex h-full w-full items-center justify-center text-brown-soft">
+            <Icon name="image" size={20} />
+          </span>
+        )}
+        <input
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (!f) return;
+            pickImage(f, (dataUrl) =>
+              patch(
+                { action: "set_offer_image", offerId: o.id, image: dataUrl },
+                "เปลี่ยนรูปแล้ว 📷",
+                o.id
+              )
+            );
+          }}
+        />
+      </label>
+      <button type="button" onClick={startEdit} className="min-w-0 flex-1 text-left">
+        <span className="flex items-center gap-1.5">
+          <span className={`truncate text-sm font-extrabold ${o.active ? "text-petflow-chocolate" : "text-brown-faint"}`}>
+            {o.name}
+          </span>
+          {!o.active && (
+            <span className="shrink-0 rounded-full bg-paper px-1.5 text-[10px] font-bold leading-4 text-brown-faint">
+              ปิดขาย
+            </span>
+          )}
+        </span>
+        <span className="block truncate text-[11px] text-brown-soft">
+          {isCredit
+            ? `จ่าย ${o.price.toLocaleString()}฿ ได้เครดิต ${(o.creditAmount ?? o.price).toLocaleString()}฿`
+            : `${o.totalUses} ${unitWord} · ${o.price.toLocaleString()} ฿`}
+          {o.groomProgram && ` · ${groomProgramName(o.groomProgram, programs) || "โปรแกรมที่ลบไปแล้ว"}`}
+        </span>
+        {o.description ? (
+          <span className="block truncate text-[11px] text-brown-faint">{o.description}</span>
+        ) : null}
+      </button>
+      <MoreMenu
+        items={[
+          { label: "แก้ไข", icon: "edit", onClick: startEdit },
+          {
+            label: o.active ? "ปิดขาย" : "เปิดขาย",
+            icon: o.active ? "eye" : "check",
+            onClick: () =>
+              patch(
+                { action: "set_offer_active", offerId: o.id, active: !o.active },
+                o.active ? "ปิดขายแล้ว" : "เปิดขายแล้ว",
+                o.id
+              ),
+          },
+          {
+            label: "ลบออกจากรายการขาย",
+            icon: "trash",
+            danger: true,
+            onClick: () => {
+              if (!confirm(`ลบ "${o.name}" ออกจากรายการขาย?`)) return;
+              patch({ action: "delete_offer", offerId: o.id }, "ลบออกจากรายการขายแล้ว", o.id);
+            },
+          },
+        ]}
+      />
     </li>
   );
 }
 
 /**
- * 🛍️ ขายคอร์สในแอป — ตั้งว่าจะขายอะไร + ยืนยันรับเงินจากออร์เดอร์ที่ลูกค้ากดซื้อ
+ * ขายคอร์สในแอป — ตั้งว่าจะขายอะไร + ยืนยันรับเงินจากออร์เดอร์ที่ลูกค้ากดซื้อ
  * กดยืนยันแล้วระบบจะเพิ่มคอร์สให้ลูกค้า + ลงรายรับให้อัตโนมัติ
  */
 export default function AdminPackagesPage() {
@@ -283,14 +287,17 @@ export default function AdminPackagesPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [zoomSlip, setZoomSlip] = useState<string | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
 
-  const [kind, setKind] = useState<OfferKind>("package");
   const [name, setName] = useState("");
+  const [kind, setKind] = useState<OfferKind>("package");
   const [uses, setUses] = useState("");
   const [price, setPrice] = useState("");
   const [creditAmount, setCreditAmount] = useState("");
   const [desc, setDesc] = useState("");
   const [image, setImage] = useState("");
+  const [program, setProgram] = useState("");
+  const groomPrograms = useGroomPrograms();
 
   /** ย่อรูปก่อนส่งเสมอ — รูปจากมือถือ 5MB ยิงขึ้นไปตรงๆ จะโดนตีกลับ */
   const pickImage = async (file: File, onDone: (dataUrl: string) => void) => {
@@ -322,12 +329,17 @@ export default function AdminPackagesPage() {
 
   const addOffer = async () => {
     if (!name.trim()) {
-      toast("กรอกชื่อ" + (isCreditForm ? "รายการ" : "คอร์สและจำนวนครั้ง"), "error");
+      toast(
+        isCreditForm
+          ? "กรอกชื่อรายการ"
+          : `กรอกชื่อคอร์สและจำนวน${kind === "nights" ? "คืน" : "ครั้ง"}`,
+        "error"
+      );
       return;
     }
     const n = Math.round(Number(uses) || 0);
     if (!isCreditForm && n <= 0) {
-      toast("กรอกจำนวนครั้ง", "error");
+      toast(`กรอกจำนวน${kind === "nights" ? "คืน" : "ครั้ง"}`, "error");
       return;
     }
     setBusy("add");
@@ -344,6 +356,7 @@ export default function AdminPackagesPage() {
           ...(isCreditForm ? { creditAmount: Math.round(Number(creditAmount) || 0) } : {}),
           description: desc.trim() || undefined,
           image: image || undefined,
+          groomProgram: kind === "package" ? program || undefined : undefined,
         }),
       });
       if (res.ok) {
@@ -359,6 +372,7 @@ export default function AdminPackagesPage() {
         setCreditAmount("");
         setDesc("");
         setImage("");
+        setProgram("");
         load();
       } else {
         toast("เพิ่มไม่สำเร็จ", "error");
@@ -403,327 +417,334 @@ export default function AdminPackagesPage() {
   const pending = orders.filter((o) => o.status === "pending");
   const done = orders.filter((o) => o.status !== "pending");
   const field =
-    "w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm";
+    "w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm";
 
   if (loading) {
     return <p className="py-10 text-center text-sm text-brown-soft">กำลังโหลด…</p>;
   }
 
+  const unitOf = (k: OfferKind) => (k === "nights" ? "คืน" : "ครั้ง");
+
   return (
-    <div>
-      <h1 className="mb-4 text-lg font-extrabold text-petflow-chocolate">
-        🛍️ ขายคอร์สในแอป
-      </h1>
+    <div className="space-y-5 pb-6">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Packages</p>
+          <h1 className="text-xl font-extrabold text-petflow-chocolate">ขายคอร์สในแอป</h1>
+          <p className="mt-0.5 text-xs text-brown-soft">ลูกค้าเห็นในหน้าแรกของแอป และกดซื้อได้เลย</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowAdd((v) => !v)}
+          className={`flex h-10 shrink-0 items-center gap-1.5 rounded-full px-4 text-sm font-bold shadow-petflow-sm ${
+            showAdd ? "bg-card text-brown" : "bg-petflow-chocolate text-card"
+          }`}
+        >
+          <Icon name={showAdd ? "x" : "plus"} size={18} />
+          {showAdd ? "ปิด" : "เพิ่มคอร์ส"}
+        </button>
+      </div>
+
+      {/* ── เพิ่มคอร์สที่จะขาย ── */}
+      {showAdd && (
+        <section>
+          <SectionLabel>New · เพิ่มคอร์สที่จะขาย</SectionLabel>
+          <div className="space-y-3 rounded-petflow bg-card p-4 shadow-petflow-sm">
+            <Segmented
+              value={kind}
+              onChange={setKind}
+              options={[
+                { id: "package", label: "นับครั้ง", icon: "ticket" },
+                { id: "credit", label: "เครดิต", icon: "wallet" },
+                { id: "nights", label: "วันพัก", icon: "bed" },
+              ]}
+            />
+            {kind === "credit" && (
+              <p className="text-[11px] text-brown-soft">เติมเครดิต Member — ลูกค้าจ่ายแล้วได้เครดิตไว้หักค่าบริการ</p>
+            )}
+            {kind === "nights" && (
+              <p className="rounded-petflow-sm bg-honey/15 px-3 py-2 text-[11px] font-bold text-petflow-chocolate">
+                ลูกค้าซื้อจำนวนคืนล่วงหน้าในราคาถูกกว่า แล้วหักตามคืนที่เข้าพักจริง
+                <span className="mt-0.5 block font-normal text-brown-soft">
+                  คลุมเฉพาะค่าห้อง — ค่าอาบน้ำ/ของเสริมในบิลเดียวกันยังคิดตามปกติ · ไม่มีวันหมดอายุ
+                </span>
+              </p>
+            )}
+
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={
+                isCreditForm
+                  ? "ชื่อรายการ เช่น เติมเครดิต 1,000"
+                  : kind === "nights"
+                    ? "ชื่อคอร์ส เช่น แพ็กรายเดือน 30 คืน (ลด 30%)"
+                    : "ชื่อคอร์ส เช่น อาบน้ำ 10 ครั้ง"
+              }
+              className={field}
+            />
+            {isCreditForm ? (
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  placeholder="ลูกค้าจ่าย (บาท)"
+                  className={`${field} min-w-0`}
+                />
+                <input
+                  type="number"
+                  min={0}
+                  value={creditAmount}
+                  onChange={(e) => setCreditAmount(e.target.value)}
+                  placeholder="ได้เครดิต (บาท)"
+                  className={`${field} min-w-0`}
+                />
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  value={uses}
+                  onChange={(e) => setUses(e.target.value)}
+                  placeholder={kind === "nights" ? "กี่คืน" : "กี่ครั้ง"}
+                  className={`${field} min-w-0`}
+                />
+                <input
+                  type="number"
+                  min={0}
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  placeholder="ราคา (บาท)"
+                  className={`${field} min-w-0`}
+                />
+              </div>
+            )}
+            {isCreditForm && Number(creditAmount) > Number(price) && Number(price) > 0 && (
+              <p className="rounded-petflow-sm bg-sage/10 px-3 py-2 text-[11px] font-bold text-ok">
+                ลูกค้าจ่าย {Number(price).toLocaleString()}฿ ได้เครดิต {Number(creditAmount).toLocaleString()}฿ — แถม {(Number(creditAmount) - Number(price)).toLocaleString()}฿
+              </p>
+            )}
+            <input
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+              placeholder={
+                isCreditForm
+                  ? "คำโปรย (ถ้ามี) เช่น เติมเลยวันนี้ รับโบนัสฟรี 200฿"
+                  : "คำโปรย (ถ้ามี) เช่น ประหยัดกว่าซื้อแยก 500฿"
+              }
+              className={field}
+            />
+            {kind === "package" && (
+              <GroomProgramPicker value={program} onChange={setProgram} programs={groomPrograms} />
+            )}
+
+            <label className="flex cursor-pointer items-center gap-3 rounded-petflow-sm border border-dashed border-petflow-line bg-paper px-3 py-2.5">
+              {image ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={image} alt="รูปหน้าปกคอร์ส" className="h-12 w-12 shrink-0 rounded-xl object-cover" />
+              ) : (
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-card text-brown-soft">
+                  <Icon name="image" size={20} />
+                </span>
+              )}
+              <span className="min-w-0 text-xs font-bold text-brown">
+                {image ? "เปลี่ยนรูปหน้าปก" : "ใส่รูปหน้าปก (ถ้ามี)"}
+                <span className="block text-[11px] font-normal text-brown-faint">
+                  รูปสวยๆ ช่วยให้ลูกค้ากดซื้อง่ายขึ้น
+                </span>
+              </span>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (f) pickImage(f, setImage);
+                }}
+              />
+            </label>
+
+            <button
+              type="button"
+              disabled={busy === "add"}
+              onClick={addOffer}
+              className="flex h-11 w-full items-center justify-center gap-1.5 rounded-full bg-petflow-chocolate text-sm font-extrabold text-card disabled:opacity-40"
+            >
+              <Icon name="plus" size={18} />
+              {busy === "add"
+                ? "กำลังเพิ่ม…"
+                : isCreditForm
+                  ? "เพิ่มรายการเติมเครดิต"
+                  : "เพิ่มคอร์สที่จะขาย"}
+            </button>
+          </div>
+        </section>
+      )}
 
       {/* ── ออร์เดอร์รอยืนยัน ── */}
-      <section className="mb-4 rounded-petflow bg-card p-4 shadow-petflow-sm">
-        <h2 className="mb-1 text-sm font-extrabold text-petflow-chocolate">
-          ⏳ รอยืนยันรับเงิน {pending.length > 0 && `(${pending.length})`}
-        </h2>
-        <p className="mb-3 text-[10px] text-brown-faint">
-          กดยืนยันแล้วระบบจะเพิ่มคอร์สให้ลูกค้า + ลงรายรับ + แจ้งลูกค้าให้อัตโนมัติ
-        </p>
-        {pending.length === 0 ? (
-          <p className="text-xs text-brown-soft">ยังไม่มีออร์เดอร์รอยืนยัน</p>
-        ) : (
-          <ul className="space-y-2">
-            {pending.map((o) => (
-              <li
-                key={o.id}
-                className="rounded-petflow-sm border border-wait/40 bg-paper/60 px-3 py-2.5"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <Link
-                      href={`/admin/customers?id=${o.customerId}`}
-                      className="text-xs font-extrabold text-latte-deep underline"
-                    >
-                      👤 {o.customerName}
-                    </Link>
-                    <p className="text-xs font-bold text-brown">
-                      {o.kind === "credit" && "💰 "}
-                      {o.name}
-                    </p>
-                    <p className="text-[10px] text-brown-soft">
-                      {o.kind === "credit"
-                        ? `ได้เครดิต ${(o.creditAmount ?? o.price).toLocaleString()}฿`
-                        : `${o.totalUses} ครั้ง`}
-                      {" · "}
-                      {o.createdAt.slice(0, 10)}
+      <section>
+        <SectionLabel>Pending · รอยืนยันรับเงิน{pending.length > 0 ? ` (${pending.length})` : ""}</SectionLabel>
+        <div className="rounded-petflow bg-card shadow-petflow-sm">
+          {pending.length === 0 ? (
+            <EmptyState
+              icon="check"
+              title="ไม่มีออร์เดอร์รอยืนยัน"
+              sub="กดยืนยันแล้วระบบเพิ่มคอร์ส + ลงรายรับ + แจ้งลูกค้าให้อัตโนมัติ"
+            />
+          ) : (
+            <ul className="divide-y divide-petflow-line">
+              {pending.map((o) => (
+                <li key={o.id} className="px-4 py-3">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-honey/30 text-petflow-chocolate">
+                      <Icon name={o.kind === "credit" ? "wallet" : o.kind === "nights" ? "bed" : "ticket"} size={20} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-extrabold text-petflow-chocolate">{o.name}</p>
+                      <Link
+                        href={`/admin/customers?id=${o.customerId}`}
+                        className="block truncate text-xs font-bold text-latte-deep underline-offset-2 hover:underline"
+                      >
+                        {o.customerName}
+                      </Link>
+                      <p className="truncate text-[11px] text-brown-soft">
+                        {o.kind === "credit"
+                          ? `ได้เครดิต ${(o.creditAmount ?? o.price).toLocaleString()}฿`
+                          : `${o.totalUses} ${unitOf(o.kind)}`}{" "}
+                        · {o.createdAt.slice(0, 10)}
+                      </p>
+                    </div>
+                    <p className="shrink-0 text-sm font-extrabold text-petflow-chocolate">
+                      {o.price.toLocaleString()} ฿
                     </p>
                   </div>
-                  <p className="shrink-0 text-sm font-extrabold text-petflow-chocolate">
-                    {o.price.toLocaleString()} ฿
-                  </p>
-                </div>
 
-                {o.slipUrl ? (
-                  <button
-                    type="button"
-                    onClick={() => setZoomSlip(o.slipUrl!)}
-                    className="mt-2 block w-full rounded-petflow-sm bg-sage/15 py-1.5 text-[10px] font-bold text-ok"
-                  >
-                    🧾 ลูกค้าแนบสลิปแล้ว — แตะดูรูป
-                  </button>
-                ) : (
-                  <p className="mt-2 rounded-petflow-sm bg-honey/20 px-2 py-1.5 text-[10px] font-bold text-wait">
-                    ⏳ ยังไม่ได้แนบสลิป
-                  </p>
-                )}
-
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={!!busy}
-                    onClick={() => {
-                      if (
-                        !confirm(
-                          `ยืนยันว่าได้รับเงิน ${o.price.toLocaleString()} บาท จาก ${o.customerName}?\n` +
-                            (o.kind === "credit"
-                              ? `ระบบจะเติมเครดิต ${(o.creditAmount ?? o.price).toLocaleString()}฿ ให้ลูกค้าทันที`
-                              : `ระบบจะเพิ่มคอร์ส "${o.name}" (${o.totalUses} ครั้ง) ให้ลูกค้าทันที`)
+                  <div className="mt-2.5 flex items-center gap-2 pl-[52px]">
+                    {o.slipUrl ? (
+                      <button
+                        type="button"
+                        onClick={() => setZoomSlip(o.slipUrl!)}
+                        className="flex h-10 items-center gap-1.5 rounded-full bg-sage/20 px-3 text-xs font-bold text-ok"
+                      >
+                        <Icon name="receipt" size={16} />
+                        ดูสลิป
+                      </button>
+                    ) : (
+                      <span className="flex h-10 items-center gap-1.5 rounded-full bg-honey/20 px-3 text-xs font-bold text-wait">
+                        <Icon name="clock" size={16} />
+                        ยังไม่แนบสลิป
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      disabled={!!busy}
+                      onClick={() => {
+                        if (
+                          !confirm(
+                            `ยืนยันว่าได้รับเงิน ${o.price.toLocaleString()} บาท จาก ${o.customerName}?\n` +
+                              (o.kind === "credit"
+                                ? `ระบบจะเติมเครดิต ${(o.creditAmount ?? o.price).toLocaleString()}฿ ให้ลูกค้าทันที`
+                                : `ระบบจะเพิ่มคอร์ส "${o.name}" (${o.totalUses} ${o.kind === "nights" ? "คืน" : "ครั้ง"}) ให้ลูกค้าทันที`)
+                          )
                         )
-                      )
-                        return;
-                      patch(
-                        { action: "confirm_order", orderId: o.id },
-                        o.kind === "credit"
-                          ? "ยืนยันรับเงินแล้ว — เติมเครดิตให้ลูกค้าเรียบร้อย 💰"
-                          : "ยืนยันรับเงินแล้ว — เพิ่มคอร์สให้ลูกค้าเรียบร้อย 🎫",
-                        o.id
-                      );
-                    }}
-                    className="rounded-full bg-sage/25 px-3 py-1.5 text-[11px] font-extrabold text-ok disabled:opacity-40"
-                  >
-                    {busy === o.id ? "…" : "✅ ได้รับเงินแล้ว"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!!busy}
-                    onClick={() => {
-                      if (!confirm("ยกเลิกออร์เดอร์นี้? (ลูกค้าจะไม่ได้คอร์ส)")) return;
-                      patch(
-                        { action: "cancel_order", orderId: o.id },
-                        "ยกเลิกออร์เดอร์แล้ว",
-                        o.id
-                      );
-                    }}
-                    className="rounded-full bg-wait/15 px-3 py-1.5 text-[11px] font-bold text-wait disabled:opacity-40"
-                  >
-                    ❌ ยกเลิก
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+                          return;
+                        patch(
+                          { action: "confirm_order", orderId: o.id },
+                          o.kind === "credit"
+                            ? "ยืนยันรับเงินแล้ว — เติมเครดิตให้ลูกค้าเรียบร้อย 💰"
+                            : "ยืนยันรับเงินแล้ว — เพิ่มคอร์สให้ลูกค้าเรียบร้อย 🎫",
+                          o.id
+                        );
+                      }}
+                      className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-full bg-petflow-chocolate text-xs font-extrabold text-card disabled:opacity-40"
+                    >
+                      <Icon name="check" size={16} strokeWidth={2.2} />
+                      {busy === o.id ? "…" : "ได้รับเงินแล้ว"}
+                    </button>
+                    <MoreMenu
+                      items={[
+                        {
+                          label: "ยกเลิกออร์เดอร์",
+                          icon: "x",
+                          danger: true,
+                          disabled: !!busy,
+                          onClick: () => {
+                            if (!confirm("ยกเลิกออร์เดอร์นี้? (ลูกค้าจะไม่ได้คอร์ส)")) return;
+                            patch({ action: "cancel_order", orderId: o.id }, "ยกเลิกออร์เดอร์แล้ว", o.id);
+                          },
+                        },
+                      ]}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </section>
 
-      {/* ── ตั้งว่าจะขายอะไร ── */}
-      <section className="mb-4 rounded-petflow bg-card p-4 shadow-petflow-sm">
-        <h2 className="mb-1 text-sm font-extrabold text-petflow-chocolate">
-          🏷️ ขายในแอป
-        </h2>
-        <p className="mb-3 text-[10px] text-brown-faint">
-          ลูกค้าจะเห็นรายการนี้ในหน้าแรกของแอป และกดซื้อได้เลย
-        </p>
-
-        {offers.length > 0 && (
-          <ul className="mb-3 space-y-2">
-            {offers.map((o) => (
-              <OfferRow key={o.id} offer={o} patch={patch} pickImage={pickImage} />
-            ))}
-          </ul>
-        )}
-
-        <div className="mb-3 flex overflow-hidden rounded-full border border-petflow-line text-xs font-bold">
-          <button
-            type="button"
-            onClick={() => setKind("package")}
-            className={`flex-1 py-2 transition ${
-              kind === "package" ? "bg-latte-deep text-card" : "bg-paper text-brown-soft"
-            }`}
-          >
-            🛍️ คอร์ส (จำนวนครั้ง)
-          </button>
-          <button
-            type="button"
-            onClick={() => setKind("credit")}
-            className={`flex-1 py-2 transition ${
-              kind === "credit" ? "bg-latte-deep text-card" : "bg-paper text-brown-soft"
-            }`}
-          >
-            💰 เติมเครดิต Member
-          </button>
-          <button
-            type="button"
-            onClick={() => setKind("nights")}
-            className={`flex-1 py-2 transition ${
-              kind === "nights" ? "bg-latte-deep text-card" : "bg-paper text-brown-soft"
-            }`}
-          >
-            🏠 ซื้อวันเข้าพัก
-          </button>
-        </div>
-        {kind === "nights" && (
-          <p className="mb-2 rounded-petflow-sm bg-honey/15 px-3 py-2 text-[11px] font-bold text-petflow-chocolate">
-            ลูกค้าซื้อจำนวนคืนล่วงหน้าในราคาถูกกว่า แล้วหักตามคืนที่เข้าพักจริง
-            <span className="mt-0.5 block font-normal text-brown-soft">
-              คลุมเฉพาะค่าห้อง — ค่าอาบน้ำ/ของเสริมในบิลเดียวกันยังคิดตามปกติ
-            </span>
-          </p>
-        )}
-
-        <div className="space-y-2">
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={isCreditForm ? "ชื่อรายการ เช่น เติมเครดิต 1,000" : "ชื่อคอร์ส เช่น อาบน้ำ 10 ครั้ง"}
-            className={field}
-          />
-          {isCreditForm ? (
-            <div className="flex gap-2">
-              <input
-                type="number"
-                min={0}
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                placeholder="ลูกค้าจ่าย (บาท)"
-                className={field}
-              />
-              <input
-                type="number"
-                min={0}
-                value={creditAmount}
-                onChange={(e) => setCreditAmount(e.target.value)}
-                placeholder="ได้เครดิต (บาท)"
-                className={field}
-              />
-            </div>
+      {/* ── คอร์สที่เปิดขาย ── */}
+      <section>
+        <SectionLabel>For sale · คอร์สที่เปิดขาย ({offers.length})</SectionLabel>
+        <div className="rounded-petflow bg-card shadow-petflow-sm">
+          {offers.length === 0 ? (
+            <EmptyState icon="bag" title="ยังไม่มีคอร์สที่เปิดขาย" sub="กด “เพิ่มคอร์ส” ด้านบนเพื่อเริ่มขาย" />
           ) : (
-            <div className="flex gap-2">
-              <input
-                type="number"
-                min={1}
-                value={uses}
-                onChange={(e) => setUses(e.target.value)}
-                placeholder={kind === "nights" ? "กี่คืน" : "กี่ครั้ง"}
-                className={field}
-              />
-              <input
-                type="number"
-                min={0}
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                placeholder="ราคา (บาท)"
-                className={field}
-              />
-            </div>
+            <ul className="divide-y divide-petflow-line">
+              {offers.map((o) => (
+                <OfferRow key={o.id} offer={o} patch={patch} pickImage={pickImage} programs={groomPrograms} />
+              ))}
+            </ul>
           )}
-          {isCreditForm && Number(creditAmount) > Number(price) && Number(price) > 0 && (
-            <p className="text-[10px] font-bold text-ok">
-              🎁 ลูกค้าจ่าย {Number(price).toLocaleString()}฿ ได้เครดิต {Number(creditAmount).toLocaleString()}฿ — แถม {(Number(creditAmount) - Number(price)).toLocaleString()}฿
-            </p>
-          )}
-          <input
-            value={desc}
-            onChange={(e) => setDesc(e.target.value)}
-            placeholder={
-              isCreditForm
-                ? "คำโปรย (ถ้ามี) เช่น เติมเลยวันนี้ รับโบนัสฟรี 200฿"
-                : "คำโปรย (ถ้ามี) เช่น ประหยัดกว่าซื้อแยก 500฿"
-            }
-            className={field}
-          />
-
-          <label className="flex cursor-pointer items-center gap-3 rounded-petflow-sm border border-dashed border-petflow-line bg-paper px-3 py-2.5">
-            {image ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={image}
-                alt="รูปหน้าปกคอร์ส"
-                className="h-14 w-14 shrink-0 rounded-petflow-sm object-cover"
-              />
-            ) : (
-              <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-petflow-sm bg-card text-xl">
-                📷
-              </span>
-            )}
-            <span className="min-w-0 text-[11px] font-bold text-brown-soft">
-              {image ? "เปลี่ยนรูปหน้าปก" : "ใส่รูปหน้าปก (ถ้ามี)"}
-              <span className="block font-normal text-brown-faint">
-                รูปสวยๆ ช่วยให้ลูกค้ากดซื้อง่ายขึ้นเยอะเลยค่ะ
-              </span>
-            </span>
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                e.target.value = "";
-                if (f) pickImage(f, setImage);
-              }}
-            />
-          </label>
-
-          <button
-            type="button"
-            disabled={busy === "add"}
-            onClick={addOffer}
-            className="w-full rounded-petflow-sm bg-latte/30 py-2.5 text-sm font-extrabold text-petflow-chocolate disabled:opacity-40"
-          >
-            {busy === "add"
-              ? "กำลังเพิ่ม…"
-              : isCreditForm
-                ? "➕ เพิ่มรายการเติมเครดิต"
-                : "➕ เพิ่มคอร์สที่จะขาย"}
-          </button>
         </div>
+        {offers.length > 0 && (
+          <p className="mt-1.5 px-1 text-[10px] text-brown-faint">แตะรูปเพื่อเปลี่ยนรูป · แตะชื่อเพื่อแก้ไข</p>
+        )}
       </section>
 
       {/* ── ประวัติออร์เดอร์ ── */}
       {done.length > 0 && (
-        <section className="rounded-petflow bg-card p-4 shadow-petflow-sm">
-          <h2 className="mb-2 text-sm font-extrabold text-petflow-chocolate">
-            📋 ออร์เดอร์ที่จบแล้ว
-          </h2>
-          <ul className="space-y-1">
+        <details className="group rounded-petflow bg-card shadow-petflow-sm [&_summary::-webkit-details-marker]:hidden">
+          <summary className="flex min-h-[48px] cursor-pointer list-none items-center gap-3 px-4 py-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-paper text-brown">
+              <Icon name="doc" size={18} />
+            </span>
+            <span className="flex-1 text-sm font-extrabold text-petflow-chocolate">
+              ออร์เดอร์ที่จบแล้ว ({done.length})
+            </span>
+            <Icon name="chevron" size={16} className="text-brown-faint transition group-open:rotate-90" />
+          </summary>
+          <ul className="divide-y divide-petflow-line border-t border-petflow-line">
             {done.map((o) => (
-              <li
-                key={o.id}
-                className="flex items-center justify-between gap-2 rounded-petflow-sm bg-paper/50 px-2.5 py-1 text-[11px]"
-              >
-                <span className="min-w-0 truncate text-brown-soft">
-                  {(o.paidAt || o.createdAt).slice(0, 10)} · {o.customerName} · {o.name}
-                </span>
-                <span className="flex shrink-0 items-center gap-1.5">
-                  <span
-                    className={`font-bold ${o.status === "paid" ? "text-ok" : "text-wait"}`}
-                  >
-                    {o.status === "paid" ? `✅ ${o.price.toLocaleString()}฿` : "ยกเลิก"}
+              <li key={o.id} className="flex items-center gap-2 py-1 pl-4 pr-2 text-xs">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-bold text-brown">{o.name}</span>
+                  <span className="block truncate text-[11px] text-brown-soft">
+                    {(o.paidAt || o.createdAt).slice(0, 10)} · {o.customerName}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!confirm("ลบออร์เดอร์นี้ออกจากประวัติ? (ไม่กระทบคอร์สที่ลูกค้าได้ไปแล้ว)"))
-                        return;
-                      patch(
-                        { action: "delete_order", orderId: o.id },
-                        "ลบออกจากประวัติแล้ว",
-                        o.id
-                      );
-                    }}
-                    className="text-[11px] text-brown-faint hover:text-wait"
-                    aria-label="ลบออร์เดอร์นี้"
-                  >
-                    🗑️
-                  </button>
                 </span>
+                <span className={`shrink-0 font-bold ${o.status === "paid" ? "text-ok" : "text-wait"}`}>
+                  {o.status === "paid" ? `${o.price.toLocaleString()} ฿` : "ยกเลิก"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!confirm("ลบออร์เดอร์นี้ออกจากประวัติ? (ไม่กระทบคอร์สที่ลูกค้าได้ไปแล้ว)")) return;
+                    patch({ action: "delete_order", orderId: o.id }, "ลบออกจากประวัติแล้ว", o.id);
+                  }}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-brown-faint hover:text-wait"
+                  aria-label="ลบออร์เดอร์นี้"
+                >
+                  <Icon name="trash" size={16} />
+                </button>
               </li>
             ))}
           </ul>
-        </section>
+        </details>
       )}
 
       {/* ดูสลิปเต็มจอ */}
@@ -734,11 +755,7 @@ export default function AdminPackagesPage() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={zoomSlip}
-            alt="สลิปโอนเงิน"
-            className="max-h-full max-w-full rounded-petflow object-contain"
-          />
+          <img src={zoomSlip} alt="สลิปโอนเงิน" className="max-h-full max-w-full rounded-petflow object-contain" />
         </button>
       )}
     </div>

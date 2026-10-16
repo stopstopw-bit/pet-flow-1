@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { toast } from "@/components/Toast";
 import { formatThaiDate } from "@/lib/format-thai-date";
+import { Icon } from "@/components/Icon";
+import { EmptyState, MoreMenu } from "@/components/ui";
 
 type Row = {
   id: string;
@@ -100,24 +102,26 @@ export default function BirthdaysPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-6">
       <div>
-        <h1 className="text-lg font-extrabold text-petflow-chocolate">🎂 วันเกิดลูกค้ารอตรวจ</h1>
-        <p className="mt-1 text-xs text-brown-soft">
+        <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Birthdays</p>
+        <h1 className="text-xl font-extrabold text-petflow-chocolate">วันเกิดลูกค้ารอตรวจ</h1>
+        <p className="mt-0.5 text-xs text-brown-soft">
           ระบบคัดกรองไว้ให้แล้ว แต่ยังไม่ส่ง — ตรวจข้อความแล้วค่อยกดส่ง (คูปองก็แจกตอนกดส่งเท่านั้น)
         </p>
       </div>
 
       {rows.length === 0 ? (
-        <div className="rounded-petflow border border-dashed border-petflow-line py-10 text-center">
-          <p className="text-sm font-bold text-brown-soft">ไม่มีวันเกิดรอตรวจตอนนี้</p>
-          <p className="mt-1 text-xs text-brown-faint">
-            ระบบจะคัดกรองให้เองทุกวันตอนเที่ยง แล้วขึ้นให้ตรวจที่นี่
-          </p>
+        <div className="rounded-petflow bg-card shadow-petflow-sm">
+          <EmptyState
+            icon="cake"
+            title="ไม่มีวันเกิดรอตรวจตอนนี้"
+            sub="ระบบจะคัดกรองให้เองทุกวันตอนเที่ยง แล้วขึ้นให้ตรวจที่นี่"
+          />
         </div>
       ) : (
         <>
-          <div className="flex items-center justify-between gap-2 rounded-petflow-sm border border-honey-deep/40 bg-honey/10 px-3 py-2.5">
+          <div className="sticky top-2 z-20 flex items-center justify-between gap-2 rounded-full bg-card py-1.5 pl-4 pr-1.5 shadow-petflow">
             <p className="text-xs font-bold text-brown">
               เลือกแล้ว {selected.size} / {rows.length} ใบ
             </p>
@@ -125,58 +129,53 @@ export default function BirthdaysPage() {
               type="button"
               disabled={busy || selected.size === 0}
               onClick={sendSelected}
-              className="rounded-petflow-sm bg-gradient-to-r from-honey to-honey-deep px-4 py-2 text-xs font-extrabold text-petflow-chocolate shadow-petflow-sm disabled:opacity-50"
+              className="flex h-10 items-center gap-1.5 rounded-full bg-petflow-chocolate px-4 text-xs font-extrabold text-card disabled:opacity-50"
             >
-              {busy ? "กำลังส่ง…" : `🎂 ส่งที่เลือก (${selected.size})`}
+              <Icon name="send" size={16} />
+              {busy ? "กำลังส่ง…" : `ส่งที่เลือก (${selected.size})`}
             </button>
           </div>
 
-          <ul className="space-y-2">
+          <ul className="divide-y divide-petflow-line rounded-petflow bg-card shadow-petflow-sm">
             {rows.map((r) => (
-              <li
-                key={r.id}
-                className="rounded-petflow-sm border border-petflow-line bg-card px-3 py-2.5"
-              >
-                <div className="flex items-start gap-2.5">
-                  <input
-                    type="checkbox"
-                    checked={selected.has(r.id)}
-                    onChange={() => toggle(r.id)}
-                    className="mt-1 h-4 w-4 shrink-0 accent-honey-deep"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <span className="text-xs font-extrabold text-petflow-chocolate">
-                        {r.customerName}
-                        {r.kind === "cat" && r.catName ? ` · น้อง${r.catName}` : " · เจ้าของ"}
+              <li key={r.id} className="flex items-start gap-3 py-3 pl-4 pr-2">
+                <input
+                  type="checkbox"
+                  checked={selected.has(r.id)}
+                  onChange={() => toggle(r.id)}
+                  aria-label={`เลือก ${r.customerName}`}
+                  className="mt-1 h-5 w-5 shrink-0 accent-honey-deep"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-extrabold text-petflow-chocolate">
+                    {r.customerName}
+                    <span className="font-bold text-brown-soft">
+                      {r.kind === "cat" && r.catName ? ` · น้อง${r.catName}` : " · เจ้าของ"}
+                    </span>
+                  </p>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] font-bold">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-latte/25 px-2 py-0.5 text-latte-deep">
+                      <Icon name="cake" size={12} />
+                      {formatThaiDate(r.forDate) || r.forDate}
+                    </span>
+                    {r.couponAmount > 0 ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-ok/15 px-2 py-0.5 text-ok">
+                        <Icon name="gift" size={12} />
+                        คูปอง {r.couponAmount} บาท
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => dismiss(r.id)}
-                        className="text-[10px] font-bold text-brown-faint underline"
-                      >
-                        ข้ามวันนี้
-                      </button>
-                    </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] font-bold">
-                      <span className="rounded-full bg-latte/25 px-2 py-0.5 text-latte-deep">
-                        🎂 {formatThaiDate(r.forDate) || r.forDate}
+                    ) : (
+                      <span className="rounded-full bg-paper px-2 py-0.5 text-brown-faint">
+                        ไม่แจกคูปอง (เคยได้ปีนี้แล้ว/ปิดไว้)
                       </span>
-                      {r.couponAmount > 0 ? (
-                        <span className="rounded-full bg-ok/15 px-2 py-0.5 text-ok">
-                          🎁 แจกคูปอง {r.couponAmount} บาท
-                        </span>
-                      ) : (
-                        <span className="rounded-full bg-paper px-2 py-0.5 text-brown-faint">
-                          ไม่แจกคูปอง (เคยได้ปีนี้แล้ว/ปิดไว้)
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-1.5 whitespace-pre-line rounded bg-paper px-2 py-1.5 text-[11px] text-brown">
-                      {r.text}
-                    </p>
+                    )}
                   </div>
+                  <p className="mt-2 whitespace-pre-line rounded-petflow-sm bg-paper px-3 py-2 text-[11px] text-brown">
+                    {r.text}
+                  </p>
                 </div>
+                <MoreMenu
+                  items={[{ label: "ข้ามวันนี้", icon: "x", onClick: () => dismiss(r.id) }]}
+                />
               </li>
             ))}
           </ul>

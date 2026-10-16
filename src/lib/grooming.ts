@@ -2,13 +2,13 @@ export type GroomSize = "kitten" | "m" | "l";
 
 export const GROOM_SIZE_LABELS = {
   th: {
-    kitten: "ลูกแมว (<2 กก.)",
-    m: "M (<6 กก.)",
+    kitten: "ลูกแมว (≤2 กก.)",
+    m: "M (2–6 กก.)",
     l: "L (6 กก.↑)",
   },
   en: {
-    kitten: "Kitten (<2 kg)",
-    m: "M (<6 kg)",
+    kitten: "Kitten (≤2 kg)",
+    m: "M (2–6 kg)",
     l: "L (6 kg+)",
   },
 } as const;
@@ -18,21 +18,25 @@ export const GROOM_MENUS = {
     id: "bath",
     title: { th: "อาบน้ำ · เป่าขน", en: "Bath & blow-dry" },
     subtitle: {
-      th: "แชมพู Landin'Elite เกรดพรีเมียม",
-      en: "Landin'Elite premium shampoo",
+      th: "แชมพูเกรดพรีเมียม · เกรดแมวประกวด",
+      en: "Premium, show-grade shampoo",
     },
-    poster: "/catalog/grooming/bath-menu.jpg",
+    poster: "/catalog/grooming/grooming-menu.jpg",
     programs: [
       {
         id: "dry",
         name: { th: "อาบน้ำ – เป่าขน", en: "Bath & blow-dry" },
+        note: {
+          th: "ทำความสะอาดผิวหนังธรรมดา",
+          en: "Everyday skin & coat cleaning",
+        },
       },
       {
         id: "degrease",
         name: { th: "อาบน้ำ + ขจัดคราบมัน", en: "Bath + degreasing" },
         note: {
-          th: "ช่วยขจัดความมันส่วนเกิน ขนนุ่มสลวย ไม่แห้งกร้าน บำรุงด้วย Shea butter & Almond oil",
-          en: "Removes excess oil, keeps coat soft without drying skin — Shea butter & almond oil",
+          th: "สำหรับขนมัน จับเป็นซ่อ หรือมีคราบสะสม — ลดคราบมัน ขนเรียงตัว สะอาด เงางาม",
+          en: "For oily, clumping or stained coats — less grease, smooth, clean and shiny",
         },
       },
     ],
@@ -61,50 +65,27 @@ export const GROOM_MENUS = {
   },
   advance: {
     id: "advance",
-    title: { th: "Advance Grooming", en: "Advance Grooming" },
+    title: { th: "โปรแกรมดูแลพิเศษ", en: "Special care programs" },
     subtitle: {
-      th: "Landin'Elite · PetFlow Premium หรือ Malaseb",
-      en: "Landin'Elite · PetFlow Premium or Malaseb",
+      th: "PetFlow Premium หรือ ยับยั้งเชื้อรา (ราคาเดียวกันทั้ง 2 โปรแกรม)",
+      en: "PetFlow Premium or antifungal (same price for both)",
     },
-    poster: "/catalog/grooming/advance-menu.jpg",
+    poster: "",
     variants: [
       {
         id: "premium",
         name: { th: "PetFlow Premium", en: "PetFlow Premium" },
-        badge: { th: "แนะนำ", en: "Recommended" },
         features: {
-          th: [
-            "มาสก์ขจัดความมัน",
-            "ดีท็อกซ์",
-            "ทรีทเมนต์เพิ่มวอลลุ่ม",
-            "แชมพูเฉพาะสภาพขน",
-            "สเปรย์บำรุง",
-          ],
-          en: [
-            "Oil-removal mask",
-            "Detox",
-            "Volume treatment",
-            "Custom shampoo",
-            "Nourishing spray",
-          ],
+          th: ["ขจัดคราบมัน", "ดีท็อกซ์ ทำความสะอาดคราบสะสม", "ทรีตเมนต์ บำรุงเส้นขน"],
+          en: ["Degreasing", "Detox deep-clean", "Coat-nourishing treatment"],
         },
       },
       {
         id: "malaseb",
-        name: { th: "Malaseb ยับยั้งเชื้อรา", en: "Malaseb antifungal" },
+        name: { th: "ยับยั้งเชื้อรา (แชมพู Malaseb)", en: "Antifungal (Malaseb shampoo)" },
         features: {
-          th: [
-            "มาสก์ขจัดความมัน",
-            "รักษาอาการอักเสบจากแบคทีเรีย",
-            "ลดอาการคัน",
-            "กำจัดสปอร์เชื้อรา",
-          ],
-          en: [
-            "Oil-removal mask",
-            "Treats bacterial inflammation",
-            "Reduces itching",
-            "Eliminates fungal spores",
-          ],
+          th: ["ประเมินก่อนบริการ", "หากมีโรคผิวหนัง ควรปรึกษาสัตวแพทย์ก่อน"],
+          en: ["Assessed before service", "Please consult a vet first for skin conditions"],
         },
       },
     ],
@@ -123,7 +104,7 @@ export const GROOM_MENUS = {
       },
       {
         breed: { th: "แรคดอล / เมนคูน (ขนหนาฟู)", en: "Ragdoll / Maine Coon" },
-        kitten: 1000,
+        kitten: 900,
         m: 1200,
         l: 1450,
       },
@@ -133,26 +114,28 @@ export const GROOM_MENUS = {
 
 export const GROOM_SPECIALS = {
   th: [
-    { name: "แก้สางขนพันแน่น", price: "100–500" },
-    { name: "ขจัดคราบเหลืองฝังแน่น (เฉพาะจุด)", price: "200–500" },
-    { name: "หยดยาป้องกันปรสิต NEXGARD COMBO", price: "360" },
+    { name: "แก้ขนพันกันแน่น", price: "100–500" },
+    { name: "ขจัดคราบเหลืองเฉพาะจุด", price: "200–500" },
+    { name: "หยดยาป้องกันปรสิต", price: "360" },
   ],
   en: [
     { name: "Detangling matted fur", price: "100–500" },
     { name: "Deep stain removal (spot)", price: "200–500" },
-    { name: "Parasite prevention NEXGARD COMBO", price: "360" },
+    { name: "Parasite prevention drops", price: "360" },
   ],
 } as const;
 
 export const GROOM_NOTES = {
   th: [
-    "ราคารวม ตัดเล็บ · เช็ดหู-ตา · ไถขนก้นและอุ้งเท้า",
-    "บริการแบบ Private รับน้องแมวทีละบ้าน",
-    "อาบน้ำแมวประกวด — สอบถามราคาเพิ่มเติม",
+    "ราคารวม ตัดเล็บ · เช็ดหูและตา · ไถก้น · ไถอุ้งเท้า",
+    "บริการส่วนตัว รับทีละบ้าน · นัดหมายล่วงหน้า",
+    "แมวเกิน 8 กก. ประเมินก่อนบริการ",
+    "อาบน้ำเตรียมประกวด — สอบถามราคาเพิ่มเติม",
   ],
   en: [
     "Includes nail trim, ear/eye cleaning, paw & sanitary trim",
-    "Private service — one household at a time",
-    "Show cats — please inquire for pricing",
+    "Private service — one household at a time, by appointment",
+    "Cats over 8 kg are assessed before service",
+    "Show preparation — please inquire for pricing",
   ],
 } as const;

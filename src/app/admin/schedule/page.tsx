@@ -1,19 +1,17 @@
 "use client";
 
-import Link from "next/link";
 import { BookingCalendar } from "@/components/BookingCalendar";
 
+/**
+ * ตารางนัด — จองใหม่ใช้ปุ่ม + ในแถบล่าง (มือถือ) หรือเมนูซ้าย (จอใหญ่) ที่เดียว
+ * ไม่ซ้ำปุ่มบนหัวหน้า
+ */
 export default function SchedulePage() {
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between gap-2">
-        <h1 className="text-lg font-extrabold text-petflow-chocolate">🗓️ ตารางนัด</h1>
-        <Link
-          href="/admin/bookings/new"
-          className="rounded-petflow-sm bg-gradient-to-r from-honey to-honey-deep px-4 py-2 text-xs font-extrabold text-petflow-chocolate shadow-petflow-sm"
-        >
-          ➕ จองใหม่
-        </Link>
+      <div className="mb-4">
+        <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Schedule</p>
+        <h1 className="text-xl font-extrabold text-petflow-chocolate">ตารางนัด</h1>
       </div>
       <BookingCalendar />
     </div>

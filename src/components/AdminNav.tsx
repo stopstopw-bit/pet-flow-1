@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
+import { ADMIN_TAB_EN, ADMIN_TAB_GROUPS, ADMIN_TAB_ICONS, Icon } from "@/components/Icon";
 
 export const ADMIN_TABS = [
   { href: "/admin", label: "แดชบอร์ด", icon: "📊" },
@@ -10,6 +11,7 @@ export const ADMIN_TABS = [
   { href: "/admin/bookings/new", label: "จองใหม่", icon: "➕" },
   { href: "/admin/customers", label: "ลูกค้า", icon: "👤" },
   { href: "/admin/billing", label: "คิดเงิน", icon: "💳" },
+  { href: "/admin/pos", label: "ขายหน้าร้าน", icon: "🛒" },
   { href: "/admin/finance", label: "รายรับ-รายจ่าย", icon: "📒" },
   { href: "/admin/tax", label: "เอกสารรายได้ / ภาษี", icon: "📑" },
   { href: "/admin/insights", label: "สรุปข้อมูล", icon: "📊" },
@@ -17,7 +19,6 @@ export const ADMIN_TABS = [
   { href: "/admin/coupons", label: "คูปอง", icon: "🎟️" },
   { href: "/admin/birthdays", label: "วันเกิดลูกค้า", icon: "🎂" },
   { href: "/admin/packages", label: "ขายคอร์สในแอป", icon: "🛍️" },
-  { href: "/admin/products", label: "สินค้าหน้าร้าน", icon: "🛒" },
   { href: "/admin/cards", label: "ปรับแต่งการ์ด LINE", icon: "🎴" },
   { href: "/admin/articles", label: "บทความหน้าเว็บ", icon: "📝" },
   { href: "/admin/staff", label: "พนักงาน", icon: "👥" },
@@ -39,7 +40,9 @@ export function getAllowedMenus(): string[] | null {
   if (sessionStorage.getItem("petflow-role") !== "staff") return null;
   try {
     const menus = JSON.parse(sessionStorage.getItem("petflow-menus") || "[]");
-    return Array.isArray(menus) ? menus : [];
+    if (!Array.isArray(menus)) return [];
+    // สิทธิ์ "สินค้าหน้าร้าน" เดิม = ขายหน้าร้าน (POS) ตอนนี้ — หน้าเดิมรวมเข้า POS แล้ว
+    return menus.includes("/admin/products") && !menus.includes("/admin/pos") ? [...menus, "/admin/pos"] : menus;
   } catch {
     return [];
   }
@@ -49,6 +52,12 @@ export function getAllowedMenus(): string[] | null {
 export function isPathAllowed(pathname: string, allowed: string[] | null) {
   if (!allowed) return true;
   return allowed.some((href) => isTabActive(pathname, href));
+}
+
+/** ชื่ออังกฤษของเมนูที่เปิดอยู่ — ใช้เป็นหัวเล็กในแถบหัว */
+export function getActiveAdminTabEn(pathname: string) {
+  const tab = TABS.find((t) => isTabActive(pathname, t.href));
+  return tab ? ADMIN_TAB_EN[tab.href] || "" : "";
 }
 
 export function getActiveAdminTabLabel(pathname: string) {
@@ -76,13 +85,11 @@ function NavLink({
       onClick={onNavigate}
       className={`flex items-center gap-3 rounded-petflow-sm font-bold transition ${
         active
-          ? "bg-honey/40 text-petflow-chocolate"
-          : "text-brown-soft hover:bg-honey/15 hover:text-petflow-chocolate"
+          ? "bg-petflow-chocolate text-card"
+          : "text-brown hover:bg-paper hover:text-petflow-chocolate"
       } ${className}`}
     >
-      <span aria-hidden className="text-lg leading-none">
-        {icon}
-      </span>
+      <Icon name={ADMIN_TAB_ICONS[href] || icon} size={20} />
       <span>{label}</span>
     </Link>
   );
@@ -163,27 +170,172 @@ export function AdminNav({
       <button
         type="button"
         aria-label="ปิดเมนู"
-        className="fixed inset-0 z-40 bg-petflow-chocolate/25"
+        className="fixed inset-0 z-40 bg-petflow-chocolate/30 backdrop-blur-[2px] lg:hidden"
         onClick={closeMenu}
       />
       <nav
         id="admin-menu"
-        className="absolute left-0 right-0 top-full z-50 border-b border-petflow-line bg-card px-3 py-3 shadow-petflow"
+        className="fixed inset-x-0 bottom-0 z-[44] max-h-[88vh] overflow-y-auto rounded-t-[28px] bg-cream px-4 pb-28 pt-3 shadow-petflow lg:hidden"
         aria-label="เมนูหลังบ้าน"
       >
-        <ul className="mx-auto grid max-w-6xl gap-1 sm:grid-cols-2">
-          {visibleTabs.map((tab) => (
-            <li key={tab.href}>
-              <NavLink
-                {...tab}
-                active={isTabActive(pathname, tab.href)}
-                onNavigate={closeMenu}
-                className="w-full px-4 py-3 text-sm"
-              />
-            </li>
+        <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-brown-faint/50" />
+        <div className="mx-auto max-w-lg space-y-4">
+          {groupTabs(visibleTabs).map((g) => (
+            <section key={g.title}>
+              <p className="mb-2 px-1 text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">
+                {g.title}
+              </p>
+              <ul className="grid grid-cols-4 gap-2 rounded-petflow bg-card p-3 shadow-petflow-sm">
+                {g.tabs.map((tab) => {
+                  const active = isTabActive(pathname, tab.href);
+                  return (
+                    <li key={tab.href}>
+                      <Link
+                        href={tab.href}
+                        onClick={closeMenu}
+                        className="flex flex-col items-center gap-1.5 rounded-petflow-sm py-1.5 text-center"
+                      >
+                        <span
+                          className={`flex h-12 w-12 items-center justify-center rounded-2xl ${
+                            active
+                              ? "bg-petflow-chocolate text-card"
+                              : "bg-honey/25 text-petflow-chocolate"
+                          }`}
+                        >
+                          <Icon name={ADMIN_TAB_ICONS[tab.href]} size={22} />
+                        </span>
+                        <span className="text-[11px] font-bold leading-tight text-brown">
+                          {tab.label}
+                        </span>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
           ))}
-        </ul>
+        </div>
       </nav>
     </>
+  );
+}
+
+type Tab = (typeof TABS)[number];
+
+/** แบ่งเมนูที่มองเห็นเป็นกลุ่ม — เมนูที่ไม่อยู่ในกลุ่มไหนไปรวมท้ายสุด */
+function groupTabs(tabs: readonly Tab[]) {
+  const used = new Set<string>();
+  const groups = ADMIN_TAB_GROUPS.map((g) => {
+    const list = tabs.filter((t) => g.hrefs.includes(t.href));
+    list.forEach((t) => used.add(t.href));
+    return { title: g.title, tabs: list };
+  });
+  const rest = tabs.filter((t) => !used.has(t.href));
+  if (rest.length) groups.push({ title: "More", tabs: rest });
+  return groups.filter((g) => g.tabs.length > 0);
+}
+
+/** แถบเมนูซ้ายบนจอใหญ่ — แสดงทุกเมนูที่ผู้ใช้มีสิทธิ์ แบ่งเป็นกลุ่ม */
+export function AdminSidebar() {
+  const pathname = usePathname();
+  const allowed = getAllowedMenus();
+  const visibleTabs = TABS.filter((t) => !allowed || allowed.includes(t.href));
+  return (
+    <nav
+      aria-label="เมนูหลังบ้าน"
+      className="sticky top-6 hidden max-h-[calc(100vh-3rem)] overflow-y-auto rounded-petflow bg-card p-3 shadow-petflow lg:block"
+    >
+      {groupTabs(visibleTabs).map((g) => (
+        <div key={g.title} className="mb-3 last:mb-0">
+          <p className="mb-1 px-3 pt-1 text-[10px] font-bold uppercase tracking-[0.12em] text-brown-faint">
+            {g.title}
+          </p>
+          <ul className="space-y-0.5">
+            {g.tabs.map((tab) => (
+              <li key={tab.href}>
+                <NavLink
+                  {...tab}
+                  active={isTabActive(pathname, tab.href)}
+                  className="w-full px-3 py-2 text-sm"
+                />
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </nav>
+  );
+}
+
+/** แถบเมนูล่างบนมือถือ — หน้าหลัก · ตารางนัด · [+ จองใหม่] · ลูกค้า · เมนู */
+const BOTTOM_LEFT = ["/admin", "/admin/schedule"];
+const BOTTOM_RIGHT = ["/admin/customers"];
+const BOTTOM_LABEL: Record<string, string> = {
+  "/admin": "Home",
+  "/admin/schedule": "Schedule",
+  "/admin/customers": "Customers",
+};
+
+export function AdminBottomBar({
+  menuOpen,
+  onMenu,
+}: {
+  menuOpen: boolean;
+  onMenu: () => void;
+}) {
+  const pathname = usePathname();
+  const allowed = getAllowedMenus();
+  const can = (href: string) => !allowed || allowed.includes(href);
+  const shown = [...BOTTOM_LEFT, "/admin/bookings/new", ...BOTTOM_RIGHT];
+  const anyActive = shown.some((h) => can(h) && isTabActive(pathname, h));
+
+  const item = (href: string) =>
+    can(href) ? (
+      <Link
+        key={href}
+        href={href}
+        className={`flex min-w-0 flex-1 flex-col items-center gap-1 py-1 text-[10px] font-bold tracking-wide transition ${
+          !menuOpen && isTabActive(pathname, href) ? "text-petflow-chocolate" : "text-brown-faint"
+        }`}
+      >
+        <Icon name={ADMIN_TAB_ICONS[href]} size={23} strokeWidth={!menuOpen && isTabActive(pathname, href) ? 2.2 : 1.8} />
+        <span className="truncate leading-tight">{BOTTOM_LABEL[href]}</span>
+      </Link>
+    ) : null;
+
+  return (
+    <nav
+      aria-label="เมนูลัด"
+      className="fixed inset-x-0 bottom-0 z-[45] border-t border-petflow-line bg-card/95 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-md print:hidden lg:hidden"
+    >
+      <div className="mx-auto flex max-w-lg items-end justify-between px-2">
+        {BOTTOM_LEFT.map(item)}
+        {can("/admin/bookings/new") ? (
+          <Link
+            href="/admin/bookings/new"
+            aria-label="จองใหม่"
+            className="flex min-w-0 flex-1 flex-col items-center gap-1 text-[10px] font-bold tracking-wide text-petflow-chocolate"
+          >
+            <span className="-mt-7 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-honey to-honey-deep text-petflow-chocolate shadow-petflow ring-4 ring-card">
+              <Icon name="plus" size={26} strokeWidth={2.4} />
+            </span>
+            <span className="leading-tight">Book</span>
+          </Link>
+        ) : null}
+        {BOTTOM_RIGHT.map(item)}
+        <button
+          type="button"
+          aria-expanded={menuOpen}
+          aria-controls="admin-menu"
+          onClick={onMenu}
+          className={`flex min-w-0 flex-1 flex-col items-center gap-1 py-1 text-[10px] font-bold tracking-wide transition ${
+            menuOpen || !anyActive ? "text-petflow-chocolate" : "text-brown-faint"
+          }`}
+        >
+          <Icon name="grid" size={23} strokeWidth={menuOpen || !anyActive ? 2.2 : 1.8} />
+          <span className="truncate leading-tight">Menu</span>
+        </button>
+      </div>
+    </nav>
   );
 }

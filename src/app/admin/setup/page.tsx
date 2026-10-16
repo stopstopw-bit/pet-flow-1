@@ -8,6 +8,7 @@ import {
   LineMessagingSetupSection,
 } from "@/components/LineSetupSection";
 import { TelegramSetupSection } from "@/components/TelegramSetupSection";
+import { Icon } from "@/components/Icon";
 
 type Status = {
   supabaseUrl: boolean;
@@ -62,7 +63,7 @@ export default function SetupPage() {
     const res = await fetch("/api/setup?action=schema");
     const text = await res.text();
     await navigator.clipboard.writeText(text);
-    setMsg("📋 Copy SQL แล้ว — วางใน Supabase SQL Editor");
+    setMsg("คัดลอก SQL แล้ว — วางใน Supabase SQL Editor");
   };
 
   if (loading) {
@@ -71,8 +72,9 @@ export default function SetupPage() {
 
   return (
     <div>
-      <h1 className="mb-1 text-lg font-extrabold text-petflow-chocolate">🚀 ติดตั้งระบบ</h1>
-      <p className="mb-4 text-xs text-brown-soft">
+      <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Setup</p>
+      <h1 className="text-xl font-extrabold text-petflow-chocolate">ติดตั้งระบบ</h1>
+      <p className="mb-4 mt-0.5 text-xs text-brown-soft">
         ทำครั้งเดียว — วาง JSON / ลิงก์ แล้วกดบันทึก ไม่ต้องไล่ใส่ Vercel ทีละตัว
       </p>
 
@@ -89,20 +91,23 @@ export default function SetupPage() {
 
       {status?.tablesReady ? (
         <div className="mb-4 rounded-petflow bg-sage/15 p-5 text-center">
-          <p className="text-2xl">✅</p>
+          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-card text-ok">
+            <Icon name="check" size={24} strokeWidth={2.2} />
+          </span>
           <p className="mt-2 font-extrabold text-ok">พร้อมใช้งานแล้ว!</p>
           <p className="mt-1 text-xs text-brown-soft">{status.message}</p>
           <a
             href="/admin/settings"
-            className="mt-4 inline-block rounded-petflow-sm bg-honey/40 px-4 py-2 text-xs font-bold"
+            className="mt-4 inline-flex h-10 items-center gap-1.5 rounded-full bg-petflow-chocolate px-5 text-xs font-bold text-card"
           >
-            ไปตั้งค่าร้าน →
+            ไปตั้งค่าร้าน
+            <Icon name="chevron" size={14} />
           </a>
         </div>
       ) : (
         <>
           <section className="mb-4 space-y-2 rounded-petflow bg-card p-4 shadow-petflow-sm">
-            <h2 className="text-sm font-extrabold">สถานะ</h2>
+            <h2 className="text-sm font-extrabold text-petflow-chocolate">สถานะ</h2>
             <StatusRow ok={status?.supabaseUrl} label="NEXT_PUBLIC_SUPABASE_URL" />
             <StatusRow ok={status?.serviceKey} label="SUPABASE_SERVICE_ROLE_KEY" />
             <StatusRow ok={status?.databaseUrl} label="DATABASE_URL (สำหรับสร้างตารางอัตโนมัติ)" />
@@ -132,24 +137,26 @@ export default function SetupPage() {
           </section>
 
           <section className="mb-4 space-y-2 rounded-petflow bg-card p-4 shadow-petflow-sm">
-            <h2 className="text-sm font-extrabold">ขั้นที่ 2 — สร้างตาราง</h2>
+            <h2 className="text-sm font-extrabold text-petflow-chocolate">ขั้นที่ 2 — สร้างตาราง</h2>
             <p className="text-xs text-brown-soft">เลือกวิธีใดวิธีหนึ่ง:</p>
 
             <button
               type="button"
               disabled={booting || !status?.databaseUrl}
               onClick={bootstrap}
-              className="w-full rounded-petflow-sm bg-gradient-to-r from-honey to-honey-deep py-3 text-sm font-extrabold text-petflow-chocolate disabled:opacity-40"
+              className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-petflow-chocolate px-4 text-sm font-extrabold text-card disabled:opacity-40"
             >
-              {booting ? "กำลังสร้าง…" : "⚡ สร้างตารางอัตโนมัติ (ต้องมี DATABASE_URL)"}
+              <Icon name="rocket" size={18} />
+              {booting ? "กำลังสร้าง…" : "สร้างตารางอัตโนมัติ (ต้องมี DATABASE_URL)"}
             </button>
 
             <button
               type="button"
               onClick={copySchema}
-              className="w-full rounded-petflow-sm border border-petflow-line bg-paper py-3 text-sm font-bold text-brown"
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-full bg-paper px-4 text-xs font-bold text-brown"
             >
-              📋 Copy SQL ไปวางใน Supabase SQL Editor
+              <Icon name="copy" size={16} />
+              คัดลอก SQL ไปวางใน Supabase SQL Editor
             </button>
           </section>
         </>
@@ -158,9 +165,10 @@ export default function SetupPage() {
       <button
         type="button"
         onClick={load}
-        className="w-full rounded-petflow-sm bg-paper py-2 text-xs font-bold text-brown-soft"
+        className="flex h-11 w-full items-center justify-center gap-1.5 rounded-full bg-card text-xs font-bold text-brown shadow-petflow-sm"
       >
-        🔄 ตรวจสอบอีกครั้ง
+        <Icon name="search" size={16} />
+        ตรวจสอบอีกครั้ง
       </button>
     </div>
   );
@@ -168,9 +176,15 @@ export default function SetupPage() {
 
 function StatusRow({ ok, label }: { ok?: boolean; label: string }) {
   return (
-    <div className="flex items-center gap-2 text-xs">
-      <span>{ok ? "✅" : "⏳"}</span>
-      <span className={ok ? "text-ok font-semibold" : "text-brown-soft"}>{label}</span>
+    <div className="flex min-h-[32px] items-center gap-2 text-xs">
+      <span
+        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
+          ok ? "bg-sage/30 text-ok" : "bg-paper text-brown-faint"
+        }`}
+      >
+        <Icon name={ok ? "check" : "clock"} size={14} strokeWidth={2.2} />
+      </span>
+      <span className={`min-w-0 break-all ${ok ? "font-semibold text-ok" : "text-brown-soft"}`}>{label}</span>
     </div>
   );
 }

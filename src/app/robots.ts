@@ -9,7 +9,7 @@ export default function robots(): MetadataRoute.Robots {
         userAgent: "*",
         allow: "/",
         // หน้าแอปสมาชิก/หลังบ้าน ไม่ต้อง index — ให้บอทโฟกัสหน้าเว็บหลัก
-        disallow: ["/admin", "/api", "/app"],
+        disallow: ["/admin", "/api", "/app", "/doc"],
       },
     ],
     sitemap: `${SITE_URL}/sitemap.xml`,

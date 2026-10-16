@@ -16,6 +16,7 @@ import {
   type StoredBooking,
 } from "@/lib/bookings-store";
 import { AUTO_MESSAGE_TOPICS } from "@/lib/auto-messages";
+import { rescheduleGroup, type DatePatch } from "@/lib/stay-sync";
 import { bookingMatchesCustomer } from "@/lib/booking-customer-match";
 import { groomProgram, resolveGroomPrograms } from "@/lib/grooming-prices";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
@@ -48,6 +49,7 @@ import {
   getCustomer,
 } from "@/lib/customers-store";
 import { getSiteConfig } from "@/lib/config-store";
+import { cleanTransport, hasTransport, transportLabel, type BookingTransport } from "@/lib/transport";
 import { DEFAULT_MESSAGES, renderTemplate } from "@/lib/messages";
 import { listInvoices, updateInvoice, invoiceCatNames } from "@/lib/invoices-store";
 import { getPaymentConfig } from "@/lib/payment-config";
@@ -65,10 +67,22 @@ import {
 
 export const dynamic = "force-dynamic";
 
+/** บรรทัดรับ-ส่งในปฏิทิน — ให้คนขับเปิดแผนที่จากปฏิทินได้เลย */
+function transportCalendarText(t?: BookingTransport) {
+  if (!hasTransport(t)) return "";
+  return [
+    `\n🚗 ${transportLabel(t)}`,
+    t.address ? `จุดรับ-ส่ง: ${t.address}` : "",
+    t.mapUrl ? `แผนที่: ${t.mapUrl}` : "ยังไม่ได้ส่งแผนที่",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 function bookingCalendarPayload(b: StoredBooking) {
   return {
-    summary: `${b.service === "room" ? "🏠" : "🛁"} ${b.catName} (${b.customerName})`,
-    description: `${b.service === "room" ? "ห้องพัก" : "อาบน้ำ"} · ${b.notes || ""}`,
+    summary: `${b.service === "room" ? "🏠" : "🛁"}${hasTransport(b.transport) ? "🚗" : ""} ${b.catName} (${b.customerName})`,
+    description: `${b.service === "room" ? "ห้องพัก" : "อาบน้ำ"} · ${b.notes || ""}${transportCalendarText(b.transport)}`,
     start: b.date || b.checkin || "",
     end: b.checkout || b.date || b.checkin || "",
     time: b.time,
@@ -158,6 +172,7 @@ async function handleGet(lineUserId?: string) {
       groomHealthInfo: b.groomHealthInfo,
       autoOff: b.autoOff || [],
       groomProgram: b.groomProgram,
+      transport: b.transport,
       roomUnit: b.roomUnit,
       customerId: customer?.id,
       catMedical: cat?.medical || undefined,
@@ -205,11 +220,12 @@ async function handlePost(req: NextRequest) {
     lineUserId: customer.lineUserId,
     notes: body.notes,
     groomProgram: body.groomProgram ? String(body.groomProgram) : undefined,
+    transport: cleanTransport(body.transport),
   });
 
   const cal = await createCalendarEvent({
-    summary: `${body.service === "room" ? "🏠" : "🛁"} ${body.catName} (${customer.name})`,
-    description: `${body.service === "room" ? "ห้องพัก" : "อาบน้ำ"} · ${body.notes || ""}`,
+    summary: `${body.service === "room" ? "🏠" : "🛁"}${hasTransport(booking.transport) ? "🚗" : ""} ${body.catName} (${customer.name})`,
+    description: `${body.service === "room" ? "ห้องพัก" : "อาบน้ำ"} · ${body.notes || ""}${transportCalendarText(booking.transport)}`,
     start: body.date || body.checkin,
     end: body.checkout || body.date || body.checkin,
     time: body.time,
@@ -228,6 +244,7 @@ async function handlePost(req: NextRequest) {
       ลูกค้า: customer.name,
       น้องแมว: body.catName,
       บริการ: body.service === "room" ? "ห้องพัก" : "อาบน้ำ",
+      ...(hasTransport(booking.transport) ? { รับส่ง: transportLabel(booking.transport) } : {}),
       วันที่: `${body.date || body.checkin}${body.time ? ` ${body.time}` : ""}`,
       ปฏิทิน: cal.googleUrl || icsUrl,
     })
@@ -404,6 +421,7 @@ async function handlePatch(req: NextRequest, admin: boolean) {
         room: b.room,
         notes: b.notes,
         groomProgram: b.groomProgram,
+        transport: b.transport,
       });
 
       if (preview) return NextResponse.json({ ok: true, preview: [flex] });
@@ -556,6 +574,7 @@ async function handlePatch(req: NextRequest, admin: boolean) {
             room: b.room,
             notes: b.notes,
             groomProgram: b.groomProgram,
+            transport: b.transport,
           })
         );
       } else if (part === "consent") {
@@ -922,6 +941,52 @@ async function handlePatch(req: NextRequest, admin: boolean) {
     }
   }
 
+  // ── เลื่อนวัน / ต่อคืน ทั้งบ้านในครั้งเดียว + ปรับบิลให้ตรงจำนวนคืน ──
+  if (action === "reschedule") {
+    const patch: DatePatch = {};
+    if (body.date != null) patch.date = String(body.date);
+    if (body.time != null) patch.time = String(body.time) || undefined;
+    if (body.checkin != null) patch.checkin = String(body.checkin) || undefined;
+    if (body.checkout != null) patch.checkout = String(body.checkout) || undefined;
+    if (patch.checkin && patch.checkout && patch.checkout <= patch.checkin) {
+      return NextResponse.json({ error: "checkout_before_checkin" }, { status: 400 });
+    }
+    const res = await rescheduleGroup(id, patch, body.applyToGroup !== false);
+    if (!res.ok) return NextResponse.json({ error: res.error }, { status: 404 });
+
+    for (const u of res.updated) {
+      if (u.calendarEventId && u.status !== "cancelled") {
+        await updateCalendarEvent(u.calendarEventId, bookingCalendarPayload(u));
+      }
+    }
+    const h = res.updated[0];
+    const inv = res.invoice;
+    await sendTelegram(
+      formatBookingTelegram(h?.service === "room" ? "📅 เลื่อนวัน/ต่อคืน" : "📅 เลื่อนนัด", {
+        ลูกค้า: String(h?.customerName || ""),
+        น้องแมว: res.updated.map((u) => u.catName).join(", "),
+        วันที่:
+          h?.service === "room"
+            ? `${h?.checkin || "-"} → ${h?.checkout || "-"}`
+            : `${h?.date || "-"} ${h?.time || ""}`,
+        บิล:
+          inv.kind === "updated"
+            ? `แก้บิลเดิมเป็น ${inv.nights} คืน · ${inv.total} บาท`
+            : inv.kind === "created_extra"
+              ? `ออกบิลต่อคืน ${inv.nights} คืน · ${inv.total} บาท`
+              : inv.kind === "warn"
+                ? `⚠️ ${inv.message}`
+                : "-",
+      })
+    );
+    return NextResponse.json({
+      ok: true,
+      movedCount: res.movedCount,
+      invoice: res.invoice,
+      bookings: res.updated.map(toBooking),
+    });
+  }
+
   if (action === "update") {
     const patch: Parameters<typeof updateBooking>[1] = {};
     if (body.customerName != null) patch.customerName = String(body.customerName);
@@ -947,6 +1012,8 @@ async function handlePatch(req: NextRequest, admin: boolean) {
       const programs = resolveGroomPrograms((await getSiteConfig()).groomPricePrograms);
       patch.groomProgram = pid && groomProgram(pid, programs) ? pid : "";
     }
+    // รับ-ส่ง — ส่ง null/{} มา = ยกเลิกบริการรับ-ส่งของนัดนี้
+    if (body.transport !== undefined) patch.transport = cleanTransport(body.transport);
     // หัวข้อข้อความอัตโนมัติที่นัดนี้ไม่ต้องส่ง
     if (Array.isArray(body.autoOff)) {
       const valid = new Set(AUTO_MESSAGE_TOPICS.map((t) => t.id));

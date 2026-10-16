@@ -5,6 +5,7 @@ import { useConfig } from "@/components/ConfigProvider";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/components/LocaleProvider";
 import { useLiff } from "@/components/LiffProvider";
+import { Icon } from "@/components/Icon";
 
 export function PointsRedeem({
   compact = false,
@@ -73,9 +74,12 @@ export function PointsRedeem({
     <div>
       {success ? (
         <div className="mb-3 rounded-petflow-sm border border-ok/30 bg-sage/15 p-4 text-center">
-          <p className="text-xs font-bold text-ok">✅ {m.redeemOk}</p>
+          <span className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-ok/15 text-ok">
+            <Icon name="check" size={20} strokeWidth={2.4} />
+          </span>
+          <p className="text-xs font-bold text-ok">{m.redeemOk}</p>
           <p className="mt-1 text-sm font-semibold text-brown">{success.label}</p>
-          <p className="mt-2 font-mono text-lg font-extrabold tracking-wider text-latte-deep">
+          <p className="mx-auto mt-2 w-fit rounded-xl border border-dashed border-latte-deep/50 bg-card px-4 py-2 font-mono text-lg font-extrabold tracking-wider text-latte-deep">
             {success.code}
           </p>
           <p className="mt-2 text-[10px] text-brown-soft">{m.showCode}</p>
@@ -85,7 +89,7 @@ export function PointsRedeem({
           <button
             type="button"
             onClick={() => setSuccess(null)}
-            className="mt-3 text-xs font-bold text-brown-faint underline"
+            className="mt-2 min-h-[44px] px-4 text-xs font-bold text-brown-soft"
           >
             {m.dismiss}
           </button>
@@ -98,9 +102,12 @@ export function PointsRedeem({
         </p>
       ) : null}
 
-      <p className="mb-2 text-[10px] text-brown-faint">
-        {locale === "th" ? "← เลื่อนดูรางวัล →" : "← swipe rewards →"}
-      </p>
+      {config.pointsRewards.length > 1 && (
+        <p className="mb-2 flex items-center gap-1 text-[11px] text-brown-faint">
+          {locale === "th" ? "เลื่อนดูรางวัลทั้งหมด" : "Swipe to see all rewards"}
+          <Icon name="chevron" size={12} />
+        </p>
+      )}
 
       <div
         className="-mx-1 flex gap-3 overflow-x-auto pb-2 scroll-smooth snap-x snap-mandatory overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
@@ -110,7 +117,7 @@ export function PointsRedeem({
           return (
             <div
               key={tier.id}
-              className={`flex snap-start shrink-0 flex-col justify-between overflow-hidden rounded-petflow-sm border bg-paper/50 ${
+              className={`flex snap-start shrink-0 flex-col justify-between overflow-hidden rounded-petflow-sm border bg-paper/60 ${
                 compact ? "w-[72%] min-w-[220px]" : "w-[78%] min-w-[240px]"
               } max-w-[300px] ${
                 canRedeem ? "border-petflow-line" : "border-petflow-line/50 opacity-75"
@@ -126,7 +133,8 @@ export function PointsRedeem({
               )}
               <div className="flex flex-1 flex-col justify-between p-3">
                 <div>
-                  <p className="text-sm font-extrabold text-latte-deep">
+                  <p className="flex items-center gap-1 text-sm font-extrabold text-latte-deep">
+                    <Icon name="star" size={15} />
                     {tier.points}{" "}
                     <span className="text-xs font-bold text-brown-faint">
                       {locale === "th" ? "แต้ม" : "pts"}
@@ -140,10 +148,10 @@ export function PointsRedeem({
                   type="button"
                   disabled={!canRedeem || loading === tier.id}
                   onClick={() => redeem(tier.id)}
-                  className={`mt-3 w-full rounded-petflow-sm py-2 text-xs font-extrabold ${
+                  className={`mt-3 min-h-[44px] w-full rounded-petflow-sm py-2.5 text-xs font-extrabold transition active:scale-[0.98] ${
                     canRedeem
-                      ? "bg-gradient-to-r from-honey to-honey-deep text-petflow-chocolate"
-                      : "bg-paper text-brown-faint"
+                      ? "bg-latte-deep text-card shadow-petflow-sm"
+                      : "bg-card text-brown-faint"
                   }`}
                 >
                   {loading === tier.id ? "…" : m.redeem}

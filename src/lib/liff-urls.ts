@@ -29,6 +29,11 @@ export function buildBookingTimeUrl(
   return buildLiffUrl(liffId, { path: "booking-time", id: bookingId, type });
 }
 
+/** ลิงก์หน้ากรอกจุดรับ-ส่งน้อง (ลิงก์ Google Maps) ก่อนวันนัด */
+export function buildBookingTransportUrl(liffId: string, bookingId: string) {
+  return buildLiffUrl(liffId, { path: "booking-transport", id: bookingId });
+}
+
 /** ลิงก์หน้ากรอกประวัติน้องก่อนอาบน้ำ — จองทั้งบ้านหลายตัวใส่เป็น array ได้ ฟอร์มจะรวมทุกตัวในหน้าเดียว */
 export function buildGroomInfoUrl(liffId: string, bookingIds: string | string[]) {
   const id = Array.isArray(bookingIds) ? bookingIds.join(",") : bookingIds;
