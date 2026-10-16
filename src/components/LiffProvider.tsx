@@ -74,6 +74,40 @@ async function syncLineCustomer(
   }>;
 }
 
+type LiffAuthModule = {
+  getIDToken: () => string | null;
+  getDecodedIDToken: () => { exp?: number } | null;
+  login: (config?: { redirectUri?: string }) => void;
+  logout: () => void;
+  isInClient: () => boolean;
+};
+
+const RELOGIN_KEY = "petflow-liff-relogin";
+
+/**
+ * ID token ของ LIFF หมดอายุราว 1 ชม. แต่เปิดในเบราว์เซอร์นอก LINE แล้ว isLoggedIn() ยังเป็น true
+ * และ getIDToken() คืน token เก่าที่หมดอายุแล้ว — server ตรวจไม่ผ่าน ลูกค้าเลยไม่มีข้อมูลบัญชี
+ * (ขึ้น "สมัครสมาชิกให้เสร็จ" ค้าง / จองแล้วบอกว่าไม่มีแมว ทั้งที่สมัครไปแล้ว)
+ * หมดอายุแล้ว → ล็อกอินใหม่เพื่อเอา token สด (กันวนซ้ำ: ลองได้ครั้งเดียวต่อ 1 นาที)
+ * คืน true = กำลังพาไปล็อกอินใหม่ อย่าทำอะไรต่อ
+ */
+function reloginIfTokenExpired(liff: LiffAuthModule | null): boolean {
+  // ในแอป LINE เปิดใหม่ทุกครั้งได้ token สดอยู่แล้ว (login() ใช้ในนั้นไม่ได้)
+  if (!liff || typeof window === "undefined" || liff.isInClient()) return false;
+  const exp = liff.getDecodedIDToken()?.exp;
+  if (exp && exp * 1000 > Date.now() + 30_000) return false;
+  try {
+    const last = Number(sessionStorage.getItem(RELOGIN_KEY) || 0);
+    if (Date.now() - last < 60_000) return false;
+    sessionStorage.setItem(RELOGIN_KEY, String(Date.now()));
+  } catch {
+    return false;
+  }
+  liff.logout();
+  liff.login({ redirectUri: window.location.href });
+  return true;
+}
+
 export function LiffProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -84,7 +118,7 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
   const [history, setHistory] = useState<PointsHistoryEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   // เก็บ liff module ไว้เรียก getIDToken() ซ้ำได้ทุกครั้งที่ sync (dev mode ไม่มีตัวนี้)
-  const liffModRef = useRef<{ getIDToken: () => string | null } | null>(null);
+  const liffModRef = useRef<LiffAuthModule | null>(null);
   const devUserIdRef = useRef<string | null>(null);
 
   /** ตัวยืนยันตัวตนสำหรับส่งให้ server แลกคุกกี้เซสชัน — ห้ามส่ง lineUserId ตรงๆ อีกต่อไป */
@@ -96,6 +130,7 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
 
   const refreshCustomer = useCallback(async () => {
     if (!profile?.lineUserId) return;
+    if (reloginIfTokenExpired(liffModRef.current)) return;
     const auth = getAuth();
     if (!auth) return;
     const sync = await syncLineCustomer(auth, profile.displayName);
@@ -184,7 +219,8 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
               liff.default.login();
               return;
             }
-            liffModRef.current = liff.default;
+            liffModRef.current = liff.default as unknown as LiffAuthModule;
+            if (reloginIfTokenExpired(liffModRef.current)) return;
             const p = await liff.default.getProfile();
             await applyAccount({
               lineUserId: p.userId,
