@@ -1627,6 +1627,11 @@ function GroomingTab({
     }))
   );
   const [defaultCapacity, setDefaultCapacity] = useState(config.groomSlotDefaultCapacity ?? 1);
+  const [durationOn, setDurationOn] = useState(Boolean(config.groomDuration?.firstCatMinutes));
+  const [firstCatMinutes, setFirstCatMinutes] = useState(config.groomDuration?.firstCatMinutes || 60);
+  const [extraCatMinutes, setExtraCatMinutes] = useState(
+    config.groomDuration?.extraCatMinutes ?? 30
+  );
   const [closedWeekdays, setClosedWeekdays] = useState<number[]>(config.closedWeekdays ?? []);
   const [closedDates, setClosedDates] = useState<{ date: string; note?: string }[]>(
     config.closedDates ?? []
@@ -1658,6 +1663,12 @@ function GroomingTab({
         cleanRows.map((r) => [r.time.trim(), Math.max(1, r.capacity || 1)])
       ),
       groomSlotDefaultCapacity: Math.max(1, defaultCapacity || 1),
+      groomDuration: durationOn
+        ? {
+            firstCatMinutes: Math.max(5, firstCatMinutes || 60),
+            extraCatMinutes: Math.max(0, extraCatMinutes || 0),
+          }
+        : { firstCatMinutes: 0 },
       closedWeekdays,
       closedDates: closedDates.filter((d) => d.date.trim()),
       transport: {
@@ -1729,6 +1740,50 @@ function GroomingTab({
             className="w-16 rounded-petflow-sm border border-petflow-line bg-paper px-2 py-1.5 text-sm font-normal"
           />
         </label>
+      </div>
+
+      <div className="rounded-petflow-sm bg-paper/70 p-3">
+        <label className="flex items-center gap-2 text-xs font-extrabold text-petflow-chocolate">
+          <input type="checkbox" checked={durationOn} onChange={(e) => setDurationOn(e.target.checked)} />
+          ⏱ คิดเวลาอาบน้ำตามจำนวนแมว (บ้านเดียวกันมาพร้อมกัน)
+        </label>
+        <p className="mt-1 text-[10px] text-brown-faint">
+          เปิดแล้ว น้องทั้งบ้านเริ่มเวลาเดียวกัน ระบบคิดเวลารวมแล้วกันทุกรอบที่อยู่ในช่วงนั้น · ตัวเลข “คิว/รอบ” ด้านบน
+          = รับพร้อมกันได้กี่บ้าน · ปิดไว้ = 1 แมว = 1 คิว แบบเดิม
+        </p>
+        {durationOn && (
+          <div className="mt-2 space-y-1.5 text-[11px] font-bold text-brown-soft">
+            <label className="flex items-center gap-2">
+              ตัวแรกใช้
+              <input
+                type="number"
+                min={5}
+                step={5}
+                value={firstCatMinutes}
+                onChange={(e) => setFirstCatMinutes(Number(e.target.value) || 0)}
+                className="w-20 rounded-petflow-sm border border-petflow-line bg-card px-2 py-1.5 text-sm font-normal"
+              />
+              นาที
+            </label>
+            <label className="flex items-center gap-2">
+              ตัวต่อไป +
+              <input
+                type="number"
+                min={0}
+                step={5}
+                value={extraCatMinutes}
+                onChange={(e) => setExtraCatMinutes(Number(e.target.value) || 0)}
+                className="w-20 rounded-petflow-sm border border-petflow-line bg-card px-2 py-1.5 text-sm font-normal"
+              />
+              นาที/ตัว
+            </label>
+            <p className="text-[10px] font-normal text-brown-faint">
+              ตัวอย่าง: มา 3 ตัว = {firstCatMinutes + 2 * extraCatMinutes} นาที (
+              {Math.floor((firstCatMinutes + 2 * extraCatMinutes) / 60)} ชม.{" "}
+              {(firstCatMinutes + 2 * extraCatMinutes) % 60} นาที) · ใส่รอบเวลาถี่ขึ้น (เช่นทุก 30 นาที) จะจองได้ยืดหยุ่นกว่า
+            </p>
+          </div>
+        )}
       </div>
 
       <div>
