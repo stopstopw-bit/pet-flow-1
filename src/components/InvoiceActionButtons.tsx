@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Icon } from "@/components/Icon";
+import { MoreMenu } from "@/components/ui";
 import { toast } from "@/components/Toast";
 
 type Inv = {
@@ -26,6 +29,7 @@ export function InvoiceActionButtons({
 }) {
   const [inv, setInv] = useState<Inv | null>(null);
   const [busy, setBusy] = useState("");
+  const router = useRouter();
 
   const reload = useCallback(() => {
     if (!bookingId) return;
@@ -71,108 +75,108 @@ export function InvoiceActionButtons({
     }
   };
 
-  const B = ({
-    k,
-    label,
-    cls,
-    onClick,
-  }: {
-    k: string;
-    label: string;
-    cls: string;
-    onClick: () => void;
-  }) => (
-    <button
-      type="button"
-      disabled={busy !== ""}
-      onClick={onClick}
-      className={`rounded-full px-2.5 py-1 text-[10px] font-bold disabled:opacity-40 ${cls}`}
-    >
-      {busy === k ? "…" : label}
-    </button>
-  );
+  const busyAny = busy !== "";
+  const receiveDeposit = () =>
+    act("receive_deposit", { action: "receive_deposit" }, "รับมัดจำแล้ว 💰");
+  const paidTransfer = () =>
+    act(
+      "paid_transfer",
+      { action: "mark_paid", paymentMethod: "transfer" },
+      "รับเงินแล้ว ✅ (ปิดบิล)"
+    );
+  const paidCash = () =>
+    act("paid_cash", { action: "mark_paid", paymentMethod: "cash" }, "รับเงินสดแล้ว 💵 (ปิดบิล)");
+  const unmarkPaid = () =>
+    act(
+      "unmark_paid",
+      { action: "unmark_paid" },
+      "ยกเลิกการชำระแล้ว ↩️ (กลับเป็นรอชำระ)",
+      "ยกเลิกการชำระบิลนี้? (กดผิดใช่ไหม)\nจะกลับเป็น 'รอชำระ' + ย้อนรายรับ/แต้ม/เครดิต"
+    );
+  const goBill = () => router.push(`/admin/billing?bookingId=${bookingId}`);
+
+  const paid = inv.status === "paid";
+  const needDeposit = !paid && hasDeposit && !inv.depositReceivedAt;
 
   return (
-    <div className="mt-2 rounded-petflow-sm bg-honey/10 p-2">
-      <p className="mb-1 text-[10px] font-bold text-brown-faint">
-        🧾 บิล {inv.total.toLocaleString()} ฿ ·{" "}
-        {inv.status === "paid" ? "✅ ชำระแล้ว" : "⏳ รอชำระ"}
-        {hasDeposit
-          ? ` · มัดจำ ${inv.deposit!.toLocaleString()}${
-              inv.depositReceivedAt ? " (รับแล้ว)" : " (รอรับ)"
-            }`
-          : ""}
-      </p>
-      <div className="flex flex-wrap items-center gap-1.5">
-        {inv.status === "pending" && (
-          <>
-            {hasDeposit && !inv.depositReceivedAt && (
-              <B
-                k="receive_deposit"
-                label="💰 รับมัดจำแล้ว"
-                cls="bg-honey/40 text-petflow-chocolate"
-                onClick={() =>
-                  act(
-                    "receive_deposit",
-                    { action: "receive_deposit" },
-                    "รับมัดจำแล้ว 💰"
-                  )
-                }
-              />
-            )}
-            <B
-              k="paid_transfer"
-              label={hasDeposit ? "✅ รับเงินที่เหลือ (ปิดบิล)" : "✅ รับเงินแล้ว"}
-              cls="bg-sage/25 text-ok"
-              onClick={() =>
-                act(
-                  "paid_transfer",
-                  { action: "mark_paid", paymentMethod: "transfer" },
-                  "รับเงินแล้ว ✅ (ปิดบิล)"
-                )
-              }
-            />
-            <B
-              k="paid_cash"
-              label="💵 เงินสด"
-              cls="bg-paper text-brown"
-              onClick={() =>
-                act(
-                  "paid_cash",
-                  { action: "mark_paid", paymentMethod: "cash" },
-                  "รับเงินสดแล้ว 💵 (ปิดบิล)"
-                )
-              }
-            />
-          </>
-        )}
-        {inv.status === "paid" && (
-          <B
-            k="unmark_paid"
-            label="↩️ ยกเลิกการชำระ (กดผิด)"
-            cls="bg-wait/15 text-wait"
-            onClick={() =>
-              act(
-                "unmark_paid",
-                { action: "unmark_paid" },
-                "ยกเลิกการชำระแล้ว ↩️ (กลับเป็นรอชำระ)",
-                "ยกเลิกการชำระบิลนี้? (กดผิดใช่ไหม)\nจะกลับเป็น 'รอชำระ' + ย้อนรายรับ/แต้ม/เครดิต"
-              )
-            }
-          />
-        )}
-        <Link
-          href={`/admin/billing?bookingId=${bookingId}`}
-          className="rounded-full bg-latte/25 px-2.5 py-1 text-[10px] font-bold text-petflow-chocolate"
-        >
-          🧾 ไปหน้าบิล
-        </Link>
+    <div className="mt-2 rounded-petflow-sm border border-petflow-line bg-paper/60 p-2.5">
+      <div className="flex items-center gap-2.5">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-honey/25 text-petflow-chocolate">
+          <Icon name="receipt" size={18} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="flex items-center gap-1.5 text-sm font-extrabold text-petflow-chocolate">
+            {inv.total.toLocaleString()} ฿
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-px text-[10px] font-extrabold ${
+                paid ? "bg-ok/15 text-ok" : "bg-wait/15 text-wait"
+              }`}
+            >
+              <Icon name={paid ? "check" : "clock"} size={11} strokeWidth={2.4} />
+              {paid ? "ชำระแล้ว" : "รอชำระ"}
+            </span>
+          </p>
+          {hasDeposit && (
+            <p className="truncate text-[11px] text-brown-soft">
+              มัดจำ {inv.deposit!.toLocaleString()}
+              {inv.depositReceivedAt ? " (รับแล้ว)" : " (รอรับ)"}
+              {remaining > 0 && !paid && (
+                <span className="font-bold text-wait"> · คงเหลือ {remaining.toLocaleString()} บาท</span>
+              )}
+            </p>
+          )}
+        </div>
       </div>
-      {remaining > 0 && inv.status === "pending" && hasDeposit && (
-        <p className="mt-1 text-[10px] font-bold text-wait">
-          คงเหลือ {remaining.toLocaleString()} บาท
-        </p>
-      )}
+
+      <div className="mt-2 flex items-center gap-2">
+        {paid ? (
+          <Link
+            href={`/admin/billing?bookingId=${bookingId}`}
+            className="flex min-h-[40px] flex-1 items-center justify-center gap-1.5 rounded-full bg-card px-3 text-xs font-extrabold text-petflow-chocolate shadow-petflow-sm"
+          >
+            <Icon name="receipt" size={16} />
+            ไปหน้าบิล
+          </Link>
+        ) : (
+          <button
+            type="button"
+            disabled={busyAny}
+            onClick={needDeposit ? receiveDeposit : paidTransfer}
+            className="flex min-h-[40px] flex-1 items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-honey to-honey-deep px-3 text-xs font-extrabold text-petflow-chocolate disabled:opacity-50"
+          >
+            <Icon name="money" size={16} />
+            {busyAny
+              ? "กำลังบันทึก…"
+              : needDeposit
+                ? "รับมัดจำแล้ว"
+                : hasDeposit
+                  ? "รับเงินที่เหลือ (ปิดบิล)"
+                  : "รับเงินแล้ว"}
+          </button>
+        )}
+        <MoreMenu
+          items={
+            paid
+              ? [
+                  { label: "ยกเลิกการชำระ (กดผิด)", icon: "back", onClick: unmarkPaid, danger: true, disabled: busyAny },
+                ]
+              : [
+                  ...(needDeposit
+                    ? [
+                        {
+                          label: hasDeposit ? "รับเงินที่เหลือ (ปิดบิล)" : "รับเงินแล้ว",
+                          icon: "check",
+                          onClick: paidTransfer,
+                          disabled: busyAny,
+                        },
+                      ]
+                    : []),
+                  { label: "รับเป็นเงินสด (ปิดบิล)", icon: "money", onClick: paidCash, disabled: busyAny },
+                  { label: "ไปหน้าบิล", icon: "receipt", onClick: goBill },
+                ]
+          }
+        />
+      </div>
     </div>
   );
 }

@@ -19,6 +19,19 @@ import {
   BROADCAST_TEMPLATES,
   type BroadcastActionId,
 } from "@/lib/broadcast-constants";
+import type { SegmentId } from "@/lib/customer-segments";
+import { Icon } from "@/components/Icon";
+import { EmptyState, MoreMenu, SearchField, SectionLabel, Segmented } from "@/components/ui";
+
+/** กลุ่มลูกค้าสำเร็จรูป — ติ๊กได้หลายกลุ่ม ระบบเลือกคนที่ตรงทุกข้อ */
+const SEGMENT_CHIPS: { id: SegmentId | "inactive90"; label: string }[] = [
+  { id: "regular", label: "ขาประจำ" },
+  { id: "longhair", label: "แมวขนยาว" },
+  { id: "inactive90", label: "ไม่ได้มา 3 เดือน" },
+  { id: "bath", label: "เคยอาบน้ำ" },
+  { id: "stay", label: "เคยฝากพัก" },
+  { id: "new", label: "ยังไม่เคยมา" },
+];
 
 type Promo = {
   id: string;
@@ -69,7 +82,7 @@ const BUILTIN_TIER_OPTIONS: { value: CustomerTier; label: string }[] = [
   { value: "all", label: "ทุกคน" },
   { value: "new", label: "ลูกค้าใหม่" },
   { value: "regular", label: "ลูกค้าประจำ" },
-  { value: "member", label: "💎 Member" },
+  { value: "member", label: "Member" },
   { value: "vip", label: "VIP" },
   { value: "returning", label: "เคยมาแล้ว" },
 ];
@@ -100,6 +113,7 @@ export default function PromosAdminPage() {
   const [kindFilter, setKindFilter] = useState<"all" | PromoKind>("all");
   const [promoSortKey, setPromoSortKey] = useState<PromoSortKey>("start");
   const [promoSortDir, setPromoSortDir] = useState<"asc" | "desc">("desc");
+  const [view, setView] = useState<"list" | "broadcast">("list");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Promo | null>(null);
   const [imageUrl, setImageUrl] = useState("");
@@ -110,6 +124,8 @@ export default function PromosAdminPage() {
   const [broadcastTier, setBroadcastTier] = useState<StoreCustomerTier | "all">("all");
   const [broadcastBreed, setBroadcastBreed] = useState("");
   const [broadcastInactive, setBroadcastInactive] = useState(0);
+  const [broadcastSegments, setBroadcastSegments] = useState<SegmentId[]>([]);
+  const [regularMinVisits, setRegularMinVisits] = useState(3);
   const [broadcastTitle, setBroadcastTitle] = useState("");
   const [broadcastBody, setBroadcastBody] = useState("");
   const [broadcastImage, setBroadcastImage] = useState("");
@@ -149,6 +165,8 @@ export default function PromosAdminPage() {
     const q = new URLSearchParams({ tier: broadcastTier });
     if (broadcastBreed) q.set("breed", broadcastBreed);
     if (broadcastInactive > 0) q.set("inactiveDays", String(broadcastInactive));
+    if (broadcastSegments.length) q.set("segments", broadcastSegments.join(","));
+    if (broadcastSegments.includes("regular")) q.set("regularMinVisits", String(regularMinVisits));
     fetch(`/api/line/broadcast?${q}`)
       .then((r) => r.json())
       .then((d) => {
@@ -159,7 +177,7 @@ export default function PromosAdminPage() {
         setBroadcastNoConsent(d.skippedNoConsent ?? 0);
       })
       .finally(() => setBroadcastLoading(false));
-  }, [broadcastTier, broadcastBreed, broadcastInactive]);
+  }, [broadcastTier, broadcastBreed, broadcastInactive, broadcastSegments, regularMinVisits]);
 
   const sendBroadcast = async () => {
     if (!broadcastTitle.trim() || !broadcastBody.trim()) {
@@ -200,6 +218,8 @@ export default function PromosAdminPage() {
         tier: broadcastTier,
         breed: broadcastBreed || undefined,
         inactiveDays: broadcastInactive || undefined,
+        segments: broadcastSegments,
+        regularMinVisits,
         title: broadcastTitle,
         body: broadcastBody,
         imageData: broadcastImage.startsWith("data:") ? broadcastImage : undefined,
@@ -209,7 +229,7 @@ export default function PromosAdminPage() {
     const data = await res.json();
     setBroadcasting(false);
     if (res.ok) {
-      setBroadcastMsg(`✅ ส่งแล้ว ${data.sent} คน (${data.tier})`);
+      setBroadcastMsg(`ส่งแล้ว ${data.sent} คน (${data.tier})`);
     } else {
       setBroadcastMsg(data.error || "ส่งไม่สำเร็จ");
     }
@@ -395,460 +415,542 @@ export default function PromosAdminPage() {
       return promoSortDir === "asc" ? cmp : -cmp;
     });
 
+  const filtersOn = Boolean(promoQuery || statusFilter !== "all" || kindFilter !== "all");
+
   return (
-    <div>
-      <div className="mb-4 flex items-start justify-between gap-2">
-        <div>
-          <h1 className="text-lg font-extrabold text-petflow-chocolate">✨ โปรโมชั่น</h1>
-          <p className="mt-1 text-xs text-brown-soft">
-            สร้างโปรเดียว · ติ๊กขึ้นหน้าแรกได้ · ส่วนลดหรือแต้ม
-          </p>
+    <div className="pb-6">
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Promotions</p>
+          <h1 className="text-xl font-extrabold text-petflow-chocolate">โปรโมชั่น</h1>
+          <p className="mt-0.5 text-xs text-brown-soft">ขึ้นหน้าแรกได้ · ส่วนลดหรือแต้ม · ส่งทาง LINE</p>
         </div>
-        <span className="shrink-0 rounded-full bg-sage/20 px-2 py-0.5 text-[9px] font-bold text-ok">
-          v3
-        </span>
-      </div>
-
-      <section className="mb-5 space-y-3 rounded-petflow border border-sage/40 bg-sage/10 p-4">
-        <h2 className="text-sm font-extrabold text-petflow-chocolate">📨 ส่งโปรทาง LINE</h2>
-        <p className="text-[10px] text-brown-soft">
-          เลือกกลุ่มลูกค้าแล้วส่งการ์ด Flex — ตั้ง LINE ที่ Admin → ติดตั้ง
-        </p>
-        <select
-          value={broadcastTier}
-          onChange={(e) =>
-            setBroadcastTier(e.target.value as StoreCustomerTier | "all")
-          }
-          className="w-full rounded-petflow-sm border border-petflow-line bg-card px-3 py-2 text-sm"
-        >
-          <option value="all">ทุกระดับ ({broadcastCount ?? "…"} คน)</option>
-          {(Object.keys(TIER_LABELS) as StoreCustomerTier[]).map((t) => (
-            <option key={t} value={t}>
-              {TIER_LABELS[t]}
-            </option>
-          ))}
-        </select>
-
-        {/* กรองเจาะกลุ่ม: พันธุ์ + หายไปนาน */}
-        <div className="grid grid-cols-2 gap-2">
-          <select
-            value={broadcastBreed}
-            onChange={(e) => setBroadcastBreed(e.target.value)}
-            className="min-w-0 rounded-petflow-sm border border-petflow-line bg-card px-3 py-2 text-xs"
-          >
-            <option value="">🐱 ทุกพันธุ์</option>
-            {BREED_OPTIONS.map((b) => (
-              <option key={b} value={b}>
-                {b}
-              </option>
-            ))}
-          </select>
-          <div className="flex min-w-0 items-center gap-1 rounded-petflow-sm border border-petflow-line bg-card px-2 py-1">
-            <span className="shrink-0 text-xs">⏱️ หายไป &gt;</span>
-            <input
-              type="number"
-              min={0}
-              value={broadcastInactive || ""}
-              onChange={(e) => setBroadcastInactive(Math.max(0, Number(e.target.value) || 0))}
-              placeholder="0"
-              className="w-full min-w-0 border-0 bg-transparent px-0 py-1 text-xs outline-none"
-            />
-            <span className="shrink-0 text-xs">วัน</span>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {[30, 60, 90].map((d) => (
-            <button
-              key={d}
-              type="button"
-              onClick={() => setBroadcastInactive(d)}
-              className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
-                broadcastInactive === d
-                  ? "bg-latte-deep text-card"
-                  : "bg-paper text-brown-soft"
-              }`}
-            >
-              &gt; {d} วัน
-            </button>
-          ))}
-        </div>
-        {(broadcastBreed || broadcastInactive > 0) && (
+        {view === "list" && (
           <button
             type="button"
-            onClick={() => {
-              setBroadcastBreed("");
-              setBroadcastInactive(0);
-            }}
-            className="text-[10px] font-bold text-wait"
+            onClick={openNew}
+            className="flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-petflow-chocolate px-4 text-sm font-bold text-card shadow-petflow-sm"
           >
-            ✕ ล้างตัวกรอง
+            <Icon name="plus" size={18} />
+            เพิ่มโปร
           </button>
         )}
+      </div>
 
-        <div className="rounded-petflow-sm border border-petflow-line bg-card/80 p-3">
-          <p className="mb-2 text-xs font-extrabold text-petflow-chocolate">
-            👥 จะส่งหา ({broadcastCount ?? 0} คน)
-          </p>
-          {broadcastNoConsent > 0 && (
-            <p className="mb-2 rounded-lg bg-honey/15 px-2 py-1.5 text-[10px] font-bold text-wait">
-              🔕 ไม่ส่งหา {broadcastNoConsent} คน (ไม่ยินยอมรับข่าวสาร)
-            </p>
-          )}
-          {broadcastLoading ? (
-            <p className="text-[10px] text-brown-soft">กำลังโหลดรายชื่อ…</p>
-          ) : broadcastRecipients.length === 0 ? (
-            <p className="text-[10px] text-wait">
-              ไม่มีลูกค้าในกลุ่มนี้ที่ผูก LINE แล้ว
-            </p>
-          ) : (
-            <ul className="max-h-36 space-y-1 overflow-y-auto text-[10px]">
-              {broadcastRecipients.map((r) => (
-                <li
-                  key={r.id}
-                  className="flex items-start justify-between gap-2 rounded-lg bg-paper/60 px-2 py-1.5"
-                >
-                  <span className="min-w-0 font-bold text-brown">
-                    {r.cats !== "—" ? `🐱 ${r.cats}` : "👤"} · {r.name}
-                    {r.lineDisplayName && r.lineDisplayName !== r.name && (
-                      <span className="font-normal text-brown-soft">
-                        {" "}
-                        ({r.lineDisplayName})
-                      </span>
-                    )}
-                  </span>
-                  <span className="shrink-0 text-ok">LINE ✓</span>
-                </li>
-              ))}
-            </ul>
-          )}
-          {broadcastSkippedTotal > 0 && (
-            <div className="mt-2 border-t border-petflow-line pt-2">
-              <p className="mb-1 text-[10px] font-bold text-brown-faint">
-                ข้าม {broadcastSkippedTotal} คน (ยังไม่ผูก LINE)
-              </p>
-              <ul className="max-h-24 space-y-1 overflow-y-auto text-[10px] text-brown-faint">
-                {broadcastSkipped.map((r) => (
-                  <li key={r.id}>
-                    {r.cats !== "—" ? r.cats : r.name} · {r.name}
-                  </li>
-                ))}
-                {broadcastSkippedTotal > broadcastSkipped.length && (
-                  <li>…และอีก {broadcastSkippedTotal - broadcastSkipped.length} คน</li>
-                )}
-              </ul>
-            </div>
-          )}
-        </div>
+      <Segmented
+        value={view}
+        onChange={setView}
+        className="mb-4"
+        options={[
+          { id: "list", label: "รายการโปร", icon: "sparkle", badge: promos.length || undefined },
+          { id: "broadcast", label: "ส่งทาง LINE", icon: "send" },
+        ]}
+      />
 
-        <div className="rounded-petflow-sm border border-petflow-line bg-card/80 p-3">
-          <p className="mb-2 text-xs font-extrabold text-petflow-chocolate">
-            📝 ตัวอย่างข้อความ
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {BROADCAST_TEMPLATES.map((tpl, i) => (
-              <button
-                key={tpl.label}
-                type="button"
-                onClick={() => applyBroadcastTemplate(i)}
-                className="rounded-full bg-paper px-3 py-1.5 text-[10px] font-bold text-brown hover:bg-latte/20"
-              >
-                {tpl.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <input
-          value={broadcastTitle}
-          onChange={(e) => setBroadcastTitle(e.target.value)}
-          placeholder="หัวข้อการ์ด"
-          className="w-full rounded-petflow-sm border border-petflow-line bg-card px-3 py-2 text-sm"
-        />
-        <textarea
-          value={broadcastBody}
-          onChange={(e) => setBroadcastBody(e.target.value)}
-          placeholder="ข้อความโปรโมชั่น"
-          rows={3}
-          className="w-full rounded-petflow-sm border border-petflow-line bg-card px-3 py-2 text-sm"
-        />
-
-        <div className="rounded-petflow-sm border border-petflow-line bg-card/80 p-3">
-          <p className="mb-2 text-xs font-extrabold text-petflow-chocolate">
-            🖼️ รูปโปร (ไม่บังคับ)
-          </p>
-          <input
-            type="file"
-            accept="image/*"
-            className="block w-full text-[10px]"
-            onChange={(e) => e.target.files?.[0] && onBroadcastImage(e.target.files[0])}
-          />
-          {hasBroadcastImage && (
-            <div className="mt-2 flex items-center gap-2">
-              {broadcastImage.startsWith("data:") && (
-                <Image
-                  src={broadcastImage}
-                  alt="preview"
-                  width={64}
-                  height={64}
-                  className="h-16 w-16 rounded-lg object-cover"
-                  unoptimized
-                />
-              )}
-              <button
-                type="button"
-                onClick={() => setBroadcastImage("")}
-                className="text-[10px] font-bold text-wait"
-              >
-                ลบรูป
-              </button>
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-petflow-sm border border-petflow-line bg-card/80 p-3">
-          <p className="mb-1 text-xs font-extrabold text-petflow-chocolate">
-            🔘 ปุ่มกดในการ์ด (เลือกได้สูงสุด 3)
-          </p>
-          <p className="mb-2 text-[10px] text-brown-soft">
-            ลูกค้ากดแล้วเปิดแอป / แชท LINE / แผนที่ได้ทันที
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {BROADCAST_ACTIONS.map((action) => {
-              const selected = broadcastActions.includes(action.id);
-              const disabled = !selected && broadcastActions.length >= 3;
-              return (
-                <button
-                  key={action.id}
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => toggleBroadcastAction(action.id)}
-                  title={action.description}
-                  className={`rounded-full px-3 py-1.5 text-[10px] font-bold ${
-                    selected
-                      ? "bg-[#4A7348] text-white"
-                      : disabled
-                        ? "bg-paper text-brown-faint opacity-50"
-                        : "bg-paper text-brown hover:bg-latte/20"
-                  }`}
-                >
-                  {action.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="rounded-petflow-sm border border-petflow-line bg-card/80 p-3">
-          <p className="mb-2 text-xs font-extrabold text-petflow-chocolate">
-            👀 ตัวอย่างที่ลูกค้าจะเห็นใน LINE
-          </p>
-          <div className="mx-auto max-w-[260px] overflow-hidden rounded-2xl border border-petflow-line bg-white">
-            {broadcastImage.startsWith("data:") || broadcastImage.startsWith("http") ? (
-              <Image
-                src={broadcastImage}
-                alt="preview"
-                width={260}
-                height={169}
-                className="h-[169px] w-full object-cover"
-                unoptimized
-              />
-            ) : (
-              <div className="px-4 py-5" style={{ backgroundColor: "#5A8F5A" }}>
-                <span className="text-sm font-bold text-white">✨ โปรโมชั่น PetFlow</span>
+      {view === "broadcast" && (
+        <div className="space-y-4">
+          {/* ── กลุ่มผู้รับ ── */}
+          <section>
+            <SectionLabel>Audience · กลุ่มผู้รับ</SectionLabel>
+            <div className="space-y-3 rounded-petflow bg-card p-4 shadow-petflow-sm">
+              {/* กลุ่มสำเร็จรูป — ติ๊กหลายอันได้ = ต้องตรงทุกข้อ */}
+              <div className="flex flex-wrap gap-2">
+                {SEGMENT_CHIPS.map((chip) => {
+                  const active =
+                    chip.id === "inactive90"
+                      ? broadcastInactive === 90
+                      : broadcastSegments.includes(chip.id);
+                  return (
+                    <button
+                      key={chip.id}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => {
+                        if (chip.id === "inactive90") {
+                          setBroadcastInactive(active ? 0 : 90);
+                          return;
+                        }
+                        const id = chip.id;
+                        setBroadcastSegments((prev) => {
+                          if (prev.includes(id)) return prev.filter((x) => x !== id);
+                          // "ยังไม่เคยมา" ขัดกับกลุ่มที่ต้องเคยมา — เลือกแล้วล้างอีกฝั่งให้
+                          const clash: SegmentId[] =
+                            id === "new" ? ["regular", "bath", "stay"] : ["regular", "bath", "stay"].includes(id) ? ["new"] : [];
+                          return [...prev.filter((x) => !clash.includes(x)), id];
+                        });
+                        if (chip.id === "new") setBroadcastInactive(0);
+                      }}
+                      className={`flex min-h-[40px] items-center gap-1 rounded-full px-3.5 text-xs font-bold ${
+                        active ? "bg-petflow-chocolate text-card" : "bg-paper text-brown-soft ring-1 ring-petflow-line"
+                      }`}
+                    >
+                      {active && <Icon name="check" size={14} strokeWidth={2.4} />}
+                      {chip.label}
+                    </button>
+                  );
+                })}
               </div>
-            )}
-            <div className="px-4 py-3">
-              <p className="text-base font-bold" style={{ color: "#5C4033" }}>
-                {broadcastTitle || "หัวข้อการ์ด…"}
-              </p>
-              <p
-                className="mt-1 whitespace-pre-line text-[13px] leading-relaxed"
-                style={{ color: "#4E3E32" }}
-              >
-                {broadcastBody || "ข้อความโปรโมชั่น…"}
-              </p>
-            </div>
-            <div className="flex flex-col gap-2 px-4 pb-4">
-              {(broadcastActions.length
-                ? broadcastActions.map(
-                    (id) => BROADCAST_ACTIONS.find((a) => a.id === id)?.label || id
-                  )
-                : ["ดูรายละเอียด"]
-              ).map((label, i) => (
-                <div
-                  key={`${label}-${i}`}
-                  className="rounded-lg py-2.5 text-center text-[13px] font-bold"
-                  style={
-                    i === 0
-                      ? { backgroundColor: "#4A7348", color: "#fff" }
-                      : { border: "1px solid #4A7348", color: "#4A7348" }
-                  }
-                >
-                  {label}
+              {broadcastSegments.includes("regular") && (
+                <label className="flex items-center gap-2 text-xs text-brown-soft">
+                  ขาประจำ = มาแล้วตั้งแต่
+                  <input
+                    type="number"
+                    min={1}
+                    value={regularMinVisits}
+                    onChange={(e) => setRegularMinVisits(Math.max(1, Number(e.target.value) || 1))}
+                    className="h-9 w-16 rounded-petflow-sm border border-petflow-line bg-paper px-2 text-center text-sm text-brown"
+                  />
+                  ครั้ง
+                </label>
+              )}
+
+              {/* ตัวกรองละเอียด — พับไว้ไม่ให้รก */}
+              <details className="group rounded-petflow-sm border border-petflow-line bg-paper/50 [&_summary::-webkit-details-marker]:hidden">
+                <summary className="flex min-h-[44px] cursor-pointer list-none items-center gap-2 px-3 text-xs font-bold text-brown-soft">
+                  <Icon name="filter" size={15} />
+                  กรองเพิ่ม (ระดับ · พันธุ์ · จำนวนวันที่หายไป)
+                  <Icon name="chevron" size={14} className="ml-auto text-brown-faint transition group-open:rotate-90" />
+                </summary>
+                <div className="space-y-2 border-t border-petflow-line p-3">
+                  <select
+                    value={broadcastTier}
+                    onChange={(e) => setBroadcastTier(e.target.value as StoreCustomerTier | "all")}
+                    className={FIELD}
+                  >
+                    <option value="all">ทุกระดับ</option>
+                    {(Object.keys(TIER_LABELS) as StoreCustomerTier[]).map((t) => (
+                      <option key={t} value={t}>
+                        {TIER_LABELS[t]}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={broadcastBreed}
+                      onChange={(e) => setBroadcastBreed(e.target.value)}
+                      className={`${FIELD} min-w-0`}
+                    >
+                      <option value="">ทุกพันธุ์</option>
+                      {BREED_OPTIONS.map((b) => (
+                        <option key={b} value={b}>
+                          {b}
+                        </option>
+                      ))}
+                    </select>
+                    <label className="flex min-w-0 items-center gap-1.5 rounded-petflow-sm border border-petflow-line bg-card px-3">
+                      <Icon name="clock" size={16} className="text-brown-soft" />
+                      <span className="shrink-0 text-xs text-brown-soft">หายไป &gt;</span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={broadcastInactive || ""}
+                        onChange={(e) => setBroadcastInactive(Math.max(0, Number(e.target.value) || 0))}
+                        placeholder="0"
+                        className="h-10 w-full min-w-0 !border-0 !bg-transparent px-0 text-sm !shadow-none !outline-none"
+                      />
+                      <span className="shrink-0 text-xs text-brown-soft">วัน</span>
+                    </label>
+                  </div>
                 </div>
-              ))}
+              </details>
+
+              {(broadcastBreed || broadcastInactive > 0 || broadcastSegments.length > 0 || broadcastTier !== "all") && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBroadcastBreed("");
+                    setBroadcastInactive(0);
+                    setBroadcastSegments([]);
+                    setBroadcastTier("all");
+                  }}
+                  className="flex h-9 items-center gap-1 px-1 text-xs font-bold text-wait"
+                >
+                  <Icon name="x" size={14} />
+                  ล้างตัวกรอง
+                </button>
+              )}
             </div>
-          </div>
+          </section>
+
+          {/* ── รายชื่อผู้รับ ── */}
+          <details className="group overflow-hidden rounded-petflow bg-card shadow-petflow-sm [&_summary::-webkit-details-marker]:hidden">
+            <summary className="flex min-h-[48px] cursor-pointer list-none items-center gap-3 px-4 py-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sage/25 text-petflow-chocolate">
+                <Icon name="users" size={18} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-extrabold text-petflow-chocolate">
+                  จะส่งหา {broadcastLoading ? "…" : (broadcastCount ?? 0)} คน
+                </span>
+                <span className="block truncate text-[11px] text-brown-soft">
+                  {broadcastSkippedTotal > 0 ? `ข้าม ${broadcastSkippedTotal} คน (ยังไม่ผูก LINE)` : "แตะเพื่อดูรายชื่อ"}
+                  {broadcastNoConsent > 0 ? ` · ไม่ยินยอม ${broadcastNoConsent} คน` : ""}
+                </span>
+              </span>
+              <Icon name="chevron" size={16} className="text-brown-faint transition group-open:rotate-90" />
+            </summary>
+            <div className="border-t border-petflow-line">
+              {broadcastNoConsent > 0 && (
+                <p className="flex items-center gap-1.5 bg-honey/15 px-4 py-2 text-[11px] font-bold text-wait">
+                  <Icon name="alert" size={14} />
+                  ไม่ส่งหา {broadcastNoConsent} คน (ไม่ยินยอมรับข่าวสาร)
+                </p>
+              )}
+              {broadcastLoading ? (
+                <p className="px-4 py-4 text-xs text-brown-soft">กำลังโหลดรายชื่อ…</p>
+              ) : broadcastRecipients.length === 0 ? (
+                <EmptyState icon="users" title="ไม่มีลูกค้าในกลุ่มนี้ที่ผูก LINE แล้ว" />
+              ) : (
+                <ul className="max-h-60 divide-y divide-petflow-line overflow-y-auto">
+                  {broadcastRecipients.map((r) => (
+                    <li key={r.id} className="flex items-center gap-2 px-4 py-2.5 text-xs">
+                      <Icon name={r.cats !== "—" ? "paw" : "user"} size={14} className="text-brown-soft" />
+                      <span className="min-w-0 flex-1 truncate font-bold text-brown">
+                        {r.cats !== "—" ? `${r.cats} · ` : ""}
+                        {r.name}
+                        {r.lineDisplayName && r.lineDisplayName !== r.name && (
+                          <span className="font-normal text-brown-soft"> ({r.lineDisplayName})</span>
+                        )}
+                      </span>
+                      <span className="flex shrink-0 items-center gap-0.5 text-[11px] font-bold text-ok">
+                        <Icon name="check" size={12} strokeWidth={2.4} />
+                        LINE
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {broadcastSkippedTotal > 0 && (
+                <div className="border-t border-petflow-line bg-paper/50 px-4 py-2.5">
+                  <p className="mb-1 text-[11px] font-bold text-brown-faint">
+                    ข้าม {broadcastSkippedTotal} คน (ยังไม่ผูก LINE)
+                  </p>
+                  <ul className="max-h-24 space-y-0.5 overflow-y-auto text-[11px] text-brown-faint">
+                    {broadcastSkipped.map((r) => (
+                      <li key={r.id}>
+                        {r.cats !== "—" ? r.cats : r.name} · {r.name}
+                      </li>
+                    ))}
+                    {broadcastSkippedTotal > broadcastSkipped.length && (
+                      <li>…และอีก {broadcastSkippedTotal - broadcastSkipped.length} คน</li>
+                    )}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </details>
+
+          {/* ── ข้อความ ── */}
+          <section>
+            <SectionLabel>Message · ข้อความ</SectionLabel>
+            <div className="space-y-3 rounded-petflow bg-card p-4 shadow-petflow-sm">
+              <select
+                value=""
+                onChange={(e) => {
+                  if (e.target.value !== "") applyBroadcastTemplate(Number(e.target.value));
+                }}
+                className={FIELD}
+                aria-label="ใช้ตัวอย่างข้อความ"
+              >
+                <option value="">ใช้ตัวอย่างข้อความ…</option>
+                {BROADCAST_TEMPLATES.map((tpl, i) => (
+                  <option key={tpl.label} value={i}>
+                    {tpl.label}
+                  </option>
+                ))}
+              </select>
+              <input
+                value={broadcastTitle}
+                onChange={(e) => setBroadcastTitle(e.target.value)}
+                placeholder="หัวข้อการ์ด"
+                className={FIELD}
+              />
+              <textarea
+                value={broadcastBody}
+                onChange={(e) => setBroadcastBody(e.target.value)}
+                placeholder="ข้อความโปรโมชั่น"
+                rows={3}
+                className={FIELD}
+              />
+
+              <div className="flex items-center gap-3">
+                {broadcastImage.startsWith("data:") ? (
+                  <Image
+                    src={broadcastImage}
+                    alt="preview"
+                    width={48}
+                    height={48}
+                    className="h-12 w-12 rounded-petflow-sm object-cover"
+                    unoptimized
+                  />
+                ) : (
+                  <span className="flex h-12 w-12 items-center justify-center rounded-petflow-sm bg-paper text-brown-soft">
+                    <Icon name="image" size={20} />
+                  </span>
+                )}
+                <label className="flex h-10 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-full border border-petflow-line text-xs font-bold text-brown">
+                  <Icon name="image" size={16} />
+                  {hasBroadcastImage ? "เปลี่ยนรูป" : "ใส่รูปโปร (ไม่บังคับ)"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => e.target.files?.[0] && onBroadcastImage(e.target.files[0])}
+                  />
+                </label>
+                {hasBroadcastImage && (
+                  <button
+                    type="button"
+                    onClick={() => setBroadcastImage("")}
+                    aria-label="ลบรูป"
+                    className="flex h-10 w-10 items-center justify-center rounded-full bg-paper text-wait"
+                  >
+                    <Icon name="trash" size={16} />
+                  </button>
+                )}
+              </div>
+            </div>
+          </section>
+
+          {/* ── ปุ่มในการ์ด ── */}
+          <section>
+            <SectionLabel>Buttons · ปุ่มในการ์ด (สูงสุด 3)</SectionLabel>
+            <div className="rounded-petflow bg-card p-4 shadow-petflow-sm">
+              <p className="mb-3 text-[11px] text-brown-soft">ลูกค้ากดแล้วเปิดแอป / แชท LINE / แผนที่ได้ทันที</p>
+              <div className="flex flex-wrap gap-2">
+                {BROADCAST_ACTIONS.map((action) => {
+                  const selected = broadcastActions.includes(action.id);
+                  const disabled = !selected && broadcastActions.length >= 3;
+                  return (
+                    <button
+                      key={action.id}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => toggleBroadcastAction(action.id)}
+                      title={action.description}
+                      className={`flex h-9 items-center gap-1 rounded-full px-3.5 text-xs font-bold ${
+                        selected
+                          ? "bg-petflow-chocolate text-card"
+                          : disabled
+                            ? "bg-paper text-brown-faint opacity-50"
+                            : "bg-paper text-brown"
+                      }`}
+                    >
+                      {selected && <Icon name="check" size={14} strokeWidth={2.4} />}
+                      {action.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+
+          {/* ── ตัวอย่างใน LINE ── */}
+          <details className="group overflow-hidden rounded-petflow bg-card shadow-petflow-sm [&_summary::-webkit-details-marker]:hidden">
+            <summary className="flex min-h-[48px] cursor-pointer list-none items-center gap-3 px-4 py-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-honey/30 text-petflow-chocolate">
+                <Icon name="eye" size={18} />
+              </span>
+              <span className="flex-1 text-sm font-extrabold text-petflow-chocolate">ตัวอย่างที่ลูกค้าจะเห็น</span>
+              <Icon name="chevron" size={16} className="text-brown-faint transition group-open:rotate-90" />
+            </summary>
+            <div className="border-t border-petflow-line bg-paper/50 p-4">
+              <div className="mx-auto max-w-[260px] overflow-hidden rounded-2xl border border-petflow-line bg-white">
+                {broadcastImage.startsWith("data:") || broadcastImage.startsWith("http") ? (
+                  <Image
+                    src={broadcastImage}
+                    alt="preview"
+                    width={260}
+                    height={169}
+                    className="h-[169px] w-full object-cover"
+                    unoptimized
+                  />
+                ) : (
+                  <div className="px-4 py-5" style={{ backgroundColor: "#5A8F5A" }}>
+                    <span className="text-sm font-bold text-white">✨ โปรโมชั่น PetFlow</span>
+                  </div>
+                )}
+                <div className="px-4 py-3">
+                  <p className="text-base font-bold" style={{ color: "#5C4033" }}>
+                    {broadcastTitle || "หัวข้อการ์ด…"}
+                  </p>
+                  <p className="mt-1 whitespace-pre-line text-[13px] leading-relaxed" style={{ color: "#4E3E32" }}>
+                    {broadcastBody || "ข้อความโปรโมชั่น…"}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 px-4 pb-4">
+                  {(broadcastActions.length
+                    ? broadcastActions.map((id) => BROADCAST_ACTIONS.find((a) => a.id === id)?.label || id)
+                    : ["ดูรายละเอียด"]
+                  ).map((label, i) => (
+                    <div
+                      key={`${label}-${i}`}
+                      className="rounded-lg py-2.5 text-center text-[13px] font-bold"
+                      style={
+                        i === 0
+                          ? { backgroundColor: "#4A7348", color: "#fff" }
+                          : { border: "1px solid #4A7348", color: "#4A7348" }
+                      }
+                    >
+                      {label}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <button
+            type="button"
+            disabled={broadcasting}
+            onClick={sendBroadcast}
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-petflow-chocolate text-sm font-extrabold text-card shadow-petflow-sm disabled:opacity-60"
+          >
+            <Icon name="send" size={18} />
+            {broadcasting ? "กำลังส่ง…" : `ส่งให้ลูกค้า (${broadcastCount ?? "…"} คน)`}
+          </button>
+          {broadcastMsg && <p className="text-center text-xs font-bold text-brown">{broadcastMsg}</p>}
         </div>
-
-        <button
-          type="button"
-          disabled={broadcasting}
-          onClick={sendBroadcast}
-          className="w-full rounded-petflow-sm bg-[#4A7348] py-3 text-sm font-extrabold text-white disabled:opacity-60"
-        >
-          {broadcasting ? "กำลังส่ง…" : `📨 ส่งให้ลูกค้า (${broadcastCount ?? "…"} คน)`}
-        </button>
-        {broadcastMsg && (
-          <p className="text-center text-xs font-bold text-brown">{broadcastMsg}</p>
-        )}
-      </section>
-
-      <button
-        type="button"
-        onClick={openNew}
-        className="mb-5 w-full rounded-petflow-sm border border-dashed border-honey/60 bg-honey/15 py-3 text-sm font-extrabold text-petflow-chocolate"
-      >
-        ➕ เพิ่มโปรใหม่
-      </button>
+      )}
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
-          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-petflow bg-card p-5 shadow-petflow">
-            <h2 className="mb-3 text-sm font-extrabold text-petflow-chocolate">
-              {editing ? "✏️ แก้ไขโปร" : "➕ เพิ่มโปรใหม่"}
-            </h2>
-            <form key={editing?.id || "new"} onSubmit={submit} className="space-y-3">
-              <label className="flex items-start gap-3 rounded-petflow-sm border border-honey/50 bg-honey/10 px-3 py-3 text-xs font-bold text-petflow-chocolate">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4">
+          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-petflow bg-card shadow-petflow sm:rounded-petflow">
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-petflow-line bg-card px-5 py-3">
+              <h2 className="text-base font-extrabold text-petflow-chocolate">
+                {editing ? "แก้ไขโปร" : "เพิ่มโปรใหม่"}
+              </h2>
+              <button
+                type="button"
+                onClick={closeModal}
+                aria-label="ปิด"
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-paper text-brown"
+              >
+                <Icon name="x" size={18} />
+              </button>
+            </div>
+            <form key={editing?.id || "new"} onSubmit={submit} className="space-y-4 p-5">
+              <label className="flex items-start gap-3 rounded-petflow-sm bg-honey/15 px-3.5 py-3 text-sm font-bold text-petflow-chocolate">
                 <input
                   type="checkbox"
                   checked={showOnHome}
                   onChange={(e) => setShowOnHome(e.target.checked)}
-                  className="mt-0.5"
+                  className="mt-0.5 h-4 w-4"
                 />
                 <span>
-                  🏠 ขึ้นหน้าแรกแอปลูกค้า
-                  <span className="mt-0.5 block text-[10px] font-normal text-brown-soft">
+                  ขึ้นหน้าแรกแอปลูกค้า
+                  <span className="mt-0.5 block text-[11px] font-normal text-brown-soft">
                     ติ๊ก = โชว์หน้าแรก + ลูกค้ากดใช้ได้ · ไม่ติ๊ก = แสดงแค่หน้าโปร
                   </span>
                 </span>
               </label>
 
               <div>
-                <p className="mb-2 text-[10px] font-bold text-brown-soft">ประเภทรางวัล</p>
-                <div className="grid grid-cols-3 gap-2">
-                  {(
-                    [
-                      ["discount", "ส่วนลด"],
-                      ["points", "แต้ม"],
-                      ["both", "ทั้งคู่"],
-                    ] as const
-                  ).map(([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setRewardType(value)}
-                      className={`rounded-petflow-sm px-2 py-2 text-[10px] font-bold ${
-                        rewardType === value ? "bg-latte/30 text-petflow-chocolate" : "bg-paper text-brown-faint"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
+                <p className="mb-1.5 text-[11px] font-bold text-brown-soft">ประเภทรางวัล</p>
+                <Segmented
+                  value={rewardType}
+                  onChange={setRewardType}
+                  options={[
+                    { id: "discount", label: "ส่วนลด" },
+                    { id: "points", label: "แต้ม" },
+                    { id: "both", label: "ทั้งคู่" },
+                  ]}
+                />
               </div>
 
-              <input name="titleTh" required defaultValue={editing?.title.th} placeholder="หัวข้อ (ไทย)" className="w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm" />
-              <textarea name="bodyTh" required defaultValue={editing?.body.th} placeholder="รายละเอียด" rows={2} className="w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm" />
+              <input name="titleTh" required defaultValue={editing?.title.th} placeholder="หัวข้อ (ไทย)" className={FIELD} />
+              <textarea name="bodyTh" required defaultValue={editing?.body.th} placeholder="รายละเอียด" rows={2} className={FIELD} />
 
               {showDiscount && (
                 <div className="grid grid-cols-2 gap-2">
-                  <input name="discountPercent" type="number" defaultValue={editing?.discountPercent ?? ""} placeholder="ส่วนลด %" className="rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm" />
-                  <input name="discountAmount" type="number" defaultValue={editing?.discountAmount ?? ""} placeholder="ส่วนลด บาท" className="rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm" />
+                  <input name="discountPercent" type="number" defaultValue={editing?.discountPercent ?? ""} placeholder="ส่วนลด %" className={`${FIELD} min-w-0`} />
+                  <input name="discountAmount" type="number" defaultValue={editing?.discountAmount ?? ""} placeholder="ส่วนลด บาท" className={`${FIELD} min-w-0`} />
                 </div>
               )}
 
               {showPoints && (
                 <div className="grid grid-cols-2 gap-2">
-                  <input name="pointsBonus" type="number" defaultValue={editing?.pointsBonus ?? ""} placeholder="แต้มโบนัส (กดใช้แล้วได้ทันที)" className="rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm" />
-                  <input name="pointsMultiplier" type="number" step="0.1" defaultValue={editing?.pointsMultiplier ?? ""} placeholder="ตัวคูณแต้ม เช่น 2" className="rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm" />
+                  <input name="pointsBonus" type="number" defaultValue={editing?.pointsBonus ?? ""} placeholder="แต้มโบนัส" className={`${FIELD} min-w-0`} />
+                  <input name="pointsMultiplier" type="number" step="0.1" defaultValue={editing?.pointsMultiplier ?? ""} placeholder="ตัวคูณแต้ม เช่น 2" className={`${FIELD} min-w-0`} />
                 </div>
               )}
 
-              <input name="couponCode" defaultValue={editing?.couponCode ?? ""} placeholder="รหัสโปร (ถ้ามี)" className="w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm" />
+              <input name="couponCode" defaultValue={editing?.couponCode ?? ""} placeholder="รหัสโปร (ถ้ามี)" className={FIELD} />
 
               <div>
-                <p className="mb-2 text-[10px] font-bold text-brown-soft">
-                  กลุ่มลูกค้า (Member = เติมเครดิตแล้ว · ใหม่ = ยังไม่เคยมา · เก่า = เคยมาแล้ว)
-                </p>
+                <p className="mb-1.5 text-[11px] font-bold text-brown-soft">กลุ่มลูกค้า</p>
                 <div className="flex flex-wrap gap-2">
-                  {BUILTIN_TIER_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => toggleTier(opt.value)}
-                      className={`rounded-full px-3 py-1.5 text-[10px] font-bold ${
-                        tiers.includes(opt.value) ? "bg-latte/30 text-petflow-chocolate" : "bg-paper text-brown-faint"
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
+                  {BUILTIN_TIER_OPTIONS.map((opt) => {
+                    const on = tiers.includes(opt.value);
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => toggleTier(opt.value)}
+                        className={`flex h-9 items-center gap-1 rounded-full px-3.5 text-xs font-bold ${
+                          on ? "bg-petflow-chocolate text-card" : "bg-paper text-brown-soft"
+                        }`}
+                      >
+                        {on && <Icon name="check" size={14} strokeWidth={2.4} />}
+                        {opt.label}
+                      </button>
+                    );
+                  })}
                 </div>
+                <p className="mt-1.5 text-[10px] text-brown-faint">
+                  Member = เติมเครดิตแล้ว · ใหม่ = ยังไม่เคยมา · เก่า = เคยมาแล้ว
+                </p>
               </div>
 
               <div>
-                <p className="mb-2 text-[10px] font-bold text-brown-soft">เงื่อนไขการใช้</p>
-                <div className="grid grid-cols-3 gap-2">
-                  {(
-                    [
-                      ["none", "ไม่จำกัด"],
-                      ["first_visit", "ครั้งแรก"],
-                      ["calendar_month", "เฉพาะเดือน"],
-                    ] as const
-                  ).map(([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setRestriction(value)}
-                      className={`rounded-petflow-sm px-2 py-2 text-[10px] font-bold ${
-                        restriction === value ? "bg-latte/30" : "bg-paper text-brown-faint"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
+                <p className="mb-1.5 text-[11px] font-bold text-brown-soft">เงื่อนไขการใช้</p>
+                <Segmented
+                  value={restriction}
+                  onChange={setRestriction}
+                  options={[
+                    { id: "none", label: "ไม่จำกัด" },
+                    { id: "first_visit", label: "ครั้งแรก" },
+                    { id: "calendar_month", label: "เฉพาะเดือน" },
+                  ]}
+                />
               </div>
               {restriction === "calendar_month" && (
-                <input name="validMonth" type="month" required defaultValue={editing?.validMonth ?? ""} className="w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm" />
+                <input name="validMonth" type="month" required defaultValue={editing?.validMonth ?? ""} className={FIELD} />
               )}
 
               <div className="grid grid-cols-2 gap-2">
-                <label className="block text-[10px] font-bold text-brown-soft">
+                <label className="block min-w-0 text-[11px] font-bold text-brown-soft">
                   เริ่มใช้ได้
-                  <input name="startDate" type="date" required defaultValue={editing?.startDate ?? ""} className="mt-0.5 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm" />
+                  <input name="startDate" type="date" required defaultValue={editing?.startDate ?? ""} className={`${FIELD} mt-1`} />
                 </label>
-                <label className="block text-[10px] font-bold text-brown-soft">
-                  วันสิ้นสุด <span className="font-normal text-brown-faint">(เว้นว่าง = ไม่หมดอายุ)</span>
-                  <input name="until" type="date" defaultValue={editing?.until ?? ""} className="mt-0.5 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm" />
+                <label className="block min-w-0 text-[11px] font-bold text-brown-soft">
+                  วันสิ้นสุด
+                  <input name="until" type="date" defaultValue={editing?.until ?? ""} className={`${FIELD} mt-1`} />
+                </label>
+              </div>
+              <p className="-mt-2 text-[10px] text-brown-faint">เว้นวันสิ้นสุดว่าง = ไม่หมดอายุ</p>
+
+              <div className="flex items-center gap-3">
+                {hasImage ? (
+                  <Image src={imageUrl} alt="" width={64} height={48} className="h-12 w-16 rounded-petflow-sm object-cover" unoptimized />
+                ) : (
+                  <span className="flex h-12 w-16 items-center justify-center rounded-petflow-sm bg-paper text-brown-soft">
+                    <Icon name="image" size={20} />
+                  </span>
+                )}
+                <label className="flex h-10 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-full border border-petflow-line text-xs font-bold text-brown">
+                  <Icon name="image" size={16} />
+                  {hasImage ? "เปลี่ยนรูปโปร" : "ใส่รูปโปร (ถ้ามี)"}
+                  <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && onImage(e.target.files[0])} />
                 </label>
               </div>
 
-              <label className="block text-[10px] font-bold text-latte-deep">
-                รูปโปร (ถ้ามี)
-                <input type="file" accept="image/*" className="mt-1 block w-full text-[10px]" onChange={(e) => e.target.files?.[0] && onImage(e.target.files[0])} />
-              </label>
-              {hasImage && (
-                <Image src={imageUrl} alt="" width={96} height={72} className="h-[72px] w-[96px] rounded-petflow-sm object-cover" unoptimized />
-              )}
-
-              <div className="flex gap-2 pt-1">
-                <button type="button" onClick={closeModal} className="flex-1 rounded-petflow-sm bg-paper py-2.5 text-xs font-bold text-brown-soft">
+              <div className="sticky bottom-0 -mx-5 -mb-5 flex gap-2 border-t border-petflow-line bg-card px-5 py-3">
+                <button type="button" onClick={closeModal} className="h-11 flex-1 rounded-full bg-paper text-sm font-bold text-brown-soft">
                   ยกเลิก
                 </button>
-                <button type="submit" className="flex-1 rounded-petflow-sm bg-gradient-to-r from-honey to-honey-deep py-2.5 text-xs font-extrabold text-petflow-chocolate">
-                  {editing ? "💾 บันทึกการแก้ไข" : "บันทึกโปร"}
+                <button type="submit" className="h-11 flex-[2] rounded-full bg-petflow-chocolate text-sm font-extrabold text-card">
+                  {editing ? "บันทึกการแก้ไข" : "บันทึกโปร"}
                 </button>
               </div>
             </form>
@@ -856,240 +958,159 @@ export default function PromosAdminPage() {
         </div>
       )}
 
-      <h2 className="mb-2 text-sm font-extrabold text-petflow-chocolate">
-        📋 รายการโปร ({visiblePromos.length}{visiblePromos.length !== promos.length ? ` / ${promos.length}` : ""})
-      </h2>
+      {view === "list" && (
+        <>
+          <SearchField value={promoQuery} onChange={setPromoQuery} placeholder="ค้นหาชื่อ/รายละเอียด" className="mb-2" />
+          <div className="mb-3 grid grid-cols-3 gap-2">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as "all" | "active" | "inactive")}
+              className={CHIP_SELECT}
+              aria-label="สถานะ"
+            >
+              <option value="all">ทุกสถานะ</option>
+              <option value="active">ใช้งาน</option>
+              <option value="inactive">ปิด</option>
+            </select>
+            <select
+              value={kindFilter}
+              onChange={(e) => setKindFilter(e.target.value as "all" | PromoKind)}
+              className={CHIP_SELECT}
+              aria-label="ที่แสดงผล"
+            >
+              <option value="all">ทุกที่แสดง</option>
+              <option value="customer">หน้าแรก</option>
+              <option value="display">หน้าโปรเท่านั้น</option>
+            </select>
+            <div className="flex min-w-0 gap-1">
+              <select
+                value={promoSortKey}
+                onChange={(e) => setPromoSortKey(e.target.value as PromoSortKey)}
+                className={`${CHIP_SELECT} flex-1`}
+                aria-label="เรียงตาม"
+              >
+                <option value="start">วันเริ่ม</option>
+                <option value="end">วันจบ</option>
+                <option value="title">ชื่อ</option>
+                <option value="claims">ใช้แล้ว</option>
+                <option value="status">สถานะ</option>
+              </select>
+              <button
+                type="button"
+                onClick={() => togglePromoSort(promoSortKey)}
+                aria-label={promoSortDir === "asc" ? "เรียงน้อยไปมาก" : "เรียงมากไปน้อย"}
+                className="flex h-10 w-9 shrink-0 items-center justify-center rounded-full bg-paper text-brown"
+              >
+                <span className="text-xs font-bold">{promoSortDir === "asc" ? "↑" : "↓"}</span>
+              </button>
+            </div>
+          </div>
 
-      {/* ตัวกรอง */}
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as "all" | "active" | "inactive")}
-          className="rounded-petflow-sm border border-petflow-line bg-card px-3 py-2 text-xs font-bold text-brown"
-        >
-          <option value="all">ทุกสถานะ</option>
-          <option value="active">✅ ใช้งาน</option>
-          <option value="inactive">⏸️ ปิด</option>
-        </select>
-        <select
-          value={kindFilter}
-          onChange={(e) => setKindFilter(e.target.value as "all" | PromoKind)}
-          className="rounded-petflow-sm border border-petflow-line bg-card px-3 py-2 text-xs font-bold text-brown"
-        >
-          <option value="all">ทุกที่แสดงผล</option>
-          <option value="customer">🏠 หน้าแรก</option>
-          <option value="display">หน้าโปรเท่านั้น</option>
-        </select>
-        <input
-          value={promoQuery}
-          onChange={(e) => setPromoQuery(e.target.value)}
-          placeholder="🔍 ค้นหาชื่อ/รายละเอียด"
-          className="min-w-0 flex-1 rounded-petflow-sm border border-petflow-line bg-card px-3 py-2 text-xs"
-        />
-        {(promoQuery || statusFilter !== "all" || kindFilter !== "all") && (
-          <button
-            type="button"
-            onClick={resetPromoFilters}
-            className="rounded-petflow-sm bg-paper px-3 py-2 text-xs font-bold text-brown-soft"
+          <SectionLabel
+            action={
+              filtersOn ? (
+                <button
+                  type="button"
+                  onClick={resetPromoFilters}
+                  className="flex h-8 items-center gap-1 px-1 text-[11px] font-bold text-brown-soft"
+                >
+                  <Icon name="x" size={12} />
+                  ล้างตัวกรอง
+                </button>
+              ) : undefined
+            }
           >
-            ↺ รีเซ็ต
-          </button>
-        )}
-      </div>
+            {visiblePromos.length}
+            {visiblePromos.length !== promos.length ? ` / ${promos.length}` : ""} โปร
+          </SectionLabel>
 
-      {/* ── ตาราง (จอกว้าง) ── */}
-      <div className="mb-4 hidden overflow-x-auto rounded-petflow border border-petflow-line bg-card shadow-petflow-sm md:block">
-        <table className="w-full min-w-[900px] text-left text-xs">
-          <thead>
-            <tr className="border-b border-petflow-line bg-paper/60 text-[10px] font-extrabold uppercase tracking-wide text-brown-soft">
-              <PromoSortableTh label="ชื่อ" sortKey="title" active={promoSortKey} dir={promoSortDir} onSort={togglePromoSort} />
-              <th className="px-3 py-2.5">เงื่อนไข</th>
-              <th className="px-3 py-2.5">กลุ่มลูกค้า</th>
-              <PromoSortableTh label="เริ่ม" sortKey="start" active={promoSortKey} dir={promoSortDir} onSort={togglePromoSort} />
-              <PromoSortableTh label="จบ" sortKey="end" active={promoSortKey} dir={promoSortDir} onSort={togglePromoSort} />
-              <th className="px-3 py-2.5">รูปภาพ</th>
-              <PromoSortableTh label="ใช้แล้ว" sortKey="claims" active={promoSortKey} dir={promoSortDir} onSort={togglePromoSort} align="right" />
-              <PromoSortableTh label="สถานะ" sortKey="status" active={promoSortKey} dir={promoSortDir} onSort={togglePromoSort} />
-              <th className="px-3 py-2.5">แสดงผล</th>
-              <th className="px-3 py-2.5" />
-            </tr>
-          </thead>
-          <tbody>
-            {visiblePromos.map((p) => {
-              const reward = promoRewardLabel(p);
-              return (
-                <tr key={p.id} className="border-b border-petflow-line last:border-0 hover:bg-paper/50">
-                  <td className="px-3 py-2.5">
-                    <p className="font-bold text-brown">{p.title.th}</p>
-                    <p className="mt-0.5 max-w-[220px] truncate text-[10px] text-brown-faint">{p.body.th}</p>
-                    {reward && <p className="text-[10px] text-latte-deep">{reward}</p>}
-                  </td>
-                  <td className="px-3 py-2.5 text-brown-soft">
-                    {restrictionLabel(p.restriction, p.validMonth)}
-                  </td>
-                  <td className="px-3 py-2.5 text-brown-soft">{p.tiers.join(", ")}</td>
-                  <td className="px-3 py-2.5 text-brown-soft">{p.startDate}</td>
-                  <td className="px-3 py-2.5 text-brown-soft">{p.until || "ไม่มีวันหมดอายุ"}</td>
-                  <td className="px-3 py-2.5">
-                    {p.imageUrl ? (
-                      <Image src={p.imageUrl} alt="" width={40} height={40} className="h-10 w-10 rounded-petflow-sm object-cover" unoptimized />
-                    ) : (
-                      <span className="text-brown-faint">—</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5 text-right font-bold text-latte-deep">
-                    {claimsFor(p.id).length}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <button
-                      type="button"
-                      onClick={() => toggle(p.id, p.active)}
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                        p.active ? "bg-sage/20 text-ok" : "bg-paper text-brown-faint"
-                      }`}
-                    >
-                      {p.active ? "✅ ใช้งาน" : "⏸️ ปิด"}
+          {visiblePromos.length === 0 ? (
+            <div className="rounded-petflow bg-card shadow-petflow-sm">
+              <EmptyState
+                icon="sparkle"
+                title={promos.length === 0 ? "ยังไม่มีโปรโมชั่น" : "ไม่พบโปรโมชั่น"}
+                sub={promos.length === 0 ? "กด “เพิ่มโปร” เพื่อสร้างโปรแรก" : "ลองเปลี่ยนคำค้นหรือตัวกรอง"}
+              />
+            </div>
+          ) : (
+            <ul className="divide-y divide-petflow-line rounded-petflow bg-card shadow-petflow-sm">
+              {visiblePromos.map((p) => {
+                const reward = promoRewardLabel(p);
+                const used = claimsFor(p.id);
+                return (
+                  <li key={p.id} className="flex items-start gap-3 px-4 py-3">
+                    <button type="button" onClick={() => openEdit(p)} className="flex min-w-0 flex-1 items-start gap-3 text-left">
+                      {p.imageUrl ? (
+                        <Image src={p.imageUrl} alt="" width={44} height={44} className="h-11 w-11 shrink-0 rounded-xl object-cover" unoptimized />
+                      ) : (
+                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-honey/25 text-petflow-chocolate">
+                          <Icon name={p.kind === "customer" ? "home" : "sparkle"} size={20} />
+                        </span>
+                      )}
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-1.5">
+                          <span className="truncate text-sm font-extrabold text-petflow-chocolate">{p.title.th}</span>
+                          {p.kind === "customer" && (
+                            <span className="shrink-0 rounded-full bg-honey/35 px-1.5 text-[10px] font-bold leading-4 text-petflow-chocolate">
+                              หน้าแรก
+                            </span>
+                          )}
+                        </span>
+                        <span className="block truncate text-[11px] text-brown-soft">
+                          {reward ? `${reward} · ` : ""}
+                          {restrictionLabel(p.restriction, p.validMonth)} · {p.tiers.join(", ")}
+                        </span>
+                        <span className="block truncate text-[11px] text-brown-faint">
+                          {p.startDate} → {p.until || "ไม่หมดอายุ"}
+                          {used.length > 0 ? ` · ใช้แล้ว ${used.length} ครั้ง` : ""}
+                        </span>
+                        {used.length > 0 && (
+                          <span className="mt-1 block text-[10px] text-brown-faint">
+                            {used.slice(0, 3).map((c) => (
+                              <span key={c.id} className="block truncate">
+                                {c.createdAt.slice(0, 10)} · {c.customerName}
+                                {c.pointsAwarded ? ` · +${c.pointsAwarded} แต้ม` : ""}
+                              </span>
+                            ))}
+                          </span>
+                        )}
+                      </span>
                     </button>
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <button
-                      type="button"
-                      onClick={() => toggleHome(p)}
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                        p.kind === "customer" ? "bg-honey/30 text-petflow-chocolate" : "bg-paper text-brown-faint"
-                      }`}
-                    >
-                      {p.kind === "customer" ? "🏠 หน้าแรก" : "หน้าโปร"}
-                    </button>
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <div className="flex justify-end gap-2">
-                      <button type="button" onClick={() => openEdit(p)} className="text-petflow-chocolate" aria-label="แก้ไข">
-                        ✏️
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => toggle(p.id, p.active)}
+                        aria-label={p.active ? "ปิดโปร" : "เปิดโปร"}
+                        className={`h-9 rounded-full px-3 text-[11px] font-bold ${
+                          p.active ? "bg-sage/25 text-ok" : "bg-paper text-brown-faint"
+                        }`}
+                      >
+                        {p.active ? "เปิด" : "ปิด"}
                       </button>
-                      <button type="button" onClick={() => remove(p)} className="text-wait" aria-label="ลบ">
-                        🗑️
-                      </button>
+                      <MoreMenu
+                        items={[
+                          { label: "แก้ไข", icon: "edit", onClick: () => openEdit(p) },
+                          {
+                            label: p.kind === "customer" ? "เอาออกจากหน้าแรก" : "ขึ้นหน้าแรก",
+                            icon: "home",
+                            onClick: () => toggleHome(p),
+                          },
+                          { label: "ลบโปร", icon: "trash", danger: true, onClick: () => remove(p) },
+                        ]}
+                      />
                     </div>
-                  </td>
-                </tr>
-              );
-            })}
-            {visiblePromos.length === 0 && (
-              <tr>
-                <td colSpan={10} className="px-3 py-6 text-center text-brown-soft">
-                  ไม่พบโปรโมชั่น
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* ── การ์ด (มือถือ) ── */}
-      <ul className="space-y-3 md:hidden">
-        {visiblePromos.map((p) => {
-          const reward = promoRewardLabel(p);
-          return (
-            <li key={p.id} className="overflow-hidden rounded-petflow border border-petflow-line bg-card">
-              <div className="p-4">
-                <div className="flex justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="font-bold text-brown">
-                      {p.kind === "customer" ? "🏠 " : "✨ "}
-                      {p.title.th}
-                    </p>
-                    <p className="text-xs text-brown-soft">{p.body.th}</p>
-                    <p className="mt-1 text-[10px] text-brown-faint">
-                      {p.startDate} → {p.until || "ไม่มีวันหมดอายุ"}
-                      {reward ? ` · ${reward}` : ""}
-                      {" · "}
-                      {restrictionLabel(p.restriction, p.validMonth)}
-                      {" · "}
-                      {p.tiers.join(", ")}
-                    </p>
-                    {claimsFor(p.id).length > 0 && (
-                      <div className="mt-2 rounded-petflow-sm bg-sage/10 px-2 py-1.5 text-[10px] text-brown-soft">
-                        ใช้แล้ว {claimsFor(p.id).length} ครั้ง
-                        {claimsFor(p.id).slice(0, 3).map((c) => (
-                          <div key={c.id}>
-                            {c.createdAt.slice(0, 10)} · {c.customerName}
-                            {c.pointsAwarded ? ` · +${c.pointsAwarded} แต้ม` : ""}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex shrink-0 flex-col gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => toggleHome(p)}
-                      className={`rounded-full px-3 py-1 text-[10px] font-bold ${
-                        p.kind === "customer" ? "bg-honey/30 text-petflow-chocolate" : "bg-paper text-brown-faint"
-                      }`}
-                    >
-                      {p.kind === "customer" ? "🏠 หน้าแรก" : "หน้าโปร"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => toggle(p.id, p.active)}
-                      className={`rounded-full px-3 py-1 text-[10px] font-bold ${
-                        p.active ? "bg-sage/20 text-ok" : "bg-paper text-brown-faint"
-                      }`}
-                    >
-                      {p.active ? "เปิด" : "ปิด"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openEdit(p)}
-                      className="rounded-full bg-honey/25 px-3 py-1 text-[10px] font-bold text-petflow-chocolate"
-                    >
-                      ✏️ แก้ไข
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => remove(p)}
-                      className="rounded-full bg-wait/10 px-3 py-1 text-[10px] font-bold text-wait"
-                    >
-                      🗑️ ลบ
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </>
+      )}
     </div>
   );
 }
 
-function PromoSortableTh({
-  label,
-  sortKey,
-  active,
-  dir,
-  onSort,
-  align,
-}: {
-  label: string;
-  sortKey: PromoSortKey;
-  active: PromoSortKey;
-  dir: "asc" | "desc";
-  onSort: (key: PromoSortKey) => void;
-  align?: "right";
-}) {
-  const isActive = active === sortKey;
-  return (
-    <th className={`px-3 py-2.5 ${align === "right" ? "text-right" : "text-left"}`}>
-      <button
-        type="button"
-        onClick={() => onSort(sortKey)}
-        className={`inline-flex items-center gap-0.5 ${isActive ? "text-petflow-chocolate" : "text-brown-soft"}`}
-      >
-        {label}
-        <span className="text-[9px]">{isActive ? (dir === "asc" ? "▲" : "▼") : "↕"}</span>
-      </button>
-    </th>
-  );
-}
+const FIELD =
+  "w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm text-brown";
+const CHIP_SELECT =
+  "h-10 w-full min-w-0 rounded-full border border-petflow-line bg-card px-3 text-xs font-bold text-brown";

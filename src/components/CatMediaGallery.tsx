@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Icon } from "@/components/Icon";
 import { toJpegDataUrl } from "@/lib/image-convert";
 import type { CatRecord, CatMediaItem } from "@/lib/customers-store";
 
@@ -112,13 +113,24 @@ export function CatMediaGallery({
   };
 
   return (
-    <div className="mt-2 rounded-petflow-sm border border-latte/40 bg-honey/5 p-2.5">
-      <p className="text-[10px] font-bold text-petflow-chocolate">
-        🖼️ อัลบั้มหลังบ้าน (รูป/วิดีโอ — ลูกค้าไม่เห็น)
-      </p>
-      <p className="mt-0.5 text-[9px] text-brown-faint">
-        เก็บไว้ดูหน้าตา/นิสัยน้อง เช่น ตอนอาบน้ำดื้อไหม อัปได้หลายไฟล์ วิดีโอไม่เกิน 15MB/คลิป
-      </p>
+    <div className="mt-2 rounded-petflow-sm border border-petflow-line bg-paper/60 p-3">
+      <div className="flex items-start gap-2.5">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-honey/25 text-petflow-chocolate">
+          <Icon name="image" size={18} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="flex items-center gap-1.5 text-xs font-extrabold text-petflow-chocolate">
+            อัลบั้มหลังบ้าน
+            <span className="inline-flex items-center gap-1 rounded-full bg-card px-1.5 py-px text-[9px] font-bold text-brown-soft">
+              <Icon name="eye" size={11} />
+              ลูกค้าไม่เห็น
+            </span>
+          </p>
+          <p className="mt-0.5 text-[10px] text-brown-faint">
+            เก็บไว้ดูหน้าตา/นิสัยน้อง เช่น ตอนอาบน้ำดื้อไหม อัปได้หลายไฟล์ วิดีโอไม่เกิน 15MB/คลิป
+          </p>
+        </div>
+      </div>
 
       {needSql && (
         <p className="mt-1.5 rounded-petflow-sm bg-wait/10 px-2 py-1.5 text-[10px] font-bold text-wait">
@@ -127,7 +139,7 @@ export function CatMediaGallery({
       )}
       {error && (
         <p className="mt-1.5 rounded-petflow-sm bg-wait/10 px-2 py-1.5 text-[10px] font-bold text-wait">
-          😿 {error}
+          {error}
         </p>
       )}
 
@@ -149,8 +161,9 @@ export function CatMediaGallery({
             <button
               type="button"
               onClick={() => setViewing(null)}
-              className="mt-3 rounded-full bg-white/90 px-5 py-2 text-xs font-extrabold text-brown"
+              className="mx-auto mt-3 flex min-h-[44px] items-center gap-1.5 rounded-full bg-white/90 px-5 py-2 text-sm font-extrabold text-brown"
             >
+              <Icon name="x" size={16} />
               ปิด
             </button>
           </div>
@@ -158,11 +171,11 @@ export function CatMediaGallery({
       )}
 
       {media.length > 0 && (
-        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
           {media.map((m) => (
-            <div key={m.id} className="overflow-hidden rounded-petflow-sm border border-petflow-line bg-card">
+            <div key={m.id} className="relative overflow-hidden rounded-petflow-sm border border-petflow-line bg-card shadow-petflow-sm">
               {m.type === "video" ? (
-                <video src={m.dataUrl} controls className="h-24 w-full bg-black object-contain" />
+                <video src={m.dataUrl} controls className="h-28 w-full bg-black object-contain" />
               ) : (
                 // รูปย่อในตารางเล็กมาก ดูรายละเอียดไม่ออก — กดแล้วเปิดเต็มจอ
                 <button
@@ -172,41 +185,47 @@ export function CatMediaGallery({
                   title="กดเพื่อดูรูปเต็ม"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={m.dataUrl} alt={m.caption || ""} className="h-24 w-full object-cover" />
+                  <img src={m.dataUrl} alt={m.caption || ""} className="h-28 w-full object-cover" />
                 </button>
               )}
               <input
                 defaultValue={m.caption || ""}
                 placeholder="โน้ตสั้นๆ เช่น ตอนอาบดื้อมาก"
                 onBlur={(e) => setCaption(m.id, e.target.value)}
-                className="w-full border-t border-petflow-line bg-paper px-1.5 py-1 text-[9px] outline-none"
+                className="w-full border-t border-petflow-line bg-card px-2.5 py-2.5 text-[11px] outline-none"
               />
               <button
                 type="button"
                 onClick={() => removeItem(m.id)}
                 disabled={busy}
-                className="w-full bg-wait/10 py-1 text-[9px] font-bold text-wait disabled:opacity-50"
+                aria-label="ลบไฟล์นี้"
+                className="absolute right-1.5 top-1.5 flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-white disabled:opacity-50"
               >
-                ✕ ลบ
+                <Icon name="trash" size={15} />
               </button>
             </div>
           ))}
         </div>
       )}
 
-      <label className="mt-2 block">
+      <label
+        className={`mt-3 flex min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-petflow-sm border border-dashed border-latte-deep/60 bg-card px-3 py-2.5 text-sm font-bold text-latte-deep ${
+          busy ? "pointer-events-none opacity-60" : ""
+        }`}
+      >
         <input
           type="file"
           accept="image/*,video/*"
           multiple
           disabled={busy}
-          className="block w-full text-[10px]"
+          className="sr-only"
           onChange={(e) => {
             addFiles(e.target.files);
             e.target.value = "";
           }}
         />
-        {busy && <span className="text-[9px] text-brown-faint">กำลังอัป…</span>}
+        <Icon name={busy ? "clock" : "plus"} size={18} />
+        {busy ? "กำลังอัป…" : "เพิ่มรูป / วิดีโอ"}
       </label>
     </div>
   );

@@ -17,7 +17,8 @@ export default function RoomsPage() {
   return (
     <div className="px-4 pb-6 pt-5">
       <PageHeader
-        title={`🏠 ${m.title}`}
+        eyebrow="Rooms"
+        title={m.title}
         subtitle={`${m.total} · ${inv.miniMeow}S + ${inv.midCozy}M + ${inv.catflix} Netflix`}
         back="/app/services"
         backLabel={locale === "th" ? "บริการทั้งหมด" : "All services"}

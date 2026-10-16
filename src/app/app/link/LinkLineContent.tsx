@@ -3,6 +3,10 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useLiff } from "@/components/LiffProvider";
+import { LoadingScreen } from "@/components/LoadingScreen";
+import { BTN_PRIMARY, BTN_SECONDARY, PageHeader } from "@/components/PageHeader";
+import { EmptyState } from "@/components/ui";
+import { Icon } from "@/components/Icon";
 
 type Preview = {
   id: string;
@@ -67,33 +71,37 @@ export function LinkLineContent() {
   };
 
   if (!ready || loading) {
-    return (
-      <p className="px-4 py-10 text-center text-sm text-brown-soft">
-        กำลังเชื่อมต่อ LINE…
-      </p>
-    );
+    return <LoadingScreen message="กำลังเชื่อมต่อ LINE…" />;
   }
 
   if (!customerId || (!preview && error)) {
     return (
-      <div className="px-4 py-10 text-center">
-        <p className="text-sm font-bold text-wait">{error || "ลิงก์ไม่ถูกต้อง"}</p>
+      <div className="px-4 pb-6 pt-5">
+        <PageHeader eyebrow="Link account" title="ผูกบัญชี LINE" showLang={false} />
+        <div className="rounded-petflow border border-petflow-line bg-card shadow-petflow-sm">
+          <EmptyState icon="alert" title={error || "ลิงก์ไม่ถูกต้อง"} />
+        </div>
       </div>
     );
   }
 
   if (preview?.hasLine) {
     return (
-      <div className="px-4 py-10 text-center">
-        <p className="text-2xl">✅</p>
-        <p className="mt-2 text-sm font-extrabold text-petflow-chocolate">
-          ลูกค้ารายนี้ผูก LINE แล้ว
-        </p>
+      <div className="px-4 pb-6 pt-10">
+        <div className="rounded-petflow border border-petflow-line bg-card p-6 text-center shadow-petflow">
+          <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-sage/25 text-ok">
+            <Icon name="check" size={28} strokeWidth={2.4} />
+          </span>
+          <p className="mt-3 text-base font-extrabold text-petflow-chocolate">
+            ลูกค้ารายนี้ผูก LINE แล้ว
+          </p>
+        </div>
         <button
           type="button"
           onClick={() => router.replace("/app")}
-          className="mt-4 rounded-petflow-sm bg-latte/25 px-4 py-2 text-xs font-bold text-petflow-chocolate"
+          className={`mt-5 ${BTN_SECONDARY}`}
         >
+          <Icon name="home" size={16} />
           ไปหน้าแรก
         </button>
       </div>
@@ -102,35 +110,48 @@ export function LinkLineContent() {
 
   if (done) {
     return (
-      <div className="px-4 py-10 text-center">
-        <p className="text-2xl">🎉</p>
-        <p className="mt-2 text-sm font-extrabold text-ok">ผูก LINE สำเร็จ!</p>
-        <p className="mt-1 text-xs text-brown-soft">กำลังพาไปหน้าแรก…</p>
+      <div className="px-4 pb-6 pt-10">
+        <div className="rounded-petflow border border-petflow-line bg-card p-6 text-center shadow-petflow">
+          <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-sage/25 text-ok">
+            <Icon name="check" size={28} strokeWidth={2.4} />
+          </span>
+          <p className="mt-3 text-base font-extrabold text-ok">ผูก LINE สำเร็จ!</p>
+          <p className="mt-1 text-xs text-brown-soft">กำลังพาไปหน้าแรก…</p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="px-4 pb-6 pt-5">
-      <div className="mb-5 rounded-petflow bg-latte/15 p-4 text-center">
-        <p className="text-2xl">🔗</p>
-        <h1 className="mt-2 text-lg font-extrabold text-petflow-chocolate">
-          ผูกบัญชี LINE
-        </h1>
-        <p className="mt-1 text-xs text-brown-soft">
-          ร้านบันทึกข้อมูลไว้แล้ว — กดยืนยันเพื่อเชื่อมกับ LINE ของคุณ
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Link account"
+        title="ผูกบัญชี LINE"
+        subtitle="ร้านบันทึกข้อมูลไว้แล้ว — กดยืนยันเพื่อเชื่อมกับ LINE ของคุณ"
+        showLang={false}
+      />
 
       {preview && (
-        <div className="mb-5 rounded-petflow-sm border border-petflow-line bg-card p-4 text-sm">
-          <p className="font-extrabold text-petflow-chocolate">{preview.name}</p>
-          {preview.phone && (
-            <p className="mt-1 text-xs text-brown-soft">📞 {preview.phone}</p>
-          )}
-          <p className="mt-2 text-xs text-brown-soft">
-            🐱 {preview.cats.map((c) => c.name).join(", ") || "—"}
-          </p>
+        <div className="mb-5 overflow-hidden rounded-petflow border border-petflow-line bg-card shadow-petflow-sm">
+          <div className="flex items-center gap-3 px-4 py-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-honey/25 text-petflow-chocolate">
+              <Icon name="user" size={20} />
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-extrabold text-petflow-chocolate">{preview.name}</p>
+              {preview.phone && (
+                <p className="text-xs text-brown-soft">{preview.phone}</p>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-3 border-t border-petflow-line px-4 py-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sage/25 text-petflow-chocolate">
+              <Icon name="paw" size={20} />
+            </span>
+            <p className="min-w-0 text-sm text-brown">
+              {preview.cats.map((c) => c.name).join(", ") || "—"}
+            </p>
+          </div>
         </div>
       )}
 
@@ -156,12 +177,13 @@ export function LinkLineContent() {
         type="button"
         disabled={linking || !profile?.lineUserId}
         onClick={link}
-        className="w-full rounded-petflow-sm bg-gradient-to-r from-sage to-[#4A7348] py-3.5 text-sm font-extrabold text-white disabled:opacity-60"
+        className={BTN_PRIMARY}
       >
-        {linking ? "กำลังผูก…" : "✅ ยืนยันผูก LINE กับบัญชีนี้"}
+        {!linking && <Icon name="link" size={18} />}
+        {linking ? "กำลังผูก…" : "ยืนยันผูก LINE กับบัญชีนี้"}
       </button>
 
-      <p className="mt-3 text-center text-[10px] text-brown-faint">
+      <p className="mt-3 text-center text-[11px] text-brown-faint">
         ชื่อ LINE: {profile?.displayName}
       </p>
     </div>

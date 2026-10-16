@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { Icon } from "@/components/Icon";
+import { SearchField } from "@/components/ui";
 import { STAFF_NOTE_TAGS } from "@/lib/staff-note-tags";
 
 function parseTags(text: string): string[] {
@@ -86,11 +88,14 @@ export function StaffNoteTagPicker({
       <button
         type="button"
         onClick={openPicker}
-        className="flex w-full items-center justify-between rounded-lg border border-petflow-line bg-paper px-3 py-2 text-left text-sm"
+        className="flex min-h-[48px] w-full items-center gap-3 rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-left text-sm"
       >
-        <span className="min-w-0">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-honey/25 text-petflow-chocolate">
+          <Icon name="alert" size={16} />
+        </span>
+        <span className="min-w-0 flex-1">
           <span className="block text-[10px] font-bold text-brown-soft">
-            🩺 เรื่องที่ช่างต้องรู้
+            เรื่องที่ช่างต้องรู้
           </span>
           <span
             className={`block truncate ${hasValue ? "text-brown" : "text-brown-faint"}`}
@@ -98,7 +103,7 @@ export function StaffNoteTagPicker({
             {summary}
           </span>
         </span>
-        <span className="shrink-0 text-brown-faint">›</span>
+        <Icon name="chevron" size={16} className="text-brown-faint" />
       </button>
 
       {open && (
@@ -107,7 +112,8 @@ export function StaffNoteTagPicker({
             <div className="shrink-0 border-b border-petflow-line px-4 pb-3 pt-4">
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <h2 className="text-sm font-extrabold text-petflow-chocolate">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Staff notes</p>
+                  <h2 className="text-base font-extrabold text-petflow-chocolate">
                     เรื่องที่ช่างต้องรู้
                   </h2>
                   <p className="mt-0.5 text-[10px] text-brown-soft">
@@ -117,22 +123,18 @@ export function StaffNoteTagPicker({
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
-                  className="shrink-0 rounded-full bg-paper px-2.5 py-1 text-xs font-bold text-brown-soft"
+                  aria-label="ปิด"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-paper text-brown"
                 >
-                  ✕
+                  <Icon name="x" size={16} />
                 </button>
               </div>
-              <div className="relative mt-3">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-brown-faint">
-                  🔍
-                </span>
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="พิมพ์เพื่อค้นหา"
-                  className="w-full rounded-petflow-sm border border-petflow-line bg-card py-2.5 pl-9 pr-3 text-sm"
-                />
-              </div>
+              <SearchField
+                value={search}
+                onChange={setSearch}
+                placeholder="พิมพ์เพื่อค้นหา"
+                className="mt-3"
+              />
             </div>
 
             <div className="flex-1 overflow-y-auto px-4 py-2">
@@ -147,19 +149,19 @@ export function StaffNoteTagPicker({
                         <button
                           type="button"
                           onClick={() => toggle(t.id)}
-                          className={`flex w-full items-center gap-3 px-1 py-3 text-left text-sm ${
+                          className={`flex min-h-[48px] w-full items-center gap-3 px-1 py-3 text-left text-sm ${
                             active ? "font-bold text-petflow-chocolate" : "text-brown"
                           }`}
                         >
                           <span
                             aria-hidden
-                            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 text-xs text-white ${
+                            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border-2 text-white ${
                               active
                                 ? "border-honey-deep bg-honey-deep"
                                 : "border-petflow-line bg-card"
                             }`}
                           >
-                            {active && "✓"}
+                            {active && <Icon name="check" size={14} strokeWidth={2.6} />}
                           </span>
                           <span>{t.label}</span>
                         </button>
@@ -170,23 +172,23 @@ export function StaffNoteTagPicker({
               )}
 
               <div className="py-3">
-                <p className="mb-1 text-[10px] font-bold text-brown-soft">
-                  อื่นๆ (พิมพ์เอง)
+                <p className="mb-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">
+                  Other · อื่นๆ (พิมพ์เอง)
                 </p>
                 <input
                   value={custom}
                   onChange={(e) => setCustom(e.target.value)}
                   placeholder="เช่น แพ้ยาสลบ"
-                  className="w-full rounded-lg border border-petflow-line bg-card px-3 py-2 text-sm"
+                  className="w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-3 text-sm"
                 />
               </div>
             </div>
 
-            <div className="shrink-0 border-t border-petflow-line p-3">
+            <div className="shrink-0 border-t border-petflow-line p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
               <button
                 type="button"
                 onClick={save}
-                className="w-full rounded-petflow-sm bg-gradient-to-r from-honey to-honey-deep py-3 text-sm font-extrabold text-petflow-chocolate shadow-petflow-sm"
+                className="min-h-[48px] w-full rounded-petflow-sm bg-gradient-to-r from-honey to-honey-deep py-3 text-sm font-extrabold text-petflow-chocolate shadow-petflow-sm"
               >
                 เสร็จสิ้น{selected.size > 0 ? ` (${selected.size})` : ""}
               </button>

@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: "อาบน้ำแมว ราคาเริ่ม 400.- แชมพูพรีเมียม | PetFlow บางนา เทพารักษ์",
   description:
-    "อาบน้ำแมวโดยพี่เลี้ยงใจเย็น จับนุ่มนวล แชมพูเกรดพรีเมียม Landin'Elite — อาบน้ำ-เป่าขนเริ่ม 400.- ขจัดคราบมัน PetFlow Premium อาบยับยั้งเชื้อรา รวมตัดเล็บ เช็ดหู บริการแบบ Private รับทีละบ้าน ย่านบางนา เทพารักษ์ สมุทรปราการ",
+    "อาบน้ำแมวโดยพี่เลี้ยงใจเย็น จับนุ่มนวล แชมพูเกรดพรีเมียม เกรดแมวประกวด — อาบน้ำ-เป่าขนเริ่ม 400.- ขจัดคราบมัน PetFlow Premium อาบยับยั้งเชื้อรา รวมตัดเล็บ เช็ดหู บริการแบบ Private รับทีละบ้าน ย่านบางนา เทพารักษ์ สมุทรปราการ",
   keywords: [
     "อาบน้ำแมว บางนา",
     "อาบน้ำแมว เทพารักษ์",
@@ -31,7 +31,7 @@ export const metadata: Metadata = {
     siteName: "PetFlow",
     title: "อาบน้ำแมว PetFlow — เมนู + ราคา เริ่ม 400.-",
     description: "แชมพูพรีเมียม พี่เลี้ยงใจเย็น บริการ Private รับน้องแมวทีละบ้าน",
-    images: [{ url: "/catalog/grooming/bath-menu.jpg", width: 1080, height: 1080, alt: "เมนูอาบน้ำแมว PetFlow" }],
+    images: [{ url: "/catalog/grooming/grooming-menu.jpg", width: 853, height: 1280, alt: "เมนูอาบน้ำแมว PetFlow" }],
   },
   robots: { index: true, follow: true },
 };
@@ -75,7 +75,7 @@ export default function CatBathPage() {
       <h1 className="mt-3 text-2xl font-extrabold leading-snug text-petflow-chocolate md:text-3xl">
         🛁 อาบน้ำแมว — เมนู + ราคา
         <span className="block text-lg text-latte-deep md:text-xl">
-          แชมพูเกรดพรีเมียม Landin&apos;Elite เริ่มต้น 400.-
+          แชมพูเกรดพรีเมียม เกรดแมวประกวด เริ่มต้น 400.-
         </span>
       </h1>
       <p className="mt-3 max-w-2xl text-sm leading-relaxed text-brown-soft">
@@ -119,18 +119,20 @@ export default function CatBathPage() {
         </table>
       </div>
       <p className="mt-2 text-[11px] text-brown-soft">
-        ขนาดตัว: ลูกแมวไม่เกิน 2 กก. · M ไม่เกิน 6 กก. · L 6 กก.ขึ้นไป — โปรแกรม Advance:
-        PetFlow Premium และอาบยับยั้งเชื้อรา Malaseb เริ่ม 700.- (ดูตารางเต็มด้านล่าง)
+        ขนาดตัว: ลูกแมวไม่เกิน 2 กก. · M มากกว่า 2–6 กก. · L มากกว่า 6 กก. · แมวเกิน 8 กก. ประเมินก่อนบริการ
+        — โปรแกรมดูแลพิเศษ: PetFlow Premium และยับยั้งเชื้อรา (แชมพู Malaseb) เริ่ม 700.- (ดูเมนูเต็มด้านล่าง)
       </p>
 
       {/* เมนูฉบับเต็ม (รูป) */}
       <h2 className="mt-10 text-lg font-extrabold text-petflow-chocolate">
         📋 เมนูฉบับเต็ม — แตะเพื่อขยาย
       </h2>
-      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+      <div className="mx-auto mt-4 grid max-w-md gap-4">
         {[
-          ["/catalog/grooming/bath-menu.jpg", "เมนูอาบน้ำ-เป่าขน และอาบน้ำ+ขจัดคราบมัน ทุกสายพันธุ์"],
-          ["/catalog/grooming/advance-menu.jpg", "เมนู Advance Grooming: PetFlow Premium และอาบยับยั้งเชื้อรา"],
+          [
+            "/catalog/grooming/grooming-menu.jpg",
+            "เมนูอาบน้ำแมว PetFlow Grooming: อาบน้ำ-เป่าขน อาบน้ำ+ขจัดคราบมัน PetFlow Premium และยับยั้งเชื้อรา ทุกสายพันธุ์",
+          ],
         ].map(([src, alt]) => (
           <a
             key={src}
@@ -142,9 +144,9 @@ export default function CatBathPage() {
             <Image
               src={src}
               alt={alt}
-              width={900}
-              height={900}
-              sizes="(max-width: 640px) 100vw, 50vw"
+              width={853}
+              height={1280}
+              sizes="(max-width: 640px) 100vw, 448px"
               className="h-auto w-full"
             />
           </a>

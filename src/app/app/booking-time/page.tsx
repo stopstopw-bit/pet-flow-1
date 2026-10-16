@@ -1,11 +1,13 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useLiff } from "@/components/LiffProvider";
 import { formatThaiDateShort } from "@/lib/format-thai-date";
 import { LoadingScreen } from "@/components/LoadingScreen";
+import { BTN_PRIMARY, PageHeader } from "@/components/PageHeader";
+import { EmptyState, SectionLabel } from "@/components/ui";
+import { Icon } from "@/components/Icon";
 
 const SLOTS = Array.from({ length: 11 }, (_, i) => `${String(9 + i).padStart(2, "0")}:00`);
 
@@ -84,8 +86,11 @@ function BookingTimeContent() {
 
   if (done) {
     return (
-      <div className="px-6 py-16 text-center">
-        <div className="text-5xl">🧡</div>
+      <div className="px-4 pb-6 pt-10">
+        <div className="rounded-petflow border border-petflow-line bg-card p-6 text-center shadow-petflow">
+        <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-sage/25 text-ok">
+          <Icon name="check" size={28} strokeWidth={2.4} />
+        </span>
         <h1 className="mt-4 text-lg font-extrabold text-petflow-chocolate">
           บันทึกเวลาเรียบร้อยแล้ว!
         </h1>
@@ -96,92 +101,97 @@ function BookingTimeContent() {
           <br />
           กลับไปที่แชท LINE ได้เลยค่ะ
         </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="px-4 pb-8 pt-5">
-      <Link href="/app" className="mb-3 inline-block text-xs font-bold text-brown-soft">
-        ← กลับหน้าแรก
-      </Link>
-
-      <h1 className="text-lg font-extrabold text-petflow-chocolate">
-        🕒 {isCheckin ? "เลือกเวลาที่จะมาส่งน้อง" : "เลือกเวลาที่จะมารับน้อง"}
-      </h1>
+    <div className="px-4 pb-6 pt-5">
+      <PageHeader
+        eyebrow={isCheckin ? "Drop-off time" : "Pick-up time"}
+        title={isCheckin ? "เลือกเวลาที่จะมาส่งน้อง" : "เลือกเวลาที่จะมารับน้อง"}
+        back="/app"
+        backLabel="กลับหน้าแรก"
+        showLang={false}
+      />
 
       {loading ? (
         <LoadingScreen />
       ) : !bk ? (
-        <p className="mt-6 rounded-petflow-sm bg-paper px-4 py-3 text-sm text-brown-soft">
-          ไม่พบข้อมูลการจอง
-        </p>
+        <div className="rounded-petflow border border-petflow-line bg-card shadow-petflow-sm">
+          <EmptyState icon="calendar" title="ไม่พบข้อมูลการจอง" />
+        </div>
       ) : (
         <>
-          <div className="mt-3 rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm">
-            <p className="text-sm font-bold text-brown">🐱 {bk.catName}</p>
-            <p className="text-xs text-brown-soft">
-              {isCheckin ? "วันเข้าพัก" : "วันรับน้อง"}:{" "}
-              {dateLabel ? formatThaiDateShort(dateLabel) : "—"}
-            </p>
+          <div className="flex items-center gap-3 rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-honey/25 text-petflow-chocolate">
+              <Icon name="paw" size={20} />
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-extrabold text-petflow-chocolate">{bk.catName}</p>
+              <p className="text-xs text-brown-soft">
+                {isCheckin ? "วันเข้าพัก" : "วันรับน้อง"}:{" "}
+                {dateLabel ? formatThaiDateShort(dateLabel) : "—"}
+              </p>
+            </div>
           </div>
 
+          <section className="mt-5">
+            <SectionLabel>{saved ? "Change time · เปลี่ยนเวลา (ถ้าต้องการ)" : "Time · เลือกเวลา"}</SectionLabel>
+            <div className="rounded-petflow border border-petflow-line bg-card p-3 shadow-petflow-sm">
+              <div className="grid grid-cols-3 gap-2">
+                {SLOTS.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    disabled={saving}
+                    onClick={() => pick(t)}
+                    className={`min-h-[44px] rounded-xl text-sm font-bold transition disabled:opacity-50 ${
+                      saved === t
+                        ? "bg-latte-deep text-card shadow-petflow-sm"
+                        : "bg-paper text-brown-soft"
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+
+              <p className="mb-1.5 mt-4 text-xs font-bold text-brown-soft">หรือกรอกเวลาเอง</p>
+              <div className="flex gap-2">
+                <input
+                  type="time"
+                  value={custom}
+                  onChange={(e) => setCustom(e.target.value)}
+                  className="min-h-[44px] min-w-0 flex-1 rounded-xl border border-petflow-line bg-paper px-3 text-sm"
+                />
+                <button
+                  type="button"
+                  disabled={!custom || saving}
+                  onClick={() => pick(custom)}
+                  className="min-h-[44px] shrink-0 rounded-xl bg-honey/50 px-4 text-sm font-extrabold text-petflow-chocolate disabled:opacity-40"
+                >
+                  บันทึก
+                </button>
+              </div>
+            </div>
+          </section>
+
           {saved && (
-            <div className="mt-4 rounded-petflow bg-sage/15 px-4 py-4 text-center">
-              <p className="text-base font-extrabold text-petflow-chocolate">
-                ✅ เลือกเวลา {saved} แล้ว
+            <div className="mt-5 rounded-petflow bg-sage/15 p-4">
+              <p className="flex items-center justify-center gap-1.5 text-base font-extrabold text-petflow-chocolate">
+                <Icon name="check" size={18} strokeWidth={2.4} className="text-ok" />
+                เลือกเวลา {saved} แล้ว
               </p>
-              <p className="mt-1 text-xs text-brown-soft">
+              <p className="mt-1 text-center text-xs text-brown-soft">
                 ถ้าถูกต้องแล้ว กดปุ่มด้านล่างเพื่อยืนยันและกลับไปที่แชทได้เลยค่ะ 🧡
               </p>
-              <button
-                type="button"
-                onClick={finish}
-                className="mt-3 w-full rounded-petflow-sm bg-latte-deep py-3 text-sm font-extrabold text-card active:scale-[0.98]"
-              >
-                เสร็จแล้ว — กลับไปที่แชท 🧡
+              <button type="button" onClick={finish} className={`mt-3 ${BTN_PRIMARY}`}>
+                เสร็จแล้ว — กลับไปที่แชท
               </button>
             </div>
           )}
-
-          <p className="mt-5 mb-2 text-xs font-bold text-brown-soft">
-            {saved ? "เปลี่ยนเวลา (ถ้าต้องการ)" : "เลือกเวลา"}
-          </p>
-          <div className="grid grid-cols-3 gap-2">
-            {SLOTS.map((t) => (
-              <button
-                key={t}
-                type="button"
-                disabled={saving}
-                onClick={() => pick(t)}
-                className={`rounded-petflow-sm py-2.5 text-sm font-bold disabled:opacity-50 ${
-                  saved === t
-                    ? "bg-latte-deep text-card"
-                    : "bg-paper text-brown-soft"
-                }`}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
-
-          <p className="mt-4 mb-1 text-xs font-bold text-brown-soft">หรือกรอกเวลาเอง</p>
-          <div className="flex gap-2">
-            <input
-              type="time"
-              value={custom}
-              onChange={(e) => setCustom(e.target.value)}
-              className="min-w-0 flex-1 rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm"
-            />
-            <button
-              type="button"
-              disabled={!custom || saving}
-              onClick={() => pick(custom)}
-              className="shrink-0 rounded-petflow-sm bg-honey-deep/80 px-4 py-2.5 text-sm font-extrabold text-petflow-chocolate disabled:opacity-40"
-            >
-              บันทึก
-            </button>
-          </div>
         </>
       )}
     </div>

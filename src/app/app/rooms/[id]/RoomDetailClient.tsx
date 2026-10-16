@@ -1,10 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/components/LocaleProvider";
 import { useConfig } from "@/components/ConfigProvider";
-import { LineBookingCta } from "@/components/PageHeader";
+import { LineBookingCta, PageHeader } from "@/components/PageHeader";
+import { EmptyState } from "@/components/ui";
+import { LoadingScreen } from "@/components/LoadingScreen";
 import { RoomPoster } from "@/components/RoomPoster";
 
 export default function RoomDetailClient({ roomId }: { roomId: string }) {
@@ -14,34 +15,34 @@ export default function RoomDetailClient({ roomId }: { roomId: string }) {
   const room = config.rooms.find((r) => r.id === roomId);
 
   if (loading) {
-    return <p className="p-6 text-center text-sm text-brown-soft">{t(locale).common.loading}</p>;
+    return <LoadingScreen message={t(locale).common.loading} />;
   }
 
   if (!room) {
-    return <p className="p-6 text-center text-sm text-brown-soft">ไม่พบห้อง</p>;
+    return (
+      <div className="px-4 pb-6 pt-5">
+        <PageHeader eyebrow="Room" title={m.title} back="/app/rooms" backLabel={m.back} />
+        <div className="rounded-petflow border border-petflow-line bg-card shadow-petflow-sm">
+          <EmptyState icon="bed" title={locale === "th" ? "ไม่พบห้อง" : "Room not found"} />
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="pb-6">
-      <div className="px-4 pt-4">
-        <Link
-          href="/app/rooms"
-          className="mb-3 inline-flex items-center gap-1 rounded-full bg-card px-3 py-1.5 text-xs font-bold text-petflow-chocolate shadow-petflow-sm"
-        >
-          ← {m.back}
-        </Link>
-      </div>
+    <div className="px-4 pb-6 pt-5">
+      <PageHeader
+        eyebrow="Room"
+        title={room.name}
+        subtitle={`${room.price} ${m.perNight}`}
+        back="/app/rooms"
+        backLabel={m.back}
+      />
 
-      <div className="px-4">
-        <RoomPoster src={room.image} alt={room.name} priority />
-        <p className="mt-2 text-center text-[10px] text-brown-faint">
-          {m.posterHint}
-        </p>
-      </div>
+      <RoomPoster src={room.image} alt={room.name} priority className="shadow-petflow-sm" />
+      <p className="mt-2 text-center text-[11px] text-brown-faint">{m.posterHint}</p>
 
-      <div className="px-4 pt-4">
-        <LineBookingCta locale={locale} />
-      </div>
+      <LineBookingCta locale={locale} />
     </div>
   );
 }

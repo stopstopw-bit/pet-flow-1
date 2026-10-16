@@ -17,6 +17,7 @@ import { MyCatsSection } from "@/components/MyCatsSection";
 import { MyPackagesSection } from "@/components/MyPackagesSection";
 import { MyMemberCreditSection } from "@/components/MyMemberCreditSection";
 import { PackageShopSection } from "@/components/PackageShopSection";
+import { HeaderBand, IconChip } from "@/components/HeaderBand";
 
 export default function CustomerHome() {
   const { locale } = useLocale();
@@ -63,11 +64,38 @@ export default function CustomerHome() {
   const needRegister = ready && !!profile?.lineUserId && !customer?.phone;
 
   return (
-    <div className="px-4 pb-6 pt-5">
+    <div className="pb-6">
+      <HeaderBand className="px-4 pb-12 pt-5">
+        <header className="flex items-center gap-3">
+          {profile?.pictureUrl ? (
+            <Image
+              src={profile.pictureUrl}
+              alt=""
+              width={52}
+              height={52}
+              className="rounded-full border-2 border-card object-cover"
+            />
+          ) : (
+            <Logo size={52} />
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold text-petflow-chocolate/70">
+              {m.greeting}
+              {profile ? `, ${profile.displayName}` : ""}
+            </p>
+            <h1 className="text-xl font-extrabold text-petflow-chocolate">
+              PetFlow <span className="text-card">Hotel</span>
+            </h1>
+          </div>
+          <LangSwitch />
+        </header>
+      </HeaderBand>
+
+      <div className="relative -mt-8 px-4">
       {needRegister && (
         <Link
           href="/app/register"
-          className="mb-4 block rounded-petflow border-2 border-honey/60 bg-honey/15 p-3.5"
+          className="mb-4 block rounded-petflow border-2 border-honey/60 bg-card p-4 shadow-petflow"
         >
           <p className="text-sm font-extrabold text-petflow-chocolate">
             📝 {locale === "th" ? "สมัครสมาชิกให้เสร็จก่อนนะคะ" : "Please complete your registration"}
@@ -82,29 +110,6 @@ export default function CustomerHome() {
           </span>
         </Link>
       )}
-      <header className="mb-5 flex items-center gap-3">
-        {profile?.pictureUrl ? (
-          <Image
-            src={profile.pictureUrl}
-            alt=""
-            width={52}
-            height={52}
-            className="rounded-full border-2 border-honey/50 object-cover"
-          />
-        ) : (
-          <Logo size={52} />
-        )}
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-semibold text-brown-soft">
-            {m.greeting}
-            {profile ? `, ${profile.displayName}` : ""}
-          </p>
-          <h1 className="text-lg font-extrabold text-petflow-chocolate">
-            PetFlow <span className="text-latte-deep">Hotel</span>
-          </h1>
-        </div>
-        <LangSwitch />
-      </header>
 
       <Link
         href="/app/book"
@@ -122,7 +127,7 @@ export default function CustomerHome() {
 
       <Link
         href="/app/coupons"
-        className="mb-3 flex items-center justify-between gap-3 rounded-petflow border-2 border-amber-deep/30 bg-amber p-4 shadow-petflow"
+        className="mb-4 flex items-center justify-between gap-3 rounded-petflow border-2 border-amber-deep/30 bg-amber p-4 shadow-petflow"
       >
         <div className="min-w-0">
           <p className="text-base font-extrabold text-amber-deep">
@@ -137,12 +142,13 @@ export default function CustomerHome() {
         </span>
       </Link>
 
-      <Link
-        href="/app/profile"
-        className="mb-4 flex items-center justify-center gap-1 rounded-petflow-sm bg-paper/70 px-3 py-2 text-xs font-bold text-brown-soft"
-      >
-        ✏️ แก้ไขข้อมูลของฉัน / น้องแมว
-      </Link>
+      {/* เมนูลัด — ไอคอนกลมแบบหมวดหมู่ */}
+      <nav aria-label="menu" className="mb-5 mt-1 grid grid-cols-4 gap-2">
+        <Link href="/app/rooms"><IconChip icon="bed" label={t(locale).nav.rooms} tone="honey" /></Link>
+        <Link href="/app/grooming"><IconChip icon="bath" label={t(locale).nav.grooming} tone="sage" /></Link>
+        <Link href="/app/bookings"><IconChip icon="calendar" label={t(locale).nav.bookings} tone="latte" badge={nextBooking ? 1 : undefined} /></Link>
+        <Link href="/app/profile"><IconChip icon="edit" label={locale === "th" ? "แก้ข้อมูล" : "Profile"} tone="paper" /></Link>
+      </nav>
 
       {!ready && (
         <p className="mb-4 rounded-petflow-sm bg-paper px-4 py-3 text-sm text-brown-soft">
@@ -226,6 +232,7 @@ export default function CustomerHome() {
       >
         💬 LINE {config.business.lineOa} · {m.chatBook}
       </a>
+      </div>
     </div>
   );
 }

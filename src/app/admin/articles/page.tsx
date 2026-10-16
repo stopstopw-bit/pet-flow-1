@@ -1,11 +1,13 @@
 "use client";
 
+import { Icon } from "@/components/Icon";
+import { EmptyState, MoreMenu, SectionLabel } from "@/components/ui";
 import { useCallback, useEffect, useState } from "react";
 import { toJpegDataUrl } from "@/lib/image-convert";
 import { toast } from "@/components/Toast";
 
 /**
- * 📝 จัดการบทความหน้าเว็บ — เพิ่ม/แก้/ลบบทความ + อัปรูปปกเอง ไม่ต้องแก้โค้ด
+ * จัดการบทความหน้าเว็บ — เพิ่ม/แก้/ลบบทความ + อัปรูปปกเอง ไม่ต้องแก้โค้ด
  * บทความโชว์รวมกับบทความ SEO เดิมที่ /blog อัตโนมัติ
  */
 
@@ -137,10 +139,11 @@ export default function ArticlesAdminPage() {
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h1 className="text-lg font-extrabold text-petflow-chocolate">📝 บทความหน้าเว็บ</h1>
-          <p className="mt-1 text-xs text-brown-soft">
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Articles</p>
+          <h1 className="text-xl font-extrabold text-petflow-chocolate">บทความหน้าเว็บ</h1>
+          <p className="mt-0.5 text-xs text-brown-soft">
             เพิ่มบทความใหม่ + รูปปกได้เอง — ขึ้นที่หน้า{" "}
             <a href="/blog" target="_blank" className="font-bold text-latte-deep underline">
               /blog
@@ -152,18 +155,29 @@ export default function ArticlesAdminPage() {
           <button
             type="button"
             onClick={startNew}
-            className="rounded-petflow-sm bg-gradient-to-r from-honey to-honey-deep px-4 py-2.5 text-xs font-extrabold text-petflow-chocolate"
+            className="flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-petflow-chocolate px-4 text-sm font-bold text-card shadow-petflow-sm"
           >
-            ➕ เขียนบทความใหม่
+            <Icon name="plus" size={18} />
+            เขียนใหม่
           </button>
         )}
       </div>
 
       {form && (
-        <div className="mb-5 space-y-3 rounded-petflow border border-latte/50 bg-card p-4 shadow-petflow-sm">
-          <p className="text-sm font-extrabold text-petflow-chocolate">
-            {form.id ? "✏️ แก้ไขบทความ" : "➕ บทความใหม่"}
-          </p>
+        <div className="mb-5 space-y-3 rounded-petflow bg-card p-4 shadow-petflow-sm">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-base font-extrabold text-petflow-chocolate">
+              {form.id ? "แก้ไขบทความ" : "บทความใหม่"}
+            </p>
+            <button
+              type="button"
+              onClick={() => setForm(null)}
+              aria-label="ปิด"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-paper text-brown"
+            >
+              <Icon name="x" size={18} />
+            </button>
+          </div>
           <label className="block text-xs font-bold text-brown-soft">
             หัวข้อบทความ *
             <input
@@ -173,7 +187,7 @@ export default function ArticlesAdminPage() {
               className={`${field} mt-1`}
             />
           </label>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="block text-xs font-bold text-brown-soft">
               ชื่อลิงก์ (อังกฤษ ใช้ - คั่น) *
               <input
@@ -212,12 +226,12 @@ export default function ArticlesAdminPage() {
               className={`${field} mt-1 leading-relaxed`}
             />
             <span className="mt-1 block text-[10px] font-normal text-brown-faint">
-              💡 เว้นบรรทัดว่าง = ย่อหน้าใหม่ · ขึ้นต้น <b>##</b> = หัวข้อย่อย · ขึ้นต้น <b>-</b> = รายการ
+              เว้นบรรทัดว่าง = ย่อหน้าใหม่ · ขึ้นต้น <b>##</b> = หัวข้อย่อย · ขึ้นต้น <b>-</b> = รายการ
             </span>
           </label>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="block text-xs font-bold text-brown-soft">
-              🖼️ รูปปก (อัปโหลดใหม่)
+              รูปปก (อัปโหลดใหม่)
               <input
                 type="file"
                 accept="image/*"
@@ -225,7 +239,7 @@ export default function ArticlesAdminPage() {
                   const f = e.target.files?.[0];
                   if (f) onCover(f);
                 }}
-                className="mt-1 block w-full text-[11px]"
+                className="mt-1 block w-full text-[11px] text-brown-soft file:mr-2 file:h-9 file:cursor-pointer file:rounded-full file:border-0 file:bg-honey/30 file:px-3 file:text-xs file:font-bold file:text-petflow-chocolate"
               />
               {(coverDataUrl || form.coverUrl) && (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -245,7 +259,7 @@ export default function ArticlesAdminPage() {
                   className={`${field} mt-1 w-20 text-center`}
                 />
               </label>
-              <label className="flex items-center gap-2 text-xs font-bold text-brown">
+              <label className="flex min-h-[44px] items-center gap-2 text-xs font-bold text-brown">
                 <input
                   type="checkbox"
                   checked={form.published}
@@ -256,114 +270,109 @@ export default function ArticlesAdminPage() {
               </label>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => setForm(null)}
+              className="h-11 flex-1 rounded-full bg-paper text-sm font-bold text-brown-soft"
+            >
+              ยกเลิก
+            </button>
             <button
               type="button"
               disabled={saving || !form.title.trim() || !form.slug.trim()}
               onClick={save}
-              className="flex-1 rounded-petflow-sm bg-latte-deep py-2.5 text-sm font-extrabold text-white disabled:opacity-40"
+              className="h-11 flex-[2] rounded-full bg-petflow-chocolate text-sm font-extrabold text-card disabled:opacity-40"
             >
-              {saving ? "กำลังบันทึก…" : "💾 บันทึกบทความ"}
-            </button>
-            <button
-              type="button"
-              onClick={() => setForm(null)}
-              className="rounded-petflow-sm bg-paper px-4 py-2.5 text-xs font-bold text-brown-soft"
-            >
-              ยกเลิก
+              {saving ? "กำลังบันทึก…" : "บันทึกบทความ"}
             </button>
           </div>
         </div>
       )}
 
-      <div className="space-y-2">
-        {articles.length === 0 && builtins.length === 0 && (
-          <p className="rounded-petflow bg-card p-6 text-center text-sm text-brown-soft">
-            ยังไม่มีบทความ — กด &quot;เขียนบทความใหม่&quot; ได้เลย
-          </p>
-        )}
+      {articles.length === 0 && builtins.length === 0 ? (
+        <div className="rounded-petflow bg-card shadow-petflow-sm">
+          <EmptyState icon="doc" title="ยังไม่มีบทความ" sub="กด “เขียนใหม่” ได้เลย" />
+        </div>
+      ) : (
+        <div className="space-y-5">
+          {articles.length > 0 && (
+            <section>
+              <SectionLabel>My articles · บทความของร้าน ({articles.length})</SectionLabel>
+              <ul className="divide-y divide-petflow-line rounded-petflow bg-card shadow-petflow-sm">
+                {articles.map((a) => (
+                  <li key={a.id} className="flex items-center gap-3 py-2.5 pl-4 pr-2">
+                    <button
+                      type="button"
+                      onClick={() => startEdit(a)}
+                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                    >
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-honey/25 text-lg">
+                        {a.emoji}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-1.5">
+                          <span className="truncate text-sm font-extrabold text-petflow-chocolate">{a.title}</span>
+                          {!a.published && (
+                            <span className="shrink-0 rounded-full bg-wait/15 px-1.5 text-[10px] font-bold leading-4 text-wait">
+                              ร่าง
+                            </span>
+                          )}
+                        </span>
+                        <span className="block truncate text-[11px] text-brown-soft">
+                          /blog/{a.slug} · {a.datePublished}
+                        </span>
+                      </span>
+                    </button>
+                    <MoreMenu
+                      items={[
+                        { label: "แก้ไข", icon: "edit", onClick: () => startEdit(a) },
+                        { label: "ดูหน้าบทความ", icon: "eye", onClick: () => window.open(`/blog/${a.slug}`, "_blank") },
+                        { label: "ลบบทความ", icon: "trash", danger: true, onClick: () => remove(a) },
+                      ]}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
-        {articles.map((a) => (
-          <div
-            key={a.id}
-            className="flex items-center justify-between gap-3 rounded-petflow-sm border border-petflow-line bg-card p-3"
-          >
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-bold text-brown">
-                {a.emoji} {a.title}
-                {!a.published && (
-                  <span className="ml-2 rounded-full bg-wait/15 px-2 py-0.5 text-[9px] font-bold text-wait">
-                    ฉบับร่าง
-                  </span>
-                )}
-              </p>
-              <p className="truncate text-[11px] text-brown-soft">
-                /blog/{a.slug} · {a.datePublished}
-              </p>
-            </div>
-            <a
-              href={`/blog/${a.slug}`}
-              target="_blank"
-              className="shrink-0 rounded-full bg-paper px-2.5 py-1 text-[10px] font-bold text-latte-deep"
-            >
-              👁️ ดู
-            </a>
-            <button
-              type="button"
-              onClick={() => startEdit(a)}
-              className="shrink-0 rounded-full bg-honey/25 px-2.5 py-1 text-[10px] font-bold text-petflow-chocolate"
-            >
-              ✏️ แก้ไข
-            </button>
-            <button
-              type="button"
-              onClick={() => remove(a)}
-              className="shrink-0 rounded-full bg-paper px-2.5 py-1 text-[10px] font-bold text-wait"
-            >
-              🗑️
-            </button>
-          </div>
-        ))}
-
-        {/* บทความ SEO เดิมของระบบ — แก้ได้ (กดแก้แล้วบันทึก = สร้างฉบับแก้ที่แทนที่ของเดิม) */}
-        {builtins.length > 0 && (
-          <p className="mt-4 pt-2 text-[11px] font-bold text-brown-soft">
-            📚 บทความ SEO เดิมของระบบ ({builtins.length}) — กดแก้ไขเพื่อปรับเนื้อหา/รูปได้เลย
-          </p>
-        )}
-        {builtins.map((a) => (
-          <div
-            key={a.slug}
-            className="flex items-center justify-between gap-3 rounded-petflow-sm border border-dashed border-latte/50 bg-paper/40 p-3"
-          >
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-bold text-brown">
-                {a.emoji} {a.title}
-                <span className="ml-2 rounded-full bg-sage/15 px-2 py-0.5 text-[9px] font-bold text-ok">
-                  บทความระบบ
-                </span>
-              </p>
-              <p className="truncate text-[11px] text-brown-soft">
-                /blog/{a.slug} · {a.datePublished}
-              </p>
-            </div>
-            <a
-              href={`/blog/${a.slug}`}
-              target="_blank"
-              className="shrink-0 rounded-full bg-paper px-2.5 py-1 text-[10px] font-bold text-latte-deep"
-            >
-              👁️ ดู
-            </a>
-            <button
-              type="button"
-              onClick={() => startEditBuiltin(a)}
-              className="shrink-0 rounded-full bg-honey/25 px-2.5 py-1 text-[10px] font-bold text-petflow-chocolate"
-            >
-              ✏️ แก้ไข
-            </button>
-          </div>
-        ))}
-      </div>
+          {/* บทความ SEO เดิมของระบบ — แก้ได้ (กดแก้แล้วบันทึก = สร้างฉบับแก้ที่แทนที่ของเดิม) */}
+          {builtins.length > 0 && (
+            <section>
+              <SectionLabel>Built-in · บทความ SEO เดิม ({builtins.length})</SectionLabel>
+              <ul className="divide-y divide-petflow-line rounded-petflow bg-card shadow-petflow-sm">
+                {builtins.map((a) => (
+                  <li key={a.slug} className="flex items-center gap-3 py-2.5 pl-4 pr-2">
+                    <button
+                      type="button"
+                      onClick={() => startEditBuiltin(a)}
+                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                    >
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-paper text-lg">
+                        {a.emoji}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-bold text-brown">{a.title}</span>
+                        <span className="block truncate text-[11px] text-brown-soft">
+                          /blog/{a.slug} · {a.datePublished}
+                        </span>
+                      </span>
+                    </button>
+                    <MoreMenu
+                      items={[
+                        { label: "แก้ไข", icon: "edit", onClick: () => startEditBuiltin(a) },
+                        { label: "ดูหน้าบทความ", icon: "eye", onClick: () => window.open(`/blog/${a.slug}`, "_blank") },
+                      ]}
+                    />
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1.5 px-1 text-[10px] text-brown-faint">แตะเพื่อแก้เนื้อหา/รูป — บันทึกแล้วจะแทนที่ของเดิม</p>
+            </section>
+          )}
+        </div>
+      )}
     </div>
   );
 }

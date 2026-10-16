@@ -330,6 +330,7 @@ export async function deleteFinanceByInvoice(invoiceId: string) {
 }
 
 /** ลบเฉพาะรายรับ "ยอดชำระ" ของบิล (คงรายการมัดจำไว้) — ใช้ตอนยกเลิกการชำระ (แก้ไข) */
+/** ลบรายรับ "ยอดปิดบิล" ของบิลนี้ — คงมัดจำและเงินที่รับบางส่วนไว้ (เป็นเงินที่รับมาจริงก่อนปิดบิล) */
 export async function deleteInvoicePaymentIncome(invoiceId: string) {
   const sb = getSupabase();
   if (sb) {
@@ -338,11 +339,16 @@ export async function deleteInvoicePaymentIncome(invoiceId: string) {
       .delete()
       .eq("invoice_id", invoiceId)
       .eq("tenant_id", requireTenantId())
-      .neq("category", "มัดจำ");
+      .not("category", "in", '("มัดจำ","รับเงินบางส่วน")');
     return;
   }
   for (let i = mem.length - 1; i >= 0; i--) {
-    if (mem[i].invoiceId === invoiceId && mem[i].category !== "มัดจำ") mem.splice(i, 1);
+    if (
+      mem[i].invoiceId === invoiceId &&
+      mem[i].category !== "มัดจำ" &&
+      mem[i].category !== "รับเงินบางส่วน"
+    )
+      mem.splice(i, 1);
   }
 }
 

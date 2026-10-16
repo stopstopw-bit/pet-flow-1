@@ -1,6 +1,7 @@
 import type { RoomType } from "./business";
 import type { GroomFormConfig } from "./groom-form";
 import type { GroomProgram } from "./grooming-prices";
+import type { RoomClosure } from "./room-board";
 
 /** บล็อกเนื้อหาหน้ากฎระเบียบการฝาก — ใส่ได้ทั้งรูปและ/หรือข้อความ เรียงตามลำดับที่ตั้งไว้ */
 export type BoardingRuleBlock = {
@@ -208,11 +209,25 @@ export type SiteConfig = {
     taxId?: string;
     /** อีเมลที่จะเชิญเป็น "เจ้าของ" ปฏิทินนัดของร้านนี้ — เฉพาะร้านนี้เห็น ร้านอื่นไม่เห็น */
     calendarOwnerEmails?: string[];
+    /** ชื่อนิติบุคคล/ชื่อตามทะเบียนที่โชว์บนเอกสารทางการ (ไม่ตั้ง = ใช้ชื่อร้าน) */
+    legalName?: string;
+    /** สาขาตามทะเบียนภาษี เช่น "สำนักงานใหญ่" หรือ "สาขา 00001" */
+    taxBranch?: string;
+    /** จดทะเบียนภาษีมูลค่าเพิ่มแล้ว — เปิดแล้วใบเสร็จจะเป็น "ใบเสร็จรับเงิน/ใบกำกับภาษี" และแยก VAT */
+    vatRegistered?: boolean;
+    /** อัตรา VAT (%) — ไม่ตั้ง = 7 · ราคาที่ร้านตั้งถือว่ารวม VAT แล้ว */
+    vatRate?: number;
+    /** แพ็กห้องรายเดือน: ส่วนลดจากราคาเต็ม (%) — ไม่ตั้ง = 30 */
+    roomPlanDiscountPct?: number;
+    /** แพ็กห้องรายเดือน: รวมกี่คืนขึ้นไปถึงได้ส่วนลด — ไม่ตั้ง = 30 */
+    roomPlanMinNights?: number;
   };
   payment: {
     bankName: string;
     accountNumber: string;
     accountName: string;
+    /** พร้อมเพย์ (เบอร์มือถือ 10 หลัก หรือเลขผู้เสียภาษี/บัตร 13 หลัก) — ใช้สร้าง QR ที่หน้าขาย POS */
+    promptpayId?: string;
   };
   /** ข้อความหัวเรื่อง/ปิดท้าย ของสรุปที่ก๊อป/ส่งให้ลูกค้า (แก้ได้ในตั้งค่า) */
   billing: {
@@ -228,6 +243,8 @@ export type SiteConfig = {
     catflix: number;
   };
   rooms: RoomType[];
+  /** ปิดห้องรายห้อง (ซ่อม/ใช้งานไม่ได้) — ตั้งจากผังห้องในตารางนัด */
+  roomClosures?: RoomClosure[];
   /**
    * ตารางราคาโปรแกรมอาบน้ำ — ไม่ตั้ง/ว่าง = ใช้ค่าเริ่มต้นของระบบ (GROOM_PROGRAMS)
    * ร้านเพิ่ม/ลบ/แก้โปรแกรมเองได้ในหลังบ้าน แทนที่การฝังในโค้ด

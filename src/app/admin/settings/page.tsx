@@ -11,6 +11,7 @@ import { toJpegDataUrl } from "@/lib/image-convert";
 import { extractLogoColors } from "@/lib/color-extract";
 import { contrastRatio, isValidHex } from "@/lib/color-utils";
 import { ExportSheetsButton } from "@/components/ExportSheetsButton";
+import { Icon } from "@/components/Icon";
 
 type Tab =
   | "shop"
@@ -28,21 +29,59 @@ type Tab =
   | "crm"
   | "advanced";
 
-const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: "shop", label: "ร้าน", icon: "🏪" },
-  { id: "payment", label: "บัญชี", icon: "🏦" },
-  { id: "messages", label: "ข้อความ", icon: "💬" },
-  { id: "automation", label: "อัตโนมัติ", icon: "⏰" },
-  { id: "lists", label: "รายการ", icon: "📋" },
-  { id: "rooms", label: "ห้อง", icon: "🛏️" },
-  { id: "groomPrograms", label: "โปรแกรมอาบน้ำ", icon: "🧴" },
-  { id: "boardingRules", label: "กฎระเบียบ", icon: "📜" },
-  { id: "roomsPageBlocks", label: "เนื้อหาห้องพัก", icon: "🖼️" },
-  { id: "groomingPageBlocks", label: "เนื้อหาอาบน้ำ", icon: "🖼️" },
-  { id: "grooming", label: "อาบน้ำ", icon: "🛁" },
-  { id: "points", label: "แต้ม", icon: "🎁" },
-  { id: "crm", label: "ลูกค้า", icon: "👥" },
-  { id: "advanced", label: "ขั้นสูง", icon: "⚙️" },
+/** หน้าตั้งค่าแบบแอป: เปิดมาเป็นรายการหมวด แตะเข้าไปทีละหมวด (แทนแท็บ 14 อันที่ต้องเลื่อนข้าง) */
+const TAB_GROUPS: { title: string; items: { id: Tab; icon: string; hint?: string }[] }[] = [
+  {
+    title: "Shop",
+    items: [
+      { id: "shop", icon: "home", hint: "ชื่อร้าน ช่องทางติดต่อ ที่อยู่" },
+      { id: "payment", icon: "wallet", hint: "บัญชีรับโอน" },
+      { id: "lists", icon: "doc" },
+      { id: "points", icon: "star", hint: "อัตราแต้มสะสม" },
+      { id: "crm", icon: "users" },
+    ],
+  },
+  {
+    title: "Hotel",
+    items: [
+      { id: "rooms", icon: "bed", hint: "ประเภทห้องและราคา" },
+      { id: "boardingRules", icon: "receipt", hint: "หน้ากฎการฝากของลูกค้า" },
+      { id: "roomsPageBlocks", icon: "grid", hint: "เนื้อหาท้ายหน้าห้องพัก" },
+    ],
+  },
+  {
+    title: "Grooming",
+    items: [
+      { id: "grooming", icon: "bath" },
+      { id: "groomPrograms", icon: "sparkle", hint: "โปรแกรมและราคาอาบน้ำ" },
+      { id: "groomingPageBlocks", icon: "grid", hint: "เนื้อหาท้ายหน้าอาบน้ำ" },
+    ],
+  },
+  {
+    title: "Messages",
+    items: [
+      { id: "messages", icon: "message" },
+      { id: "automation", icon: "clock" },
+    ],
+  },
+  { title: "System", items: [{ id: "advanced", icon: "settings", hint: "แก้ค่าทั้งหมดแบบ JSON" }] },
+];
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: "shop", label: "ร้าน" },
+  { id: "payment", label: "บัญชี" },
+  { id: "messages", label: "ข้อความ" },
+  { id: "automation", label: "อัตโนมัติ" },
+  { id: "lists", label: "รายการ" },
+  { id: "rooms", label: "ห้อง" },
+  { id: "groomPrograms", label: "โปรแกรมอาบน้ำ" },
+  { id: "boardingRules", label: "กฎระเบียบ" },
+  { id: "roomsPageBlocks", label: "เนื้อหาห้องพัก" },
+  { id: "groomingPageBlocks", label: "เนื้อหาอาบน้ำ" },
+  { id: "grooming", label: "อาบน้ำ" },
+  { id: "points", label: "แต้ม" },
+  { id: "crm", label: "ลูกค้า" },
+  { id: "advanced", label: "ขั้นสูง" },
 ];
 
 // index ต้องตรงกับ Date.prototype.getDay() (0=อาทิตย์ … 6=เสาร์) — ใช้เทียบกับ config.closedWeekdays
@@ -50,7 +89,7 @@ const WEEKDAY_LABELS = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
 
 export default function SettingsPage() {
   const [config, setConfig] = useState<SiteConfig | null>(null);
-  const [tab, setTab] = useState<Tab>("shop");
+  const [tab, setTab] = useState<Tab | null>(null);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -87,9 +126,9 @@ export default function SettingsPage() {
     if (res.ok) {
       setConfig(data.config);
       setJsonText(JSON.stringify(data.config, null, 2));
-      setMsg("✅ บันทึกแล้ว — หน้าลูกค้าอัปเดตทันที");
+      setMsg("บันทึกแล้ว — หน้าลูกค้าอัปเดตทันที");
     } else {
-      setMsg("❌ บันทึกไม่สำเร็จ");
+      setMsg("บันทึกไม่สำเร็จ");
     }
     setSaving(false);
     setTimeout(() => setMsg(""), 3000);
@@ -107,10 +146,10 @@ export default function SettingsPage() {
       const data = await res.json();
       if (res.ok) {
         setConfig(data.config);
-        setMsg("✅ นำเข้า config สำเร็จ");
+        setMsg("นำเข้า config สำเร็จ");
       }
     } catch {
-      setMsg("❌ JSON ไม่ถูกต้อง");
+      setMsg("JSON ไม่ถูกต้อง");
     }
     setSaving(false);
   };
@@ -126,9 +165,9 @@ export default function SettingsPage() {
         <button
           type="button"
           onClick={load}
-          className="mt-4 rounded-petflow-sm bg-honey/40 px-4 py-2 text-xs font-bold"
+          className="mt-4 inline-flex h-10 items-center gap-1.5 rounded-full bg-petflow-chocolate px-5 text-xs font-bold text-card"
         >
-          🔄 ลองใหม่
+          ลองใหม่
         </button>
       </div>
     );
@@ -136,38 +175,74 @@ export default function SettingsPage() {
 
   return (
     <div>
-      <h1 className="mb-1 text-lg font-extrabold text-petflow-chocolate">⚙️ ตั้งค่าระบบ</h1>
-      <p className="mb-4 text-xs text-brown-soft">
+      <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Settings</p>
+      <h1 className="text-xl font-extrabold text-petflow-chocolate">ตั้งค่าระบบ</h1>
+      <p className="mb-4 mt-0.5 text-xs text-brown-soft">
         แก้รูป ราคา โปร ข้อมูลร้าน — ไม่ต้องแก้โค้ด · v{config.version}
       </p>
 
       {msg && (
-        <p className="mb-3 rounded-petflow-sm bg-sage/15 px-3 py-2 text-xs font-bold text-ok">
+        <p className="sticky top-2 z-20 mb-3 flex items-center gap-2 rounded-full bg-petflow-chocolate px-4 py-2.5 text-xs font-bold text-card shadow-petflow">
+          <Icon name={msg.includes("ไม่") ? "alert" : "check"} size={16} />
           {msg}
         </p>
       )}
 
-      <div className="mb-4 flex gap-1 overflow-x-auto pb-1">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setTab(t.id)}
-            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${
-              tab === t.id ? "bg-honey/45 text-petflow-chocolate" : "bg-paper text-brown-soft"
-            }`}
+      {tab === null ? (
+        <div className="space-y-4">
+          {TAB_GROUPS.map((g) => (
+            <section key={g.title}>
+              <p className="mb-1.5 px-1 text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">
+                {g.title}
+              </p>
+              <ul className="divide-y divide-petflow-line overflow-hidden rounded-petflow bg-card shadow-petflow-sm">
+                {g.items.map((it) => (
+                  <li key={it.id}>
+                    <button
+                      type="button"
+                      onClick={() => setTab(it.id)}
+                      className="flex w-full items-center gap-3 px-4 py-3 text-left"
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-honey/30 text-petflow-chocolate">
+                        <Icon name={it.icon} size={18} />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-bold text-petflow-chocolate">
+                          {TABS.find((t) => t.id === it.id)?.label}
+                        </span>
+                        {it.hint ? (
+                          <span className="block truncate text-[11px] text-brown-soft">{it.hint}</span>
+                        ) : null}
+                      </span>
+                      <Icon name="chevron" size={16} className="text-brown-faint" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+          <Link
+            href="/admin/promos"
+            className="flex items-center gap-3 rounded-petflow bg-card px-4 py-3 shadow-petflow-sm"
           >
-            {t.icon} {t.label}
-          </button>
-        ))}
-      </div>
-
-      <Link
-        href="/admin/promos"
-        className="mb-4 block rounded-petflow-sm border border-petflow-line bg-card px-4 py-3 text-xs font-bold text-latte-deep"
-      >
-        ✨ จัดการโปรโมชั่น (แยกหน้า) →
-      </Link>
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-latte/30 text-petflow-chocolate">
+              <Icon name="sparkle" size={18} />
+            </span>
+            <span className="flex-1 text-sm font-bold text-petflow-chocolate">จัดการโปรโมชั่น</span>
+            <Icon name="chevron" size={16} className="text-brown-faint" />
+          </Link>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setTab(null)}
+          className="mb-4 inline-flex items-center gap-1.5 rounded-full bg-card px-3.5 py-2 text-xs font-bold text-petflow-chocolate shadow-petflow-sm"
+        >
+          <Icon name="back" size={16} />
+          ตั้งค่าทั้งหมด
+          <span className="text-brown-faint">· {TABS.find((t) => t.id === tab)?.label}</span>
+        </button>
+      )}
 
       {tab === "shop" && (
         <ShopTab config={config} saving={saving} onSave={save} />
@@ -197,7 +272,7 @@ export default function SettingsPage() {
           onSave={save}
           field="boardingRules"
           hint="เนื้อหาหน้ากฎระเบียบการฝาก (ฝั่งลูกค้า ในหน้าบริการ) — ใส่ได้ทั้งรูปและ/หรือข้อความต่อบล็อก เรียงลำดับได้ตามต้องการ"
-          saveLabel="💾 บันทึกกฎระเบียบ"
+          saveLabel="บันทึกกฎระเบียบ"
         />
       )}
       {tab === "roomsPageBlocks" && (
@@ -207,7 +282,7 @@ export default function SettingsPage() {
           onSave={save}
           field="roomsPageBlocks"
           hint="เนื้อหาเสริมท้ายหน้าห้องพัก (ทั้งหน้า SEO /cat-hotel และหน้าห้องพักในแอปลูกค้า) — จะเพิ่มแค่รูป แค่ข้อความ หรือทั้งคู่ต่อบล็อกก็ได้"
-          saveLabel="💾 บันทึกเนื้อหาห้องพัก"
+          saveLabel="บันทึกเนื้อหาห้องพัก"
         />
       )}
       {tab === "groomingPageBlocks" && (
@@ -217,7 +292,7 @@ export default function SettingsPage() {
           onSave={save}
           field="groomingPageBlocks"
           hint="เนื้อหาเสริมท้ายหน้าอาบน้ำ (ทั้งหน้า SEO /cat-bath และหน้าอาบน้ำในแอปลูกค้า) — จะเพิ่มแค่รูป แค่ข้อความ หรือทั้งคู่ต่อบล็อกก็ได้"
-          saveLabel="💾 บันทึกเนื้อหาอาบน้ำ"
+          saveLabel="บันทึกเนื้อหาอาบน้ำ"
         />
       )}
       {tab === "grooming" && (
@@ -479,7 +554,7 @@ function ShopTab({
       <Field label="Google Maps URL" value={form.maps} onChange={(v) => setForm({ ...form, maps: v })} />
       <Field label="Facebook" value={form.facebook} onChange={(v) => setForm({ ...form, facebook: v })} />
       <Field
-        label="⭐ ลิงก์รีวิว (Google) — ส่งให้ลูกค้ารีวิว"
+        label="ลิงก์รีวิว (Google) — ส่งให้ลูกค้ารีวิว"
         value={form.reviewUrl || ""}
         onChange={(v) => setForm({ ...form, reviewUrl: v })}
       />
@@ -532,11 +607,42 @@ function ShopTab({
       </div>
       <Field label="ที่อยู่ (ไทย)" value={form.location.th} onChange={(v) => setForm({ ...form, location: { ...form.location, th: v } })} />
       <Field label="ที่อยู่ (EN)" value={form.location.en} onChange={(v) => setForm({ ...form, location: { ...form.location, en: v } })} />
-      <Field
-        label="เลขประจำตัวผู้เสียภาษี (โชว์บนเอกสารภาษี · ไม่บังคับ)"
-        value={form.taxId || ""}
-        onChange={(v) => setForm({ ...form, taxId: v })}
-      />
+      <div className="rounded-petflow-sm border border-petflow-line bg-paper px-3 py-3">
+        <p className="mb-1 text-xs font-extrabold text-petflow-chocolate">เอกสารภาษี · ใบเสร็จ / ใบเสนอราคา</p>
+        <p className="mb-2 text-[10px] text-brown-faint">
+          ข้อมูลผู้ขายที่โชว์บนใบเสนอราคา ใบแจ้งหนี้ และใบเสร็จรับเงิน (ออกได้จากเมนู ⋯ ของแต่ละบิล)
+        </p>
+        <div className="space-y-2">
+          <Field
+            label="ชื่อตามทะเบียน (ไม่ใส่ = ใช้ชื่อร้าน)"
+            value={form.legalName || ""}
+            onChange={(v) => setForm({ ...form, legalName: v })}
+          />
+          <Field
+            label="เลขประจำตัวผู้เสียภาษี (13 หลัก)"
+            value={form.taxId || ""}
+            onChange={(v) => setForm({ ...form, taxId: v })}
+          />
+          <Field
+            label="สาขา (เช่น สำนักงานใหญ่)"
+            value={form.taxBranch || ""}
+            onChange={(v) => setForm({ ...form, taxBranch: v })}
+          />
+          <Toggle
+            label="จดทะเบียน VAT แล้ว (ใบเสร็จเป็นใบกำกับภาษี แยก VAT)"
+            checked={!!form.vatRegistered}
+            onChange={(v) => setForm({ ...form, vatRegistered: v })}
+          />
+          {form.vatRegistered && (
+            <Field
+              label="อัตรา VAT (%) — ราคาในร้านถือว่ารวม VAT แล้ว"
+              type="number"
+              value={String(form.vatRate ?? 7)}
+              onChange={(v) => setForm({ ...form, vatRate: Math.min(30, Math.max(0, Number(v) || 0)) })}
+            />
+          )}
+        </div>
+      </div>
       <Field
         label="อีเมลเจ้าของปฏิทินนัด (คั่นด้วย , · ไม่บังคับ)"
         value={(form.calendarOwnerEmails || []).join(", ")}
@@ -561,8 +667,30 @@ function ShopTab({
         onChange={(v) => setForm({ ...form, pointsRate: Number(v) || 100 })}
       />
       <div className="rounded-petflow-sm border border-petflow-line bg-paper px-3 py-3">
+        <p className="mb-1 text-xs font-extrabold text-petflow-chocolate">แพ็กห้องรายเดือน</p>
+        <p className="mb-2 text-[10px] text-brown-faint">
+          ลูกค้าเลือกห้องแต่ละแบบกี่คืน ราคาคิดจากราคาเต็มแล้วลดตาม % นี้ (ปรับเป็นรายเคสตอนขายได้)
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <Field
+            label="ส่วนลด (%)"
+            type="number"
+            value={String(form.roomPlanDiscountPct ?? 30)}
+            onChange={(v) =>
+              setForm({ ...form, roomPlanDiscountPct: Math.min(100, Math.max(0, Number(v) || 0)) })
+            }
+          />
+          <Field
+            label="รวมกี่คืนขึ้นไปถึงลด"
+            type="number"
+            value={String(form.roomPlanMinNights ?? 30)}
+            onChange={(v) => setForm({ ...form, roomPlanMinNights: Math.max(1, Number(v) || 30) })}
+          />
+        </div>
+      </div>
+      <div className="rounded-petflow-sm border border-petflow-line bg-paper px-3 py-3">
         <p className="mb-2 text-xs font-extrabold text-petflow-chocolate">
-          💎 แต้มของลูกค้า Member
+          แต้มของลูกค้า Member
         </p>
         <p className="mb-2.5 text-[10px] text-brown-faint">
           ให้แต้มรอบเดียวพอ — ถ้าให้ทั้งตอนเติมและตอนใช้ ลูกค้าจะได้แต้มสองรอบจากเงินก้อนเดียว
@@ -625,9 +753,14 @@ function PaymentTab({
       <Field label="ธนาคาร" value={form.bankName} onChange={(v) => setForm({ ...form, bankName: v })} />
       <Field label="เลขบัญชี" value={form.accountNumber} onChange={(v) => setForm({ ...form, accountNumber: v })} />
       <Field label="ชื่อบัญชี" value={form.accountName} onChange={(v) => setForm({ ...form, accountName: v })} />
+      <Field
+        label="พร้อมเพย์ (เบอร์มือถือ หรือเลข 13 หลัก) — ใช้ทำ QR ที่หน้าขาย POS"
+        value={form.promptpayId || ""}
+        onChange={(v) => setForm({ ...form, promptpayId: v.replace(/[^0-9]/g, "") })}
+      />
       <p className="rounded-petflow-sm bg-paper px-3 py-2 text-[11px] text-brown-faint">
-        💬 ข้อความสรุป/แจ้งมัดจำ/เก็บเงิน และข้อความอื่นๆ ที่ส่งให้ลูกค้า
-        ย้ายไปแก้ที่แท็บ <b>💬 ข้อความ</b> แล้ว
+        ข้อความสรุป/แจ้งมัดจำ/เก็บเงิน และข้อความอื่นๆ ที่ส่งให้ลูกค้า
+        ย้ายไปแก้ที่แท็บ <b>ข้อความ</b> แล้ว
       </p>
       <SaveBtn saving={saving} />
     </form>
@@ -659,7 +792,7 @@ function MessagesTab({
       }}
     >
       <p className="text-xs font-extrabold text-petflow-chocolate">
-        🧾 สรุปยอด / แจ้งมัดจำ / เก็บเงิน (ตอนกดคิดเงิน)
+        สรุปยอด / แจ้งมัดจำ / เก็บเงิน (ตอนกดคิดเงิน)
       </p>
       <Field
         label="หัวเรื่อง — สรุปการจอง"
@@ -728,35 +861,35 @@ function MessagesTab({
         rows={3}
       />
       <TextAreaField
-        label="🐈 ข้อความเตือนให้เตรียมทราย (เฉพาะเข้าพักสั้นกว่าเกณฑ์แถมฟรี)"
+        label="ข้อความเตือนให้เตรียมทราย (เฉพาะเข้าพักสั้นกว่าเกณฑ์แถมฟรี)"
         hint="ใช้ได้: {min} = จำนวนคืนขั้นต่ำที่แถมทรายฟรี (ตั้งในแท็บ ⏰ อัตโนมัติ)"
         value={msgs?.prestayLitterNote || ""}
         onChange={(v) => setMsgs({ ...msgs, prestayLitterNote: v })}
         rows={3}
       />
       <TextAreaField
-        label="🧳 เตือนเช็คอิน (ก่อนวันเข้าพัก)"
+        label="เตือนเช็คอิน (ก่อนวันเข้าพัก)"
         hint="ใช้ได้: {shop} {cat} {checkin} {room} {litterNote}"
         value={msgs?.checkinReminder || ""}
         onChange={(v) => setMsgs({ ...msgs, checkinReminder: v })}
         rows={8}
       />
       <TextAreaField
-        label="🧳 เตือนเช็คเอาท์ (ก่อนวันออก)"
+        label="เตือนเช็คเอาท์ (ก่อนวันออก)"
         hint="ใช้ได้: {shop} {cat} {checkout}"
         value={msgs?.checkoutReminder || ""}
         onChange={(v) => setMsgs({ ...msgs, checkoutReminder: v })}
         rows={6}
       />
       <TextAreaField
-        label="⭐ ขอรีวิว (หลังเช็คเอาท์)"
+        label="ขอรีวิว (หลังเช็คเอาท์)"
         hint="ใช้ได้: {shop} {cat}"
         value={msgs?.reviewRequest || ""}
         onChange={(v) => setMsgs({ ...msgs, reviewRequest: v })}
         rows={5}
       />
       <TextAreaField
-        label="🩺 สอบถามประวัติน้องก่อนอาบน้ำ"
+        label="สอบถามประวัติน้องก่อนอาบน้ำ"
         hint="ใช้ได้: {shop} {cat}"
         value={msgs?.groomInfoIntro || ""}
         onChange={(v) => setMsgs({ ...msgs, groomInfoIntro: v })}
@@ -765,7 +898,7 @@ function MessagesTab({
 
       <hr className="border-petflow-line" />
       <p className="text-xs font-extrabold text-petflow-chocolate">
-        💛 ตามลูกค้าที่หายไป
+        ตามลูกค้าที่หายไป
       </p>
       <TextAreaField
         label="ข้อความตามลูกค้า"
@@ -777,7 +910,7 @@ function MessagesTab({
 
       <hr className="border-petflow-line" />
       <p className="text-xs font-extrabold text-petflow-chocolate">
-        📨 การ์ดเรียกเก็บมัดจำ (ส่งก่อนลูกค้าโอน)
+        การ์ดเรียกเก็บมัดจำ (ส่งก่อนลูกค้าโอน)
       </p>
       <Field
         label="หัวเรื่อง"
@@ -794,7 +927,7 @@ function MessagesTab({
 
       <hr className="border-petflow-line" />
       <p className="text-xs font-extrabold text-petflow-chocolate">
-        🧡 การ์ดขอบคุณตอนรับมัดจำ
+        การ์ดขอบคุณตอนรับมัดจำ
       </p>
       <Field
         label="หัวเรื่อง"
@@ -822,7 +955,7 @@ function MessagesTab({
 
       <hr className="border-petflow-line" />
       <p className="text-xs font-extrabold text-petflow-chocolate">
-        📋 ข้อตกลงก่อนเข้าพัก (หน้า /app/consent)
+        ข้อตกลงก่อนเข้าพัก (หน้า /app/consent)
       </p>
       <Field
         label="หัวเรื่อง"
@@ -850,7 +983,7 @@ function MessagesTab({
 
       <hr className="border-petflow-line" />
       <p className="text-xs font-extrabold text-petflow-chocolate">
-        🎂 อวยพรวันเกิดอัตโนมัติ
+        อวยพรวันเกิดอัตโนมัติ
       </p>
       <p className="text-[10px] text-brown-soft">
         ส่งอัตโนมัติเที่ยงวันที่ตรงกับวันเกิด (เฉพาะลูกค้าที่ยินยอมรับข่าวสาร) — วันเกิดน้องแมวกับวันเกิดเจ้าของใช้คนละข้อความ ถ้าตรงกันวันเดียวจะส่งแค่ใบของเจ้าของใบเดียว
@@ -953,9 +1086,10 @@ function RoomsTab({
             <button
               type="button"
               onClick={() => removeRoom(idx)}
-              className="shrink-0 rounded-full bg-wait/10 px-2.5 py-1 text-[10px] font-bold text-wait"
+              className="flex h-10 shrink-0 items-center gap-1 rounded-full bg-wait/10 px-3 text-[11px] font-bold text-wait"
             >
-              🗑️ ลบ
+              <Icon name="trash" size={14} />
+              ลบ
             </button>
           </div>
           <div className="mb-3 flex gap-3">
@@ -991,7 +1125,7 @@ function RoomsTab({
                 <input
                   type="file"
                   accept="image/*"
-                  className="mt-1 block w-full text-[10px]"
+                  className="mt-1 block w-full text-[11px] text-brown-soft file:mr-2 file:h-9 file:cursor-pointer file:rounded-full file:border-0 file:bg-honey/30 file:px-3 file:text-xs file:font-bold file:text-petflow-chocolate"
                   onChange={(e) => {
                     const f = e.target.files?.[0];
                     if (f) onImage(idx, f);
@@ -1092,17 +1226,19 @@ function RoomsTab({
       <button
         type="button"
         onClick={addRoom}
-        className="w-full rounded-petflow-sm border-2 border-dashed border-latte/60 bg-latte/10 py-2.5 text-xs font-extrabold text-latte-deep"
+        className="flex h-11 w-full items-center justify-center gap-1.5 rounded-full border border-dashed border-latte-deep/50 bg-card text-xs font-extrabold text-latte-deep"
       >
-        ➕ เพิ่มห้อง/แพ็กเกจใหม่
+        <Icon name="plus" size={16} />
+        เพิ่มห้อง/แพ็กเกจใหม่
       </button>
       <button
         type="button"
         disabled={saving}
         onClick={() => onSave({ rooms })}
-        className="w-full rounded-petflow-sm bg-gradient-to-r from-honey to-honey-deep py-3 text-sm font-extrabold text-petflow-chocolate disabled:opacity-50"
+        className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-petflow-chocolate text-sm font-extrabold text-card shadow-petflow-sm disabled:opacity-50"
       >
-        {saving ? "กำลังบันทึก…" : "💾 บันทึกห้องทั้งหมด"}
+        <Icon name="check" size={18} strokeWidth={2.2} />
+        {saving ? "กำลังบันทึก…" : "บันทึกห้องทั้งหมด"}
       </button>
     </div>
   );
@@ -1194,9 +1330,10 @@ function GroomProgramsTab({
             <button
               type="button"
               onClick={() => removeProgram(progIdx)}
-              className="shrink-0 rounded-full bg-wait/10 px-2.5 py-1 text-[10px] font-bold text-wait"
+              className="flex h-10 shrink-0 items-center gap-1 rounded-full bg-wait/10 px-3 text-[11px] font-bold text-wait"
             >
-              🗑️ ลบโปรแกรม
+              <Icon name="trash" size={14} />
+              ลบโปรแกรม
             </button>
           </div>
 
@@ -1216,9 +1353,10 @@ function GroomProgramsTab({
                   <button
                     type="button"
                     onClick={() => removeBreedRow(progIdx, breedIdx)}
-                    className="shrink-0 text-[10px] font-bold text-wait"
+                    className="flex h-9 shrink-0 items-center gap-1 px-2 text-[11px] font-bold text-wait"
                   >
-                    ✕ ลบแถว
+                    <Icon name="x" size={14} />
+                    ลบแถว
                   </button>
                 </div>
                 <div className="flex gap-2">
@@ -1246,24 +1384,27 @@ function GroomProgramsTab({
             onClick={() => addBreedRow(progIdx)}
             className="mt-2 w-full rounded-petflow-sm border border-dashed border-latte/60 py-1.5 text-[11px] font-bold text-latte-deep"
           >
-            ➕ เพิ่มแถวพันธุ์/ราคา
+            <Icon name="plus" size={16} />
+            เพิ่มแถวพันธุ์/ราคา
           </button>
         </div>
       ))}
       <button
         type="button"
         onClick={addProgram}
-        className="w-full rounded-petflow-sm border-2 border-dashed border-latte/60 bg-latte/10 py-2.5 text-xs font-extrabold text-latte-deep"
+        className="flex h-11 w-full items-center justify-center gap-1.5 rounded-full border border-dashed border-latte-deep/50 bg-card text-xs font-extrabold text-latte-deep"
       >
-        ➕ เพิ่มโปรแกรมใหม่
+        <Icon name="plus" size={16} />
+        เพิ่มโปรแกรมใหม่
       </button>
       <button
         type="button"
         disabled={saving}
         onClick={() => onSave({ groomPricePrograms: programs })}
-        className="w-full rounded-petflow-sm bg-gradient-to-r from-honey to-honey-deep py-3 text-sm font-extrabold text-petflow-chocolate disabled:opacity-50"
+        className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-petflow-chocolate text-sm font-extrabold text-card shadow-petflow-sm disabled:opacity-50"
       >
-        {saving ? "กำลังบันทึก…" : "💾 บันทึกโปรแกรมอาบน้ำทั้งหมด"}
+        <Icon name="check" size={18} strokeWidth={2.2} />
+        {saving ? "กำลังบันทึก…" : "บันทึกโปรแกรมอาบน้ำทั้งหมด"}
       </button>
     </div>
   );
@@ -1328,24 +1469,26 @@ function ContentBlocksTab({
                 type="button"
                 onClick={() => move(idx, -1)}
                 disabled={idx === 0}
-                className="rounded-full bg-paper px-2 py-1 text-[10px] font-bold text-brown-soft disabled:opacity-30"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-paper text-brown-soft disabled:opacity-30"
+                aria-label="เลื่อนขึ้น"
               >
-                ⬆️
+                <Icon name="chevron" size={16} className="-rotate-90" />
               </button>
               <button
                 type="button"
                 onClick={() => move(idx, 1)}
                 disabled={idx === blocks.length - 1}
-                className="rounded-full bg-paper px-2 py-1 text-[10px] font-bold text-brown-soft disabled:opacity-30"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-paper text-brown-soft disabled:opacity-30"
+                aria-label="เลื่อนลง"
               >
-                ⬇️
+                <Icon name="chevron" size={16} className="rotate-90" />
               </button>
               <button
                 type="button"
                 onClick={() => removeBlock(idx)}
                 className="rounded-full bg-wait/10 px-2.5 py-1 text-[10px] font-bold text-wait"
               >
-                🗑️ ลบ
+                ลบ
               </button>
             </div>
           </div>
@@ -1365,7 +1508,7 @@ function ContentBlocksTab({
             <input
               type="file"
               accept="image/*"
-              className="mt-1 block w-full text-[10px]"
+              className="mt-1 block w-full text-[11px] text-brown-soft file:mr-2 file:h-9 file:cursor-pointer file:rounded-full file:border-0 file:bg-honey/30 file:px-3 file:text-xs file:font-bold file:text-petflow-chocolate"
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 if (f) onImage(idx, f);
@@ -1389,7 +1532,7 @@ function ContentBlocksTab({
               onChange={(e) => updateBlock(idx, { text: e.target.value })}
               rows={3}
               placeholder="เช่น กติกาการฝากเลี้ยง วัคซีน อาหาร ฯลฯ"
-              className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm"
             />
           </label>
         </div>
@@ -1397,15 +1540,16 @@ function ContentBlocksTab({
       <button
         type="button"
         onClick={addBlock}
-        className="w-full rounded-petflow-sm border-2 border-dashed border-latte/60 bg-latte/10 py-2.5 text-xs font-extrabold text-latte-deep"
+        className="flex h-11 w-full items-center justify-center gap-1.5 rounded-full border border-dashed border-latte-deep/50 bg-card text-xs font-extrabold text-latte-deep"
       >
-        ➕ เพิ่มบล็อก
+        <Icon name="plus" size={16} />
+        เพิ่มบล็อก
       </button>
       <button
         type="button"
         disabled={saving}
         onClick={() => onSave({ [field]: blocks })}
-        className="w-full rounded-petflow-sm bg-gradient-to-r from-honey to-honey-deep py-3 text-sm font-extrabold text-petflow-chocolate disabled:opacity-50"
+        className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-petflow-chocolate text-sm font-extrabold text-card shadow-petflow-sm disabled:opacity-50"
       >
         {saving ? "กำลังบันทึก…" : saveLabel}
       </button>
@@ -1538,7 +1682,7 @@ function GroomingTab({
       </div>
 
       <div>
-        <p className="mb-1 text-xs font-extrabold text-petflow-chocolate">🚫 วันที่ร้านปิด</p>
+        <p className="mb-1 text-xs font-extrabold text-petflow-chocolate">วันที่ร้านปิด</p>
         <p className="mb-2 text-[10px] text-brown-faint">
           มีผลกับ “จองคิวเอง” ทั้งอาบน้ำและห้องพัก — ลูกค้าจองวันนี้ไม่ได้ (แมวที่เข้าพักอยู่แล้วไม่กระทบ)
         </p>
@@ -1592,9 +1736,10 @@ function GroomingTab({
               <button
                 type="button"
                 onClick={() => setClosedDates(closedDates.filter((_, k) => k !== i))}
-                className="shrink-0 px-2 text-wait"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-wait"
+                aria-label="ลบ"
               >
-                ✕
+                <Icon name="x" size={16} />
               </button>
             </div>
           ))}
@@ -1623,17 +1768,18 @@ function GroomingTab({
 
       <label className="block text-xs font-bold text-brown-soft">
         รับส่ง (ไทย) — หนึ่งบรรทัดต่อข้อ
-        <textarea value={transportTh} onChange={(e) => setTransportTh(e.target.value)} rows={4} className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm" />
+        <textarea value={transportTh} onChange={(e) => setTransportTh(e.target.value)} rows={4} className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm" />
       </label>
       <label className="block text-xs font-bold text-brown-soft">
         รับส่ง (EN)
-        <textarea value={transportEn} onChange={(e) => setTransportEn(e.target.value)} rows={4} className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm" />
+        <textarea value={transportEn} onChange={(e) => setTransportEn(e.target.value)} rows={4} className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm" />
       </label>
       <p className="text-[10px] text-brown-faint">
         หน้าลูกค้าจะแสดงรูป 2 รูปนี้เต็มๆ — ไม่มีตารางราคา
       </p>
-      <button type="button" disabled={saving} onClick={submit} className="w-full rounded-petflow-sm bg-honey/40 py-3 text-sm font-extrabold disabled:opacity-50">
-        {saving ? "กำลังบันทึก…" : "💾 บันทึกอาบน้ำ/กรูมมิ่ง"}
+      <button type="button" disabled={saving} onClick={submit} className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-petflow-chocolate text-sm font-extrabold text-card shadow-petflow-sm disabled:opacity-50">
+        <Icon name="check" size={18} strokeWidth={2.2} />
+        {saving ? "กำลังบันทึก…" : "บันทึกอาบน้ำ/กรูมมิ่ง"}
       </button>
     </div>
   );
@@ -1684,8 +1830,8 @@ function PointsTab({
                 unoptimized
               />
             ) : (
-              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-petflow-sm bg-paper text-2xl">
-                🎁
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-petflow-sm bg-paper text-brown-soft">
+                <Icon name="gift" size={24} />
               </div>
             )}
             <label className="flex-1 text-[10px] font-bold text-latte-deep">
@@ -1694,7 +1840,7 @@ function PointsTab({
                 type="file"
                 accept="image/*"
                 disabled={uploadingId === r.id}
-                className="mt-1 block w-full text-[10px]"
+                className="mt-1 block w-full text-[11px] text-brown-soft file:mr-2 file:h-9 file:cursor-pointer file:rounded-full file:border-0 file:bg-honey/30 file:px-3 file:text-xs file:font-bold file:text-petflow-chocolate"
                 onChange={(e) => e.target.files?.[0] && onRewardImage(i, r.id, e.target.files[0])}
               />
               {r.imageUrl && (
@@ -1756,9 +1902,10 @@ function PointsTab({
         type="button"
         disabled={saving}
         onClick={() => onSave({ pointsRewards: rewards })}
-        className="w-full rounded-petflow-sm bg-honey/40 py-3 text-sm font-extrabold disabled:opacity-50"
+        className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-petflow-chocolate text-sm font-extrabold text-card shadow-petflow-sm disabled:opacity-50"
       >
-        💾 บันทึกรางวัลแต้ม
+        <Icon name="check" size={18} strokeWidth={2.2} />
+        บันทึกรางวัลแต้ม
       </button>
     </div>
   );
@@ -1802,9 +1949,9 @@ function CrmTab({
       });
       const d = await res.json().catch(() => ({}));
       if (res.ok) {
-        setRecalcMsg(`✅ คำนวณใหม่ ${d.total} คน · เปลี่ยนระดับ ${d.updated} คน`);
+        setRecalcMsg(`คำนวณใหม่ ${d.total} คน · เปลี่ยนระดับ ${d.updated} คน`);
       } else {
-        setRecalcMsg("❌ คำนวณไม่สำเร็จ");
+        setRecalcMsg("คำนวณไม่สำเร็จ");
       }
     } finally {
       setRecalcBusy(false);
@@ -1850,7 +1997,7 @@ function CrmTab({
           value={form.followUpMessage}
           onChange={(e) => setForm({ ...form, followUpMessage: e.target.value })}
           rows={5}
-          className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm"
+          className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm"
         />
       </label>
       <Field
@@ -1861,7 +2008,7 @@ function CrmTab({
 
       <hr className="border-petflow-line" />
       <p className="text-xs font-extrabold text-petflow-chocolate">
-        ⭐ เงื่อนไขเลื่อนระดับลูกค้าอัตโนมัติ
+        เงื่อนไขเลื่อนระดับลูกค้าอัตโนมัติ
       </p>
       <p className="text-[10px] text-brown-faint">
         ระบบจะเลื่อนระดับให้เองเมื่อลูกค้ามาใช้บริการครบ หรือยอดสะสมถึงเกณฑ์
@@ -1893,9 +2040,9 @@ function CrmTab({
         type="button"
         onClick={recalcAll}
         disabled={recalcBusy}
-        className="w-full rounded-petflow-sm bg-latte/25 py-2.5 text-xs font-extrabold text-petflow-chocolate disabled:opacity-50"
+        className="flex h-11 w-full items-center justify-center gap-1.5 rounded-full bg-paper text-xs font-extrabold text-petflow-chocolate disabled:opacity-50"
       >
-        {recalcBusy ? "กำลังคำนวณ…" : "🔄 คำนวณระดับลูกค้าใหม่ทั้งหมด (หลังแก้เงื่อนไข)"}
+        {recalcBusy ? "กำลังคำนวณ…" : "คำนวณระดับลูกค้าใหม่ทั้งหมด (หลังแก้เงื่อนไข)"}
       </button>
       {recalcMsg && (
         <p className="text-center text-[11px] font-bold text-ok">{recalcMsg}</p>
@@ -1935,14 +2082,15 @@ function AdvancedTab({
       <a
         href="/api/admin/backup"
         download
-        className="block w-full rounded-petflow-sm bg-latte/20 py-2.5 text-center text-xs font-extrabold text-latte-deep"
+        className="flex h-11 w-full items-center justify-center gap-1.5 rounded-full bg-paper text-xs font-extrabold text-petflow-chocolate"
       >
-        💾 ดาวน์โหลดสำรองข้อมูลทั้งหมด (.json)
+        <Icon name="download" size={16} />
+        ดาวน์โหลดสำรองข้อมูลทั้งหมด (.json)
       </a>
       <p className="text-[10px] text-brown-faint">
         ไฟล์เดียวครบทุกอย่าง ลูกค้า แมว นัด บิล บัญชี แต้ม โปร คูปอง คอร์ส
         บทความ พนักงาน ประวัติเติมเครดิต ประวัติใช้บริการ และการตั้งค่า —
-        เก็บไว้กู้คืนได้จริง ⚠️ มีข้อมูลส่วนตัวลูกค้าและรหัสพนักงาน เก็บในที่ปลอดภัย
+        เก็บไว้กู้คืนได้จริง — มีข้อมูลส่วนตัวลูกค้าและรหัสพนักงาน เก็บในที่ปลอดภัย
       </p>
       <p className="text-xs text-brown-soft">
         แก้ตารางราคากรูมมิ่ง หรือสำรอง/กู้คืน config ทั้งหมด (สำหรับผู้ดูแลระบบ)
@@ -1954,16 +2102,18 @@ function AdvancedTab({
         className="w-full rounded-petflow-sm border border-petflow-line bg-paper p-3 font-mono text-[10px]"
       />
       <div className="flex gap-2">
-        <button type="button" onClick={onExport} className="flex-1 rounded-petflow-sm bg-paper py-2 text-xs font-bold">
-          📋 Copy
+        <button type="button" onClick={onExport} className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-full bg-paper text-xs font-bold text-brown">
+          <Icon name="copy" size={16} />
+          คัดลอก
         </button>
         <button
           type="button"
           disabled={saving}
           onClick={onSaveJson}
-          className="flex-1 rounded-petflow-sm bg-latte/30 py-2 text-xs font-bold disabled:opacity-50"
+          className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-full bg-petflow-chocolate text-xs font-bold text-card disabled:opacity-50"
         >
-          {saving ? "…" : "📥 นำเข้า JSON"}
+          <Icon name="download" size={16} className="rotate-180" />
+          {saving ? "…" : "นำเข้า JSON"}
         </button>
       </div>
     </div>
@@ -1981,18 +2131,18 @@ function MigratePhotosSection() {
       const res = await fetch("/api/admin/migrate-photos", { method: "POST" });
       const d = await res.json();
       if (!res.ok) {
-        setMsg(`❌ ${d.error || "ทำไม่สำเร็จ"}`);
+        setMsg(`${d.error || "ทำไม่สำเร็จ"}`);
       } else {
         const total = d.photos + d.media + d.signatures;
         setMsg(
           total === 0
-            ? "✅ ไม่มีรูปเก่าที่ต้องย้ายแล้ว (เก็บเป็นไฟล์หมดแล้ว)"
-            : `✅ ย้ายแล้ว — รูปโปรไฟล์ ${d.photos}, อัลบั้ม ${d.media}, ลายเซ็น ${d.signatures}` +
+            ? "ไม่มีรูปเก่าที่ต้องย้ายแล้ว (เก็บเป็นไฟล์หมดแล้ว)"
+            : `ย้ายแล้ว — รูปโปรไฟล์ ${d.photos}, อัลบั้ม ${d.media}, ลายเซ็น ${d.signatures}` +
               (d.errors?.length ? ` (พลาด ${d.errors.length} รายการ)` : "")
         );
       }
     } catch {
-      setMsg("❌ เชื่อมต่อไม่สำเร็จ");
+      setMsg("เชื่อมต่อไม่สำเร็จ");
     }
     setBusy(false);
   };
@@ -2000,7 +2150,7 @@ function MigratePhotosSection() {
   return (
     <div className="rounded-petflow-sm border border-sage/40 bg-sage/10 p-3">
       <p className="text-xs font-extrabold text-petflow-chocolate">
-        🖼️ ย้ายรูป/วิดีโอเก่าไป Storage
+        ย้ายรูป/วิดีโอเก่าไป Storage
       </p>
       <p className="mb-2 text-[10px] text-brown-soft">
         รูปโปรไฟล์แมว, อัลบั้มหลังบ้าน, ลายเซ็นยินยอม ที่เคยเก็บเป็น base64 ยัดในฐานข้อมูลตรงๆ
@@ -2010,9 +2160,9 @@ function MigratePhotosSection() {
         type="button"
         disabled={busy}
         onClick={run}
-        className="w-full rounded-petflow-sm bg-sage/70 py-2 text-xs font-extrabold text-petflow-chocolate disabled:opacity-50"
+        className="flex h-11 w-full items-center justify-center gap-1.5 rounded-full bg-paper text-xs font-extrabold text-petflow-chocolate disabled:opacity-50"
       >
-        {busy ? "กำลังย้าย… (อาจใช้เวลาสักครู่)" : "🖼️ ย้ายรูปเก่าตอนนี้"}
+        {busy ? "กำลังย้าย… (อาจใช้เวลาสักครู่)" : "ย้ายรูปเก่าตอนนี้"}
       </button>
       {msg && <p className="mt-2 text-[11px] font-bold text-brown">{msg}</p>}
     </div>
@@ -2030,16 +2180,16 @@ function CleanupBroadcastSection() {
       const res = await fetch("/api/admin/cleanup-broadcast-images", { method: "POST" });
       const d = await res.json();
       if (!res.ok) {
-        setMsg(`❌ ${d.error || "ทำไม่สำเร็จ"}`);
+        setMsg(`${d.error || "ทำไม่สำเร็จ"}`);
       } else {
         setMsg(
           d.removed === 0
-            ? "✅ ไม่มีรูปโปรเก่าค้างในฐานข้อมูลแล้ว"
-            : `✅ ลบรูปโปรเก่าออกจากฐานข้อมูลแล้ว ${d.removed} รูป`
+            ? "ไม่มีรูปโปรเก่าค้างในฐานข้อมูลแล้ว"
+            : `ลบรูปโปรเก่าออกจากฐานข้อมูลแล้ว ${d.removed} รูป`
         );
       }
     } catch {
-      setMsg("❌ เชื่อมต่อไม่สำเร็จ");
+      setMsg("เชื่อมต่อไม่สำเร็จ");
     }
     setBusy(false);
   };
@@ -2047,7 +2197,7 @@ function CleanupBroadcastSection() {
   return (
     <div className="rounded-petflow-sm border border-sage/40 bg-sage/10 p-3">
       <p className="text-xs font-extrabold text-petflow-chocolate">
-        🧹 ล้างรูปโปร broadcast เก่า
+        ล้างรูปโปร broadcast เก่า
       </p>
       <p className="mb-2 text-[10px] text-brown-soft">
         รูปโปรที่เคยยิงเข้า LINE แล้วเก็บ base64 ค้างในฐานข้อมูล — ลบเฉพาะที่เก่ากว่า 30 วัน
@@ -2057,9 +2207,9 @@ function CleanupBroadcastSection() {
         type="button"
         disabled={busy}
         onClick={run}
-        className="w-full rounded-petflow-sm bg-sage/70 py-2 text-xs font-extrabold text-petflow-chocolate disabled:opacity-50"
+        className="flex h-11 w-full items-center justify-center gap-1.5 rounded-full bg-paper text-xs font-extrabold text-petflow-chocolate disabled:opacity-50"
       >
-        {busy ? "กำลังล้าง…" : "🧹 ล้างรูปโปรเก่าตอนนี้"}
+        {busy ? "กำลังล้าง…" : "ล้างรูปโปรเก่าตอนนี้"}
       </button>
       {msg && <p className="mt-2 text-[11px] font-bold text-brown">{msg}</p>}
     </div>
@@ -2105,22 +2255,22 @@ function MigrateSection() {
       if (d.bootstrapNeeded) {
         setBootSql(d.bootstrapSql || "");
         setMsg(
-          "⚠️ ต้องตั้งค่าครั้งแรกก่อน (ครั้งเดียว) — ก๊อป SQL ด้านล่างไปวางใน Supabase → SQL Editor → Run แล้วกดปุ่มนี้อีกครั้ง"
+          "ต้องตั้งค่าครั้งแรกก่อน (ครั้งเดียว) — ก๊อป SQL ด้านล่างไปวางใน Supabase → SQL Editor → Run แล้วกดปุ่มนี้อีกครั้ง"
         );
       } else if (d.ok) {
         setMsg(
           d.applied.length > 0
-            ? `✅ อัปเดตฐานข้อมูลเรียบร้อย (${d.applied.length} รายการ) — ทุกฟีเจอร์พร้อมใช้แล้ว`
-            : "✅ ฐานข้อมูลเป็นเวอร์ชันล่าสุดอยู่แล้ว"
+            ? `อัปเดตฐานข้อมูลเรียบร้อย (${d.applied.length} รายการ) — ทุกฟีเจอร์พร้อมใช้แล้ว`
+            : "ฐานข้อมูลเป็นเวอร์ชันล่าสุดอยู่แล้ว"
         );
       } else {
         setMsg(
-          "❌ บางรายการไม่สำเร็จ: " +
+          "บางรายการไม่สำเร็จ: " +
             (d.errors || []).map((e: { name: string }) => e.name).join(", ")
         );
       }
     } catch {
-      setMsg("❌ เชื่อมต่อไม่สำเร็จ");
+      setMsg("เชื่อมต่อไม่สำเร็จ");
     }
     await verify();
     setBusy(false);
@@ -2131,7 +2281,7 @@ function MigrateSection() {
   return (
     <div className="rounded-petflow-sm border border-honey/50 bg-honey/10 p-3">
       <p className="text-xs font-extrabold text-petflow-chocolate">
-        🗄️ อัปเดตฐานข้อมูล (อัตโนมัติ)
+        อัปเดตฐานข้อมูล (อัตโนมัติ)
       </p>
       <p className="mb-2 text-[10px] text-brown-soft">
         เพิ่มคอลัมน์/ตารางที่ฟีเจอร์ใหม่ต้องใช้ให้เอง — ไม่ต้องไปพิมพ์ SQL ใน Supabase อีก
@@ -2141,9 +2291,9 @@ function MigrateSection() {
         type="button"
         disabled={busy}
         onClick={run}
-        className="w-full rounded-petflow-sm bg-honey-deep/80 py-2 text-xs font-extrabold text-petflow-chocolate disabled:opacity-50"
+        className="flex h-11 w-full items-center justify-center gap-1.5 rounded-full bg-paper text-xs font-extrabold text-petflow-chocolate disabled:opacity-50"
       >
-        {busy ? "กำลังอัปเดต…" : "🔄 อัปเดตฐานข้อมูลตอนนี้"}
+        {busy ? "กำลังอัปเดต…" : "อัปเดตฐานข้อมูลตอนนี้"}
       </button>
       {msg && (
         <p className="mt-2 text-[11px] font-bold text-brown">{msg}</p>
@@ -2153,12 +2303,12 @@ function MigrateSection() {
         <div className="mt-2 rounded-petflow-sm bg-paper px-2.5 py-2">
           {missing.length === 0 ? (
             <p className="text-[11px] font-bold text-brown">
-              ✅ ตรวจแล้ว: ครบทุกรายการ ({checkRows.length}/{checkRows.length}) — ฟีเจอร์ทั้งหมดใช้ได้จริง
+              ตรวจแล้ว: ครบทุกรายการ ({checkRows.length}/{checkRows.length}) — ฟีเจอร์ทั้งหมดใช้ได้จริง
             </p>
           ) : (
             <>
               <p className="text-[11px] font-bold text-brown">
-                ⚠️ ยังขาด {missing.length} รายการ — กดปุ่มด้านบนอีกครั้ง ถ้ายังขาดอยู่แปลว่า
+                ยังขาด {missing.length} รายการ — กดปุ่มด้านบนอีกครั้ง ถ้ายังขาดอยู่แปลว่า
                 รันไม่ผ่านจริง
               </p>
               <ul className="mt-1 space-y-0.5">
@@ -2183,9 +2333,10 @@ function MigrateSection() {
           <button
             type="button"
             onClick={() => navigator.clipboard.writeText(bootSql)}
-            className="mt-1 w-full rounded-petflow-sm bg-paper py-1.5 text-[10px] font-bold text-brown-soft"
+            className="mt-1 flex h-10 w-full items-center justify-center gap-1.5 rounded-full bg-paper text-[11px] font-bold text-brown"
           >
-            📋 คัดลอก SQL (วางใน Supabase ครั้งเดียว)
+            <Icon name="copy" size={14} />
+            คัดลอก SQL (วางใน Supabase ครั้งเดียว)
           </button>
         </div>
       )}
@@ -2230,7 +2381,7 @@ function PosterField({
             <input
               type="file"
               accept="image/*"
-              className="mt-1 block w-full text-[10px]"
+              className="mt-1 block w-full text-[11px] text-brown-soft file:mr-2 file:h-9 file:cursor-pointer file:rounded-full file:border-0 file:bg-honey/30 file:px-3 file:text-xs file:font-bold file:text-petflow-chocolate"
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 if (f) onUpload(f);
@@ -2270,7 +2421,7 @@ function Field({
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm"
+        className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm"
       />
     </label>
   );
@@ -2356,7 +2507,7 @@ function TimeSlotField({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm"
+        className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm"
       >
         <option value="08:00">เช้า (8 โมง)</option>
         <option value="12:00">เที่ยง (12 โมง)</option>
@@ -2403,7 +2554,7 @@ function Toggle({
     <button
       type="button"
       onClick={() => onChange(!checked)}
-      className="flex w-full items-center justify-between gap-2 py-1 text-left"
+      className="flex min-h-[44px] w-full items-center justify-between gap-3 py-1 text-left"
     >
       <span className="text-xs font-bold text-brown">{label}</span>
       <span
@@ -2447,7 +2598,7 @@ function AutomationTab({
 
       <div className="rounded-petflow-sm border border-petflow-line p-3">
         <Toggle
-          label="🎉 แจ้งลูกค้าทันทีที่ร้านกดยืนยันคิว"
+          label="แจ้งลูกค้าทันทีที่ร้านกดยืนยันคิว"
           checked={form.bookingApprovedEnabled}
           onChange={(v) => set({ bookingApprovedEnabled: v })}
         />
@@ -2458,7 +2609,7 @@ function AutomationTab({
 
       <div className="rounded-petflow-sm border border-petflow-line p-3">
         <Toggle
-          label="✅ ส่งการ์ดยืนยันนัดอัตโนมัติ (เตือนล่วงหน้า)"
+          label="ส่งการ์ดยืนยันนัดอัตโนมัติ (เตือนล่วงหน้า)"
           checked={form.confirmTomorrowEnabled}
           onChange={(v) => set({ confirmTomorrowEnabled: v })}
         />
@@ -2474,7 +2625,7 @@ function AutomationTab({
 
       <div className="rounded-petflow-sm border border-petflow-line p-3">
         <Toggle
-          label="💰 เตือนยอดคงเหลือก่อนเข้าพัก"
+          label="เตือนยอดคงเหลือก่อนเข้าพัก"
           checked={form.depositReminderEnabled}
           onChange={(v) => set({ depositReminderEnabled: v })}
         />
@@ -2490,7 +2641,7 @@ function AutomationTab({
 
       <div className="rounded-petflow-sm border border-petflow-line p-3">
         <Toggle
-          label="🏠 แจ้งเข้าพัก + เงื่อนไข ก่อนเข้าพัก"
+          label="แจ้งเข้าพัก + เงื่อนไข ก่อนเข้าพัก"
           checked={form.prestayReminderEnabled}
           onChange={(v) => set({ prestayReminderEnabled: v })}
         />
@@ -2506,7 +2657,7 @@ function AutomationTab({
 
       <div className="rounded-petflow-sm border border-petflow-line p-3">
         <Toggle
-          label="🧳 เตือนเช็คอิน ก่อนวันเข้าพัก"
+          label="เตือนเช็คอิน ก่อนวันเข้าพัก"
           checked={form.checkinReminderEnabled}
           onChange={(v) => set({ checkinReminderEnabled: v })}
         />
@@ -2534,7 +2685,7 @@ function AutomationTab({
 
       <div className="rounded-petflow-sm border border-petflow-line p-3">
         <Toggle
-          label="🧳 เตือนเช็คเอาท์ ก่อนวันออก"
+          label="เตือนเช็คเอาท์ ก่อนวันออก"
           checked={form.checkoutReminderEnabled}
           onChange={(v) => set({ checkoutReminderEnabled: v })}
         />
@@ -2562,7 +2713,7 @@ function AutomationTab({
 
       <div className="rounded-petflow-sm border border-petflow-line p-3">
         <Toggle
-          label="⭐ ขอรีวิวอัตโนมัติ หลังเช็คเอาท์ (ห้องพัก)"
+          label="ขอรีวิวอัตโนมัติ หลังเช็คเอาท์ (ห้องพัก)"
           checked={form.reviewRequestEnabled}
           onChange={(v) => set({ reviewRequestEnabled: v })}
         />
@@ -2581,7 +2732,7 @@ function AutomationTab({
 
       <div className="rounded-petflow-sm border border-petflow-line p-3">
         <Field
-          label="🐈 แถมทรายฟรีเมื่อเข้าพัก (คืน) ขึ้นไป"
+          label="แถมทรายฟรีเมื่อเข้าพัก (คืน) ขึ้นไป"
           type="number"
           value={String(form.freeLitterMinNights)}
           onChange={(v) => set({ freeLitterMinNights: Math.max(1, Number(v) || 1) })}
@@ -2594,7 +2745,7 @@ function AutomationTab({
 
       <div className="rounded-petflow-sm border border-petflow-line p-3">
         <Toggle
-          label="🩺 สอบถามประวัติน้องก่อนอาบน้ำ (พ่วงกับยืนยันนัด)"
+          label="สอบถามประวัติน้องก่อนอาบน้ำ (พ่วงกับยืนยันนัด)"
           checked={form.groomInfoEnabled}
           onChange={(v) => set({ groomInfoEnabled: v })}
         />
@@ -2604,21 +2755,21 @@ function AutomationTab({
       </div>
 
       <Toggle
-        label="🎂 คัดกรองวันเกิดเข้าคิวรอตรวจ"
+        label="คัดกรองวันเกิดเข้าคิวรอตรวจ"
         checked={form.birthdayEnabled}
         onChange={(v) => set({ birthdayEnabled: v })}
       />
       <p className="-mt-1 text-[10px] text-brown-faint">
         ไม่ส่งอัตโนมัติแล้ว — ระบบแค่คัดวันเกิดของวันนี้ไว้ให้ที่{" "}
         <a href="/admin/birthdays" className="underline">
-          🎂 วันเกิดลูกค้า
+          วันเกิดลูกค้า
         </a>{" "}
         ต้องเข้าไปตรวจข้อความแล้วกดส่งเอง (คูปองก็แจกตอนกดส่งเท่านั้น)
       </p>
 
       <div className="rounded-petflow-sm border border-petflow-line p-3">
         <Toggle
-          label="🎁 แจกคูปองวันเกิดตอนกดส่ง (แมว/เจ้าของ)"
+          label="แจกคูปองวันเกิดตอนกดส่ง (แมว/เจ้าของ)"
           checked={form.birthdayCouponEnabled}
           onChange={(v) => set({ birthdayCouponEnabled: v })}
         />
@@ -2680,7 +2831,7 @@ function ListsTab({
       }}
     >
       <p className="text-xs font-extrabold text-petflow-chocolate">
-        ✨ บริการเสริม (หน้าคิดเงิน) — ชื่อ + ราคา
+        บริการเสริม (หน้าคิดเงิน) — ชื่อ + ราคา
       </p>
       <div className="space-y-2">
         {presets.map((p, i) => (
@@ -2705,9 +2856,10 @@ function ListsTab({
                   servicePresets: f.servicePresets.filter((_, k) => k !== i),
                 }))
               }
-              className="shrink-0 px-2 text-wait"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-wait"
+              aria-label="ลบ"
             >
-              ✕
+              <Icon name="x" size={16} />
             </button>
           </div>
         ))}
@@ -2727,7 +2879,7 @@ function ListsTab({
 
       <hr className="border-petflow-line" />
       <TextAreaField
-        label="🎁 ของแถม (ฟรี) — 1 บรรทัด = 1 อย่าง"
+        label="ของแถม (ฟรี) — 1 บรรทัด = 1 อย่าง"
         value={form.freebies.join("\n")}
         onChange={(v) =>
           setForm((f) => ({ ...f, freebies: v.split("\n").map((s) => s.trim()).filter(Boolean) }))
@@ -2735,7 +2887,7 @@ function ListsTab({
         rows={4}
       />
       <TextAreaField
-        label="🐱 สายพันธุ์แมว (หน้าลงทะเบียน) — 1 บรรทัด = 1 พันธุ์"
+        label="สายพันธุ์แมว (หน้าลงทะเบียน) — 1 บรรทัด = 1 พันธุ์"
         value={form.catBreeds.join("\n")}
         onChange={(v) =>
           setForm((f) => ({ ...f, catBreeds: v.split("\n").map((s) => s.trim()).filter(Boolean) }))
@@ -2743,7 +2895,7 @@ function ListsTab({
         rows={8}
       />
       <TextAreaField
-        label="📣 รู้จักร้านจากไหน (referral) — 1 บรรทัด = 1 ตัวเลือก"
+        label="รู้จักร้านจากไหน (referral) — 1 บรรทัด = 1 ตัวเลือก"
         value={form.referralOptions.join("\n")}
         onChange={(v) =>
           setForm((f) => ({
@@ -2764,9 +2916,10 @@ function SaveBtn({ saving }: { saving: boolean }) {
     <button
       type="submit"
       disabled={saving}
-      className="w-full rounded-petflow-sm bg-gradient-to-r from-honey to-honey-deep py-3 text-sm font-extrabold text-petflow-chocolate disabled:opacity-50"
+      className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-petflow-chocolate text-sm font-extrabold text-card shadow-petflow-sm disabled:opacity-50"
     >
-      {saving ? "กำลังบันทึก…" : "💾 บันทึก"}
+      <Icon name="check" size={18} strokeWidth={2.2} />
+      {saving ? "กำลังบันทึก…" : "บันทึก"}
     </button>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Icon } from "@/components/Icon";
 
 /** คอลัมน์ลูกค้าที่เลือกส่งออกได้ (key ต้องตรงกับ lib/google-sheets-export.ts) */
 const CUSTOMER_COLUMN_OPTIONS: { key: string; label: string }[] = [
@@ -76,42 +77,57 @@ export function ExportSheetsButton({ className = "" }: { className?: string }) {
 
   return (
     <div className={className}>
-      <button
-        type="button"
-        onClick={() => setShowCols((v) => !v)}
-        className="mb-2 w-full rounded-petflow-sm border border-petflow-line bg-card py-2 text-xs font-bold text-brown-soft"
-      >
-        ⚙️ เลือกคอลัมน์ที่จะส่งออก ({cols.length}/{ALL_KEYS.length}) {showCols ? "▲" : "▼"}
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          disabled={loading || cols.length === 0}
+          onClick={exportSheets}
+          className="flex h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-petflow-chocolate text-sm font-extrabold text-card disabled:opacity-50"
+        >
+          <Icon name="download" size={18} />
+          {loading ? "กำลังส่งออก…" : "ส่งออก Google Sheets"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowCols((v) => !v)}
+          aria-expanded={showCols}
+          className={`flex h-11 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-xs font-bold ${
+            showCols ? "bg-petflow-chocolate/10 text-petflow-chocolate" : "bg-paper text-brown-soft"
+          }`}
+        >
+          <Icon name="filter" size={16} />
+          คอลัมน์ {cols.length}/{ALL_KEYS.length}
+        </button>
+      </div>
       {showCols && (
-        <div className="mb-2 rounded-petflow-sm border border-petflow-line bg-paper/50 p-3">
+        <div className="mt-2 rounded-petflow-sm border border-petflow-line bg-paper/50 p-3">
           <div className="mb-2 flex gap-2">
             <button
               type="button"
               onClick={() => setCols(ALL_KEYS)}
-              className="rounded-full bg-card px-2.5 py-1 text-[10px] font-bold text-latte-deep"
+              className="h-8 rounded-full bg-card px-3 text-[11px] font-bold text-latte-deep"
             >
               เลือกทั้งหมด
             </button>
             <button
               type="button"
               onClick={() => setCols([])}
-              className="rounded-full bg-card px-2.5 py-1 text-[10px] font-bold text-brown-faint"
+              className="h-8 rounded-full bg-card px-3 text-[11px] font-bold text-brown-faint"
             >
               ล้าง
             </button>
           </div>
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-2 gap-x-2">
             {CUSTOMER_COLUMN_OPTIONS.map((c) => (
               <label
                 key={c.key}
-                className="flex items-center gap-1.5 text-[11px] text-brown"
+                className="flex min-h-[36px] items-center gap-2 text-xs text-brown"
               >
                 <input
                   type="checkbox"
                   checked={cols.includes(c.key)}
                   onChange={() => toggle(c.key)}
-                  className="h-3.5 w-3.5 accent-latte-deep"
+                  className="h-4 w-4 accent-latte-deep"
                 />
                 {c.label}
               </label>
@@ -119,15 +135,6 @@ export function ExportSheetsButton({ className = "" }: { className?: string }) {
           </div>
         </div>
       )}
-
-      <button
-        type="button"
-        disabled={loading || cols.length === 0}
-        onClick={exportSheets}
-        className="w-full rounded-petflow-sm bg-gradient-to-r from-sage/40 to-latte/30 py-3 text-sm font-extrabold text-petflow-chocolate disabled:opacity-50"
-      >
-        {loading ? "กำลังส่งออก…" : "📊 ส่งออก Google Sheets"}
-      </button>
       {msg && (
         <p className="mt-2 text-center text-xs font-bold text-brown-soft">{msg}</p>
       )}
@@ -136,9 +143,10 @@ export function ExportSheetsButton({ className = "" }: { className?: string }) {
           href={url}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-2 block text-center text-xs font-bold text-latte-deep underline"
+          className="mt-2 flex h-10 items-center justify-center gap-1.5 text-xs font-bold text-latte-deep"
         >
-          เปิด Google Sheet →
+          <Icon name="link" size={14} />
+          เปิด Google Sheet
         </a>
       )}
     </div>

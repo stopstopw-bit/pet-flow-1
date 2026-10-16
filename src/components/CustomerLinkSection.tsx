@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { buildCustomerLinkUrl } from "@/lib/liff-urls";
+import { Icon } from "@/components/Icon";
 
 export function CustomerLinkSection({
   customerId,
@@ -42,10 +43,11 @@ export function CustomerLinkSection({
 
   return (
     <section className="mb-4 rounded-petflow border border-latte/40 bg-latte/10 p-4">
-      <h2 className="mb-1 text-sm font-extrabold text-petflow-chocolate">
-        🔗 ลิงก์ผูก LINE
-      </h2>
-      <p className="mb-3 text-[10px] text-brown-soft">
+      <div className="mb-1 flex items-center gap-2">
+        <Icon name="link" size={18} className="text-latte-deep" />
+        <h2 className="text-sm font-extrabold text-petflow-chocolate">ลิงก์ผูก LINE</h2>
+      </div>
+      <p className="mb-3 text-[11px] text-brown-soft">
         ส่งให้ {customerName} เปิดใน LINE — ระบบจะผูกบัญชีนี้กับข้อมูลที่ร้านบันทึกไว้
         (นัด · แต้ม · โปร)
       </p>
@@ -59,19 +61,20 @@ export function CustomerLinkSection({
             height={120}
             className="rounded-petflow-sm bg-white p-2 shadow-petflow-sm"
           />
-          <div className="min-w-0 flex-1">
-            <p className="mb-2 break-all font-mono text-[10px] text-brown-soft">
+          <div className="w-full min-w-0 flex-1">
+            <p className="mb-2 line-clamp-2 break-all rounded-xl bg-card/70 px-3 py-2 font-mono text-[10px] text-brown-soft">
               {linkUrl}
             </p>
             <button
               type="button"
               onClick={copy}
-              className="rounded-petflow-sm bg-card px-3 py-2 text-[10px] font-bold text-latte-deep"
+              className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-petflow-sm bg-card px-3 py-2.5 text-sm font-bold text-latte-deep shadow-petflow-sm"
             >
-              {copied ? "✅ Copy แล้ว" : "📋 Copy ลิงก์ผูก LINE"}
+              <Icon name={copied ? "check" : "copy"} size={16} />
+              {copied ? "คัดลอกแล้ว" : "คัดลอกลิงก์ผูก LINE"}
             </button>
             {!liffId && (
-              <p className="mt-2 text-[10px] text-wait">
+              <p className="mt-2 text-[11px] text-wait">
                 ตั้ง LIFF ใน Admin → ติดตั้ง — ลิงก์จะเปิดใน LINE โดยตรง
               </p>
             )}

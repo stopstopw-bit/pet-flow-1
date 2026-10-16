@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Icon } from "@/components/Icon";
 
 export function AddCustomerModal({
   onAdded,
@@ -56,20 +57,35 @@ export function AddCustomerModal({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mb-4 w-full rounded-petflow-sm bg-gradient-to-r from-honey to-honey-deep py-3 text-sm font-extrabold text-petflow-chocolate"
+        className="mb-4 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-petflow-sm bg-gradient-to-r from-honey to-honey-deep py-3 text-sm font-extrabold text-petflow-chocolate shadow-petflow-sm"
       >
-        ➕ เพิ่มลูกค้าเอง
+        <Icon name="plus" size={18} strokeWidth={2.2} />
+        เพิ่มลูกค้าเอง
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
-          <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-petflow bg-card p-5 shadow-petflow">
-            <h2 className="mb-1 text-sm font-extrabold text-petflow-chocolate">
-              ➕ เพิ่มลูกค้าเอง
-            </h2>
-            <p className="mb-4 text-[10px] text-brown-soft">
-              บันทึกในระบบก่อน — แล้วส่งลิงก์ผูก LINE ให้ลูกค้าในหน้าโปรไฟล์
-            </p>
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4">
+          <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-petflow bg-card p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-petflow sm:rounded-petflow">
+            <div className="mb-4 flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-honey/25 text-petflow-chocolate">
+                <Icon name="user" size={20} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">New customer</p>
+                <h2 className="text-base font-extrabold text-petflow-chocolate">เพิ่มลูกค้าเอง</h2>
+                <p className="mt-0.5 text-[11px] text-brown-soft">
+                  บันทึกในระบบก่อน — แล้วส่งลิงก์ผูก LINE ให้ลูกค้าในหน้าโปรไฟล์
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={close}
+                aria-label="ปิด"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-paper text-brown"
+              >
+                <Icon name="x" size={16} />
+              </button>
+            </div>
             <form onSubmit={submit} className="space-y-3">
               <label className="block text-xs font-bold text-brown-soft">
                 ชื่อลูกค้า *
@@ -79,7 +95,7 @@ export function AddCustomerModal({
                   placeholder="เช่น คุณมาย"
                   required
                   autoFocus
-                  className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm font-bold"
+                  className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-3 text-sm font-bold"
                 />
               </label>
               <label className="block text-xs font-bold text-brown-soft">
@@ -89,7 +105,7 @@ export function AddCustomerModal({
                   onChange={(e) => setPhone(e.target.value)}
                   type="tel"
                   placeholder="08x-xxx-xxxx"
-                  className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm"
+                  className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-3 text-sm"
                 />
               </label>
               <label className="block text-xs font-bold text-brown-soft">
@@ -99,7 +115,7 @@ export function AddCustomerModal({
                   onChange={(e) => setCatName(e.target.value)}
                   placeholder="เช่น น้องจู๊ด"
                   required
-                  className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm font-bold"
+                  className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-3 text-sm font-bold"
                 />
               </label>
               <label className="block text-xs font-bold text-brown-soft">
@@ -109,7 +125,7 @@ export function AddCustomerModal({
                   onChange={(e) => setCatNote(e.target.value)}
                   placeholder="นิสัย / แพ้อาหาร"
                   rows={2}
-                  className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-xs"
+                  className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm"
                 />
               </label>
               {error && (
@@ -119,16 +135,17 @@ export function AddCustomerModal({
                 <button
                   type="button"
                   onClick={close}
-                  className="flex-1 rounded-petflow-sm bg-paper py-2.5 text-xs font-bold text-brown-soft"
+                  className="min-h-[44px] flex-1 rounded-petflow-sm bg-paper py-3 text-sm font-bold text-brown-soft"
                 >
                   ยกเลิก
                 </button>
                 <button
                   type="submit"
                   disabled={saving || !name.trim() || !catName.trim()}
-                  className="flex-1 rounded-petflow-sm bg-gradient-to-r from-sage to-[#4A7348] py-2.5 text-xs font-extrabold text-white disabled:opacity-50"
+                  className="flex min-h-[44px] flex-[2] items-center justify-center gap-1.5 rounded-petflow-sm bg-petflow-chocolate py-3 text-sm font-extrabold text-card shadow-petflow-sm disabled:opacity-50"
                 >
-                  {saving ? "กำลังบันทึก…" : "💾 บันทึก"}
+                  {!saving && <Icon name="check" size={16} strokeWidth={2.4} />}
+                  {saving ? "กำลังบันทึก…" : "บันทึก"}
                 </button>
               </div>
             </form>

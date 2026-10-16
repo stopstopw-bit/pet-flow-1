@@ -103,6 +103,14 @@ export function bookingConfirmUrl(bookingId: string, liffId?: string) {
   return `${base}/app/bookings?id=${bookingId}`;
 }
 
+/** ลิงก์หน้ากรอกจุดรับ-ส่งน้อง — เปิดผ่าน LIFF ถ้ามี ไม่งั้นเปิดหน้าเว็บตรงๆ */
+export function bookingTransportUrl(bookingId: string, liffId?: string) {
+  const lid = liffId || process.env.NEXT_PUBLIC_LIFF_ID;
+  const id = encodeURIComponent(bookingId);
+  if (lid) return `https://liff.line.me/${lid}?path=booking-transport&id=${id}`;
+  return `${getAppUrlFromEnv()}/app/booking-transport?id=${id}`;
+}
+
 /** ดู Webhook URL ปัจจุบันของ LINE (Messaging API) */
 export async function getLineWebhookEndpoint(token: string) {
   try {

@@ -1,5 +1,6 @@
 "use client";
 
+import { Icon } from "@/components/Icon";
 import { useCallback, useEffect, useState } from "react";
 
 type TelegramStatus = {
@@ -65,15 +66,18 @@ export function TelegramSetupSection({ adminCode }: { adminCode: string }) {
   }
 
   return (
-    <section className="mb-4 space-y-3 rounded-petflow border border-honey/40 bg-card p-4 shadow-petflow-sm">
-      <h2 className="text-sm font-extrabold text-petflow-chocolate">
-        📱 Telegram Bot (แจ้งเตือนเจ้าของ)
+    <section className="mb-4 space-y-3 rounded-petflow bg-card p-4 shadow-petflow-sm">
+      <h2 className="flex items-center gap-2.5 text-sm font-extrabold text-petflow-chocolate">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-honey/30 text-petflow-chocolate">
+          <Icon name="send" size={16} />
+        </span>
+        Telegram Bot (แจ้งเตือนเจ้าของ)
       </h2>
       <p className="text-xs text-brown-soft">
         วาง Token แล้วกดบันทึก — <b>ไม่ต้องใส่ Vercel</b> ระบบตั้ง webhook ให้เอง
         {status?.source === "env" ? (
           <span className="mt-1 block text-wait">
-            ⚠️ ตอนนี้ใช้ Token จาก Vercel — ถ้าผิด ให้ลบ TELEGRAM_BOT_TOKEN ใน Vercel แล้วบันทึกที่นี่แทน
+            ตอนนี้ใช้ Token จาก Vercel — ถ้าผิด ให้ลบ TELEGRAM_BOT_TOKEN ใน Vercel แล้วบันทึกที่นี่แทน
           </span>
         ) : null}
       </p>
@@ -81,20 +85,20 @@ export function TelegramSetupSection({ adminCode }: { adminCode: string }) {
       {status?.configured ? (
         <div className="rounded-petflow-sm bg-sage/15 px-3 py-2 text-xs">
           <p className="font-bold text-ok">
-            ✅ บอทพร้อมแล้ว
+            บอทพร้อมแล้ว
             {status.botUsername ? ` (@${status.botUsername})` : ""}
             {status.source ? ` · ${status.source}` : ""}
           </p>
           {status.webhookConnected === false && (
             <p className="mt-1 text-wait">
-              ⚠️ ยังรับคำสั่งไม่ได้ — กดบันทึกอีกครั้ง หรือรีเฟรชหน้านี้
+              ยังรับคำสั่งไม่ได้ — กดบันทึกอีกครั้ง หรือรีเฟรชหน้านี้
             </p>
           )}
           {status.webhookConnected && (
-            <p className="mt-1 text-brown-soft">💬 รับคำสั่งจากแชทได้แล้ว (พิมพ์ /start)</p>
+            <p className="mt-1 text-brown-soft">รับคำสั่งจากแชทได้แล้ว (พิมพ์ /start)</p>
           )}
           {!status.hasOwnerIds && (
-            <p className="mt-1 text-wait">⚠️ ยังไม่มี Chat ID — ใส่ด้านล่างแล้วบันทึกอีกครั้ง</p>
+            <p className="mt-1 text-wait">ยังไม่มี Chat ID — ใส่ด้านล่างแล้วบันทึกอีกครั้ง</p>
           )}
         </div>
       ) : null}
@@ -157,13 +161,13 @@ export function TelegramSetupSection({ adminCode }: { adminCode: string }) {
         type="button"
         disabled={saving || (!botToken.trim() && !status?.configured)}
         onClick={save}
-        className="w-full rounded-petflow-sm bg-gradient-to-r from-latte/50 to-honey/40 py-3 text-sm font-extrabold text-petflow-chocolate disabled:opacity-40"
+        className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-petflow-chocolate text-sm font-extrabold text-card disabled:opacity-50"
       >
         {saving
           ? "กำลังตั้งบอท…"
           : status?.configured && !botToken.trim()
-            ? "💾 บันทึก Chat ID"
-            : "💾 บันทึกและเปิดใช้บอท"}
+            ? "บันทึก Chat ID"
+            : "บันทึกและเปิดใช้บอท"}
       </button>
     </section>
   );

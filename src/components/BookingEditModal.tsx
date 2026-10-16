@@ -3,8 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Booking } from "@/lib/business";
 import { relevantAutoMessageTopics } from "@/lib/auto-messages";
+import { toast } from "@/components/Toast";
+import { Icon } from "@/components/Icon";
+import { Segmented } from "@/components/ui";
+import { TransportPicker } from "@/components/TransportPicker";
+import type { BookingTransport } from "@/lib/transport";
 import { GROOM_PROGRAMS, type GroomProgram } from "@/lib/grooming-prices";
-import { freeUnitsForRange, roomCapacity, compositionOf, type BoardBooking } from "@/lib/room-board";
+import { freeUnitsForRange, roomCapacity, compositionOf, type BoardBooking, type RoomClosure } from "@/lib/room-board";
 
 export type EditableBooking = Booking & {
   lineUserId?: string;
@@ -31,6 +36,8 @@ export type EditableBooking = Booking & {
   arrivalTime?: string;
   /** เวลาที่เจ้าของแจ้งว่าจะมารับน้อง */
   pickupTime?: string;
+  /** บริการรับ-ส่ง (ดู transport.ts) */
+  transport?: BookingTransport;
 };
 
 function EditField({
@@ -51,7 +58,7 @@ function EditField({
   onChange?: (v: string) => void;
 }) {
   const cls =
-    "mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm";
+    "mt-1 min-h-[44px] w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm text-brown";
   return (
     <label className="block text-xs font-bold text-brown-soft">
       {label}
@@ -98,6 +105,7 @@ export function BookingEditModal({
     count?: number;
     maxCats?: number;
     composedOf?: { typeId: string; units: number }[];
+    closures?: RoomClosure[];
   }[];
   groomSlots: string[];
   groomPrograms?: GroomProgram[];
@@ -123,6 +131,7 @@ export function BookingEditModal({
         count: r.count || 0,
         maxCats: roomCapacity(r),
         composedOf: r.composedOf,
+        closures: r.closures,
       })),
     [rooms]
   );
@@ -153,12 +162,24 @@ export function BookingEditModal({
     );
   // รับ/ส่งเอง แยกกัน — บางคนให้ร้านรับอย่างเดียว หรือส่งอย่างเดียวก็ได้
   // รับ = ร้านไปรับน้องจากบ้าน ไม่ต้องถามเวลาเช็คอิน, ส่ง = ร้านไปส่งน้องกลับบ้าน ไม่ต้องถามเวลาเช็คเอาท์
-  const usePickup = autoOff.includes("checkin");
-  const useDropoff = autoOff.includes("checkout");
-  const toggleTransport = (topic: "checkin" | "checkout", on: boolean) =>
-    setAutoOff((prev) =>
-      on ? Array.from(new Set([...prev, topic])) : prev.filter((x) => x !== topic)
-    );
+  // นัดเก่าที่ติ๊ก "ร้านไปรับ/ส่ง" ไว้ก่อนมีช่องรับ-ส่ง เก็บเป็นการปิดข้อความถามเวลา — อ่านมาเป็นค่าเริ่มต้น
+  const [transport, setTransport] = useState<BookingTransport>(
+    booking.transport || {
+      pickup: booking.service === "room" && (booking.autoOff || []).includes("checkin"),
+      dropoff: booking.service === "room" && (booking.autoOff || []).includes("checkout"),
+    }
+  );
+  const changeTransport = (t: BookingTransport) => {
+    // ฝากพัก: ร้านไปรับ = ไม่ต้องถามเวลาเช็คอิน, ร้านไปส่ง = ไม่ต้องถามเวลาเช็คเอาท์
+    if (service === "room") {
+      const sync = (prev: string[], topic: string, on: boolean) =>
+        on ? Array.from(new Set([...prev, topic])) : prev.filter((x) => x !== topic);
+      if (!!t.pickup !== !!transport.pickup) setAutoOff((p) => sync(p, "checkin", !!t.pickup));
+      if (!!t.dropoff !== !!transport.dropoff) setAutoOff((p) => sync(p, "checkout", !!t.dropoff));
+    }
+    setTransport(t);
+  };
+  const transportPayload = transport.pickup || transport.dropoff ? transport : null;
 
   const submit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -176,6 +197,7 @@ export function BookingEditModal({
             notes: String(fd.get("notes") || "") || undefined,
             groomProgram: groomProgram || undefined,
             arrivalTime: String(fd.get("arrivalTime") || "") || undefined,
+            transport: transportPayload,
             autoOff,
           }
         : {
@@ -192,9 +214,42 @@ export function BookingEditModal({
             notes: String(fd.get("notes") || "") || undefined,
             arrivalTime: String(fd.get("arrivalTime") || "") || undefined,
             pickupTime: String(fd.get("pickupTime") || "") || undefined,
+            transport: transportPayload,
             autoOff,
           };
 
+    // 1) เลื่อนวัน/ต่อคืนก่อน — ทำฝั่งเซิร์ฟเวอร์ทีเดียวทั้งบ้าน และปรับบิลให้ตรงจำนวนคืน
+    //    (ต้องทำก่อนแก้ข้อมูลอื่น เพราะเซิร์ฟเวอร์หาน้องตัวอื่นในบ้านจากวันที่เดิม)
+    const datePatch =
+      service === "groom"
+        ? { date: String(fd.get("date") || ""), time: String(fd.get("time") || "") }
+        : {
+            checkin: String(fd.get("checkin") || ""),
+            checkout: String(fd.get("checkout") || ""),
+            date: String(fd.get("checkin") || ""),
+          };
+    const moved = await fetch("/api/bookings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: booking.id,
+        action: "reschedule",
+        applyToGroup: applyToSiblings,
+        ...datePatch,
+      }),
+    });
+    const movedData = await moved.json().catch(() => ({}));
+    if (!moved.ok) {
+      setSaving(false);
+      alert(
+        movedData.error === "checkout_before_checkin"
+          ? "วันออกต้องหลังวันเข้าพักนะ"
+          : "เลื่อนวันไม่สำเร็จ"
+      );
+      return;
+    }
+
+    // 2) ข้อมูลอื่นของตัวนี้ (ชื่อ ห้อง โน้ต เวลา ฯลฯ)
     const res = await fetch("/api/bookings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -207,29 +262,22 @@ export function BookingEditModal({
       return;
     }
 
-    // เลื่อนวัน/เวลาให้น้องตัวอื่นในนัดเดียวกันด้วย — เฉพาะวันเวลา ไม่แตะชื่อ/โน้ต/โปรแกรมของตัวอื่น
-    // เพราะแต่ละตัวมีข้อมูลของตัวเอง เปลี่ยนแค่ "นัดวันไหน" ให้ตรงกันทั้งบ้าน
-    if (applyToSiblings && siblings.length > 0) {
-      const datePatch =
-        service === "groom"
-          ? { action: "update", date: payload.date, time: payload.time }
-          : { action: "update", checkin: payload.checkin, checkout: payload.checkout, date: payload.checkin };
-      const results = await Promise.all(
-        siblings.map((s) =>
-          fetch("/api/bookings", {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: s.id, ...datePatch }),
-          }).then((r) => r.ok)
-        )
+    const count = Number(movedData.movedCount) || 1;
+    const inv = movedData.invoice as
+      | { kind: "none" }
+      | { kind: "updated" | "created_extra"; nights: number; total: number }
+      | { kind: "warn"; message: string }
+      | undefined;
+    if (count > 1) toast(`เลื่อนให้ทั้งบ้านแล้ว (${count} ตัว)`, "success");
+    if (inv?.kind === "updated") {
+      toast(`แก้บิลเดิมเป็น ${inv.nights} คืน · ${inv.total.toLocaleString()} บาท`, "success");
+    } else if (inv?.kind === "created_extra") {
+      toast(
+        `บิลเดิมปิดไปแล้ว — ออกบิลต่อคืน ${inv.nights} คืน · ${inv.total.toLocaleString()} บาท ไว้ในหน้าบิล`,
+        "info"
       );
-      setSaving(false);
-      if (!results.every(Boolean)) {
-        alert("เลื่อนวันให้บางตัวไม่สำเร็จ กรุณาตรวจสอบ");
-      }
-      onSaved();
-      onClose();
-      return;
+    } else if (inv?.kind === "warn") {
+      alert(`⚠️ ${inv.message}`);
     }
 
     setSaving(false);
@@ -238,28 +286,39 @@ export function BookingEditModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
-      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-petflow bg-card p-5 shadow-petflow">
-        <h2 className="mb-3 text-sm font-extrabold text-petflow-chocolate">✏️ แก้ไขนัด</h2>
-        <div className="mb-3 flex gap-2">
-          {(
-            [
-              { id: "groom" as const, label: "🛁 อาบน้ำ" },
-              { id: "room" as const, label: "🏠 ห้องพัก" },
-            ] as const
-          ).map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => setService(s.id)}
-              className={`flex-1 rounded-petflow-sm py-2 text-xs font-bold ${
-                service === s.id ? "bg-honey/45 text-petflow-chocolate" : "bg-paper text-brown-soft"
-              }`}
-            >
-              {s.label}
-            </button>
-          ))}
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-petflow-chocolate/40 backdrop-blur-[2px] sm:items-center sm:p-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="booking-edit-title"
+        className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-[28px] bg-card px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 shadow-petflow sm:rounded-petflow sm:p-5"
+      >
+        <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-petflow-line sm:hidden" />
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Edit booking</p>
+            <h2 id="booking-edit-title" className="truncate text-lg font-extrabold text-petflow-chocolate">
+              แก้ไขนัด · {booking.catName}
+            </h2>
+          </div>
+          <button
+            type="button"
+            aria-label="ปิด"
+            onClick={onClose}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-paper text-brown"
+          >
+            <Icon name="x" size={18} />
+          </button>
         </div>
+        <Segmented
+          value={service}
+          onChange={setService}
+          className="mb-4"
+          options={[
+            { id: "groom", label: "อาบน้ำ", icon: "bath" },
+            { id: "room", label: "ห้องพัก", icon: "bed" },
+          ]}
+        />
         <form onSubmit={submit} className="space-y-3">
           <EditField label="ชื่อลูกค้า" name="customer" defaultValue={booking.customerName} required />
           <EditField label="ชื่อน้องแมว" name="cat" defaultValue={booking.catName} required />
@@ -273,7 +332,7 @@ export function BookingEditModal({
                   type="time"
                   list="edit-groom-slots"
                   defaultValue={booking.time || "12:30"}
-                  className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm"
+                  className="mt-1 min-h-[44px] w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm text-brown"
                 />
                 <datalist id="edit-groom-slots">
                   {groomSlots.map((t) => (
@@ -286,7 +345,7 @@ export function BookingEditModal({
                 <select
                   value={groomProgram}
                   onChange={(e) => setGroomProgram(e.target.value)}
-                  className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm"
+                  className="mt-1 min-h-[44px] w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm text-brown"
                 >
                   <option value="">ยังไม่เลือก — ถามหน้างาน</option>
                   {groomPrograms.map((p) => (
@@ -311,7 +370,7 @@ export function BookingEditModal({
                   name="room"
                   defaultValue={booking.room || booking.roomType || ""}
                   onChange={(e) => setRoomSel(e.target.value)}
-                  className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm"
+                  className="mt-1 min-h-[44px] w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm text-brown"
                 >
                   {rooms.map((r) => (
                     <option key={r.id} value={r.id}>
@@ -323,7 +382,10 @@ export function BookingEditModal({
               {roomSel && !compositionOf(roomSel, boardRooms) && (
                 <div className="rounded-petflow-sm border border-petflow-line bg-paper/50 p-3">
                   <input type="hidden" name="roomUnit" value={roomUnit ?? ""} />
-                  <p className="text-xs font-bold text-brown-soft">🗺️ เลือกห้องจริง (ไม่บังคับ)</p>
+                  <p className="flex items-center gap-1.5 text-xs font-bold text-brown-soft">
+                    <Icon name="grid" size={14} />
+                    เลือกห้องจริง (ไม่บังคับ)
+                  </p>
                   <p className="mb-2 text-[10px] text-brown-faint">
                     ไม่เลือก = ให้ระบบจัดห้องให้อัตโนมัติ
                   </p>
@@ -336,13 +398,15 @@ export function BookingEditModal({
                           key={u}
                           type="button"
                           onClick={() => setRoomUnit(roomUnit === u ? null : u)}
-                          className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${
+                          aria-pressed={roomUnit === u}
+                          className={`flex min-h-[40px] items-center gap-1 rounded-full px-3.5 text-xs font-bold transition ${
                             roomUnit === u
-                              ? "bg-honey-deep text-white"
-                              : "bg-card text-brown-soft hover:bg-honey/20"
+                              ? "bg-petflow-chocolate text-card"
+                              : "bg-card text-brown-soft ring-1 ring-petflow-line hover:bg-honey/20"
                           }`}
                         >
-                          {roomUnit === u ? "✓ " : ""}ห้อง {u}
+                          {roomUnit === u && <Icon name="check" size={14} strokeWidth={2.4} />}
+                          ห้อง {u}
                         </button>
                       ))}
                     </div>
@@ -365,28 +429,8 @@ export function BookingEditModal({
                 onChange={setCheckoutSel}
                 required
               />
-              <div className="space-y-1">
-                <label className="flex items-center gap-2 text-[11px] font-bold text-brown-soft">
-                  <input
-                    type="checkbox"
-                    checked={usePickup}
-                    onChange={(e) => toggleTransport("checkin", e.target.checked)}
-                    className="h-3.5 w-3.5 accent-latte-deep"
-                  />
-                  🚗 ร้านไปรับน้อง (ไม่ต้องถามลูกค้าเรื่องเวลาเช็คอิน)
-                </label>
-                <label className="flex items-center gap-2 text-[11px] font-bold text-brown-soft">
-                  <input
-                    type="checkbox"
-                    checked={useDropoff}
-                    onChange={(e) => toggleTransport("checkout", e.target.checked)}
-                    className="h-3.5 w-3.5 accent-latte-deep"
-                  />
-                  🚗 ร้านไปส่งน้องกลับ (ไม่ต้องถามลูกค้าเรื่องเวลาเช็คเอาท์)
-                </label>
-              </div>
-              <div className="flex gap-2">
-                <div className="flex-1">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="min-w-0">
                   <EditField
                     label="เวลาส่งน้อง (ถ้ามี)"
                     name="arrivalTime"
@@ -394,7 +438,7 @@ export function BookingEditModal({
                     defaultValue={booking.arrivalTime || ""}
                   />
                 </div>
-                <div className="flex-1">
+                <div className="min-w-0">
                   <EditField
                     label="เวลารับน้อง (ถ้ามี)"
                     name="pickupTime"
@@ -405,41 +449,44 @@ export function BookingEditModal({
               </div>
             </>
           )}
-          {siblings.length > 0 && (
-            <label className="flex items-start gap-2 rounded-petflow-sm border border-honey-deep/40 bg-honey/15 p-3 text-[11px] font-bold text-petflow-chocolate">
+            <label className="flex items-start gap-2.5 rounded-petflow-sm border border-honey-deep/40 bg-honey/15 p-3 text-xs font-bold text-petflow-chocolate">
               <input
                 type="checkbox"
                 checked={applyToSiblings}
                 onChange={(e) => setApplyToSiblings(e.target.checked)}
-                className="mt-0.5 h-3.5 w-3.5 accent-latte-deep"
+                className="mt-0.5 h-4 w-4 shrink-0 accent-latte-deep"
               />
               <span>
-                🔁 เลื่อนวัน{service === "groom" ? "/เวลา" : "เข้า-ออก"}ให้น้องตัวอื่นในนัดเดียวกันด้วย
+                เลื่อนวัน{service === "groom" ? "/เวลา" : "เข้า-ออก"}ให้ทั้งบ้านด้วย
                 <span className="block font-normal text-brown-faint">
-                  {siblings.map((s) => s.catName).join(", ")} ({siblings.length} ตัว) — เปลี่ยนแค่วันที่/เวลา
-                  ชื่อและโน้ตของแต่ละตัวไม่ถูกแตะ
+                  {siblings.length > 0
+                    ? `${siblings.map((s) => s.catName).join(", ")} (${siblings.length} ตัว)`
+                    : "ทุกตัวในบ้านที่มานัดเดียวกัน (ถ้ามี)"}{" "}
+                  — เปลี่ยนแค่วันที่/เวลา ชื่อและโน้ตของแต่ละตัวไม่ถูกแตะ
+                  {service === "room" && " · บิลห้องพักจะปรับจำนวนคืนให้เอง"}
                 </span>
               </span>
             </label>
-          )}
+          <TransportPicker value={transport} onChange={changeTransport} />
           <EditField label="โน้ต" name="notes" defaultValue={booking.notes || ""} textarea />
 
           {/* ปิดข้อความอัตโนมัติเฉพาะเคสนี้ — เช่น ลูกค้าประจำที่คุยกันทางแชทอยู่แล้ว */}
           <div className="rounded-petflow-sm border border-petflow-line bg-paper/50 p-3">
-            <p className="text-xs font-extrabold text-petflow-chocolate">
-              🔕 ไม่ต้องส่งอัตโนมัติ (เฉพาะนัดนี้)
+            <p className="flex items-center gap-1.5 text-xs font-extrabold text-petflow-chocolate">
+              <Icon name="message" size={14} />
+              ไม่ต้องส่งอัตโนมัติ (เฉพาะนัดนี้)
             </p>
             <p className="mb-2 mt-0.5 text-[10px] text-brown-faint">
               ติ๊กหัวข้อที่ไม่อยากให้ระบบส่งหาลูกค้ารายนี้ · ไม่กระทบนัดอื่น
             </p>
-            <div className="space-y-1.5">
+            <div>
               {relevantAutoMessageTopics(service).map((t) => (
-                <label key={t.id} className="flex items-center gap-2 text-[11px] font-bold text-brown-soft">
+                <label key={t.id} className="flex min-h-[40px] items-center gap-2.5 text-xs font-bold text-brown-soft">
                   <input
                     type="checkbox"
                     checked={autoOff.includes(t.id)}
                     onChange={() => toggleAuto(t.id)}
-                    className="h-3.5 w-3.5 accent-latte-deep"
+                    className="h-4 w-4 shrink-0 accent-latte-deep"
                   />
                   {t.label}
                 </label>
@@ -451,20 +498,14 @@ export function BookingEditModal({
               </p>
             )}
           </div>
-          <div className="flex gap-2 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 rounded-petflow-sm bg-paper py-2.5 text-xs font-bold text-brown-soft"
-            >
-              ปิด
-            </button>
+          <div className="sticky bottom-0 -mx-4 bg-card px-4 pb-1 pt-2 sm:-mx-5 sm:px-5">
             <button
               type="submit"
               disabled={saving}
-              className="flex-1 rounded-petflow-sm bg-honey/40 py-2.5 text-xs font-extrabold text-petflow-chocolate disabled:opacity-50"
+              className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-full bg-petflow-chocolate text-sm font-extrabold text-card shadow-petflow-sm disabled:opacity-50"
             >
-              {saving ? "กำลังบันทึก…" : "บันทึก"}
+              <Icon name="check" size={18} strokeWidth={2.2} />
+              {saving ? "กำลังบันทึก…" : "บันทึกการแก้ไข"}
             </button>
           </div>
         </form>

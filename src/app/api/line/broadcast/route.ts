@@ -3,12 +3,13 @@ import { getSessionFrom } from "@/lib/auth";
 import { withTenant } from "@/lib/tenant-context";
 import { BUSINESS } from "@/lib/business";
 import { storeBroadcastImage } from "@/lib/broadcast-image-store";
+import { getBroadcastAudience, type CustomerTier, type CustomerRecord } from "@/lib/customers-store";
 import {
-  listCustomersByTier,
-  getBroadcastAudience,
-  type CustomerTier,
-} from "@/lib/customers-store";
-import { listInactiveCustomers } from "@/lib/customer-crm";
+  customerActivityMap,
+  matchesSegments,
+  parseSegments,
+  DEFAULT_REGULAR_MIN_VISITS,
+} from "@/lib/customer-segments";
 import {
   buildBroadcastButtons,
   type BroadcastActionId,
@@ -33,6 +34,53 @@ async function resolveLineImageUrl(body: {
   return undefined;
 }
 
+type AudienceQuery = {
+  tier: CustomerTier | "all";
+  breed?: string;
+  inactiveDays: number;
+  segments: ReturnType<typeof parseSegments>;
+  regularMinVisits: number;
+};
+
+function readAudienceQuery(get: (k: string) => unknown): AudienceQuery {
+  return {
+    tier: (String(get("tier") || "all") as CustomerTier | "all"),
+    breed: get("breed") ? String(get("breed")) : undefined,
+    inactiveDays: Number(get("inactiveDays")) || 0,
+    segments: parseSegments(get("segments")),
+    regularMinVisits: Number(get("regularMinVisits")) || DEFAULT_REGULAR_MIN_VISITS,
+  };
+}
+
+const daysSince = (d: string) =>
+  Math.floor((Date.now() - new Date(`${d.slice(0, 10)}T00:00:00Z`).getTime()) / 86400000);
+
+/** กลุ่มผู้รับ = ระดับ + พันธุ์ + กลุ่มที่ติ๊ก + หายไปนาน (ต้องตรงทุกข้อ) */
+async function resolveAudience(q: AudienceQuery) {
+  const audience = await getBroadcastAudience(q.tier, { breed: q.breed });
+  if (!q.segments.length && q.inactiveDays <= 0) return audience;
+  const everyone = [
+    ...audience.recipients,
+    ...audience.skippedNoLine,
+    ...audience.skippedNoConsent,
+  ];
+  const activity = await customerActivityMap(everyone);
+  const keep = (c: CustomerRecord) => {
+    const a = activity.get(c.id);
+    if (!matchesSegments(c, a, q.segments, q.regularMinVisits)) return false;
+    if (q.inactiveDays > 0) {
+      // หายไปนาน = เคยมาจริงแล้ว และครั้งล่าสุดนานกว่าที่ตั้งไว้
+      if (!a?.lastVisit || daysSince(a.lastVisit) < q.inactiveDays) return false;
+    }
+    return true;
+  };
+  return {
+    recipients: audience.recipients.filter(keep),
+    skippedNoLine: audience.skippedNoLine.filter(keep),
+    skippedNoConsent: audience.skippedNoConsent.filter(keep),
+  };
+}
+
 /** ส่งโปรโมชั่น / ข้อความไปยังกลุ่มลูกค้าตามระดับ */
 export async function POST(req: NextRequest) {
   const session = await getSessionFrom(req);
@@ -42,7 +90,7 @@ export async function POST(req: NextRequest) {
 
 async function handlePost(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
-  const tier = (body.tier || "all") as CustomerTier | "all";
+  const query = readAudienceQuery((k) => body[k]);
   const title = String(body.title || "").trim();
   const message = String(body.body || "").trim();
   const discountLabel = body.discountLabel
@@ -59,14 +107,7 @@ async function handlePost(req: NextRequest) {
     );
   }
 
-  const breed = body.breed ? String(body.breed) : undefined;
-  const inactiveDays = Number(body.inactiveDays) || 0;
-  let customers = await listCustomersByTier(tier, { breed });
-  if (inactiveDays > 0) {
-    const inactive = await listInactiveCustomers(inactiveDays);
-    const inactiveIds = new Set(inactive.map((r) => r.customer.id));
-    customers = customers.filter((c) => inactiveIds.has(c.id));
-  }
+  const customers = (await resolveAudience(query)).recipients;
   const lineIds = customers
     .map((c) => c.lineUserId)
     .filter((id): id is string => Boolean(id));
@@ -100,7 +141,7 @@ async function handlePost(req: NextRequest) {
       sent: result.sent,
       // ลูกค้าที่ยังไม่มีบัญชี LINE จริงผูกอยู่ (สร้างตอน LIFF ยังไม่ตั้งค่า) — ไม่ได้รับข้อความนี้
       skipped: result.skipped,
-      tier: tier === "all" ? "ทุกระดับ" : TIER_LABELS[tier],
+      tier: query.tier === "all" ? "ทุกระดับ" : TIER_LABELS[query.tier],
       maps: BUSINESS.maps,
     });
   } catch (e) {
@@ -118,22 +159,11 @@ export async function GET(req: NextRequest) {
 }
 
 async function handleGet(req: NextRequest) {
-  const tier = (req.nextUrl.searchParams.get("tier") || "all") as
-    | CustomerTier
-    | "all";
-  const breed = req.nextUrl.searchParams.get("breed") || undefined;
-  const inactiveDays = Number(req.nextUrl.searchParams.get("inactiveDays")) || 0;
-  const audience = await getBroadcastAudience(tier, { breed });
-  let recipients = audience.recipients;
-  const { skippedNoLine, skippedNoConsent } = audience;
-  if (inactiveDays > 0) {
-    const inactive = await listInactiveCustomers(inactiveDays);
-    const inactiveIds = new Set(inactive.map((r) => r.customer.id));
-    recipients = recipients.filter((c) => inactiveIds.has(c.id));
-  }
+  const query = readAudienceQuery((k) => req.nextUrl.searchParams.get(k));
+  const { recipients, skippedNoLine, skippedNoConsent } = await resolveAudience(query);
 
   return NextResponse.json({
-    tier,
+    tier: query.tier,
     count: recipients.length,
     withLine: recipients.length,
     skippedNoLine: skippedNoLine.length,

@@ -10,6 +10,7 @@ import {
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { pushLineMessage, buildPackageFlex } from "@/lib/line";
 import { getSiteConfig } from "@/lib/config-store";
+import { roomPlanOutstanding } from "@/lib/room-plans-store";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { withResolvedTenant, withTenant } from "@/lib/tenant-context";
 
@@ -57,9 +58,18 @@ async function handleGet(req: NextRequest, isStaff: boolean) {
       : undefined;
   if (!cust) return NextResponse.json({ found: false, packages: [] });
 
-  const packages = activeOnly
+  const list = activeOnly
     ? await activeCustomerPackages(cust.id)
     : await listCustomerPackages(cust.id);
+  // คอร์สจากแพ็กห้องรายเดือนที่ยังจ่ายไม่ครบ — ยังใช้ไม่ได้ (ต้องจ่ายครบก่อนใช้)
+  const owed = new Map<string, number>();
+  for (const pid of new Set(list.map((p) => p.planId).filter(Boolean) as string[])) {
+    owed.set(pid, await roomPlanOutstanding(pid));
+  }
+  const packages = list.map((p) => {
+    const due = p.planId ? owed.get(p.planId) || 0 : 0;
+    return due > 0 ? { ...p, locked: true, outstanding: due } : p;
+  });
   return NextResponse.json({ found: true, customerId: cust.id, packages });
 }
 
@@ -77,6 +87,7 @@ async function handlePost(req: NextRequest) {
   const totalUses = Math.round(Number(body.totalUses) || 0);
   const price = Math.round(Number(body.price) || 0);
   const isLegacy = Boolean(body.isLegacy);
+  const groomProgram = String(body.groomProgram || "").trim() || undefined;
   const notify = body.notify === true;
   if (!customerId || !name || totalUses <= 0) {
     return NextResponse.json({ error: "customerId + name + totalUses required" }, { status: 400 });
@@ -91,6 +102,7 @@ async function handlePost(req: NextRequest) {
     totalUses,
     price,
     isLegacy,
+    groomProgram,
   });
   await sendTelegram(
     formatBookingTelegram(isLegacy ? "🕰️ ยกคอร์สมาจากระบบเก่า" : "🎫 ขายคอร์สให้ลูกค้า", {

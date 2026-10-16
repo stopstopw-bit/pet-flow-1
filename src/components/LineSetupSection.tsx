@@ -1,5 +1,6 @@
 "use client";
 
+import { Icon } from "@/components/Icon";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TIER_LABELS, type CustomerTier } from "@/lib/customer-tier";
 
@@ -53,8 +54,11 @@ export function RegistrationQrSection({ compact }: { compact?: boolean }) {
         compact ? "p-4" : "p-5"
       }`}
     >
-      <h2 className="mb-1 text-sm font-extrabold text-petflow-chocolate">
-        📱 QR ลงทะเบียนลูกค้า
+      <h2 className="flex items-center gap-2.5 text-sm font-extrabold text-petflow-chocolate">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-honey/30 text-petflow-chocolate">
+          <Icon name="grid" size={16} />
+        </span>
+        QR ลงทะเบียนลูกค้า
       </h2>
       <p className="mb-3 text-[10px] text-brown-soft">
         ตั้งที่เคาน์เตอร์ — ลูกค้าสแกนแล้วกรอกชื่อ เบอร์ และน้องแมว
@@ -76,9 +80,9 @@ export function RegistrationQrSection({ compact }: { compact?: boolean }) {
             <button
               type="button"
               onClick={copy}
-              className="rounded-petflow-sm bg-card px-3 py-2 text-[10px] font-bold text-latte-deep"
+              className="flex h-10 items-center gap-1.5 rounded-full bg-card px-4 text-xs font-bold text-latte-deep"
             >
-              {copied ? "✅ Copy แล้ว" : "📋 Copy ลิงก์"}
+              {copied ? "คัดลอกแล้ว" : "คัดลอกลิงก์"}
             </button>
             {!liffId && (
               <p className="mt-2 text-[10px] text-wait">
@@ -151,9 +155,12 @@ export function LiffSetupSection({ adminCode }: { adminCode?: string }) {
   }
 
   return (
-    <section className="mb-4 space-y-3 rounded-petflow border-2 border-latte/40 bg-gradient-to-b from-honey/15 to-card p-4 shadow-petflow-sm">
-      <h2 className="text-base font-extrabold text-petflow-chocolate">
-        📱 LINE LIFF — แอปลูกค้าใน LINE
+    <section className="mb-4 space-y-3 rounded-petflow bg-card p-4 shadow-petflow-sm">
+      <h2 className="flex items-center gap-2.5 text-base font-extrabold text-petflow-chocolate">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-honey/30 text-petflow-chocolate">
+          <Icon name="phone" size={16} />
+        </span>
+        LINE LIFF — แอปลูกค้าใน LINE
       </h2>
       <p className="text-xs text-brown-soft">
         ใช้สำหรับลูกค้าเปิดแอปจาก LINE · ลงทะเบียน · ยืนยันนัดจากการ์ดที่ส่ง
@@ -161,7 +168,7 @@ export function LiffSetupSection({ adminCode }: { adminCode?: string }) {
 
       {status?.liffConfigured ? (
         <div className="rounded-petflow-sm bg-sage/20 px-3 py-2 text-xs font-bold text-ok">
-          ✅ ตั้ง LIFF แล้ว · ID: {status.liffId}
+          ตั้ง LIFF แล้ว · ID: {status.liffId}
         </div>
       ) : (
         <div className="rounded-petflow-sm bg-honey/25 px-3 py-2 text-xs font-bold text-wait">
@@ -194,9 +201,9 @@ export function LiffSetupSection({ adminCode }: { adminCode?: string }) {
             <button
               type="button"
               onClick={copyEndpoint}
-              className="rounded-full bg-latte/20 px-2 py-1 text-[10px] font-bold"
+              className="h-8 rounded-full bg-latte/20 px-3 text-[11px] font-bold"
             >
-              {copied ? "✅" : "📋 Copy"}
+              {copied ? "คัดลอกแล้ว" : "คัดลอก"}
             </button>
           </div>
         </li>
@@ -229,18 +236,18 @@ export function LiffSetupSection({ adminCode }: { adminCode?: string }) {
           type="button"
           disabled={saving || !liffId.trim()}
           onClick={saveLiff}
-          className="flex-1 rounded-petflow-sm bg-gradient-to-r from-latte to-latte-deep py-3 text-sm font-extrabold text-white disabled:opacity-50"
+          className="flex h-12 flex-1 items-center justify-center rounded-full bg-petflow-chocolate text-sm font-extrabold text-card disabled:opacity-50"
         >
-          {saving ? "กำลังบันทึก…" : "💾 บันทึก LIFF ID"}
+          {saving ? "กำลังบันทึก…" : "บันทึก LIFF ID"}
         </button>
         {status?.testLiffUrl && (
           <a
             href={status.testLiffUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded-petflow-sm border border-petflow-line bg-card px-4 py-3 text-xs font-bold text-latte-deep"
+            className="flex h-12 items-center gap-1.5 rounded-full border border-petflow-line bg-card px-4 text-xs font-bold text-latte-deep"
           >
-            🔗 ทดสอบ LIFF
+            ทดสอบ LIFF
           </a>
         )}
       </div>
@@ -312,22 +319,25 @@ export function LineMessagingSetupSection({ adminCode }: { adminCode?: string })
   }
 
   return (
-    <section className="mb-4 space-y-3 rounded-petflow border border-sage/40 bg-card p-4 shadow-petflow-sm">
-      <h2 className="text-sm font-extrabold text-petflow-chocolate">
-        💬 LINE Messaging — ส่งการ์ดยืนยันนัด
+    <section className="mb-4 space-y-3 rounded-petflow bg-card p-4 shadow-petflow-sm">
+      <h2 className="flex items-center gap-2.5 text-sm font-extrabold text-petflow-chocolate">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-honey/30 text-petflow-chocolate">
+          <Icon name="message" size={16} />
+        </span>
+        LINE Messaging — ส่งการ์ดยืนยันนัด
       </h2>
       <p className="text-xs text-brown-soft">
         Channel Access Token สำหรับส่งการ์ด Flex ให้ลูกค้า (แยกจาก LIFF ด้านบน)
         {status?.source === "env" ? (
           <span className="mt-1 block text-wait">
-            ⚠️ ใช้ Token จาก Vercel — ถ้าส่งไม่ได้ ให้บันทึกที่นี่แทน
+            ใช้ Token จาก Vercel — ถ้าส่งไม่ได้ ให้บันทึกที่นี่แทน
           </span>
         ) : null}
       </p>
 
       {status?.configured ? (
         <div className="rounded-petflow-sm bg-sage/15 px-3 py-2 text-xs font-bold text-ok">
-          ✅ พร้อมส่งการ์ด
+          พร้อมส่งการ์ด
           {status.displayName ? ` · ${status.displayName}` : ""}
         </div>
       ) : (
@@ -339,7 +349,7 @@ export function LineMessagingSetupSection({ adminCode }: { adminCode?: string })
       {status?.configured && (
         <div className="rounded-petflow-sm border border-sage/40 bg-sage/5 p-3">
           <p className="mb-2 text-xs font-bold text-petflow-chocolate">
-            🔔 แจ้งเตือนเข้า Telegram (คนแอด LINE + ลูกค้าตอบแชท)
+            แจ้งเตือนเข้า Telegram (คนแอด LINE + ลูกค้าตอบแชท)
           </p>
           <button
             type="button"
@@ -394,9 +404,9 @@ export function LineMessagingSetupSection({ adminCode }: { adminCode?: string })
         type="button"
         disabled={saving || !channelToken.trim()}
         onClick={saveToken}
-        className="w-full rounded-petflow-sm bg-[#4A7348] py-3 text-sm font-extrabold text-white disabled:opacity-50"
+        className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-petflow-chocolate text-sm font-extrabold text-card disabled:opacity-50"
       >
-        {saving ? "กำลังบันทึก…" : "💾 บันทึก LINE Token"}
+        {saving ? "กำลังบันทึก…" : "บันทึก LINE Token"}
       </button>
 
       <div className="border-t border-petflow-line pt-3">

@@ -10,7 +10,8 @@ export function LangSwitch() {
     <button
       type="button"
       onClick={() => setLocale(next)}
-      className="rounded-full border border-petflow-line bg-card px-3 py-1.5 text-xs font-bold text-brown-soft shadow-petflow-sm"
+      aria-label={locale === "th" ? "Switch to English" : "เปลี่ยนเป็นภาษาไทย"}
+      className="flex h-11 min-w-[44px] shrink-0 items-center justify-center rounded-full border border-petflow-line bg-card px-3 text-xs font-bold text-brown-soft shadow-petflow-sm transition active:scale-95"
     >
       {t(locale).common.lang}
     </button>
