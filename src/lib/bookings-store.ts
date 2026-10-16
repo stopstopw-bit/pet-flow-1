@@ -395,6 +395,8 @@ export async function addBooking(
     if (booking.selfBooked) extra.self_booked = true;
     if (booking.groomProgram) extra.groom_program = booking.groomProgram;
     if (booking.roomUnit != null) extra.room_unit = booking.roomUnit;
+    if (booking.arrivalTime) extra.arrival_time = booking.arrivalTime;
+    if (booking.pickupTime) extra.pickup_time = booking.pickupTime;
     if (Object.keys(extra).length) {
       await sb
         .from("bookings")

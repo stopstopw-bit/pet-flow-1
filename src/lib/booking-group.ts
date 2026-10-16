@@ -21,23 +21,35 @@ export type GroupableBooking = {
   checkout?: string;
 };
 
+export type GroupOptions = {
+  /**
+   * อาบน้ำ: รวมทั้งบ้านในวันเดียวกันแม้คนละรอบเวลา — สล็อตรับทีละตัว แมว 3 ตัวของบ้านเดียวกัน
+   * จึงได้คนละเวลา แต่ยังควรออกบิลใบเดียว (ตารางนัดยังแยกตามเวลาเหมือนเดิม)
+   */
+  groomByDay?: boolean;
+};
+
 /** กุญแจจัดกลุ่ม — ลูกค้าคนเดียวกัน บริการเดียวกัน และช่วงเวลาตรงกันทุกช่อง */
-export function bookingGroupKey(b: GroupableBooking) {
+export function bookingGroupKey(b: GroupableBooking, opts: GroupOptions = {}) {
+  const ignoreTime = opts.groomByDay && b.service === "groom";
   return [
     b.customerId || b.customerName,
     b.service || "",
     b.date || "",
-    b.time || "",
+    ignoreTime ? "" : b.time || "",
     b.checkin || "",
     b.checkout || "",
   ].join("|");
 }
 
 /** จัดกลุ่มโดยคงลำดับเดิมของรายการแรกในแต่ละกลุ่มไว้ */
-export function groupBookings<T extends GroupableBooking>(list: T[]): T[][] {
+export function groupBookings<T extends GroupableBooking>(
+  list: T[],
+  opts: GroupOptions = {}
+): T[][] {
   const groups = new Map<string, T[]>();
   for (const b of list) {
-    const k = bookingGroupKey(b);
+    const k = bookingGroupKey(b, opts);
     const arr = groups.get(k);
     if (arr) arr.push(b);
     else groups.set(k, [b]);
