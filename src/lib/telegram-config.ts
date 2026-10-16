@@ -47,6 +47,7 @@ export function normalizeAppUrl(raw: string) {
 export function getAppUrlFromEnv() {
   return (
     process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "") ||
+    (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "") ||
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "")
   );
 }

@@ -22,16 +22,20 @@ export const dynamic = "force-dynamic";
  * requireTenantId() จึงตกไปใช้ร้าน bootstrap เดียวเสมอ ไม่ว่าใครล็อกอินอยู่
  * (ทุกร้านเห็น LIFF ID/endpoint ก้อนเดียวกันหมด — บั๊กคนละเรื่องกับแค่ไม่มี slug ในลิงก์)
  */
-async function endpointUrlForCurrentTenant(appUrl: string): Promise<string> {
+async function currentTenantBase(appUrl: string): Promise<string> {
   const sb = getSupabase();
-  if (!sb) return `${appUrl}/app`;
+  if (!sb) return appUrl;
   const { data } = await sb
     .from("tenants")
     .select("slug")
     .eq("id", requireTenantId())
     .maybeSingle();
   const slug = (data as { slug?: string } | null)?.slug;
-  return slug ? `${appUrl}/s/${slug}/app` : `${appUrl}/app`;
+  return slug ? `${appUrl}/s/${slug}` : appUrl;
+}
+
+async function endpointUrlForCurrentTenant(appUrl: string): Promise<string> {
+  return `${await currentTenantBase(appUrl)}/app`;
 }
 
 export async function GET(req: NextRequest) {
@@ -112,7 +116,8 @@ async function handlePost(req: NextRequest) {
         });
       }
       const appUrl = getAppUrlFromEnv() || "https://petflow.example.com";
-      const webhookUrl = `${appUrl}/api/line/webhook`;
+      // ต้องมี /s/<slug> — ไม่งั้น webhook จะไปตกร้าน bootstrap ตรวจลายเซ็นด้วย secret ร้านอื่น
+      const webhookUrl = `${await currentTenantBase(appUrl)}/api/line/webhook`;
       const result = await setLineWebhookEndpoint(creds.channelToken, webhookUrl);
       if (!result.ok) {
         return NextResponse.json({

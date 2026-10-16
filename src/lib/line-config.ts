@@ -89,6 +89,8 @@ export async function testLineChannelToken(token: string) {
 export function getAppUrlFromEnv() {
   return (
     process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "") ||
+    // โดเมน production ของ Vercel (เช่น xxx.vercel.app) — ถาวร ไม่เปลี่ยนตาม deploy เหมือน VERCEL_URL
+    (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "") ||
     "https://petflow.example.com"
   );
 }
