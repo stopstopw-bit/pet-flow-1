@@ -513,6 +513,23 @@ async function handlePatch(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  // บิลที่โยกยอดเป็นเครดิตไปแล้ว — ห้ามรับเงินเพิ่ม/ยกเลิกการชำระ/ลบ ไม่งั้นลูกค้าจ่ายซ้ำ หรือได้เครดิตฟรี
+  const creditMarker = `บิล ${inv.id}`;
+  const isCredited = async () => {
+    const { listAllMemberTopups } = await import("@/lib/customers-store");
+    return (await listAllMemberTopups()).some(
+      (t) => t.customerId === inv.customerId && (t.note || "").includes(creditMarker)
+    );
+  };
+  if (
+    ["unmark_paid", "mark_paid", "receive_payment", "receive_deposit", "apply_deposit_credit", "delete"].includes(
+      action
+    ) &&
+    (await isCredited())
+  ) {
+    return NextResponse.json({ error: "converted_to_credit" }, { status: 400 });
+  }
+
   if (action === "unmark_paid") {
     const res = await revertInvoicePaid(id);
     if (!res.ok) {
@@ -529,20 +546,20 @@ async function handlePatch(req: NextRequest) {
     return NextResponse.json({ ok: true, invoice: res.invoice });
   }
 
-  // ลูกค้าจ่ายแล้วแต่ไม่มาใช้บริการ (ร้านไม่คืนเงิน) → เก็บยอดที่จ่ายไว้เป็นเครดิต Member ใช้ครั้งหน้า
-  // เงินก้อนนี้ลงรายรับไปแล้วตอนรับเงิน จึงเติมแบบไม่นับรายรับซ้ำ (isLegacy) · บิลยังคงสถานะจ่ายแล้วไว้เป็นหลักฐาน
+  // ลูกค้าจ่ายแล้ว (ครบ/มัดจำ/บางส่วน) แต่ไม่มาใช้บริการ (ร้านไม่คืนเงิน) → เก็บยอดที่จ่ายไว้เป็นเครดิต Member
+  // เงินก้อนนี้ลงรายรับไปแล้วตอนรับเงิน จึงเติมแบบไม่นับรายรับซ้ำ (isLegacy) · บิลคงสถานะเดิมไว้เป็นหลักฐาน
   if (action === "to_credit") {
-    if (inv.status !== "paid") {
-      return NextResponse.json({ error: "not_paid" }, { status: 400 });
-    }
-    const amount = Math.max(0, Math.round(inv.total));
-    if (!amount) return NextResponse.json({ error: "zero_amount" }, { status: 400 });
-    const { topupMemberCredit, listAllMemberTopups } = await import("@/lib/customers-store");
-    const marker = `บิล ${inv.id}`;
-    const already = (await listAllMemberTopups()).some(
-      (t) => t.customerId === inv.customerId && (t.note || "").includes(marker)
-    );
-    if (already) return NextResponse.json({ error: "already_credited" }, { status: 400 });
+    // จ่ายครบ → ทั้งบิล · ยังไม่ปิดแต่รับมัดจำ/จ่ายบางส่วนมาแล้ว → เท่ายอดที่รับมาจริง
+    const amount =
+      inv.status === "paid"
+        ? Math.max(0, Math.round(inv.total))
+        : inv.depositReceivedAt
+          ? Math.max(0, Math.round(inv.deposit || 0))
+          : 0;
+    if (!amount) return NextResponse.json({ error: "nothing_received" }, { status: 400 });
+    const { topupMemberCredit } = await import("@/lib/customers-store");
+    const marker = creditMarker;
+    if (await isCredited()) return NextResponse.json({ error: "already_credited" }, { status: 400 });
     const topup = await topupMemberCredit(inv.customerId, {
       paidAmount: amount,
       isLegacy: true,

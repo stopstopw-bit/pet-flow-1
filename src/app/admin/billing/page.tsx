@@ -1320,7 +1320,11 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
             ? "รับมัดจำบิลนี้ไปแล้ว"
             : data.error === "already_credited"
               ? "บิลนี้โยกเป็นเครดิตไปแล้ว"
-              : "ไม่สำเร็จ",
+              : data.error === "converted_to_credit"
+                ? "บิลนี้โยกเป็นเครดิตไปแล้ว — รับเงินเพิ่ม/ยกเลิก/ลบไม่ได้"
+                : data.error === "nothing_received"
+                  ? "บิลนี้ยังไม่ได้รับเงินเลย"
+                  : "ไม่สำเร็จ",
           "error"
         );
       }
@@ -2820,6 +2824,23 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
                 { label: "ส่ง LINE หาลูกค้า", icon: "send", onClick: openSend },
                 { label: "ใบเสนอราคา / ใบแจ้งหนี้", icon: "doc", onClick: openDocs },
                 { label: "แก้ไขบิล", icon: "edit", onClick: () => editInvoice(inv) },
+                // รับมัดจำ/จ่ายบางส่วนมาแล้วแต่ลูกค้าไม่มา → โยกเฉพาะยอดที่รับแล้วเป็นเครดิต
+                ...(receivedOf(inv) > 0
+                  ? [
+                      {
+                        label: `โยกยอดที่รับแล้ว ${receivedOf(inv).toLocaleString()} บาทเป็นเครดิต`,
+                        icon: "wallet" as const,
+                        disabled: invoiceBusy === `${inv.id}:to_credit`,
+                        onClick: () =>
+                          invoiceAction(
+                            inv.id,
+                            "to_credit",
+                            `โยกเป็นเครดิตแล้ว 💰 +${receivedOf(inv).toLocaleString()} บาท ใช้ได้ครั้งหน้า`,
+                            `โยกยอดที่รับแล้ว ${receivedOf(inv).toLocaleString()} บาท ไปเป็นเครดิต Member ของ ${inv.customerName}?\nลูกค้าไม่มา — ใช้เครดิตนี้จ่ายครั้งหน้าได้ (ไม่นับรายรับซ้ำ) · หลังจากนี้บิลนี้รับเงินเพิ่มไม่ได้`
+                          ),
+                      },
+                    ]
+                  : []),
                 { label: "ลบบิล", icon: "trash", danger: true, disabled: invoiceBusy === `${inv.id}:delete`, onClick: del },
               ];
           return (
