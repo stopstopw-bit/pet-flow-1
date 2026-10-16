@@ -40,12 +40,14 @@ let memSecrets: SecretsPayload = {};
 async function persistSecrets(next: SecretsPayload) {
   const sb = getSupabase();
   if (sb) {
-    await sb.from("site_config").upsert({
+    const { error } = await sb.from("site_config").upsert({
       id: secretsId(),
       tenant_id: requireTenantId(),
       data: next,
       updated_at: new Date().toISOString(),
     });
+    // เคยเงียบไว้ → หน้า setup ขึ้น "บันทึกแล้ว" ทั้งที่ยังไม่มีตาราง site_config
+    if (error) throw new Error(`บันทึกไม่สำเร็จ: ${error.message}`);
   } else {
     memSecrets = next;
   }
