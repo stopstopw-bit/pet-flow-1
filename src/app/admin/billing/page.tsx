@@ -1,6 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { PosPanel } from "@/components/PosPanel";
+import type { PosProduct } from "@/lib/pos-store";
 import { SERVICE_PRESETS, type ServicePreset } from "@/lib/service-presets";
 import { CustomerSendButtons } from "@/components/CustomerSendButtons";
 import { toast } from "@/components/Toast";
@@ -62,6 +65,7 @@ type Invoice = {
     label: string;
     amount: number;
     kind?: string;
+    productId?: string;
     catName?: string;
     qty?: number;
     unitAmount?: number;
@@ -86,7 +90,7 @@ type Booking = {
   groomProgram?: string;
 };
 
-type ItemKind = "grooming" | "room" | "service" | "custom" | "freebie" | "product" | "package";
+type ItemKind = "grooming" | "room" | "service" | "custom" | "freebie" | "package" | "product";
 type Item = {
   kind: ItemKind;
   program: string;
@@ -101,8 +105,6 @@ type Item = {
   catName?: string;
   /** จำนวนชิ้น (ห้องพักใช้ "คืน" แทน) */
   qty?: number;
-  /** สินค้าหน้าร้านที่แตะเพิ่มจากกริด (products-store.ts) — ใช้ตัดสต็อกตอนจ่ายเงิน */
-  productId?: string;
   /** ราคาต่อหน่วยที่ตกลงกับลูกค้าคนนี้ — ทับราคากลางของร้านเฉพาะบิลนี้
    *  undefined = ใช้ราคาปกติ, 0 = ตั้งใจให้ฟรี (จึงเช็ค undefined ไม่ใช่ falsy) */
   priceOverride?: number;
@@ -112,6 +114,8 @@ type Item = {
   /** บรรทัดค่าห้องจากบิลเดิมที่เปิดมาแก้ (โหลดเป็น "พิมพ์เอง") — qty = จำนวนคืน
    *  บันทึกกลับเป็นค่าห้อง "× N คืน" ไม่ใช่ "× N" ระบบต่อคืนจะได้นับคืนที่จ่ายไปแล้วถูก */
   roomLine?: { note?: string };
+  /** สินค้าหน้าร้าน (kind "product") — ออก/แก้/ลบบิลแล้วตัด/คืนสต็อกให้เอง */
+  productId?: string;
 };
 
 /**
@@ -320,6 +324,7 @@ const KIND_OPTIONS: { id: ItemKind; label: string }[] = [
   { id: "grooming", label: "อาบน้ำ / กรูม" },
   { id: "room", label: "ห้องพัก" },
   { id: "service", label: "บริการเสริม" },
+  { id: "product", label: "สินค้าหน้าร้าน" },
   { id: "freebie", label: "ของแถม (ฟรี)" },
   { id: "package", label: "ขายคอร์ส/เครดิต (ไม่ได้แต้ม)" },
   { id: "custom", label: "พิมพ์เอง" },
@@ -377,12 +382,20 @@ function NumField({
   );
 }
 
-export default function BillingPage() {
+function BillsView({ tabs }: { tabs: React.ReactNode }) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [promos, setPromos] = useState<Promo[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [rooms, setRooms] = useState<(ServicePreset & { id: string; pricing: ReturnType<typeof roomPricing> })[]>([]);
   const [servicePresets, setServicePresets] = useState<ServicePreset[]>(SERVICE_PRESETS);
+  /** สินค้าหน้าร้าน — เลือกใส่บิลได้ (ลูกค้ามาใช้บริการแล้วซื้อของติดมือด้วย) */
+  const [posProducts, setPosProducts] = useState<PosProduct[]>([]);
+  useEffect(() => {
+    fetch("/api/pos/products")
+      .then((r) => r.json())
+      .then((d) => setPosProducts(d.products || []))
+      .catch(() => {});
+  }, []);
   const [freebiePresets, setFreebiePresets] = useState<string[]>(FREEBIE_PRESETS);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [bookingId, setBookingId] = useState<string | undefined>(undefined);
@@ -1014,7 +1027,7 @@ export default function BillingPage() {
     const it = items[idx];
     if (!it) return;
     const std = standardUnitPrice(it, groomPrograms);
-    if (it.kind === "service" || it.kind === "custom" || it.kind === "package") {
+    if (it.kind === "service" || it.kind === "custom" || it.kind === "package" || it.kind === "product") {
       // สามอย่างนี้ราคาอยู่ในช่อง amount อยู่แล้ว แก้ตรงนั้นตรงไปตรงมากว่า
       updateItem(idx, { amount: n, priceOverride: undefined });
       return;
@@ -1027,7 +1040,7 @@ export default function BillingPage() {
 
   const changeKind = (idx: number, kind: ItemKind) => {
     // เลือกจาก dropdown นี้ได้เฉพาะ kind ที่พิมพ์เอง (ไม่มี "product" เป็นตัวเลือก) —
-    // ต้องล้าง productId เสมอ ไม่งั้นเปลี่ยนจากสินค้าไปเป็นรายการอื่นแล้วจะยังไปตัดสต็อกสินค้าเดิมตอนจ่ายเงิน
+    // ต้องล้าง productId เสมอ ไม่งั้นเปลี่ยนจากสินค้าไปเป็นรายการอื่นแล้วจะยังไปตัดสต็อกสินค้าเดิมตอนบันทึกบิล
     let patch: Partial<Item> = { kind, productId: undefined };
     if (kind === "grooming") {
       const prog = groomPrograms[0];
@@ -1041,6 +1054,9 @@ export default function BillingPage() {
       };
     } else if (kind === "service") {
       patch = { kind, label: servicePresets[0]?.label || "", amount: servicePresets[0]?.amount || 0 };
+    } else if (kind === "product") {
+      const p = posProducts[0];
+      patch = { kind, productId: p?.id, label: p?.name || "", amount: p?.price || 0 };
     } else if (kind === "freebie") {
       patch = { kind, label: freebiePresets[0] || "", amount: 0 };
     } else {
@@ -1122,6 +1138,7 @@ export default function BillingPage() {
         ...lines[i],
         kind: it.roomLine ? ("room" as const) : it.kind,
         ...(it.kind === "grooming" ? { program: it.program } : {}),
+        ...(it.kind === "product" && it.productId ? { productId: it.productId } : {}),
       }))
       .filter((l) => l.label.trim());
 
@@ -1146,7 +1163,14 @@ export default function BillingPage() {
         resetForm();
         load();
       } else {
-        toast(data.error === "already_paid" ? "บิลปิดแล้ว แก้ไขไม่ได้" : "แก้ไขไม่สำเร็จ", "error");
+        toast(
+          data.error === "already_paid"
+            ? "บิลปิดแล้ว แก้ไขไม่ได้"
+            : data.error === "out_of_stock"
+              ? `สต็อกไม่พอ: ${data.message || ""}`
+              : "แก้ไขไม่สำเร็จ",
+          "error"
+        );
       }
       return;
     }
@@ -1206,6 +1230,17 @@ export default function BillingPage() {
             kind: "custom" as const,
             label: base,
             roomLine: { note: note || undefined },
+            catName: it.catName,
+            qty,
+            amount: it.unitAmount ?? Math.round(it.amount / qty),
+          };
+        }
+        if (it.kind === "product" && it.productId) {
+          return {
+            ...newGrooming(undefined, groomPrograms),
+            kind: "product" as const,
+            productId: it.productId,
+            label: it.label.replace(/^🐱 .+? · /, "").replace(/ × \d+$/, ""),
             catName: it.catName,
             qty,
             amount: it.unitAmount ?? Math.round(it.amount / qty),
@@ -1617,6 +1652,7 @@ export default function BillingPage() {
           เอกสารที่ออกแล้ว
         </a>
       </div>
+      {tabs}
 
       <div className="mb-6 space-y-5 rounded-petflow bg-card p-4 shadow-petflow-sm">
         {/* ── ดึงจากนัด ── */}
@@ -2012,6 +2048,32 @@ export default function BillingPage() {
                       ))}
                     </select>
                   )}
+
+                  {item.kind === "product" &&
+                    (posProducts.length === 0 ? (
+                      <p className="rounded-lg bg-paper px-3 py-2 text-[11px] text-brown-soft">
+                        ยังไม่มีสินค้า เพิ่มได้ที่แท็บ ขายหน้าร้าน › สินค้า
+                      </p>
+                    ) : (
+                      <select
+                        value={item.productId || ""}
+                        onChange={(e) => {
+                          const p = posProducts.find((x) => x.id === e.target.value);
+                          if (p) updateItem(i, { productId: p.id, label: p.name, amount: p.price, priceOverride: undefined });
+                        }}
+                        className={sub}
+                      >
+                        {!posProducts.some((p) => p.id === item.productId) && (
+                          <option value={item.productId || ""}>{item.label || "เลือกสินค้า"}</option>
+                        )}
+                        {posProducts.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} · {p.price.toLocaleString()} ฿
+                            {p.trackStock ? ` (เหลือ ${p.stock})` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    ))}
 
                   {(item.kind === "custom" || item.kind === "package") && (
                     <input
@@ -3036,5 +3098,48 @@ export default function BillingPage() {
         );
       })()}
     </div>
+  );
+}
+
+/** คิดเงิน — บิลบริการกับขายหน้าร้านอยู่หน้าเดียวกัน สลับด้วยแท็บ (?view=pos) */
+function BillingTabs() {
+  const params = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const tab = params.get("view") === "pos" ? "pos" : "bills";
+  const tabs = (
+    <Segmented
+      value={tab}
+      onChange={(v) => router.replace(v === "pos" ? `${pathname}?view=pos` : pathname, { scroll: false })}
+      className="mb-4"
+      options={[
+        { id: "bills", label: "บิลบริการ", icon: "receipt" },
+        { id: "pos", label: "ขายหน้าร้าน", icon: "cart" },
+      ]}
+    />
+  );
+  if (tab === "pos") {
+    return (
+      <PosPanel
+        header={
+          <>
+            <div className="mb-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Billing</p>
+              <h1 className="text-lg font-extrabold text-petflow-chocolate">คิดเงิน · ขายหน้าร้าน</h1>
+            </div>
+            {tabs}
+          </>
+        }
+      />
+    );
+  }
+  return <BillsView tabs={tabs} />;
+}
+
+export default function BillingPage() {
+  return (
+    <Suspense fallback={null}>
+      <BillingTabs />
+    </Suspense>
   );
 }

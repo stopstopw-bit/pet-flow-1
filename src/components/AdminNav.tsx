@@ -11,7 +11,6 @@ export const ADMIN_TABS = [
   { href: "/admin/bookings/new", label: "จองใหม่", icon: "➕" },
   { href: "/admin/customers", label: "ลูกค้า", icon: "👤" },
   { href: "/admin/billing", label: "คิดเงิน", icon: "💳" },
-  { href: "/admin/pos", label: "ขายหน้าร้าน", icon: "🛒" },
   { href: "/admin/finance", label: "รายรับ-รายจ่าย", icon: "📒" },
   { href: "/admin/tax", label: "เอกสารรายได้ / ภาษี", icon: "📑" },
   { href: "/admin/insights", label: "สรุปข้อมูล", icon: "📊" },
@@ -41,8 +40,12 @@ export function getAllowedMenus(): string[] | null {
   try {
     const menus = JSON.parse(sessionStorage.getItem("petflow-menus") || "[]");
     if (!Array.isArray(menus)) return [];
-    // สิทธิ์ "สินค้าหน้าร้าน" เดิม = ขายหน้าร้าน (POS) ตอนนี้ — หน้าเดิมรวมเข้า POS แล้ว
-    return menus.includes("/admin/products") && !menus.includes("/admin/pos") ? [...menus, "/admin/pos"] : menus;
+    // สิทธิ์ "สินค้าหน้าร้าน" เดิม = ขายหน้าร้าน (POS) และขายหน้าร้านย้ายไปเป็นแท็บในหน้าคิดเงินแล้ว
+    // พนักงานที่เคยได้สิทธิ์ทั้งสองแบบยังเข้าได้
+    const out = [...menus];
+    if (out.includes("/admin/products") && !out.includes("/admin/pos")) out.push("/admin/pos");
+    if (out.includes("/admin/pos") && !out.includes("/admin/billing")) out.push("/admin/billing");
+    return out;
   } catch {
     return [];
   }
