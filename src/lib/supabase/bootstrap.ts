@@ -27,6 +27,20 @@ function getDatabaseUrl() {
   return (process.env.DATABASE_URL || process.env.POSTGRES_URL_NON_POOLING || "").trim();
 }
 
+/**
+ * URL จากปุ่มเชื่อม Supabase ใน Vercel มี ?sslmode=require ติดมา — pg จะเอาค่านี้ทับ ssl ที่ส่งเอง
+ * แล้วตรวจใบรับรองเต็มรูปแบบ → "self-signed certificate in certificate chain" ตัดออกให้ใช้ ssl ด้านล่างแทน
+ */
+function withoutSslParams(url: string) {
+  try {
+    const u = new URL(url);
+    for (const k of ["sslmode", "sslcert", "sslkey", "sslrootcert", "ssl"]) u.searchParams.delete(k);
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
 export async function checkSetupStatus(): Promise<SetupStatus> {
   const rawUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)?.trim();
   const supabaseUrl = Boolean(rawUrl);
@@ -115,7 +129,7 @@ export async function bootstrapDatabase() {
   }
 
   const client = new (await import("pg")).default.Client({
-    connectionString: url,
+    connectionString: withoutSslParams(url),
     ssl: { rejectUnauthorized: false },
   });
 
