@@ -40,7 +40,7 @@ export function isPlaceholderSupabaseUrl(raw?: string): boolean {
 }
 
 export function getSupabaseUrl() {
-  return normalizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
+  return normalizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL);
 }
 
 export function isSupabaseConfigured() {

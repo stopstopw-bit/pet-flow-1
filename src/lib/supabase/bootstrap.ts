@@ -22,11 +22,16 @@ const REQUIRED_TABLES = [
   "site_config",
 ];
 
+/** ต่อ Supabase ผ่านปุ่มเชื่อมใน Vercel จะได้ POSTGRES_URL_NON_POOLING แทน DATABASE_URL — รับได้ทั้งคู่ */
+function getDatabaseUrl() {
+  return (process.env.DATABASE_URL || process.env.POSTGRES_URL_NON_POOLING || "").trim();
+}
+
 export async function checkSetupStatus(): Promise<SetupStatus> {
-  const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const rawUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)?.trim();
   const supabaseUrl = Boolean(rawUrl);
   const serviceKey = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY?.trim());
-  const databaseUrl = Boolean(process.env.DATABASE_URL?.trim());
+  const databaseUrl = Boolean(getDatabaseUrl());
   const normalizedUrl = getSupabaseUrl();
 
   if (!supabaseUrl || !serviceKey) {
@@ -99,7 +104,7 @@ function loadSchemaSql() {
 
 /** สร้างตารางทั้งหมด — ต้องมี DATABASE_URL (Connection string จาก Supabase) */
 export async function bootstrapDatabase() {
-  const url = process.env.DATABASE_URL;
+  const url = getDatabaseUrl();
   if (!url) {
     return {
       ok: false as const,
