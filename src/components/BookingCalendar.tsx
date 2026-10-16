@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { splitVaccinePhotos } from "@/lib/vaccine-photos";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
@@ -26,6 +27,9 @@ import { effectiveBookingStatus } from "@/lib/booking-status";
 import { GROOM_PROGRAMS, resolveGroomPrograms, type GroomProgram } from "@/lib/grooming-prices";
 import { hasTransport, transportLabel } from "@/lib/transport";
 import { DEPOSIT_STATUS_LABEL } from "@/lib/booking-deposit";
+import { GroomClashNote, confirmClashes, useGroomClashes } from "@/components/GroomClashNote";
+import { addDaysIso, nightsBetweenIso } from "@/lib/stay-line";
+import { formatThaiDateShort } from "@/lib/format-thai-date";
 
 type CalendarDay = EditableBooking & {
   customerId?: string;
@@ -217,6 +221,143 @@ function MiniEntry({ group, onClick }: { group: CalendarDay[]; onClick: () => vo
   );
 }
 
+/** ห้องว่างทั้งเดือน — ดูทีเดียวว่าวันไหนยังรับได้ แตะวันเพื่อดูผังห้องของวันนั้น */
+function RoomMonthAvailability({
+  rooms,
+  bookings,
+  month,
+  selected,
+  today,
+  onMonth,
+  onPick,
+}: {
+  rooms: { id: string; name: string; count?: number; maxCats?: number; composedOf?: { typeId: string; units: number }[]; cats?: { th: string }; extra?: { th: string }; closures?: RoomClosure[] }[];
+  bookings: CalendarDay[];
+  month: string;
+  selected: string;
+  today: string;
+  onMonth: (ym: string) => void;
+  onPick: (dateISO: string) => void;
+}) {
+  const [typeId, setTypeId] = useState("all");
+  const physical = rooms.filter((r) => (r.count || 0) > 0);
+  const [y, m] = month.split("-").map(Number);
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const startPad = new Date(y, m - 1, 1).getDay();
+
+  const days = useMemo(() => {
+    const boardRooms = rooms.map((r) => ({
+      id: r.id,
+      name: r.name,
+      count: r.count || 0,
+      maxCats: roomCapacity(r),
+      closures: r.closures,
+    }));
+    return Array.from({ length: daysInMonth }, (_, i) => {
+      const key = `${month}-${String(i + 1).padStart(2, "0")}`;
+      const b = buildRoomBoard(boardRooms, bookings, key);
+      const t = typeId === "all" ? null : b.byType.find((x) => x.typeId === typeId);
+      return {
+        key,
+        day: i + 1,
+        free: t ? t.free : b.free,
+        total: t ? t.total : b.totalUnits,
+      };
+    });
+  }, [rooms, bookings, month, daysInMonth, typeId]);
+
+  const shift = (delta: number) => {
+    const d = new Date(y, m - 1 + delta, 1);
+    onMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  };
+  const fullDays = days.filter((d) => d.total > 0 && d.free <= 0).length;
+
+  return (
+    <div className="mb-4 rounded-petflow-sm border border-petflow-line bg-paper/50 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Month</p>
+          <p className="truncate text-sm font-extrabold text-petflow-chocolate">
+            ห้องว่าง เดือน {m}/{y}
+          </p>
+          <p className="text-[10px] text-brown-faint">
+            {fullDays > 0 ? `เต็ม ${fullDays} วัน` : "ยังไม่มีวันที่เต็ม"} · แตะวันเพื่อดูผังห้อง
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            aria-label="เดือนก่อน"
+            onClick={() => shift(-1)}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-card text-brown"
+          >
+            <Icon name="back" size={16} />
+          </button>
+          <button
+            type="button"
+            aria-label="เดือนถัดไป"
+            onClick={() => shift(1)}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-card text-brown"
+          >
+            <Icon name="chevron" size={16} />
+          </button>
+        </div>
+      </div>
+
+      {physical.length > 1 && (
+        <div className="-mx-1 mb-2.5 flex gap-1.5 overflow-x-auto px-1 pb-0.5">
+          {[{ id: "all", name: "ทุกห้อง" }, ...physical].map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              aria-pressed={typeId === r.id}
+              onClick={() => setTypeId(r.id)}
+              className={`min-h-[34px] shrink-0 rounded-full border px-3 text-[11px] font-bold transition ${
+                typeId === r.id
+                  ? "border-petflow-chocolate bg-petflow-chocolate text-white"
+                  : "border-petflow-line bg-card text-brown"
+              }`}
+            >
+              {r.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="grid grid-cols-7 gap-1 text-center">
+        {["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"].map((d) => (
+          <div key={d} className="pb-0.5 text-[10px] font-bold text-brown-faint">
+            {d}
+          </div>
+        ))}
+        {Array.from({ length: startPad }).map((_, i) => (
+          <div key={`pad-${i}`} />
+        ))}
+        {days.map((d) => {
+          const full = d.total > 0 && d.free <= 0;
+          const low = !full && d.total > 0 && d.free <= Math.max(1, Math.floor(d.total * 0.2));
+          const past = d.key < today;
+          const isSelected = d.key === selected;
+          return (
+            <button
+              key={d.key}
+              type="button"
+              onClick={() => onPick(d.key)}
+              aria-label={`${d.day} ว่าง ${Math.max(0, d.free)} ห้อง`}
+              className={`flex min-h-[48px] flex-col items-center justify-center gap-0.5 rounded-lg py-1 transition ${
+                full ? "bg-red-50 text-red-600" : low ? "bg-honey/30 text-petflow-chocolate" : "bg-sage/20 text-brown"
+              } ${past ? "opacity-45" : ""} ${isSelected ? "ring-2 ring-latte-deep" : d.key === today ? "ring-1 ring-honey-deep" : ""}`}
+            >
+              <span className="text-sm font-extrabold leading-none">{d.day}</span>
+              <span className="text-[9px] font-bold leading-none">{full ? "เต็ม" : `ว่าง ${d.free}`}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function BookingCalendar() {
   const router = useRouter();
   const [bookings, setBookings] = useState<CalendarDay[]>([]);
@@ -271,6 +412,13 @@ export function BookingCalendar() {
     checkout: string;
   } | null>(null);
   const [movingBusy, setMovingBusy] = useState(false);
+  // คิวอาบน้ำที่ชนกับวัน/เวลาใหม่ (ไม่นับตัวในบ้านที่กำลังเลื่อนเอง)
+  const movingGroom = moving && moving.group[0].service !== "room";
+  const moveClashes = useGroomClashes(
+    movingGroom ? moving.date : "",
+    moving?.time || "",
+    moving ? moving.group.map((g) => g.id) : []
+  );
 
   const openMove = (group: CalendarDay[]) => {
     const h = group[0];
@@ -291,6 +439,7 @@ export function BookingCalendar() {
       toast("วันออกต้องหลังวันเข้าพักนะ", "error");
       return;
     }
+    if (!isRoom && !confirmClashes(moveClashes)) return;
     setMovingBusy(true);
     try {
       const res = await fetch("/api/bookings", {
@@ -316,7 +465,7 @@ export function BookingCalendar() {
           (inv?.kind === "updated"
             ? ` · แก้บิลเป็น ${inv.nights} คืน ${Number(inv.total).toLocaleString()}฿`
             : inv?.kind === "created_extra"
-              ? ` · ออกบิลต่อคืน ${inv.nights} คืน ${Number(inv.total).toLocaleString()}฿`
+              ? ` · ออกบิลพักต่อ ${inv.nights} คืน ${Number(inv.total).toLocaleString()}฿`
               : ""),
         "success"
       );
@@ -330,27 +479,43 @@ export function BookingCalendar() {
 
   /**
    * 🌙 ต่อคืน — กดทีเดียว เลื่อนวันออกให้ทุกตัวในบ้าน + ปรับบิลให้ตรงจำนวนคืน
-   * (บิลยังไม่ปิด = แก้บิลเดิม · ปิดแล้ว = ออกบิลต่อคืนเฉพาะคืนที่เพิ่ม)
+   * (บิลยังไม่ปิด = แก้บิลเดิม · ปิดแล้ว = ออกบิลพักต่อเฉพาะคืนที่เพิ่ม)
    */
-  const extendStay = async (group: CalendarDay[]) => {
+  // หน้าต่าง "ต่อคืน" — เลือกวันออกใหม่จากปฏิทิน (ไม่ต้องนับเองว่ากี่คืน)
+  const [extending, setExtending] = useState<{
+    group: CalendarDay[];
+    oldOut: string;
+    newOut: string;
+  } | null>(null);
+  const [extendBusy, setExtendBusy] = useState(false);
+
+  const extendStay = (group: CalendarDay[]) => {
     const host = group[0];
     const oldOut = host.checkout || "";
     if (!host.checkin || !oldOut) {
       toast("นัดนี้ยังไม่มีวันเข้า-ออก — กดเมนู ⋯ > แก้ไข ใส่วันก่อนนะ", "error");
       return;
     }
-    const raw = prompt(
-      `🌙 ต่อคืน — ${group.map((g) => g.catName).join(", ")}\nวันออกเดิม ${oldOut}\n\nต่ออีกกี่คืน?`,
-      "1"
-    );
-    if (raw == null) return;
-    const extra = Math.round(Number(raw) || 0);
-    if (extra <= 0) return;
-    const d = new Date(`${oldOut}T12:00:00`);
-    d.setDate(d.getDate() + extra);
-    const newOut = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-      d.getDate()
-    ).padStart(2, "0")}`;
+    setExtending({ group, oldOut, newOut: addDaysIso(oldOut, 1) });
+  };
+
+  const saveExtend = async () => {
+    if (!extending) return;
+    const { group, oldOut, newOut } = extending;
+    if (!newOut || newOut <= oldOut) {
+      toast("วันออกใหม่ต้องหลังวันออกเดิมนะ", "error");
+      return;
+    }
+    setExtendBusy(true);
+    try {
+      if (await doExtend(group, oldOut, newOut)) setExtending(null);
+    } finally {
+      setExtendBusy(false);
+    }
+  };
+
+  const doExtend = async (group: CalendarDay[], oldOut: string, newOut: string) => {
+    const host = group[0];
 
     // เช็คว่าห้องประเภทนี้ยังว่างช่วงคืนที่เพิ่ม (ไม่นับตัวเองทั้งบ้าน)
     const roomId = host.room || host.roomType || "";
@@ -376,7 +541,7 @@ export function BookingCalendar() {
         free.length === 0 &&
         !confirm(`ห้องประเภทนี้เต็มบางคืนในช่วง ${oldOut} → ${newOut}\nยังจะต่อคืนอยู่ไหม?`)
       )
-        return;
+        return false;
     }
 
     const res = await fetch("/api/bookings", {
@@ -394,7 +559,7 @@ export function BookingCalendar() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       toast("ต่อคืนไม่สำเร็จ", "error");
-      return;
+      return false;
     }
     const inv = data.invoice;
     toast(
@@ -402,12 +567,13 @@ export function BookingCalendar() {
         (inv?.kind === "updated"
           ? ` · แก้บิลเป็น ${inv.nights} คืน ${Number(inv.total).toLocaleString()}฿`
           : inv?.kind === "created_extra"
-            ? ` · ออกบิลต่อคืน ${inv.nights} คืน ${Number(inv.total).toLocaleString()}฿`
+            ? ` · ออกบิลพักต่อ ${inv.nights} คืน ${Number(inv.total).toLocaleString()}฿`
             : ""),
       "success"
     );
     if (inv?.kind === "warn") alert(`⚠️ ${inv.message}`);
     load();
+    return true;
   };
 
   const load = useCallback(async () => {
@@ -503,7 +669,7 @@ export function BookingCalendar() {
   /** มุมมองตาราง — เดือนดูภาพรวม, สัปดาห์วางแผน, วันทำงานหน้าร้าน, ห้องดูที่ว่าง */
   const [view, setView] = useState<"month" | "week" | "day" | "rooms">("month");
 
-  const liveBookings = bookings.filter((b) => b.status !== "cancelled");
+  const liveBookings = useMemo(() => bookings.filter((b) => b.status !== "cancelled"), [bookings]);
   const dayBookings = liveBookings.filter((b) => bookingOnDate(b, activeDate));
 
   const pickDate = (key: string) => {
@@ -659,6 +825,16 @@ export function BookingCalendar() {
     setSelectedDate(key);
     setViewMonth(key.slice(0, 7));
   };
+  /** กระโดดไปวัน (yyyy-mm-dd) หรือเดือน (yyyy-mm) ที่เลือกจากปฏิทินของเครื่อง */
+  const jumpTo = (value: string) => {
+    if (/^\d{4}-\d{2}$/.test(value)) {
+      setViewMonth(value);
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return;
+    setSelectedDate(value);
+    setViewMonth(value.slice(0, 7));
+  };
   const shiftView = (delta: number) =>
     view === "month" ? shiftMonth(delta) : shiftDays(view === "week" ? delta * 7 : delta);
 
@@ -752,7 +928,7 @@ export function BookingCalendar() {
           <div
             role="dialog"
             aria-modal="true"
-            className="w-full max-w-sm rounded-t-[28px] bg-card px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 shadow-petflow sm:rounded-petflow sm:p-5"
+            className="max-h-[92dvh] w-full max-w-sm overflow-y-auto overscroll-contain rounded-t-[28px] bg-card px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 shadow-petflow sm:rounded-petflow sm:p-5"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-petflow-line sm:hidden" />
@@ -812,6 +988,9 @@ export function BookingCalendar() {
                     ))}
                   </select>
                 </label>
+                <div className="col-span-full">
+                  <GroomClashNote clashes={moveClashes} />
+                </div>
               </div>
             )}
             <div className="mt-5 flex gap-2">
@@ -830,6 +1009,72 @@ export function BookingCalendar() {
                 className="min-h-[48px] flex-[1.4] rounded-full bg-petflow-chocolate text-sm font-extrabold text-card shadow-petflow-sm disabled:opacity-50"
               >
                 {movingBusy ? "กำลังเลื่อน..." : "เลื่อนทั้งบ้าน"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {extending && (
+        <div
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-petflow-chocolate/40 backdrop-blur-[2px] sm:items-center sm:p-4"
+          onClick={() => !extendBusy && setExtending(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="max-h-[92dvh] w-full max-w-sm overflow-y-auto overscroll-contain rounded-t-[28px] bg-card px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 shadow-petflow sm:rounded-petflow sm:p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-petflow-line sm:hidden" />
+            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Extend stay</p>
+            <h2 className="flex items-center gap-1.5 text-lg font-extrabold text-petflow-chocolate">
+              <Icon name="bed" size={18} />
+              ต่อคืน
+            </h2>
+            <p className="mb-4 mt-1 text-xs text-brown-soft">
+              {extending.group.map((g) => g.catName).join(", ")} · วันออกเดิม{" "}
+              {formatThaiDateShort(extending.oldOut)}
+            </p>
+            <label className="block text-xs font-bold text-brown-soft">
+              วันออกใหม่
+              <input
+                type="date"
+                min={addDaysIso(extending.oldOut, 1)}
+                value={extending.newOut}
+                onChange={(e) => setExtending({ ...extending, newOut: e.target.value })}
+                className="mt-1 min-h-[44px] w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm text-brown"
+              />
+            </label>
+            {(() => {
+              const n = nightsBetweenIso(extending.oldOut, extending.newOut);
+              return n > 0 ? (
+                <p className="mt-2 rounded-petflow-sm bg-paper px-3 py-2 text-xs font-bold text-brown">
+                  พักต่อ {n} คืน · {formatThaiDateShort(extending.oldOut)} →{" "}
+                  {formatThaiDateShort(extending.newOut)}
+                  <span className="mt-0.5 block text-[10px] font-normal text-brown-faint">
+                    บิลจ่ายแล้ว → ออกบิลใหม่เฉพาะช่วงนี้ · บิลยังไม่จ่าย → แก้บิลเดิมให้
+                  </span>
+                </p>
+              ) : (
+                <p className="mt-2 text-[11px] text-red-600">วันออกใหม่ต้องหลังวันออกเดิม</p>
+              );
+            })()}
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                disabled={extendBusy}
+                onClick={() => setExtending(null)}
+                className="min-h-[48px] flex-1 rounded-full bg-paper text-sm font-bold text-brown"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                disabled={extendBusy || nightsBetweenIso(extending.oldOut, extending.newOut) <= 0}
+                onClick={saveExtend}
+                className="min-h-[48px] flex-[1.4] rounded-full bg-petflow-chocolate text-sm font-extrabold text-card shadow-petflow-sm disabled:opacity-50"
+              >
+                {extendBusy ? "กำลังต่อคืน..." : "ต่อคืน"}
               </button>
             </div>
           </div>
@@ -879,6 +1124,7 @@ export function BookingCalendar() {
           groomSlots={groomSlots}
           groomPrograms={groomPrograms}
           roomBookings={liveBookings}
+          customerId={editing.b.customerId}
           onClose={() => setEditing(null)}
           onSaved={load}
         />
@@ -908,28 +1154,15 @@ export function BookingCalendar() {
             >
               <Icon name="back" size={18} />
             </button>
-            {/* แตะหัวข้อวันที่ = เปิดปฏิทินเลือกวันกระโดดไปได้เลย ไม่ต้องกดลูกศรทีละวัน */}
-            <label className="relative cursor-pointer truncate rounded-full px-1 hover:bg-paper">
-              <h2 className="truncate text-base font-extrabold text-petflow-chocolate underline decoration-dotted decoration-latte underline-offset-4">
-                {viewTitle}
-              </h2>
+            {/* แตะหัวข้อเพื่อกระโดดไปวัน/เดือนไหนก็ได้ ไม่ต้องกดลูกศรทีละวัน */}
+            <label className="relative flex min-w-0 cursor-pointer items-center gap-1 rounded-full px-1">
+              <h2 className="truncate text-base font-extrabold text-petflow-chocolate">{viewTitle}</h2>
+              <Icon name="calendar" size={14} className="shrink-0 text-brown-faint" />
               <input
-                type="date"
-                aria-label="เลือกวันที่"
-                value={activeDate}
-                onClick={(e) => {
-                  try {
-                    (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
-                  } catch {
-                    /* เบราว์เซอร์เก่า — แตะช่องแล้วเปิดเองตามปกติ */
-                  }
-                }}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (!v) return;
-                  setViewMonth(v.slice(0, 7));
-                  pickDate(v);
-                }}
+                type={view === "month" ? "month" : "date"}
+                aria-label={view === "month" ? "เลือกเดือน" : "เลือกวันที่"}
+                value={view === "month" ? ym : activeDate}
+                onChange={(e) => jumpTo(e.target.value)}
                 className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
               />
             </label>
@@ -1047,6 +1280,15 @@ export function BookingCalendar() {
 
         {view === "rooms" && (
           <div>
+            <RoomMonthAvailability
+              rooms={rooms}
+              bookings={liveBookings}
+              month={ym}
+              selected={activeDate}
+              today={today}
+              onMonth={setViewMonth}
+              onPick={(key) => setSelectedDate(key)}
+            />
             {/* สรุปหัวตาราง — ว่างกี่ห้องจริง เห็นตัวเดียวจบ */}
             <div
               className={`mb-3 flex items-center justify-between gap-3 rounded-petflow-sm px-3 py-2.5 ${
@@ -1630,20 +1872,23 @@ export function BookingCalendar() {
                           {x.catName}
                         </span>
                         {x.vaccinePhotoUrl ? (
-                          <a
-                            href={x.vaccinePhotoUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex min-h-[40px] items-center gap-1.5 font-bold text-ok underline"
-                          >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={x.vaccinePhotoUrl}
-                              alt="สมุดวัคซีน"
-                              className="h-8 w-8 rounded border border-petflow-line object-cover"
-                            />
-                            ดูสมุดวัคซีน
-                          </a>
+                          splitVaccinePhotos(x.vaccinePhotoUrl).map((url, vi, all) => (
+                            <a
+                              key={url}
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex min-h-[40px] items-center gap-1.5 font-bold text-ok underline"
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={url}
+                                alt="สมุดวัคซีน"
+                                className="h-8 w-8 rounded border border-petflow-line object-cover"
+                              />
+                              {vi === 0 && `ดูสมุดวัคซีน${all.length > 1 ? ` (${all.length} รูป)` : ""}`}
+                            </a>
+                          ))
                         ) : (
                           <span className="text-brown-faint">ยังไม่ได้แนบสมุดวัคซีน</span>
                         )}
@@ -1777,7 +2022,7 @@ export function BookingCalendar() {
           onClick={() => setZoomSignature(null)}
         >
           <div
-            className="max-w-md rounded-petflow bg-white p-4 shadow-xl"
+            className="max-h-[90dvh] max-w-md overflow-y-auto rounded-petflow bg-white p-4 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <p className="mb-2 flex items-center gap-1.5 text-xs font-bold text-brown-soft">

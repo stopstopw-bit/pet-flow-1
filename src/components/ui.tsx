@@ -1,5 +1,7 @@
 "use client";
 
+import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { Icon } from "@/components/Icon";
 
 /**
@@ -123,7 +125,7 @@ export function EmptyState({ icon = "inbox", title, sub }: { icon?: string; titl
 }
 
 /**
- * เมนู "เพิ่มเติม" (⋯) — รวมปุ่มรองหลายปุ่มไว้ในปุ่มเดียว ใช้ <details> ไม่ต้องมี state
+ * เมนู "เพิ่มเติม" (⋯) — รวมปุ่มรองหลายปุ่มไว้ในปุ่มเดียว เมนูลอยแบบ fixed (portal) จึงไม่โดนตัด/บังด้วยแถบเมนูล่าง
  * items: ปุ่มย่อยแต่ละอัน (label + icon + onClick) — ปุ่มหลักของการ์ดให้วางข้างนอกตามปกติ
  */
 export function MoreMenu({
@@ -135,37 +137,109 @@ export function MoreMenu({
   label?: string;
   align?: "left" | "right";
 }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<CSSProperties | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // วางเมนูแบบ fixed ตามตำแหน่งปุ่ม: ถ้าข้างล่างไม่พอ (ชนแถบเมนูล่าง/ขอบจอ) ให้เด้งขึ้นข้างบน
+  // และจำกัดความสูงให้เลื่อนดูได้ — เมนูจะไม่โดนตัดหรือซ่อนหลัง bottom nav อีก
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const btn = btnRef.current;
+      const menu = menuRef.current;
+      if (!btn || !menu) return;
+      const r = btn.getBoundingClientRect();
+      const vw = window.innerWidth;
+      const vh = window.visualViewport?.height ?? window.innerHeight;
+      const gap = 6;
+      const edge = 8;
+      // แถบเมนูล่าง (+ ปุ่ม Book ที่ยื่นขึ้นมา 16px) กินพื้นที่ด้านล่าง
+      let bottomLimit = vh - edge;
+      document.querySelectorAll("[data-bottom-nav]").forEach((el) => {
+        const top = el.getBoundingClientRect().top;
+        if (top > 0 && top < vh) bottomLimit = Math.min(bottomLimit, top - 20);
+      });
+      const h = menu.scrollHeight;
+      const below = bottomLimit - (r.bottom + gap);
+      const above = r.top - gap - edge;
+      const up = h > below && above > below;
+      const style: CSSProperties = { maxHeight: Math.max(120, up ? above : below) };
+      if (up) style.bottom = vh - r.top + gap;
+      else style.top = r.bottom + gap;
+      if (align === "right") style.right = Math.max(edge, vw - r.right);
+      else style.left = Math.max(edge, r.left);
+      setPos(style);
+    };
+    place();
+    const close = (e: Event) => {
+      const t = e.target as Node | null;
+      if (t && (menuRef.current?.contains(t) || btnRef.current?.contains(t))) return;
+      setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    const onScroll = (e: Event) => {
+      if (menuRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
+    };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", place);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [open, align]);
+
   return (
-    <details className="relative [&_summary::-webkit-details-marker]:hidden">
-      <summary
+    <>
+      <button
+        ref={btnRef}
+        type="button"
         aria-label={label}
-        className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-full bg-paper text-brown"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => {
+          setPos(null);
+          setOpen((o) => !o);
+        }}
+        className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full bg-paper text-brown"
       >
         <Icon name="more" size={18} />
-      </summary>
-      <div
-        className={`absolute z-30 mt-1 min-w-[180px] overflow-hidden rounded-petflow-sm border border-petflow-line bg-card py-1 shadow-petflow ${
-          align === "right" ? "right-0" : "left-0"
-        }`}
-      >
-        {items.map((it) => (
-          <button
-            key={it.label}
-            type="button"
-            disabled={it.disabled}
-            onClick={(e) => {
-              (e.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open");
-              it.onClick();
-            }}
-            className={`flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm font-bold disabled:opacity-40 ${
-              it.danger ? "text-red-700" : "text-brown"
-            } active:bg-paper`}
+      </button>
+      {open &&
+        createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            style={pos ?? { top: 0, left: 0, visibility: "hidden" }}
+            className="fixed z-[80] min-w-[180px] max-w-[calc(100vw-16px)] overflow-y-auto overscroll-contain rounded-petflow-sm border border-petflow-line bg-card py-1 shadow-petflow"
           >
-            {it.icon && <Icon name={it.icon} size={16} />}
-            {it.label}
-          </button>
-        ))}
-      </div>
-    </details>
+            {items.map((it) => (
+              <button
+                key={it.label}
+                type="button"
+                role="menuitem"
+                disabled={it.disabled}
+                onClick={() => {
+                  setOpen(false);
+                  it.onClick();
+                }}
+                className={`flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm font-bold disabled:opacity-40 ${
+                  it.danger ? "text-red-700" : "text-brown"
+                } active:bg-paper`}
+              >
+                {it.icon && <Icon name={it.icon} size={16} />}
+                {it.label}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }

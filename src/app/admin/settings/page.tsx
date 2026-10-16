@@ -1,5 +1,6 @@
 "use client";
 
+import { roomPricing } from "@/lib/room-board";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -1059,6 +1060,14 @@ function MessagesTab({
   );
 }
 
+/** ข้อความค่าแมวตัวเกินที่ลูกค้าเห็น ให้ตรงกับตัวเลขที่ตั้งไว้ */
+function extraCatText(includedCats: number, price: number) {
+  if (!price) return { th: "", en: "" };
+  const n = includedCats + 1;
+  const suf = n === 2 ? "nd" : n === 3 ? "rd" : "th";
+  return { th: `แมวที่ ${n} +${price}`, en: `${n}${suf} cat +${price}` };
+}
+
 function RoomsTab({
   config,
   saving,
@@ -1222,14 +1231,22 @@ function RoomsTab({
                 <Field
                   label="ราคาห้องรวมแมวกี่ตัว"
                   type="number"
-                  value={String(room.includedCats ?? 2)}
-                  onChange={(v) => updateRoom(idx, { includedCats: Math.max(1, Number(v) || 1) })}
+                  value={String(roomPricing(room).base)}
+                  onChange={(v) => {
+                    const includedCats = Math.max(1, Number(v) || 1);
+                    const extraCatPrice = roomPricing(room).extraPrice;
+                    updateRoom(idx, { includedCats, extraCatPrice, extra: extraCatText(includedCats, extraCatPrice) });
+                  }}
                 />
                 <Field
-                  label={`ตัวที่ ${(room.includedCats ?? 2) + 1} ขึ้นไป +฿/ตัว/คืน`}
+                  label={`ตัวที่ ${roomPricing(room).base + 1} ขึ้นไป +฿/ตัว/คืน`}
                   type="number"
-                  value={String(room.extraCatPrice ?? 0)}
-                  onChange={(v) => updateRoom(idx, { extraCatPrice: Math.max(0, Number(v) || 0) })}
+                  value={String(roomPricing(room).extraPrice)}
+                  onChange={(v) => {
+                    const includedCats = roomPricing(room).base;
+                    const extraCatPrice = Math.max(0, Number(v) || 0);
+                    updateRoom(idx, { includedCats, extraCatPrice, extra: extraCatText(includedCats, extraCatPrice) });
+                  }}
                 />
               </div>
             )}

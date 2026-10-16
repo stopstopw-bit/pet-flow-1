@@ -6,12 +6,14 @@ import { useLiff } from "@/components/LiffProvider";
 import { useConfig } from "@/components/ConfigProvider";
 import type { Booking } from "@/lib/business";
 
-import { DEFAULT_MESSAGES } from "@/lib/messages";
+import { DEFAULT_MESSAGES, DEEMED_CONSENT_NOTICE } from "@/lib/messages";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { toJpegDataUrl } from "@/lib/image-convert";
 import { BTN_PRIMARY, PageHeader } from "@/components/PageHeader";
 import { SectionLabel } from "@/components/ui";
 import { Icon } from "@/components/Icon";
+import { MAX_VACCINE_PHOTOS } from "@/lib/vaccine-photos";
+import { ID_CARD_PURPOSE, watermarkIdCard } from "@/lib/id-card-watermark";
 
 type StayBooking = Booking & {
   checkin?: string;
@@ -119,9 +121,13 @@ function ConsentContent() {
   const [careNote, setCareNote] = useState("");
   const [signature, setSignature] = useState("");
   const [signError, setSignError] = useState(false);
-  const [vaccinePhoto, setVaccinePhoto] = useState("");
+  const [vaccinePhotos, setVaccinePhotos] = useState<string[]>([]);
   const [vaccineUploading, setVaccineUploading] = useState(false);
   const [fleaTickTreated, setFleaTickTreated] = useState(false);
+  const [idCardUrl, setIdCardUrl] = useState("");
+  // เคยแนบบัตรไว้แล้วจากรอบก่อน → ไม่ถามซ้ำ (ขอครั้งเดียวพอ)
+  const [idCardOnFile, setIdCardOnFile] = useState(false);
+  const [idCardBusy, setIdCardBusy] = useState(false);
   const [fleaError, setFleaError] = useState(false);
 
   const terms =
@@ -152,6 +158,41 @@ function ConsentContent() {
       .finally(() => setLoading(false));
   }, [profile?.lineUserId, bookingIdParam]);
 
+  // บัตรประชาชนผูกกับลูกค้า — เคยแนบไว้แล้วก็โชว์ ไม่ต้องแนบซ้ำทุกรอบ
+  useEffect(() => {
+    if (!profile?.lineUserId) return;
+    const q = new URLSearchParams({ lineUserId: profile.lineUserId });
+    fetch(`/api/customers/self?${q}`)
+      .then((r) => r.json())
+      .then((d) => {
+        const url = d?.customer?.idCardUrl || "";
+        setIdCardUrl(url);
+        setIdCardOnFile(Boolean(url));
+      })
+      .catch(() => {});
+  }, [profile?.lineUserId]);
+
+  // ขีดทับบนเครื่องลูกค้าก่อน แล้วค่อยส่งขึ้นระบบ — รูปบัตรแบบไม่มีข้อความไม่เคยออกจากมือถือ
+  const uploadIdCard = async (file: File) => {
+    if (!profile?.lineUserId) return;
+    setIdCardBusy(true);
+    try {
+      const image = await watermarkIdCard(file);
+      const res = await fetch("/api/customers/id-card", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lineUserId: profile.lineUserId, image }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) throw new Error();
+      setIdCardUrl(data.url);
+    } catch {
+      alert("แนบรูปบัตรไม่สำเร็จ ลองใหม่อีกครั้งนะคะ");
+    } finally {
+      setIdCardBusy(false);
+    }
+  };
+
   const submit = async () => {
     if (!booking || !profile?.lineUserId) return;
     let hasError = false;
@@ -176,7 +217,7 @@ function ConsentContent() {
           lineUserId: profile.lineUserId,
           careNote: careNote.trim(),
           signature,
-          vaccinePhoto,
+          vaccinePhotos,
           fleaTickTreated,
         }),
       });
@@ -192,13 +233,21 @@ function ConsentContent() {
     }
   };
 
-  const uploadVaccinePhoto = async (file: File) => {
+  // สมุดวัคซีนมักมีหลายหน้า → เลือกได้ทีละหลายรูป และกดเพิ่มต่อได้จนครบ MAX_VACCINE_PHOTOS
+  const addVaccinePhotos = async (files: FileList) => {
     setVaccineUploading(true);
     try {
-      const dataUrl = await toJpegDataUrl(file);
-      setVaccinePhoto(dataUrl);
-    } catch {
-      /* แปลงรูปไม่สำเร็จ — ให้ลูกค้าลองแนบใหม่ */
+      const room = MAX_VACCINE_PHOTOS - vaccinePhotos.length;
+      const picked = Array.from(files).slice(0, Math.max(0, room));
+      const urls: string[] = [];
+      for (const f of picked) {
+        try {
+          urls.push(await toJpegDataUrl(f));
+        } catch {
+          /* แปลงรูปไหนไม่สำเร็จก็ข้ามรูปนั้นไป */
+        }
+      }
+      setVaccinePhotos((prev) => [...prev, ...urls].slice(0, MAX_VACCINE_PHOTOS));
     } finally {
       setVaccineUploading(false);
     }
@@ -247,6 +296,9 @@ function ConsentContent() {
                 </li>
               ))}
             </ol>
+            <p className="mt-2 rounded-petflow border border-petflow-line bg-cream px-3 py-2.5 text-[11px] leading-relaxed text-brown">
+              {DEEMED_CONSENT_NOTICE}
+            </p>
           </section>
 
           <section className="mt-5 rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm">
@@ -300,6 +352,49 @@ function ConsentContent() {
                 )}
               </section>
 
+              {!idCardOnFile && (
+              <section className="mt-4 rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm">
+                <label className="flex items-center gap-1.5 text-xs font-bold text-petflow-chocolate">
+                  <Icon name="user" size={14} />
+                  บัตรประชาชนผู้ปกครอง
+                </label>
+                <p className="mb-1.5 text-[11px] text-brown-faint">
+                  ระบบจะพิมพ์ข้อความขีดทับลงในรูปให้อัตโนมัติก่อนส่ง: &quot;{ID_CARD_PURPOSE}&quot;
+                  แนบครั้งเดียวพอ รอบต่อไปไม่ต้องแนบอีก
+                </p>
+                {idCardUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={idCardUrl}
+                    alt="บัตรประชาชน (ขีดทับแล้ว)"
+                    className="mb-2 w-full rounded-lg border border-petflow-line object-contain"
+                  />
+                )}
+                <label className="flex min-h-[56px] cursor-pointer items-center gap-3 rounded-petflow-sm border border-dashed border-petflow-line bg-paper px-3 py-3">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) uploadIdCard(f);
+                      e.target.value = "";
+                    }}
+                  />
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-card text-brown-soft">
+                    <Icon name="image" size={20} />
+                  </span>
+                  <span className="text-xs font-bold text-brown-soft">
+                    {idCardBusy
+                      ? "กำลังขีดทับและแนบรูป…"
+                      : idCardUrl
+                        ? "แนบไว้แล้ว · แตะเพื่อเปลี่ยนรูป"
+                        : "แตะเพื่อแนบรูปบัตรประชาชน"}
+                  </span>
+                </label>
+              </section>
+              )}
+
               <section className="mt-4 rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm">
                 <label className="flex items-center gap-1.5 text-xs font-bold text-petflow-chocolate">
                   <Icon name="image" size={14} />
@@ -315,33 +410,52 @@ function ConsentContent() {
                     รวมถึงความเสี่ยงจากการที่ทางร้านไม่ได้ตรวจสอบประวัติวัคซีนของน้อง
                   </span>
                 </p>
-                <label className="flex min-h-[56px] cursor-pointer items-center gap-3 rounded-petflow-sm border border-dashed border-petflow-line bg-paper px-3 py-3">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => e.target.files?.[0] && uploadVaccinePhoto(e.target.files[0])}
-                  />
-                  {vaccinePhoto ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={vaccinePhoto}
-                      alt="สมุดวัคซีน"
-                      className="h-14 w-14 shrink-0 rounded-lg object-cover"
+                {vaccinePhotos.length > 0 && (
+                  <div className="mb-2 grid grid-cols-3 gap-2">
+                    {vaccinePhotos.map((src, i) => (
+                      <div key={i} className="relative">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={src}
+                          alt={`สมุดวัคซีน ${i + 1}`}
+                          className="aspect-square w-full rounded-lg object-cover"
+                        />
+                        <button
+                          type="button"
+                          aria-label="ลบรูปนี้"
+                          onClick={() => setVaccinePhotos((prev) => prev.filter((_, j) => j !== i))}
+                          className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white"
+                        >
+                          <Icon name="x" size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {vaccinePhotos.length < MAX_VACCINE_PHOTOS && (
+                  <label className="flex min-h-[56px] cursor-pointer items-center gap-3 rounded-petflow-sm border border-dashed border-petflow-line bg-paper px-3 py-3">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => {
+                        if (e.target.files?.length) addVaccinePhotos(e.target.files);
+                        e.target.value = "";
+                      }}
                     />
-                  ) : (
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-card text-brown-soft">
-                      <Icon name="image" size={20} />
+                      <Icon name={vaccinePhotos.length ? "plus" : "image"} size={20} />
                     </span>
-                  )}
-                  <span className="text-xs font-bold text-brown-soft">
-                    {vaccineUploading
-                      ? "กำลังแนบรูป…"
-                      : vaccinePhoto
-                        ? "แตะเพื่อเปลี่ยนรูป"
-                        : "แตะเพื่อแนบภาพสมุดวัคซีน"}
-                  </span>
-                </label>
+                    <span className="text-xs font-bold text-brown-soft">
+                      {vaccineUploading
+                        ? "กำลังแนบรูป…"
+                        : vaccinePhotos.length
+                          ? `เพิ่มรูปอีก (แนบได้สูงสุด ${MAX_VACCINE_PHOTOS} รูป)`
+                          : "แตะเพื่อแนบภาพสมุดวัคซีน (เลือกได้หลายรูป)"}
+                    </span>
+                  </label>
+                )}
               </section>
 
               <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-petflow border border-honey-deep/40 bg-honey/10 p-4 text-xs leading-relaxed text-brown">

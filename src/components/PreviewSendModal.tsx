@@ -19,11 +19,11 @@ export function PreviewSendModal({
 }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-3"
+      className="fixed inset-0 z-[70] flex items-end justify-center bg-black/50 sm:items-center sm:p-3"
       onClick={onCancel}
     >
       <div
-        className="max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-t-[28px] bg-paper px-4 pb-6 pt-3 shadow-petflow sm:rounded-petflow sm:pb-4"
+        className="max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-t-[28px] bg-paper px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-3 shadow-petflow sm:rounded-petflow sm:pb-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-petflow-line sm:hidden" />

@@ -5,6 +5,7 @@ import { seedEnabled } from "./demo-seed";
 import { requireTenantId } from "./tenant-context";
 import type { BookingTransport } from "./transport";
 import { cleanDepositStatus, type DepositStatus } from "./booking-deposit";
+import { MAX_VACCINE_PHOTOS, joinVaccinePhotos } from "./vaccine-photos";
 
 export type StoredBooking = Booking & {
   lineUserId?: string;
@@ -284,7 +285,7 @@ export async function acceptBookingConsent(
   lineUserId: string,
   careNote?: string,
   signature?: string,
-  vaccinePhoto?: string,
+  vaccinePhotos?: string[],
   fleaTickTreated?: boolean
 ) {
   const b = await getBooking(id);
@@ -300,10 +301,18 @@ export async function acceptBookingConsent(
   if (sig.startsWith("data:")) {
     sig = await uploadDataUrlToStorage(`consent-signatures/${id}-${Date.now()}`, sig);
   }
-  let vaccineUrl = (vaccinePhoto || "").trim();
-  if (vaccineUrl.startsWith("data:")) {
-    vaccineUrl = await uploadDataUrlToStorage(`consent-vaccine/${id}-${Date.now()}`, vaccineUrl);
+  // แนบได้หลายรูป → อัปโหลดทีละรูป แล้วเก็บรวมในคอลัมน์เดิม (คั่นบรรทัด)
+  const vaccineUrls: string[] = [];
+  for (const [i, raw] of (vaccinePhotos || []).slice(0, MAX_VACCINE_PHOTOS).entries()) {
+    const v = raw.trim();
+    if (!v) continue;
+    vaccineUrls.push(
+      v.startsWith("data:")
+        ? await uploadDataUrlToStorage(`consent-vaccine/${id}-${Date.now()}-${i}`, v)
+        : v
+    );
   }
+  const vaccineUrl = joinVaccinePhotos(vaccineUrls);
   const treated = Boolean(fleaTickTreated);
   const sb = getSupabase();
   if (sb) {

@@ -212,7 +212,7 @@ export default function CouponsPage() {
           onClick={() => setVoucher(null)}
         >
           <div
-            className="w-full max-w-xs rounded-petflow bg-card p-6 text-center shadow-petflow"
+            className="max-h-[90dvh] w-full max-w-xs overflow-y-auto rounded-petflow bg-card p-6 text-center shadow-petflow"
             onClick={(e) => e.stopPropagation()}
           >
             <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Coupon</p>

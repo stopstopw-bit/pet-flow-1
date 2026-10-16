@@ -13,3 +13,13 @@ export function bangkokToday(): string {
     day: "2-digit",
   }).format(new Date());
 }
+
+/** เวลาปัจจุบันตามเวลาไทย (HH:MM) — ใช้เทียบกับเวลานัดที่เก็บเป็น "HH:MM" */
+export function bangkokNowTime(): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Bangkok",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date());
+}

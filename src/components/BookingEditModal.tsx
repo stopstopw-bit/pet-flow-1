@@ -5,9 +5,11 @@ import type { Booking } from "@/lib/business";
 import { relevantAutoMessageTopics } from "@/lib/auto-messages";
 import { toast } from "@/components/Toast";
 import { Icon } from "@/components/Icon";
+import { GroomClashNote, confirmClashes, useGroomClashes } from "@/components/GroomClashNote";
 import { Segmented } from "@/components/ui";
 import { TransportPicker } from "@/components/TransportPicker";
 import type { BookingTransport } from "@/lib/transport";
+import { isUnknownCat, pickableCatNames } from "@/lib/unknown-cat";
 import { GROOM_PROGRAMS, type GroomProgram } from "@/lib/grooming-prices";
 import { freeUnitsForRange, roomCapacity, compositionOf, type BoardBooking, type RoomClosure } from "@/lib/room-board";
 import { DEPOSIT_STATUS_LABEL, type DepositStatus } from "@/lib/booking-deposit";
@@ -188,6 +190,9 @@ export function BookingEditModal({
   groomSlots,
   groomPrograms = GROOM_PROGRAMS,
   roomBookings = [],
+  customerId,
+  customerCats,
+  takenCatNames,
   onClose,
   onSaved,
 }: {
@@ -208,6 +213,12 @@ export function BookingEditModal({
   groomPrograms?: GroomProgram[];
   /** นัดห้องพักทั้งหมดที่ยังไม่ยกเลิก — ไว้คำนวณว่าห้องไหนว่างจริงตอนเลือกเลขห้อง */
   roomBookings?: BoardBooking[];
+  /** ลูกค้าเจ้าของนัด — ไว้ดึงรายชื่อแมวที่บันทึกไว้มาให้เลือก (ถ้าไม่ส่ง customerCats มา) */
+  customerId?: string;
+  /** ชื่อแมวที่ลูกค้าบันทึกไว้ — แตะเลือกแทนการพิมพ์ชื่อใหม่ */
+  customerCats?: string[];
+  /** ชื่อแมวที่อยู่ในนัดเดียวกันแล้ว (ค่าเริ่มต้น = siblings) — ไม่ให้เลือกซ้ำ */
+  takenCatNames?: string[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -215,10 +226,33 @@ export function BookingEditModal({
     booking.service || (booking.roomType || booking.checkin ? "room" : "groom")
   );
   const [saving, setSaving] = useState(false);
+  const [catName, setCatName] = useState(booking.catName);
+  const [savedCats, setSavedCats] = useState<string[]>(customerCats || []);
+  useEffect(() => {
+    if (customerCats || !customerId) return;
+    let alive = true;
+    fetch(`/api/customers?id=${encodeURIComponent(customerId)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        const cats = d?.customer?.cats as { name?: string }[] | undefined;
+        if (alive && cats) setSavedCats(cats.map((c) => String(c.name || "")).filter(Boolean));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [customerId, customerCats]);
+  const catChoices = pickableCatNames(savedCats, takenCatNames ?? siblings.map((s) => s.catName));
+  const placeholderCat = isUnknownCat(booking.catName);
   const [roomSel, setRoomSel] = useState(booking.room || booking.roomType || "");
   const [checkinSel, setCheckinSel] = useState(booking.checkin || booking.date || "");
   const [checkoutSel, setCheckoutSel] = useState(booking.checkout || "");
   const [roomUnit, setRoomUnit] = useState<number | null>(booking.roomUnit ?? null);
+  // เช็กคิวอาบน้ำชนเฉพาะตอนย้ายวัน/เวลา — นัดเดิมไม่ต้องเตือนซ้ำทุกครั้งที่แก้อย่างอื่น
+  const [groomDate, setGroomDate] = useState(booking.date || "");
+  const [groomTime, setGroomTime] = useState(booking.time || "12:30");
+  const timeChanged = groomDate !== (booking.date || "") || groomTime !== (booking.time || "12:30");
+  const clashes = useGroomClashes(service === "groom" && timeChanged ? groomDate : "", groomTime, [booking.id]);
 
   const boardRooms = useMemo(
     () =>
@@ -286,6 +320,7 @@ export function BookingEditModal({
   const submit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
+    if (service === "groom" && !confirmClashes(clashes)) return;
     setSaving(true);
     const payload =
       service === "groom"
@@ -417,7 +452,7 @@ export function BookingEditModal({
       toast(`แก้บิลเดิมเป็น ${inv.nights} คืน · ${inv.total.toLocaleString()} บาท`, "success");
     } else if (inv?.kind === "created_extra") {
       toast(
-        `บิลเดิมปิดไปแล้ว — ออกบิลต่อคืน ${inv.nights} คืน · ${inv.total.toLocaleString()} บาท ไว้ในหน้าบิล`,
+        `บิลเดิมปิดไปแล้ว — ออกบิลพักต่อ ${inv.nights} คืน · ${inv.total.toLocaleString()} บาท ไว้ในหน้าบิล`,
         "info"
       );
     } else if (inv?.kind === "warn") {
@@ -469,11 +504,54 @@ export function BookingEditModal({
         <form onSubmit={submit} className="space-y-3">
           <EditField label="ชื่อลูกค้า" name="customer" defaultValue={booking.customerName} required />
           {!household && (
-            <EditField label="ชื่อน้องแมว" name="cat" defaultValue={booking.catName} required />
+          <div>
+              <label className="block text-xs font-bold text-brown-soft">
+                ชื่อน้องแมว
+                <input
+                  name="cat"
+                  value={catName}
+                  required
+                  onChange={(e) => setCatName(e.target.value)}
+                  className="mt-1 min-h-[44px] w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm text-brown"
+                />
+              </label>
+              {catChoices.length > 0 && (
+                <div
+                  className={`mt-2 rounded-petflow-sm p-2.5 ${
+                    placeholderCat ? "border border-latte-deep/40 bg-latte/15" : "bg-paper/60"
+                  }`}
+                >
+                  <p className="mb-2 text-[11px] font-bold text-brown-soft">
+                    {placeholderCat ? "ลูกค้าบันทึกแมวไว้แล้ว · แตะเลือกตัวที่ใช่" : "แมวของลูกค้า · แตะเพื่อเลือก"}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {catChoices.map((n) => {
+                      const on = catName.trim() === n.trim();
+                      return (
+                        <button
+                          key={n}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() => setCatName(on ? booking.catName : n)}
+                          className={`inline-flex min-h-[36px] items-center gap-1 rounded-full border px-3 text-xs font-bold transition ${
+                            on
+                              ? "border-petflow-chocolate bg-petflow-chocolate text-white"
+                              : "border-petflow-line bg-card text-brown"
+                          }`}
+                        >
+                          {on && <Icon name="check" size={14} />}
+                          {n}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
           )}
           {service === "groom" ? (
             <>
-              <EditField label="วันที่นัด" name="date" type="date" defaultValue={booking.date} required />
+              <EditField label="วันที่นัด" name="date" type="date" defaultValue={booking.date} required onChange={setGroomDate} />
               <label className="block text-xs font-bold text-brown-soft">
                 รอบเวลา
                 <input
@@ -481,6 +559,7 @@ export function BookingEditModal({
                   type="time"
                   list="edit-groom-slots"
                   defaultValue={booking.time || "12:30"}
+                  onChange={(e) => setGroomTime(e.target.value)}
                   className="mt-1 min-h-[44px] w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm text-brown"
                 />
                 <datalist id="edit-groom-slots">
@@ -488,6 +567,7 @@ export function BookingEditModal({
                     <option key={t} value={t} />
                   ))}
                 </datalist>
+                <GroomClashNote clashes={clashes} />
               </label>
               {!household && (
               <label className="block text-xs font-bold text-brown-soft">

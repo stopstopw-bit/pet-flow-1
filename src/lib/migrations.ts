@@ -44,6 +44,7 @@ notify pgrst, 'reload schema';`;
 const SCHEMA_CHECKS: { table: string; column: string; feature: string }[] = [
   { table: "customers", column: "deposit_credit", feature: "เครดิตมัดจำ" },
   { table: "customers", column: "line_user_ids", feature: "ลูกค้าหลาย LINE" },
+  { table: "customers", column: "id_card_url", feature: "บัตรประชาชนผู้ปกครอง" },
   { table: "cats", column: "staff_private_note", feature: "โน้ตลับร้าน" },
   { table: "bookings", column: "consent_accepted_at", feature: "กดยอมรับเงื่อนไข" },
   { table: "bookings", column: "care_note", feature: "โน้ตการดูแล" },
@@ -290,6 +291,11 @@ export const MIGRATIONS: { name: string; sql: string }[] = [
     // รูปบิล/ใบเสร็จที่แนบกับรายการเงิน — หลักฐานตอนยื่นภาษี
     name: "finance_records.receipt_url",
     sql: "alter table finance_records add column if not exists receipt_url text;",
+  },
+  {
+    // รูปบัตรประชาชนผู้ปกครอง (ลงทะเบียนเข้าพัก) — ผูกกับลูกค้า แนบครั้งเดียวใช้ได้ทุกรอบ
+    name: "customers.id_card_url",
+    sql: "alter table customers add column if not exists id_card_url text;",
   },
   {
     // ล้างของเก่า: ตัดบรรทัด "ของแถมฟรี" (ขึ้นต้นด้วย 🎁) ที่เคยหลุดไปฝัง

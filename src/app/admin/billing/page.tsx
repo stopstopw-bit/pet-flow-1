@@ -4,10 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { SERVICE_PRESETS, type ServicePreset } from "@/lib/service-presets";
 import { CustomerSendButtons } from "@/components/CustomerSendButtons";
 import { toast } from "@/components/Toast";
-import { Icon } from "@/components/Icon";
+import { Icon, type IconName } from "@/components/Icon";
 import { Avatar, EmptyState, MoreMenu, SearchField, Segmented, SectionLabel } from "@/components/ui";
 import { groupBookings, groupCatNames } from "@/lib/booking-group";
 import { formatThaiDateShort } from "@/lib/format-thai-date";
+import { bangkokToday } from "@/lib/bangkok-date";
 import {
   GROOM_PROGRAMS,
   GROOM_SIZES,
@@ -20,7 +21,8 @@ import {
   type GroomProgram,
 } from "@/lib/grooming-prices";
 import { priceSignature, findLastPrice } from "@/lib/special-price";
-import { extraCatChargePerNight } from "@/lib/business";
+import { roomPricing, roomNightPrice } from "@/lib/room-board";
+import { isRoomLine, roomLineLabel, splitRoomLabel } from "@/lib/stay-line";
 
 type Customer = {
   id: string;
@@ -73,6 +75,7 @@ type Booking = {
   catName: string;
   service: "room" | "groom";
   room?: string;
+  roomUnit?: number;
   checkin?: string;
   checkout?: string;
   date?: string;
@@ -106,6 +109,32 @@ type Item = {
   /** ส่วนลดเฉพาะรายการนี้ (หักจากยอดรวมของรายการ ก่อนส่วนลดท้ายบิล) — บาท หรือ % */
   discount?: number;
   discountMode?: "baht" | "percent";
+  /** บรรทัดค่าห้องจากบิลเดิมที่เปิดมาแก้ (โหลดเป็น "พิมพ์เอง") — qty = จำนวนคืน
+   *  บันทึกกลับเป็นค่าห้อง "× N คืน" ไม่ใช่ "× N" ระบบต่อคืนจะได้นับคืนที่จ่ายไปแล้วถูก */
+  roomLine?: { note?: string };
+};
+
+/**
+ * ยอดที่ลงบัญชีไปแล้วของบิลที่ยังเปิดอยู่ = มัดจำที่ "กดรับแล้ว" เท่านั้น (มัดจำรอรับยังไม่ใช่เงินเข้า)
+ * ตรงกับฝั่งเซิร์ฟเวอร์ที่ตอนปิดบิลเก็บ "ยอดบิล − รายรับที่ผูกบิลนี้" — ป้ายบนปุ่มจะได้ตรงกับยอดที่ลงบัญชีจริง
+ */
+function receivedOf(inv: { deposit?: number; depositReceivedAt?: string }): number {
+  return inv.depositReceivedAt ? inv.deposit || 0 : 0;
+}
+
+/**
+ * ขั้นของบิลที่ยังไม่ปิด — แยกให้เห็นว่าบิลค้างแต่ละใบรออะไรอยู่ ไม่ดูเหมือนค้างเงินทุกใบ
+ * deposit = ตั้งมัดจำไว้แต่ยังไม่ได้รับ · partial = รับมัดจำ/รับบางส่วนแล้ว รอปิดบิล · full = ยังไม่ได้รับเงินเลย
+ */
+type PendingStage = "deposit" | "partial" | "full";
+function pendingStageOf(inv: { deposit?: number; depositReceivedAt?: string }): PendingStage {
+  if ((inv.deposit || 0) <= 0) return "full";
+  return inv.depositReceivedAt ? "partial" : "deposit";
+}
+const STAGE_META: Record<PendingStage, { label: string; short: string; tone: string; icon: IconName }> = {
+  deposit: { label: "รอมัดจำ", short: "รอมัดจำ", tone: "bg-wait/15 text-wait", icon: "clock" },
+  partial: { label: "มัดจำแล้ว รอปิดบิล", short: "รอปิดบิล", tone: "bg-latte/20 text-latte-deep", icon: "check" },
+  full: { label: "รอชำระเต็ม", short: "รอชำระ", tone: "bg-wait/15 text-wait", icon: "clock" },
 };
 
 /** programId มาจากนัด (booking.groomProgram) ถ้ามี — ให้เลือกโปรแกรมที่ลูกค้าเลือกไว้ตอนจองอัตโนมัติ */
@@ -228,6 +257,15 @@ function computeLineBase(
     };
   }
   const unit = it.priceOverride ?? (it.amount || 0);
+  if (it.roomLine) {
+    return {
+      label: withCat(roomLineLabel(it.label, qty, it.roomLine.note)),
+      amount: unit * qty,
+      catName: cat,
+      qty,
+      unitAmount: unit,
+    };
+  }
   return {
     label: withCat(qty > 1 ? `${it.label} × ${qty}` : it.label),
     amount: unit * qty,
@@ -343,11 +381,7 @@ export default function BillingPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [promos, setPromos] = useState<Promo[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [rooms, setRooms] = useState<(ServicePreset & { id: string })[]>([]);
-  /** จุห้อง/ค่าน้องตัวเกิน ของแต่ละประเภทห้อง — ใช้แตกบิลบ้านเดียวกันเป็นห้อง + ค่าตัวเกิน */
-  const [roomRules, setRoomRules] = useState<
-    Record<string, { maxCats?: number; includedCats?: number; extraCatPrice?: number }>
-  >({});
+  const [rooms, setRooms] = useState<(ServicePreset & { id: string; pricing: ReturnType<typeof roomPricing> })[]>([]);
   const [servicePresets, setServicePresets] = useState<ServicePreset[]>(SERVICE_PRESETS);
   const [freebiePresets, setFreebiePresets] = useState<string[]>(FREEBIE_PRESETS);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -390,6 +424,7 @@ export default function BillingPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [invoiceBusy, setInvoiceBusy] = useState("");
   const [billFilter, setBillFilter] = useState<"all" | "pending" | "paid">("pending");
+  const [pendingStage, setPendingStage] = useState<"all" | PendingStage>("all");
   const [billSearch, setBillSearch] = useState("");
   const [billSort, setBillSort] = useState<
     | "date-desc"
@@ -452,21 +487,12 @@ export default function BillingPage() {
     setPromos(pj.promos || []);
     setInvoices(ij.invoices || []);
     setRooms(
-      (config?.rooms || []).map((r: { id: string; name: string; price: number }) => ({
+      (config?.rooms || []).map((r: { id: string; name: string; price: number } & Parameters<typeof roomPricing>[0]) => ({
         id: r.id,
         label: `ห้อง ${r.name}`,
         amount: r.price,
+        pricing: roomPricing(r),
       }))
-    );
-    setRoomRules(
-      Object.fromEntries(
-        (config?.rooms || []).map(
-          (r: { id: string; maxCats?: number; includedCats?: number; extraCatPrice?: number }) => [
-            r.id,
-            { maxCats: r.maxCats, includedCats: r.includedCats, extraCatPrice: r.extraCatPrice },
-          ]
-        )
-      )
     );
     setGroomPrograms(resolveGroomPrograms(config?.groomPricePrograms));
     if (config?.payment) setPay(config.payment);
@@ -506,6 +532,25 @@ export default function BillingPage() {
       )
       .catch(() => {});
   }, [showProductPicker]);
+  // มาจากปุ่ม "คิดเงิน" (หน้าแรก/แถบล่าง, ?view=pending) → เปิดที่บิลรอชำระทั้งหมด พร้อมกดรับชำระ
+  const showPendingBills = useCallback(() => {
+    setBillFilter("pending");
+    setPendingStage("all");
+    requestAnimationFrame(() =>
+      document.getElementById("bills")?.scrollIntoView({ behavior: "smooth", block: "start" })
+    );
+  }, []);
+  const jumpedToBills = useRef(false);
+  useEffect(() => {
+    if (jumpedToBills.current || invoices.length === 0) return;
+    if (new URLSearchParams(window.location.search).get("view") !== "pending") return;
+    jumpedToBills.current = true;
+    showPendingBills();
+  }, [invoices, showPendingBills]);
+  useEffect(() => {
+    window.addEventListener("petflow:show-pending-bills", showPendingBills);
+    return () => window.removeEventListener("petflow:show-pending-bills", showPendingBills);
+  }, [showPendingBills]);
 
   // ดึงนัดจาก URL อัตโนมัติ (มาจากปุ่ม "ออกบิล" ในตารางนัด) — ทำครั้งเดียว
   const autoPicked = useRef(false);
@@ -580,7 +625,19 @@ export default function BillingPage() {
       );
       return group.filter((b) => !billedCats.has(b.catName));
     })
-    .filter((group) => group.length > 0);
+    .filter((group) => group.length > 0)
+    // เรียงตามวันนัด ไม่ใช่วันที่กดจอง: วันนี้/ที่ผ่านมาแล้ว (ใกล้วันนี้ก่อน) ขึ้นบนสุด
+    // เพราะเป็นนัดที่ต้องคิดเงินตอนนี้ ตามด้วยนัดล่วงหน้า (ใกล้สุดก่อน)
+    .sort((a, b) => {
+      const today = bangkokToday();
+      const key = (g: Booking[]) => `${g[0].checkin || g[0].date || ""} ${g[0].time || ""}`;
+      const ka = key(a);
+      const kb = key(b);
+      const aDue = ka.slice(0, 10) <= today;
+      const bDue = kb.slice(0, 10) <= today;
+      if (aDue !== bDue) return aDue ? -1 : 1;
+      return aDue ? kb.localeCompare(ka) : ka.localeCompare(kb);
+    });
   const lines = items.map((it) => computeLine(it, groomPrograms));
   const subtotal = lines.reduce((s, l) => s + l.amount, 0);
   const selectedPromo = promos.find((p) => p.id === promoId);
@@ -887,7 +944,7 @@ export default function BillingPage() {
     if (existing) {
       if (existing.status === "paid") {
         toast(
-          "นัดนี้ออกบิลและชำระแล้ว — ถ้าลูกค้าอยู่ต่อ ให้แก้ \"วันออก\" ที่นัด ระบบจะออกบิลต่อคืนเฉพาะคืนที่เพิ่มให้เอง",
+          "นัดนี้ออกบิลและชำระแล้ว — ถ้าลูกค้าอยู่ต่อ ให้แก้ \"วันออก\" ที่นัด ระบบจะออกบิลพักต่อเฉพาะคืนที่เพิ่มให้เอง",
           "error"
         );
         return;
@@ -900,54 +957,39 @@ export default function BillingPage() {
     // ตั้งชื่อน้องให้แต่ละบรรทัดเมื่อมาหลายตัว จะได้รู้ว่าตัวไหนใช้บริการอะไร
     const many = group.length > 1;
     if (bk.service === "room") {
-      // บ้านเดียวกันอยู่ห้องเดียวกัน: 1 บรรทัดต่อ 1 ห้อง (เกินจุห้องค่อยแตกห้องเพิ่ม)
-      // + บรรทัดค่าน้องตัวที่เกินโควตาห้อง ตามที่ตั้งไว้ในประเภทห้อง
-      const byStay = new Map<string, typeof group>();
+      // คิดค่าห้องเป็นรายห้อง ไม่ใช่รายตัว: น้องที่อยู่ห้องเดียวกันรวมเป็นบรรทัดเดียว
+      // ห้องที่ล็อกเลขไว้ = ห้องตามเลขนั้น · ไม่ได้ล็อก = จัดเต็มห้องละ cap ตัวตามที่ระบบจัดห้องทำ
+      const units = new Map<string, Booking[]>();
       for (const g of group) {
-        const key = `${g.room || ""}|${g.checkin || ""}|${g.checkout || ""}`;
-        byStay.set(key, [...(byStay.get(key) || []), g]);
+        const k = `${g.room || ""}#${g.roomUnit ?? "auto"}`;
+        units.set(k, [...(units.get(k) || []), g]);
       }
-      const lines: Item[] = [];
-      for (const stay of byStay.values()) {
-        const g = stay[0];
-        // นัดเก็บ room เป็น id → จับคู่กับ id ก่อน แล้วค่อย fallback เป็นชื่อ
-        const matched =
-          rooms.find((r) => g.room && r.id === g.room) ||
-          rooms.find((r) => g.room && r.label.includes(g.room));
-        const rule = (matched && roomRules[matched.id]) || {};
-        const nights = nightsBetween(g.checkin, g.checkout);
-        const roomLabel =
-          matched?.label || rooms[0]?.label || (g.room ? `ห้อง ${g.room}` : "ห้องพัก");
-        const { rooms: roomCount, extraCats, perNight } = extraCatChargePerNight(
-          rule,
-          stay.length
-        );
-        let at = 0;
-        for (let i = 0; i < roomCount; i++) {
-          const inRoom =
-            Math.floor(stay.length / roomCount) + (i < stay.length % roomCount ? 1 : 0);
-          const names = stay.slice(at, at + inRoom).map((x) => x.catName);
-          at += inRoom;
-          lines.push({
+      const lines: Booking[][] = [];
+      for (const [k, cats] of units) {
+        const matched = rooms.find((r) => cats[0].room && r.id === cats[0].room);
+        const cap = k.endsWith("#auto") ? matched?.pricing.cap || 1 : cats.length;
+        for (let i = 0; i < cats.length; i += cap) lines.push(cats.slice(i, i + cap));
+      }
+      setItems(
+        lines.map((cats) => {
+          const g = cats[0];
+          // นัดเก็บ room เป็น id → จับคู่กับ id ก่อน แล้วค่อย fallback เป็นชื่อ
+          const matched =
+            rooms.find((r) => g.room && r.id === g.room) ||
+            rooms.find((r) => g.room && r.label.includes(g.room));
+          const price = matched?.amount ?? rooms[0]?.amount ?? 0;
+          const n = cats.length;
+          return {
             ...newGrooming(undefined, groomPrograms),
             kind: "room" as const,
-            roomLabel,
-            roomPrice: matched?.amount ?? rooms[0]?.amount ?? 0,
-            nights,
-            catName: many ? joinCatNames(names) : undefined,
-          });
-        }
-        if (perNight > 0) {
-          const included = Math.max(1, rule.includedCats ?? 2);
-          lines.push({
-            ...newGrooming(undefined, groomPrograms),
-            kind: "custom" as const,
-            label: `ค่าน้องตัวที่ ${included + 1} ขึ้นไป · ${roomLabel} (${extraCats} ตัว × ${Math.max(1, nights)} คืน)`,
-            amount: perNight * Math.max(1, nights),
-          });
-        }
-      }
-      setItems(lines);
+            // ต้องตรงกับตัวเลือกห้องในบิล (ไม่ต่อท้ายอะไร) — ตัวไหนอยู่ห้องนี้ดูจากชิปชื่อน้อง
+            roomLabel: matched?.label || rooms[0]?.label || (g.room ? `ห้อง ${g.room}` : "ห้องพัก"),
+            roomPrice: matched ? roomNightPrice(price, matched.pricing, n) : price,
+            nights: nightsBetween(g.checkin, g.checkout),
+            catName: many ? cats.map((c) => c.catName).join(", ") : undefined,
+          };
+        })
+      );
     } else {
       setItems(
         group.map((g) => ({
@@ -1004,7 +1046,8 @@ export default function BillingPage() {
     } else {
       patch = { kind, label: "", amount: 0 };
     }
-    updateItem(idx, patch);
+    // เปลี่ยนประเภทแล้ว ไม่ใช่บรรทัดค่าห้องจากบิลเดิมอีกต่อไป
+    updateItem(idx, { ...patch, roomLine: undefined });
   };
 
   const changeProgram = (idx: number, program: string) => {
@@ -1077,7 +1120,7 @@ export default function BillingPage() {
     const payloadItems = items
       .map((it, i) => ({
         ...lines[i],
-        kind: it.kind,
+        kind: it.roomLine ? ("room" as const) : it.kind,
         ...(it.kind === "grooming" ? { program: it.program } : {}),
       }))
       .filter((l) => l.label.trim());
@@ -1156,6 +1199,18 @@ export default function BillingPage() {
     setItems(
       (inv.items || []).map((it) => {
         const qty = Math.max(1, Math.round(it.qty || 1));
+        if (it.amount > 0 && isRoomLine(it)) {
+          const { base, note } = splitRoomLabel(it.label.replace(/^🐱 .+? · /, ""));
+          return {
+            ...newGrooming(undefined, groomPrograms),
+            kind: "custom" as const,
+            label: base,
+            roomLine: { note: note || undefined },
+            catName: it.catName,
+            qty,
+            amount: it.unitAmount ?? Math.round(it.amount / qty),
+          };
+        }
         return {
           ...newGrooming(undefined, groomPrograms),
           kind: it.amount > 0 ? ("custom" as const) : ("freebie" as const),
@@ -1240,12 +1295,12 @@ export default function BillingPage() {
     const inv = confirmCredit;
     const cust = customers.find((c) => c.id === inv.customerId);
     const balance = cust?.memberCredit ?? 0;
-    const due = Math.max(0, inv.total - (inv.deposit || 0));
+    const due = Math.max(0, inv.total - receivedOf(inv));
     const after = balance - due;
     const short = after < 0;
     return (
       <div
-        className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center"
+        className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:items-center"
         onClick={() => setConfirmCredit(null)}
       >
         <div
@@ -1344,9 +1399,9 @@ export default function BillingPage() {
    */
   const receivePartial = async (inv: Invoice) => {
     if (invoiceBusy) return;
-    const remaining = Math.max(0, inv.total - (inv.deposit || 0));
+    const remaining = Math.max(0, inv.total - receivedOf(inv));
     const raw = prompt(
-      `รับเงินบางส่วน — ${inv.customerName}\nยอดบิล ${inv.total.toLocaleString()} · ค้างอยู่ ${remaining.toLocaleString()} บาท\n\nรับรอบนี้กี่บาท?`,
+      `รับมัดจำ / บางส่วน — ${inv.customerName}\nยอดบิล ${inv.total.toLocaleString()} · ค้างอยู่ ${remaining.toLocaleString()} บาท\n\nรับรอบนี้กี่บาท?`,
       ""
     );
     if (raw == null) return;
@@ -1397,10 +1452,23 @@ export default function BillingPage() {
     if (!payFor) return null;
     const inv = payFor;
     const hasDep = (inv.deposit ?? 0) > 0;
-    const isMember = !!customers.find((c) => c.id === inv.customerId)?.isMember;
-    const due = Math.max(0, inv.total - (inv.deposit || 0));
+    const cust = customers.find((c) => c.id === inv.customerId);
+    const isMember = !!cust?.isMember;
+    // เรียกเก็บมัดจำไว้ก่อนมีบิล (หรือจากการ์ดของน้องอีกตัวในบ้าน) → ไปค้างเป็นเครดิต ดึงเข้าบิลได้เลย ไม่ต้องกรอกยอด
+    const pendingCredit = hasDep ? 0 : Math.min(inv.total, cust?.depositCredit ?? 0);
+    // มัดจำที่ยังไม่ได้กดรับ ไม่หักออก — ปิดบิลตอนนี้ระบบลงรับเต็มยอดบิล
+    const got = receivedOf(inv);
+    const due = Math.max(0, inv.total - got);
     const close = () => setPayFor(null);
     const rows: { key: string; icon: string; title: string; sub?: string; run: () => void; when: boolean }[] = [
+      {
+        key: "apply_deposit_credit",
+        icon: "money",
+        title: "รับมัดจำแล้ว (ที่เรียกเก็บไว้)",
+        sub: `${pendingCredit.toLocaleString()} ฿ · ผูกเข้าบิลนี้ ลงบัญชีให้`,
+        when: pendingCredit > 0,
+        run: () => invoiceAction(inv.id, "apply_deposit_credit", "รับมัดจำแล้ว 💰"),
+      },
       {
         key: "receive_deposit",
         icon: "money",
@@ -1417,7 +1485,7 @@ export default function BillingPage() {
       {
         key: "transfer",
         icon: "wallet",
-        title: hasDep ? "รับเงินที่เหลือ · โอน (ปิดบิล)" : "รับเงินแล้ว · โอน",
+        title: got > 0 ? "รับเงินที่เหลือ · โอน (ปิดบิล)" : "รับเต็มจำนวน · โอน (ปิดบิล)",
         sub: `${due.toLocaleString()} ฿ · ปิดบิล ลงบัญชี + แต้ม`,
         when: true,
         run: () => markPaid(inv.id, "transfer"),
@@ -1425,7 +1493,7 @@ export default function BillingPage() {
       {
         key: "cash",
         icon: "money",
-        title: "เงินสด (ปิดบิล)",
+        title: got > 0 ? "รับเงินที่เหลือ · เงินสด (ปิดบิล)" : "รับเต็มจำนวน · เงินสด (ปิดบิล)",
         sub: `${due.toLocaleString()} ฿`,
         when: true,
         run: () => markPaid(inv.id, "cash"),
@@ -1441,19 +1509,20 @@ export default function BillingPage() {
       {
         key: "partial",
         icon: "chart",
-        title: "รับเงินบางส่วน",
-        sub: "ลูกค้าพักยาว / จ่ายเป็นงวด",
+        // บิลที่ยังไม่ได้ตั้งมัดจำ ใช้แถวนี้ "รับแค่มัดจำ" ได้เลย (ใส่ยอดเอง บิลยังเปิดอยู่)
+        title: hasDep ? "รับเงินบางส่วน" : "รับแค่มัดจำ / บางส่วน",
+        sub: "ใส่ยอดเอง · บิลยังเปิด ค้างที่เหลือไว้เก็บทีหลัง",
         when: true,
         run: () => receivePartial(inv),
       },
     ];
     return (
       <div
-        className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center sm:p-3"
+        className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 sm:items-center sm:p-3"
         onClick={close}
       >
         <div
-          className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-[28px] bg-card px-4 pb-6 pt-3 shadow-petflow sm:rounded-petflow"
+          className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-[28px] bg-card px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-3 shadow-petflow sm:rounded-petflow"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-petflow-line sm:hidden" />
@@ -1470,6 +1539,22 @@ export default function BillingPage() {
               <p className="text-[10px] text-brown-soft">ยอดค้าง</p>
             </div>
           </div>
+          {got > 0 && (
+            <div className="mb-3 space-y-1 rounded-petflow-sm bg-paper/60 px-3 py-2 text-xs">
+              <div className="flex justify-between text-brown-soft">
+                <span>ยอดบิล</span>
+                <span>{inv.total.toLocaleString()} ฿</span>
+              </div>
+              <div className="flex justify-between font-bold text-ok">
+                <span>มัดจำ (รับแล้ว)</span>
+                <span>−{got.toLocaleString()} ฿</span>
+              </div>
+              <div className="flex justify-between border-t border-petflow-line pt-1 font-extrabold text-petflow-chocolate">
+                <span>รับรอบนี้ให้ครบ</span>
+                <span>{due.toLocaleString()} ฿</span>
+              </div>
+            </div>
+          )}
           <ul className="divide-y divide-petflow-line overflow-hidden rounded-petflow-sm border border-petflow-line">
             {rows
               .filter((r) => r.when)
@@ -1881,9 +1966,11 @@ export default function BillingPage() {
                         value={item.roomLabel}
                         onChange={(e) => {
                           const r = rooms.find((x) => x.label === e.target.value);
+                          // ค่าห้องเป็นรายห้อง — นับน้องที่อยู่บรรทัดนี้ เพื่อบวกค่าแมวตัวที่เกิน
+                          const n = item.catName ? item.catName.split(",").filter((x) => x.trim()).length : 1;
                           updateItem(i, {
                             roomLabel: e.target.value,
-                            roomPrice: r?.amount || 0,
+                            roomPrice: r ? roomNightPrice(r.amount, r.pricing, n) : 0,
                           });
                         }}
                         className={`${sub} min-w-0 flex-1`}
@@ -1966,7 +2053,7 @@ export default function BillingPage() {
                       ห้องพักไม่มีช่องนี้ เพราะคิดเป็น "คืน" อยู่แล้ว */}
                   {item.kind !== "room" && item.kind !== "freebie" && (
                     <div className="flex items-center gap-2">
-                      <span className="text-[11px] font-bold text-brown-soft">จำนวน</span>
+                      <span className="text-[11px] font-bold text-brown-soft">{item.roomLine ? "จำนวนคืน" : "จำนวน"}</span>
                       <button
                         type="button"
                         onClick={() =>
@@ -2494,10 +2581,12 @@ export default function BillingPage() {
         )}
       </div>
 
+      <div id="bills" className="scroll-mt-20" />
       <SectionLabel
         action={(() => {
           const pending = invoices.filter((i) => i.status === "pending");
-          const due = pending.reduce((s, i) => s + (i.total - (i.deposit || 0)), 0);
+          // มัดจำที่ยังไม่ได้รับ ยังนับเป็นยอดค้าง
+          const due = pending.reduce((s, i) => s + (i.total - receivedOf(i)), 0);
           return due > 0 ? (
             <span className="rounded-full bg-wait/15 px-2.5 py-1 text-[11px] font-extrabold text-wait">
               ค้างรวม {due.toLocaleString()} ฿ · {pending.length} บิล
@@ -2514,7 +2603,7 @@ export default function BillingPage() {
         options={(
           [
             ["pending", "รอชำระ"],
-            ["paid", "จ่ายแล้ว"],
+            ["paid", "ปิดบิลแล้ว"],
             ["all", "ทั้งหมด"],
           ] as const
         ).map(([f, label]) => ({
@@ -2525,6 +2614,29 @@ export default function BillingPage() {
             undefined,
         }))}
       />
+      {billFilter === "pending" && (
+        <div className="-mx-1 mb-3 flex gap-1.5 overflow-x-auto px-1 pb-0.5">
+          {(["all", "deposit", "partial", "full"] as const).map((st) => {
+            const n = invoices.filter(
+              (i) => i.status === "pending" && (st === "all" || pendingStageOf(i) === st)
+            ).length;
+            const on = pendingStage === st;
+            return (
+              <button
+                key={st}
+                type="button"
+                onClick={() => setPendingStage(st)}
+                className={`flex min-h-[36px] shrink-0 items-center gap-1.5 rounded-full px-3 text-xs font-bold ${
+                  on ? "bg-petflow-chocolate text-card" : "bg-paper text-brown"
+                }`}
+              >
+                {st === "all" ? "ทั้งหมด" : STAGE_META[st].label}
+                <span className={`text-[10px] ${on ? "text-card/70" : "text-brown-faint"}`}>{n}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
       <SearchField
         value={billSearch}
         onChange={setBillSearch}
@@ -2545,7 +2657,8 @@ export default function BillingPage() {
           const bk = linkedFor(inv);
           return bk?.checkin || bk?.date || (inv.createdAt || "").slice(0, 10) || "";
         };
-        const dueOf = (inv: Invoice) => inv.total - (inv.deposit || 0);
+        // มัดจำที่ยังไม่ได้รับ ยังนับเป็นยอดค้าง
+        const dueOf = (inv: Invoice) => inv.total - receivedOf(inv);
         const q = billSearch.trim().toLowerCase();
         // เดือนอ้างอิง: เรียงตามวันออกบิล → เดือนที่ออกบิล, นอกนั้น → เดือนของวันนัด
         const monthOf = (inv: Invoice) =>
@@ -2559,6 +2672,10 @@ export default function BillingPage() {
         let list = invoices
           .filter((inv) => !billMonth || monthOf(inv) === billMonth)
           .filter((inv) => billFilter === "all" || inv.status === billFilter)
+          .filter(
+            (inv) =>
+              billFilter !== "pending" || pendingStage === "all" || pendingStageOf(inv) === pendingStage
+          )
           .filter(
             (inv) =>
               !q ||
@@ -2641,14 +2758,19 @@ export default function BillingPage() {
               </div>
               <div className="shrink-0 text-right">
                 <p className="text-base font-extrabold text-petflow-chocolate">{inv.total.toLocaleString()} ฿</p>
-                <span
-                  className={`mt-0.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold ${
-                    paid ? "bg-ok/15 text-ok" : "bg-wait/15 text-wait"
-                  }`}
-                >
-                  <Icon name={paid ? "check" : "clock"} size={11} strokeWidth={2.4} />
-                  {paid ? "ชำระแล้ว" : "รอชำระ"}
-                </span>
+                {(() => {
+                  const meta = paid ? null : STAGE_META[pendingStageOf(inv)];
+                  return (
+                    <span
+                      className={`mt-0.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold ${
+                        meta ? meta.tone : "bg-ok/15 text-ok"
+                      }`}
+                    >
+                      <Icon name={meta?.icon || "check"} size={11} strokeWidth={2.4} />
+                      {meta ? meta.short : "ปิดบิลแล้ว"}
+                    </span>
+                  );
+                })()}
               </div>
             </div>
 
@@ -2668,10 +2790,10 @@ export default function BillingPage() {
                 ) : null}
                 {hasDep && (
                   <div className="flex justify-between border-t border-petflow-line pt-1 font-bold">
-                    <span className={inv.depositReceivedAt ? "text-ok" : "text-brown"}>
-                      มัดจำ {inv.depositReceivedAt ? "(รับแล้ว)" : "(รอรับ)"}
+                    <span className={inv.depositReceivedAt || paid ? "text-ok" : "text-brown"}>
+                      มัดจำ {inv.depositReceivedAt || paid ? "(รับแล้ว)" : "(รอรับ)"}
                     </span>
-                    <span className={inv.depositReceivedAt ? "text-ok" : "text-brown"}>
+                    <span className={inv.depositReceivedAt || paid ? "text-ok" : "text-brown"}>
                       {inv.deposit!.toLocaleString()} ฿
                     </span>
                   </div>
@@ -2682,14 +2804,29 @@ export default function BillingPage() {
                     <span>{(inv.total - inv.deposit!).toLocaleString()} ฿</span>
                   </div>
                 )}
+                {/* ปิดบิลแล้ว — โชว์ยอดที่เหลือที่รับตอนปิดบิลด้วย ไม่งั้นดูเหมือนรับแค่มัดจำ */}
+                {hasDep && paid && (
+                  <>
+                    <div className="flex justify-between font-bold text-ok">
+                      <span>ยอดคงเหลือ (รับแล้ว)</span>
+                      <span>{Math.max(0, inv.total - inv.deposit!).toLocaleString()} ฿</span>
+                    </div>
+                    <div className="flex justify-between border-t border-petflow-line pt-1 font-extrabold text-ok">
+                      <span>รับครบแล้ว</span>
+                      <span>{inv.total.toLocaleString()} ฿</span>
+                    </div>
+                  </>
+                )}
               </div>
             )}
             {(!inv.items || inv.items.length === 0) && hasDep && (
               <p className="mt-2 text-[11px] font-bold text-ok">
-                มัดจำ{inv.depositReceivedAt ? " (รับแล้ว) " : " (รอรับ) "}
+                มัดจำ{inv.depositReceivedAt || paid ? " (รับแล้ว) " : " (รอรับ) "}
                 {inv.deposit!.toLocaleString()}
-                {inv.status === "pending" && (
+                {inv.status === "pending" ? (
                   <span className="text-wait"> · คงเหลือ {(inv.total - inv.deposit!).toLocaleString()} บาท</span>
+                ) : (
+                  <span> · รับครบ {inv.total.toLocaleString()} บาท</span>
                 )}
               </p>
             )}

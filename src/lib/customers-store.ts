@@ -74,6 +74,8 @@ export type CustomerRecord = {
   addressMapUrl?: string;
   /** รหัสไปรษณีย์ — ไว้ดูว่าลูกค้าส่วนใหญ่อยู่แถวไหนสำหรับทำการตลาด */
   postalCode?: string;
+  /** รูปบัตรประชาชนผู้ปกครอง (มีข้อความขีดทับ "ใช้ลงทะเบียน PetFlow" ฝังในรูปแล้ว) */
+  idCardUrl?: string;
   /** รหัสชวนเพื่อนของลูกค้าคนนี้ (แชร์ให้เพื่อนสมัคร) */
   referralCode?: string;
   /** ถูกชวนมาโดยลูกค้ารหัสนี้ (กันออกคูปองซ้ำ) */
@@ -165,6 +167,7 @@ type CustomerRow = {
   address?: string | null;
   address_map_url?: string | null;
   postal_code?: string | null;
+  id_card_url?: string | null;
   referral_code?: string | null;
   referred_by?: string | null;
   is_member: boolean;
@@ -242,6 +245,7 @@ function mapCustomer(row: CustomerRow): CustomerRecord {
     address: row.address ?? undefined,
     addressMapUrl: row.address_map_url ?? undefined,
     postalCode: row.postal_code ?? undefined,
+    idCardUrl: row.id_card_url ?? undefined,
     referralCode: row.referral_code ?? undefined,
     referredBy: row.referred_by ?? undefined,
     isMember: row.is_member,
@@ -2364,4 +2368,20 @@ export async function registerCustomerFromLine(data: {
   if (!refreshed) return null;
   await recalculateCustomerTier(refreshed.id);
   return getCustomer(refreshed.id);
+}
+
+/**
+ * บันทึกรูปบัตรประชาชนผู้ปกครอง — แนบครั้งเดียวใช้ได้ทุกรอบที่เข้าพัก (แนบใหม่ = แทนรูปเดิม)
+ * ต้องรัน migration customers.id_card_url ก่อน ไม่งั้นคืน need_sql
+ */
+export async function setCustomerIdCard(customerId: string, url: string) {
+  const sb = getSupabase();
+  if (!sb) {
+    const c = memCustomers.get(customerId);
+    if (c) c.idCardUrl = url;
+    return { ok: true as const };
+  }
+  const { error } = await sb.from("customers").update({ id_card_url: url }).eq("id", customerId).eq("tenant_id", requireTenantId());
+  if (error) return { ok: false as const, error: "need_sql" as const, message: error.message };
+  return { ok: true as const };
 }

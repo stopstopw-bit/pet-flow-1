@@ -12,6 +12,7 @@ import { Icon } from "@/components/Icon";
 import { TransportPicker } from "@/components/TransportPicker";
 import type { BookingTransport } from "@/lib/transport";
 import { Avatar, SearchField, Segmented } from "@/components/ui";
+import { UNKNOWN_CAT, isUnknownCat } from "@/lib/unknown-cat";
 import {
   typeAvailability,
   attachClosures,
@@ -26,8 +27,6 @@ type CustomerListItem = CustomerRecord & { upcomingAppointments?: number };
 
 const FREEBIE_OPTIONS = ["กล้องวงจรปิด (CCTV)", "น้ำพุแมว", "รับ-ส่ง", "ขนม/ทรีท"];
 
-const UNKNOWN_CAT = "น้องไม่ระบุชื่อ";
-const isUnknownCat = (name: string) => name === UNKNOWN_CAT || name.startsWith(`${UNKNOWN_CAT} (`);
 
 type GroomSlot = { time: string; capacity: number; booked: number; remaining: number; endTime?: string };
 
@@ -444,6 +443,8 @@ export default function NewBookingPage() {
       });
   }, []);
 
+  // เวลานัดอาบน้ำ — ใช้เช็กว่าชนกับคิวที่มีอยู่ไหม
+
   const [roomId, setRoomId] = useState("");
   // ห้องจริงที่ปักหมุด (เลขห้อง) — เฉพาะห้องเดี่ยว ไม่ใช่ห้องเชื่อม (ห้องเชื่อมจัดให้อัตโนมัติเหมือนเดิม)
   const [roomUnit, setRoomUnit] = useState<number | null>(null);
@@ -565,6 +566,27 @@ export default function NewBookingPage() {
     if (roomUnit != null && !freeUnits.includes(roomUnit)) setRoomUnit(null);
   }, [freeUnits, roomUnit]);
 
+  // ห้องที่ 2 ของการจองเดียวกัน — แยกน้องบางตัวไปอีกห้อง (บิลยังรวมใบเดียวเพราะเป็นบ้าน/ช่วงวันเดียวกัน)
+  const [room2Id, setRoom2Id] = useState("");
+  const [room2Unit, setRoom2Unit] = useState<number | null>(null);
+  const [room2Cats, setRoom2Cats] = useState<string[]>([]);
+  const free2 = (id: string) => (availability[id]?.free ?? 0) - (id === roomId ? 1 : 0);
+  const freeUnits2 = useMemo(() => {
+    if (service !== "room" || !room2Id || !appointmentDate || compositionOf(room2Id, boardRooms)) return [];
+    return freeUnitsForRange(boardRooms, existing, room2Id, appointmentDate, checkoutDate || appointmentDate).filter(
+      (u) => !(room2Id === roomId && u === roomUnit)
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [service, room2Id, roomId, roomUnit, appointmentDate, checkoutDate, rooms, existing]);
+  useEffect(() => {
+    if (room2Unit != null && !freeUnits2.includes(room2Unit)) setRoom2Unit(null);
+  }, [freeUnits2, room2Unit]);
+  const closeRoom2 = () => {
+    setRoom2Id("");
+    setRoom2Unit(null);
+    setRoom2Cats([]);
+  };
+
   const addCatFromInput = () => {
     const name = catInput.trim();
     if (!name || catNames.includes(name)) return;
@@ -585,6 +607,7 @@ export default function NewBookingPage() {
   };
 
   const removeCat = (name: string) => {
+    setRoom2Cats((prev) => prev.filter((c) => c !== name));
     setCatNames((prev) => prev.filter((c) => c !== name));
   };
 
@@ -635,12 +658,45 @@ export default function NewBookingPage() {
     }[] = [];
     let failed = 0;
 
+    const twoRooms = service === "room" && !!room2Id;
+    if (twoRooms && !cats.some((c) => room2Cats.includes(c))) {
+      toast("เลือกน้องที่จะอยู่ห้องที่ 2 ก่อนนะ (แตะชื่อน้องในกล่องห้องที่ 2)", "error");
+      return;
+    }
+    if (twoRooms && cats.every((c) => room2Cats.includes(c))) {
+      toast("ห้องที่ 1 ต้องมีน้องอย่างน้อย 1 ตัว", "error");
+      return;
+    }
+
+    // ประเภทเดียวกันทั้ง 2 ห้อง ถ้าไม่ล็อกเลขห้อง ระบบจัดห้องจะเอาน้องบ้านเดียวกันไว้ห้องเดียวกัน
+    // → ล็อกเลขห้องให้ทั้งคู่ (ใช้ที่เลือกไว้ ไม่งั้นหยิบห้องว่างห้องแรก)
+    let unit1 = roomUnit;
+    let unit2 = room2Unit;
+    if (twoRooms && room2Id === roomId && !compositionOf(roomId, boardRooms)) {
+      unit1 = unit1 ?? freeUnits.find((u) => u !== unit2) ?? null;
+      unit2 = unit2 ?? freeUnits.find((u) => u !== unit1) ?? null;
+      if (unit1 == null || unit2 == null || unit1 === unit2) {
+        toast("ห้องประเภทนี้ว่างไม่ถึง 2 ห้องในช่วงนี้", "error");
+        return;
+      }
+    }
+
     for (const [i, cat] of cats.entries()) {
       const time = service === "groom" ? catTimes[i] || groomStart || undefined : undefined;
+      const inRoom2 = twoRooms && room2Cats.includes(cat);
       const res = await fetch("/api/bookings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...basePayload, time, catName: cat }),
+        body: JSON.stringify({
+          ...basePayload,
+          ...(inRoom2
+            ? { room: room2Id, roomUnit: unit2 ?? undefined }
+            : twoRooms
+              ? { roomUnit: unit1 ?? undefined }
+              : {}),
+          time,
+          catName: cat,
+        }),
       });
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -672,6 +728,7 @@ export default function NewBookingPage() {
       setRoomUnit(null);
       setGroomProgram("");
       setAvailTick((n) => n + 1);
+      closeRoom2();
       form.reset();
       setTimeout(() => setSaved(false), 2500);
     }
@@ -1030,6 +1087,95 @@ export default function NewBookingPage() {
                       ))}
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* ห้องที่ 2 — การจองเดียวกันแต่แยกน้องบางตัวไปอีกห้อง */}
+              {!room2Id ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const first = rooms.find((r) => free2(r.id) > 0 || (!r.count && compositionOf(r.id, boardRooms)));
+                    if (first) setRoom2Id(first.id);
+                    else toast("ช่วงวันนี้ไม่มีห้องว่างพอสำหรับห้องที่ 2", "error");
+                  }}
+                  className="mt-3 flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-petflow-sm border border-dashed border-latte/60 text-xs font-bold text-latte-deep"
+                >
+                  <Icon name="plus" size={15} />
+                  เพิ่มห้องที่ 2 (แยกน้องไปอีกห้อง)
+                </button>
+              ) : (
+                <div className="mt-3 space-y-2 rounded-petflow-sm border border-honey/60 bg-honey/10 p-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-extrabold text-petflow-chocolate">ห้องที่ 2</p>
+                    <button type="button" onClick={closeRoom2} className="min-h-[36px] px-2 text-[11px] font-bold text-brown-soft">
+                      เอาออก
+                    </button>
+                  </div>
+                  <select
+                    value={room2Id}
+                    onChange={(e) => {
+                      setRoom2Id(e.target.value);
+                      setRoom2Unit(null);
+                    }}
+                    aria-label="ประเภทห้องที่ 2"
+                    className="min-h-[44px] w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm text-brown"
+                  >
+                    {rooms.map((r) => {
+                      const tracked = r.id in availability;
+                      const f = free2(r.id);
+                      return (
+                        <option key={r.id} value={r.id} disabled={tracked && f <= 0}>
+                          {r.name} · {r.price} บาท/คืน{tracked ? (f > 0 ? ` · ว่าง ${f}` : " · เต็ม") : ""}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  {freeUnits2.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {freeUnits2.map((u) => (
+                        <button
+                          key={u}
+                          type="button"
+                          onClick={() => setRoom2Unit(room2Unit === u ? null : u)}
+                          aria-pressed={room2Unit === u}
+                          className={`min-h-[36px] rounded-full px-3 text-xs font-bold ${
+                            room2Unit === u ? "bg-petflow-chocolate text-card" : "bg-card text-brown-soft ring-1 ring-petflow-line"
+                          }`}
+                        >
+                          ห้อง {u}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-[11px] font-bold text-brown-soft">น้องที่อยู่ห้องนี้ (แตะเพื่อเลือก)</p>
+                  {catNames.length === 0 ? (
+                    <p className="text-[10px] text-brown-faint">ใส่ชื่อน้องด้านบนก่อน แล้วค่อยแบ่งห้อง</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {catNames.map((c) => {
+                        const on = room2Cats.includes(c);
+                        return (
+                          <button
+                            key={c}
+                            type="button"
+                            aria-pressed={on}
+                            onClick={() => setRoom2Cats((prev) => (on ? prev.filter((x) => x !== c) : [...prev, c]))}
+                            className={`flex min-h-[36px] items-center gap-1 rounded-full px-3 text-xs font-bold ${
+                              on ? "bg-petflow-chocolate text-card" : "bg-card text-brown-soft ring-1 ring-petflow-line"
+                            }`}
+                          >
+                            {on && <Icon name="check" size={13} strokeWidth={2.4} />}
+                            {c}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <p className="text-[10px] text-brown-faint">
+                    ตัวที่ไม่ได้เลือกอยู่ห้องที่ 1 · บิลยังรวมเป็นใบเดียว
+                    {room2Id === roomId && !compositionOf(roomId, boardRooms) && " · ห้องแบบเดียวกัน ระบบจะล็อกเลขห้องให้แยกกัน"}
+                  </p>
                 </div>
               )}
             </div>

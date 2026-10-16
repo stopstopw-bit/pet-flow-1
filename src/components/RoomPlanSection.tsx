@@ -8,6 +8,7 @@ import { MoreMenu } from "@/components/ui";
 type PlanView = {
   id: string;
   name: string;
+  kind?: "room" | "package";
   status: "active" | "cancelled";
   price: number;
   fullPrice: number;
@@ -67,7 +68,8 @@ export function RoomPlanSection({
     fetch(`/api/room-plans?customerId=${customerId}`)
       .then((r) => r.json())
       .then((d) => {
-        setPlans(d.plans || []);
+        // คอร์สแบ่งจ่ายโชว์ในส่วนคอร์สแทน — ที่นี่เฉพาะแพ็กห้อง
+        setPlans(((d.plans || []) as PlanView[]).filter((p) => p.kind !== "package"));
         if (d.settings) setSettings(d.settings);
       })
       .catch(() => {});

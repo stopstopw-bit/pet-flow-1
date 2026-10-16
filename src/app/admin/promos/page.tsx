@@ -814,7 +814,7 @@ export default function PromosAdminPage() {
       )}
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4">
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 sm:items-center sm:p-4">
           <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-petflow bg-card shadow-petflow sm:rounded-petflow">
             <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-petflow-line bg-card px-5 py-3">
               <h2 className="text-base font-extrabold text-petflow-chocolate">
@@ -945,7 +945,7 @@ export default function PromosAdminPage() {
                 </label>
               </div>
 
-              <div className="sticky bottom-0 -mx-5 -mb-5 flex gap-2 border-t border-petflow-line bg-card px-5 py-3">
+              <div className="sticky bottom-0 -mx-5 -mb-5 flex gap-2 border-t border-petflow-line bg-card px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
                 <button type="button" onClick={closeModal} className="h-11 flex-1 rounded-full bg-paper text-sm font-bold text-brown-soft">
                   ยกเลิก
                 </button>

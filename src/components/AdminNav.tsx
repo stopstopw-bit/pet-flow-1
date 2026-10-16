@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { ADMIN_TAB_EN, ADMIN_TAB_GROUPS, ADMIN_TAB_ICONS, Icon } from "@/components/Icon";
 
 export const ADMIN_TABS = [
@@ -83,6 +83,7 @@ function NavLink({
     <Link
       href={href}
       onClick={onNavigate}
+      aria-current={active ? "page" : undefined}
       className={`flex items-center gap-3 rounded-petflow-sm font-bold transition ${
         active
           ? "bg-petflow-chocolate text-card"
@@ -175,7 +176,7 @@ export function AdminNav({
       />
       <nav
         id="admin-menu"
-        className="fixed inset-x-0 bottom-0 z-[44] max-h-[88vh] overflow-y-auto rounded-t-[28px] bg-cream px-4 pb-28 pt-3 shadow-petflow lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-[44] max-h-[88vh] overflow-y-auto rounded-t-[28px] bg-cream px-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-3 shadow-petflow lg:hidden"
         aria-label="เมนูหลังบ้าน"
       >
         <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-brown-faint/50" />
@@ -240,13 +241,28 @@ export function AdminSidebar() {
   const pathname = usePathname();
   const allowed = getAllowedMenus();
   const visibleTabs = TABS.filter((t) => !allowed || allowed.includes(t.href));
+  const navRef = useRef<HTMLElement | null>(null);
+  // เมนูยาวกว่าจอเตี้ยๆ → เลื่อนให้เห็นเมนูหน้าที่เปิดอยู่เสมอ
+  // (top-[76px] = ใต้แถบหัวหลังบ้านที่ติดอยู่ด้านบน ไม่ให้เมนูมุดใต้หัว)
+  useEffect(() => {
+    // เลื่อนเฉพาะในกล่องเมนู ไม่ใช้ scrollIntoView เพราะจะพาทั้งหน้าเลื่อนตามไปด้วย
+    const nav = navRef.current;
+    const active = nav?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!nav || !active) return;
+    const navBox = nav.getBoundingClientRect();
+    const box = active.getBoundingClientRect();
+    if (box.top < navBox.top || box.bottom > navBox.bottom) {
+      nav.scrollTop += box.top - navBox.top - nav.clientHeight / 2 + box.height / 2;
+    }
+  }, [pathname]);
   return (
     <nav
+      ref={navRef}
       aria-label="เมนูหลังบ้าน"
-      className="sticky top-6 hidden max-h-[calc(100vh-3rem)] overflow-y-auto rounded-petflow bg-card p-3 shadow-petflow lg:block"
+      className="sticky top-[76px] hidden max-h-[calc(100dvh-92px)] overflow-y-auto overscroll-contain rounded-petflow bg-card p-2.5 shadow-petflow lg:block"
     >
       {groupTabs(visibleTabs).map((g) => (
-        <div key={g.title} className="mb-3 last:mb-0">
+        <div key={g.title} className="mb-2 last:mb-0">
           <p className="mb-1 px-3 pt-1 text-[10px] font-bold uppercase tracking-[0.12em] text-brown-faint">
             {g.title}
           </p>
@@ -256,7 +272,7 @@ export function AdminSidebar() {
                 <NavLink
                   {...tab}
                   active={isTabActive(pathname, tab.href)}
-                  className="w-full px-3 py-2 text-sm"
+                  className="w-full px-3 py-1.5 text-sm"
                 />
               </li>
             ))}
@@ -267,13 +283,17 @@ export function AdminSidebar() {
   );
 }
 
-/** แถบเมนูล่างบนมือถือ — หน้าหลัก · ตารางนัด · [+ จองใหม่] · ลูกค้า · เมนู */
+/** แถบเมนูล่างบนมือถือ — หน้าหลัก · ตารางนัด · [+ จองใหม่] · คิดเงิน · เมนู (ลูกค้าอยู่ในเมนู) */
 const BOTTOM_LEFT = ["/admin", "/admin/schedule"];
-const BOTTOM_RIGHT = ["/admin/customers"];
+const BOTTOM_RIGHT = ["/admin/billing"];
 const BOTTOM_LABEL: Record<string, string> = {
   "/admin": "Home",
   "/admin/schedule": "Schedule",
-  "/admin/customers": "Customers",
+  "/admin/billing": "คิดเงิน",
+};
+/** ปุ่มคิดเงินเปิดตรงไปที่ลิสต์บิลรอชำระ ไม่ใช่ฟอร์มออกบิลด้านบน */
+const BOTTOM_LINK: Record<string, string> = {
+  "/admin/billing": "/admin/billing?view=pending",
 };
 
 export function AdminBottomBar({
@@ -293,7 +313,13 @@ export function AdminBottomBar({
     can(href) ? (
       <Link
         key={href}
-        href={href}
+        href={BOTTOM_LINK[href] || href}
+        onClick={() => {
+          // อยู่หน้าคิดเงินอยู่แล้ว กดซ้ำ = เด้งกลับไปที่บิลรอชำระ
+          if (href === "/admin/billing" && pathname === href) {
+            window.dispatchEvent(new Event("petflow:show-pending-bills"));
+          }
+        }}
         className={`flex min-w-0 flex-1 flex-col items-center gap-1 py-1 text-[10px] font-bold tracking-wide transition ${
           !menuOpen && isTabActive(pathname, href) ? "text-petflow-chocolate" : "text-brown-faint"
         }`}
@@ -306,6 +332,7 @@ export function AdminBottomBar({
   return (
     <nav
       aria-label="เมนูลัด"
+      data-bottom-nav
       className="fixed inset-x-0 bottom-0 z-[45] border-t border-petflow-line bg-card/95 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-md print:hidden lg:hidden"
     >
       <div className="mx-auto flex max-w-lg items-end justify-between px-2">

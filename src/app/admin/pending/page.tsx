@@ -6,6 +6,7 @@ import { toast } from "@/components/Toast";
 import { Icon } from "@/components/Icon";
 import { EmptyState, SectionLabel } from "@/components/ui";
 import { groupBookings } from "@/lib/booking-group";
+import { bangkokToday } from "@/lib/bangkok-date";
 import { isAwaitingConfirmation, bookingLastDate } from "@/lib/booking-status";
 
 type PendingBooking = {
@@ -41,7 +42,7 @@ export default function PendingConfirmPage() {
   const [billed, setBilled] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
-  const today = new Date().toISOString().slice(0, 10);
+  const today = bangkokToday();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -162,7 +163,7 @@ export default function PendingConfirmPage() {
           <EmptyState
             icon="check"
             title="ยืนยันครบทุกนัดแล้ว"
-            sub="นัดที่ผ่านมาแล้วหรือออกบิลแล้ว ไม่ต้องตามยืนยันย้อนหลัง"
+            sub="นัดที่เลยเวลาแล้วหรือออกบิลแล้ว นับว่ายืนยันอัตโนมัติ"
           />
         </div>
       ) : (

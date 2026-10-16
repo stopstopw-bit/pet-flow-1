@@ -119,9 +119,12 @@ export function InvoiceActionButtons({
           {hasDeposit && (
             <p className="truncate text-[11px] text-brown-soft">
               มัดจำ {inv.deposit!.toLocaleString()}
-              {inv.depositReceivedAt ? " (รับแล้ว)" : " (รอรับ)"}
+              {inv.depositReceivedAt || paid ? " (รับแล้ว)" : " (รอรับ)"}
               {remaining > 0 && !paid && (
                 <span className="font-bold text-wait"> · คงเหลือ {remaining.toLocaleString()} บาท</span>
+              )}
+              {paid && (
+                <span className="font-bold text-ok"> · รับครบ {inv.total.toLocaleString()} บาท</span>
               )}
             </p>
           )}

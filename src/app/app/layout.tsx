@@ -15,7 +15,7 @@ export default function CustomerLayout({
       <ConfigProvider>
         <BrandingStyle />
         <LiffProvider>
-          <div className="bg-petflow-gradient min-h-screen pb-28">
+          <div className="bg-petflow-gradient min-h-screen pb-[calc(6rem+env(safe-area-inset-bottom))]">
             <LiffStuckBanner />
             <div className="mx-auto max-w-lg">{children}</div>
             <CustomerNav />

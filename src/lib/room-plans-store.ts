@@ -5,6 +5,9 @@
  * - ได้เป็น "คอร์สคืน" แยกตามประเภทห้อง — หักได้เฉพาะตอนพักห้องประเภทนั้นจริง
  * - ไม่มีวันหมดอายุ
  * - แบ่งจ่ายเป็นงวดได้: รายรับลงตามงวดที่รับเงินจริง (ไม่ลงตอนสร้างแพ็ก กันนับซ้ำ)
+ *
+ * ใช้ตารางเดียวกันกับ "คอร์สทั่วไปแบบแบ่งจ่าย" ด้วย (อาบน้ำ 10 ครั้ง ฯลฯ) — แผนแบบนั้น items ว่าง
+ * แล้วผูกคอร์สผ่าน customer_packages.plan_id · ทุกแบบต้องจ่ายครบก่อนถึงจะใช้ได้
  */
 import { getSupabase } from "./supabase/server";
 import { requireTenantId } from "./tenant-context";
@@ -54,8 +57,10 @@ export type RoomPlanView = RoomPlan & {
   installmentsLeft: number;
   /** ยอดแนะนำต่องวดของงวดที่เหลือ */
   nextInstallment: number;
-  /** คืนคงเหลือรายห้อง (อ่านจากคอร์สจริง) */
-  nights: { roomType: string; roomLabel: string; total: number; used: number; left: number }[];
+  /** "room" = แพ็กห้องรายเดือน · "package" = คอร์สทั่วไปแบบแบ่งจ่าย */
+  kind: "room" | "package";
+  /** คงเหลือแยกตามคอร์ส (อ่านจากคอร์สจริง) — unit บอกว่าเป็นคืนหรือครั้ง */
+  nights: { roomType: string; roomLabel: string; total: number; used: number; left: number; unit: "night" | "use" }[];
 };
 
 type RoomPlanRow = {
@@ -212,19 +217,33 @@ export function viewRoomPlan(p: RoomPlan, packages: CustomerPackage[]): RoomPlan
   const remaining = Math.max(0, p.price - paid);
   const installmentsLeft = remaining <= 0 ? 0 : Math.max(1, p.installments - p.payments.length);
   const nextInstallment = installmentsLeft > 0 ? Math.ceil(remaining / installmentsLeft) : 0;
-  const nights = p.items.map((it) => {
-    const pkg = packages.find((x) => x.id === it.packageId);
-    const total = pkg?.totalUses ?? it.nights;
-    const used = pkg?.usedUses ?? 0;
-    return {
-      roomType: it.roomType,
-      roomLabel: it.roomLabel,
-      total,
-      used,
-      left: pkg && pkg.status === "cancelled" ? 0 : Math.max(0, total - used),
-    };
-  });
-  return { ...p, paid, remaining, installmentsLeft, nextInstallment, nights };
+  const kind = p.items.length ? "room" : "package";
+  const nights =
+    kind === "room"
+      ? p.items.map((it) => {
+          const pkg = packages.find((x) => x.id === it.packageId);
+          const total = pkg?.totalUses ?? it.nights;
+          const used = pkg?.usedUses ?? 0;
+          return {
+            roomType: it.roomType,
+            roomLabel: it.roomLabel,
+            total,
+            used,
+            left: pkg && pkg.status === "cancelled" ? 0 : Math.max(0, total - used),
+            unit: "night" as const,
+          };
+        })
+      : packages
+          .filter((x) => x.planId === p.id)
+          .map((pkg) => ({
+            roomType: pkg.id,
+            roomLabel: pkg.name,
+            total: pkg.totalUses,
+            used: pkg.usedUses,
+            left: pkg.status === "cancelled" ? 0 : Math.max(0, pkg.totalUses - pkg.usedUses),
+            unit: pkg.unit === "night" ? ("night" as const) : ("use" as const),
+          }));
+  return { ...p, paid, remaining, installmentsLeft, nextInstallment, kind, nights };
 }
 
 export async function viewCustomerRoomPlans(customerId: string): Promise<RoomPlanView[]> {
@@ -299,6 +318,58 @@ export async function createRoomPlan(data: {
   return { ok: true as const, plan: (await getRoomPlan(plan.id)) || plan, payment };
 }
 
+/**
+ * ขายคอร์สทั่วไปแบบแบ่งจ่าย (เช่น อาบน้ำ 10 ครั้ง ผ่อน 3 งวด)
+ * สร้างแผนจ่าย + คอร์สที่ผูกแผน (ยังใช้ไม่ได้จนกว่าจะจ่ายครบ) แล้วรับงวดแรกถ้ามี
+ */
+export async function createPackagePlan(data: {
+  customerId: string;
+  customerName: string;
+  lineUserId?: string;
+  name: string;
+  totalUses: number;
+  price: number;
+  groomProgram?: string;
+  installments: number;
+  firstPayment?: number;
+  paymentMethod?: "transfer" | "cash";
+}) {
+  const price = Math.max(0, Math.round(Number(data.price) || 0));
+  if (price <= 0) return { ok: false as const, error: "price_required" };
+  const plan: RoomPlan = {
+    id: `RP${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
+    customerId: data.customerId,
+    customerName: data.customerName,
+    lineUserId: data.lineUserId,
+    name: data.name,
+    items: [],
+    fullPrice: price,
+    discountPct: 0,
+    price,
+    installments: Math.min(12, Math.max(1, Math.round(Number(data.installments) || 1))),
+    payments: [],
+    status: "active",
+    createdAt: new Date().toISOString(),
+  };
+  // บันทึกแผนก่อน — ถ้าฐานข้อมูลยังไม่พร้อมจะได้ล้มก่อนสร้างคอร์สที่ไม่ล็อก
+  await savePlan(plan);
+  const pkg = await sellPackage({
+    customerId: plan.customerId,
+    customerName: plan.customerName,
+    name: data.name,
+    totalUses: data.totalUses,
+    price,
+    groomProgram: data.groomProgram,
+    planId: plan.id,
+    noIncome: true,
+  });
+
+  let payment: Awaited<ReturnType<typeof receiveRoomPlanPayment>> | undefined;
+  const first = Math.round(Number(data.firstPayment) || 0);
+  if (first > 0) payment = await receiveRoomPlanPayment(plan.id, first, data.paymentMethod);
+  return { ok: true as const, plan: (await getRoomPlan(plan.id)) || plan, pkg, payment };
+}
+
 const busy = new Set<string>();
 
 /** รับเงินงวด — ลงรายรับตามวันที่รับจริง ไม่เกินยอดค้าง */
@@ -362,6 +433,11 @@ export async function cancelRoomPlan(planId: string) {
   const plan = await getRoomPlan(planId);
   if (!plan) return { ok: false as const, error: "not_found" };
   for (const it of plan.items) if (it.packageId) await cancelPackage(it.packageId);
+  if (!plan.items.length) {
+    for (const pkg of await listCustomerPackages(plan.customerId)) {
+      if (pkg.planId === plan.id) await cancelPackage(pkg.id);
+    }
+  }
   plan.status = "cancelled";
   await savePlan(plan);
   return { ok: true as const };
