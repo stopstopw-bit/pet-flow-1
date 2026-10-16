@@ -869,7 +869,12 @@ export function BookingCalendar() {
           booking={editing.b}
           siblings={editing.group
             .filter((x) => x.id !== editing.b.id)
-            .map((x) => ({ id: x.id, catName: x.catName }))}
+            .map((x) => ({
+              id: x.id,
+              catName: x.catName,
+              notes: x.notes,
+              groomProgram: x.groomProgram,
+            }))}
           rooms={rooms}
           groomSlots={groomSlots}
           groomPrograms={groomPrograms}
@@ -1442,13 +1447,11 @@ export function BookingCalendar() {
                 return l;
               };
               const menu: { label: string; icon?: string; onClick: () => void; danger?: boolean }[] = [
-                ...(many
-                  ? group.map((x) => ({
-                      label: uniq(`แก้ไข ${x.catName}`),
-                      icon: "edit",
-                      onClick: () => openEdit(x, group),
-                    }))
-                  : [{ label: uniq("แก้ไขนัด"), icon: "edit", onClick: () => openEdit(b, group) }]),
+                {
+                  label: uniq(many ? "แก้ไขนัดทั้งบ้าน" : "แก้ไขนัด"),
+                  icon: "edit",
+                  onClick: () => openEdit(b, group),
+                },
                 ...(many
                   ? [{ label: uniq("เลื่อนนัดทั้งบ้าน"), icon: "calendar", onClick: () => openMove(group) }]
                   : []),

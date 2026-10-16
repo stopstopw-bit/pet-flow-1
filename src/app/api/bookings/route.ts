@@ -1035,7 +1035,8 @@ async function handlePatch(req: NextRequest, admin: boolean) {
       await updateCalendarEvent(updated.calendarEventId, bookingCalendarPayload(updated));
     }
 
-    await sendTelegram(
+    // แก้ทั้งบ้าน: ตัวแรกแจ้งครั้งเดียวพอ ตัวที่เหลือส่ง silent มา กันแจ้งเตือนรัวทีละตัว
+    if (!body.silent) await sendTelegram(
       formatBookingTelegram("✏️ แก้ไขนัด", {
         ลูกค้า: String(updated.customerName),
         น้องแมว: String(updated.catName),
