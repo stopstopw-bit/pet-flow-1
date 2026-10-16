@@ -36,7 +36,6 @@ async function handlePost(req: NextRequest) {
         ),
       ]
     : [String(body.catName || "").trim()].filter(Boolean);
-  const catName = catNames[0] || "";
   const service = body.service === "room" ? "room" : body.service === "groom" ? "groom" : null;
 
   if (!catNames.length || !service) {
@@ -84,13 +83,18 @@ async function handlePost(req: NextRequest) {
     if (myBookings.some((x) => x.service === "groom" && catNames.includes(x.catName) && x.date === date)) {
       return NextResponse.json({ error: "duplicate_booking" }, { status: 409 });
     }
-    const { closed, slots } = await getGroomAvailability(date);
+    const { closed, slots, mode } = await getGroomAvailability(date, catNames.length);
     if (closed) {
       return NextResponse.json({ error: "shop_closed" }, { status: 409 });
     }
-    // น้องแมวกี่ตัวก็ได้ — ตัวแรกลงเวลาที่เลือก ถ้าเต็ม (ตามความสามารถรับที่ตั้งไว้) ตัวถัดไปไหล
-    // ไปสล็อตถัดไปที่ว่างอัตโนมัติ (ร้านตั้งรับพร้อมกัน >1 ต่อสล็อตได้ที่ตั้งค่า → อาบน้ำ)
-    const assignedTimes = assignGroomSlots(slots, time, catNames.length);
+    // โหมดคิดเวลา: ทั้งบ้านเริ่มพร้อมกันเวลาที่เลือก (เช็คแล้วว่าช่วงเวลาทั้งช่วงยังว่าง)
+    // โหมดเดิม: ตัวแรกลงเวลาที่เลือก ถ้าเต็ม ตัวถัดไปไหลไปสล็อตถัดไปที่ว่างอัตโนมัติ
+    const assignedTimes =
+      mode === "together"
+        ? (slots.find((s) => s.time === time)?.remaining ?? 0) > 0
+          ? catNames.map(() => time)
+          : null
+        : assignGroomSlots(slots, time, catNames.length);
     if (!assignedTimes) {
       return NextResponse.json({ error: "slot_full" }, { status: 409 });
     }
@@ -141,12 +145,12 @@ async function handlePost(req: NextRequest) {
   if (checkin < todayBkk) {
     return NextResponse.json({ error: "past_date" }, { status: 400 });
   }
-  // แมวตัวเดิมมีการเข้าพักช่วงทับซ้อนอยู่แล้ว = จองซ้ำ
+  // แมวตัวไหนก็ได้ในที่เลือกมีการเข้าพักช่วงทับซ้อนอยู่แล้ว = จองซ้ำ
   if (
     myBookings.some(
       (x) =>
         x.service === "room" &&
-        x.catName === catName &&
+        catNames.includes(x.catName) &&
         x.checkin &&
         x.checkout &&
         x.checkin < checkout &&
@@ -160,30 +164,38 @@ async function handlePost(req: NextRequest) {
   if (avail.closed) {
     return NextResponse.json({ error: "shop_closed" }, { status: 409 });
   }
-  if (avail.remaining <= 0) {
+  // บ้านเดียวกันอยู่ห้องเดียวกัน — เกินจุห้องต้องใช้ห้องเพิ่ม
+  const roomCfg = (await getSiteConfig()).rooms.find((r) => r.id === room);
+  const roomsNeeded = Math.ceil(catNames.length / Math.max(1, roomCfg?.maxCats || 1));
+  if (avail.remaining < roomsNeeded) {
     return NextResponse.json({ error: "room_full" }, { status: 409 });
   }
   const deposit = await depositInfo();
-  const booking = await addBooking({
-    customerName: customer.name,
-    catName,
-    service: "room",
-    date: checkin,
-    checkin,
-    checkout,
-    room,
-    lineUserId,
-    selfBooked: true,
-    ...deposit,
-  });
+  const bookings: StoredBooking[] = [];
+  for (const name of catNames) {
+    bookings.push(
+      await addBooking({
+        customerName: customer.name,
+        catName: name,
+        service: "room",
+        date: checkin,
+        checkin,
+        checkout,
+        room,
+        lineUserId,
+        selfBooked: true,
+        ...deposit,
+      })
+    );
+  }
   await sendTelegram(
     formatBookingTelegram("🏠 ลูกค้าจองห้องพักเอง (รอยืนยัน)", {
       ลูกค้า: customer.name,
-      น้อง: catName,
+      น้อง: catNames.join(", "),
       เข้าพัก: `${checkin} → ${checkout}`,
-      ห้อง: room,
+      ห้อง: roomsNeeded > 1 ? `${roomCfg?.name || room} × ${roomsNeeded}` : roomCfg?.name || room,
       ...depositTelegramLine(deposit),
     })
   );
-  return NextResponse.json({ ok: true, booking });
+  return NextResponse.json({ ok: true, booking: bookings[0], bookings });
 }

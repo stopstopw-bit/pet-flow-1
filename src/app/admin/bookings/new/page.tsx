@@ -29,7 +29,7 @@ const FREEBIE_OPTIONS = ["กล้องวงจรปิด (CCTV)", "น้�
 const UNKNOWN_CAT = "น้องไม่ระบุชื่อ";
 const isUnknownCat = (name: string) => name === UNKNOWN_CAT || name.startsWith(`${UNKNOWN_CAT} (`);
 
-type GroomSlot = { time: string; capacity: number; booked: number; remaining: number };
+type GroomSlot = { time: string; capacity: number; booked: number; remaining: number; endTime?: string };
 
 /**
  * 1 แมว = 1 คิว — เรียงแมวลงสล็อตตั้งแต่เวลาที่เลือก เต็มแล้วไหลไปสล็อตถัดไป
@@ -454,28 +454,47 @@ export default function NewBookingPage() {
   const [groomStart, setGroomStart] = useState("12:30");
   const [catTimes, setCatTimes] = useState<string[]>([]);
   const [availTick, setAvailTick] = useState(0);
+  // ร้านเปิดโหมดคิดเวลาตามจำนวนแมว = ทั้งบ้านเริ่มพร้อมกัน แล้วกันคิวทั้งช่วงที่ใช้
+  const [groomMode, setGroomMode] = useState<"together" | "per_cat">("per_cat");
+  const bookingCats = catNames.length > 0 ? catNames : catInput.trim() ? [catInput.trim()] : [];
+  const catKey = bookingCats.join("\u0000");
   useEffect(() => {
     if (service !== "groom" || !appointmentDate) {
       setGroomAvail([]);
       return;
     }
     let alive = true;
-    fetch(`/api/bookings/availability?service=groom&date=${appointmentDate}`)
+    fetch(
+      `/api/bookings/availability?service=groom&date=${appointmentDate}&cats=${Math.max(1, bookingCats.length)}`
+    )
       .then((r) => r.json())
-      .then((d) => alive && setGroomAvail(d.slots || []))
+      .then((d) => {
+        if (!alive) return;
+        setGroomAvail(d.slots || []);
+        setGroomMode(d.mode === "together" ? "together" : "per_cat");
+      })
       .catch(() => alive && setGroomAvail([]));
     return () => {
       alive = false;
     };
-  }, [service, appointmentDate, availTick]);
-  const bookingCats = catNames.length > 0 ? catNames : catInput.trim() ? [catInput.trim()] : [];
-  const catKey = bookingCats.join("\u0000");
+  }, [service, appointmentDate, availTick, bookingCats.length]);
   useEffect(() => {
-    setCatTimes(spreadCatsOverSlots(groomAvail, groomStart, bookingCats.length));
+    setCatTimes(
+      groomMode === "together"
+        ? bookingCats.map(() => groomStart)
+        : spreadCatsOverSlots(groomAvail, groomStart, bookingCats.length)
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groomAvail, groomStart, catKey]);
+  }, [groomAvail, groomStart, catKey, groomMode]);
   /** รอบที่จะเกินคิวถ้าบันทึกตามนี้ — เตือนแต่ยังให้บันทึกได้ (หน้างานบางทีรับเพิ่มไหว) */
   const overSlots = useMemo(() => {
+    if (groomMode === "together") {
+      // โหมดคิดเวลา: เช็คทั้งช่วงที่บ้านนี้ใช้ (เซิร์ฟเวอร์คำนวณ remaining ตามจำนวนตัวให้แล้ว)
+      const sl = groomAvail.find((x) => x.time === groomStart);
+      return sl && sl.remaining <= 0
+        ? [{ time: `${sl.time}–${sl.endTime || ""}`, total: sl.booked + 1, capacity: sl.capacity }]
+        : [];
+    }
     const add = new Map<string, number>();
     for (const t of catTimes) if (t) add.set(t, (add.get(t) || 0) + 1);
     const out: { time: string; total: number; capacity: number }[] = [];
@@ -486,7 +505,7 @@ export default function NewBookingPage() {
       if (n > room) out.push({ time, total: sl.booked + n, capacity: sl.capacity });
     }
     return out;
-  }, [catTimes, groomAvail]);
+  }, [catTimes, groomAvail, groomMode, groomStart]);
   const boardRooms = rooms.map((r) => ({
     id: r.id,
     name: r.name,
@@ -799,9 +818,13 @@ export default function NewBookingPage() {
               onChange={setAppointmentDate}
             />
             <div>
-              <p className="text-xs font-bold text-brown-soft">รอบเวลา (1 แมว = 1 คิว)</p>
+              <p className="text-xs font-bold text-brown-soft">
+                {groomMode === "together" ? "เวลาเริ่ม (คิดเวลาตามจำนวนแมว)" : "รอบเวลา (1 แมว = 1 คิว)"}
+              </p>
               <p className="mb-1.5 text-[10px] text-brown-faint">
-                แตะรอบที่ลูกค้ามา ถ้ามาหลายตัว ระบบเรียงตัวถัดไปลงรอบที่ว่างถัดไปให้ แก้เวลารายตัวได้ด้านล่าง
+                {groomMode === "together"
+                  ? "แตะเวลาที่ลูกค้ามา น้องทั้งบ้านเริ่มพร้อมกัน ระบบคิดเวลาตามจำนวนตัวแล้วกันคิวช่วงนั้นให้"
+                  : "แตะรอบที่ลูกค้ามา ถ้ามาหลายตัว ระบบเรียงตัวถัดไปลงรอบที่ว่างถัดไปให้ แก้เวลารายตัวได้ด้านล่าง"}
               </p>
               {groomAvail.length > 0 && (
                 <div className="mb-2 flex flex-wrap gap-1.5">
@@ -824,7 +847,11 @@ export default function NewBookingPage() {
                       >
                         {sl.time}
                         <span className="block text-[10px] font-bold opacity-80">
-                          {full ? "เต็มแล้ว" : `ว่าง ${sl.remaining}/${sl.capacity}`}
+                          {full
+                          ? "เต็มแล้ว"
+                          : groomMode === "together" && sl.endTime
+                            ? `ถึง ${sl.endTime}`
+                            : `ว่าง ${sl.remaining}/${sl.capacity}`}
                         </span>
                       </button>
                     );
@@ -876,7 +903,11 @@ export default function NewBookingPage() {
               {overSlots.length > 0 && (
                 <p className="mt-2 rounded-petflow-sm bg-wait/10 px-3 py-2 text-[11px] font-bold text-wait">
                   {overSlots
-                    .map((o) => `รอบ ${o.time} จะมี ${o.total} ตัว (รับได้ ${o.capacity})`)
+                    .map((o) =>
+                      groomMode === "together"
+                        ? `ช่วง ${o.time} มีบ้านอื่นอาบอยู่เต็มแล้ว (รับพร้อมกันได้ ${o.capacity})`
+                        : `รอบ ${o.time} จะมี ${o.total} ตัว (รับได้ ${o.capacity})`
+                    )
                     .join(" · ")}
                   {" "}— บันทึกได้ แต่เช็คหน้างานอีกทีนะคะ
                 </p>

@@ -869,7 +869,12 @@ export function BookingCalendar() {
           booking={editing.b}
           siblings={editing.group
             .filter((x) => x.id !== editing.b.id)
-            .map((x) => ({ id: x.id, catName: x.catName }))}
+            .map((x) => ({
+              id: x.id,
+              catName: x.catName,
+              notes: x.notes,
+              groomProgram: x.groomProgram,
+            }))}
           rooms={rooms}
           groomSlots={groomSlots}
           groomPrograms={groomPrograms}
@@ -903,7 +908,31 @@ export function BookingCalendar() {
             >
               <Icon name="back" size={18} />
             </button>
-            <h2 className="truncate px-1 text-base font-extrabold text-petflow-chocolate">{viewTitle}</h2>
+            {/* แตะหัวข้อวันที่ = เปิดปฏิทินเลือกวันกระโดดไปได้เลย ไม่ต้องกดลูกศรทีละวัน */}
+            <label className="relative cursor-pointer truncate rounded-full px-1 hover:bg-paper">
+              <h2 className="truncate text-base font-extrabold text-petflow-chocolate underline decoration-dotted decoration-latte underline-offset-4">
+                {viewTitle}
+              </h2>
+              <input
+                type="date"
+                aria-label="เลือกวันที่"
+                value={activeDate}
+                onClick={(e) => {
+                  try {
+                    (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
+                  } catch {
+                    /* เบราว์เซอร์เก่า — แตะช่องแล้วเปิดเองตามปกติ */
+                  }
+                }}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (!v) return;
+                  setViewMonth(v.slice(0, 7));
+                  pickDate(v);
+                }}
+                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              />
+            </label>
             <button
               type="button"
               onClick={() => shiftView(1)}
@@ -1418,13 +1447,11 @@ export function BookingCalendar() {
                 return l;
               };
               const menu: { label: string; icon?: string; onClick: () => void; danger?: boolean }[] = [
-                ...(many
-                  ? group.map((x) => ({
-                      label: uniq(`แก้ไข ${x.catName}`),
-                      icon: "edit",
-                      onClick: () => openEdit(x, group),
-                    }))
-                  : [{ label: uniq("แก้ไขนัด"), icon: "edit", onClick: () => openEdit(b, group) }]),
+                {
+                  label: uniq(many ? "แก้ไขนัดทั้งบ้าน" : "แก้ไขนัด"),
+                  icon: "edit",
+                  onClick: () => openEdit(b, group),
+                },
                 ...(many
                   ? [{ label: uniq("เลื่อนนัดทั้งบ้าน"), icon: "calendar", onClick: () => openMove(group) }]
                   : []),

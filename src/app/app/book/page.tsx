@@ -7,11 +7,12 @@ import { useConfig } from "@/components/ConfigProvider";
 import { PageHeader } from "@/components/PageHeader";
 import { SELF_BOOKABLE_ROOM_IDS } from "@/lib/self-bookable-rooms";
 import { GROOM_PROGRAMS } from "@/lib/grooming-prices";
+import { extraCatChargePerNight } from "@/lib/business";
 import { toJpegDataUrl } from "@/lib/image-convert";
 
 type Service = "groom" | "room";
 
-type GroomSlot = { time: string; capacity: number; booked: number; remaining: number };
+type GroomSlot = { time: string; capacity: number; booked: number; remaining: number; endTime?: string };
 type RoomAvail = { capacity: number; booked: number; remaining: number; closed: boolean } | null;
 type DepositInfo = {
   amount: number;
@@ -71,20 +72,22 @@ function BookPageInner() {
     () =>
       config.rooms
         .filter((r) => SELF_BOOKABLE_ROOM_IDS.includes(r.id))
-        .map((r) => ({ id: r.id, name: r.name })),
+        .map((r) => ({
+          id: r.id,
+          name: r.name,
+          price: r.price,
+          maxCats: r.maxCats,
+          includedCats: r.includedCats,
+          extraCatPrice: r.extraCatPrice,
+        })),
     [config.rooms]
   );
   const [service, setService] = useState<Service>(
     params.get("service") === "room" ? "room" : "groom"
   );
-  // อาบน้ำเลือกได้หลายตัว (แต่ละตัวกินคิวว่าง 1 ช่อง) — เข้าพักเลือกได้ทีละตัว (คนละห้อง คนละ flow)
+  // เลือกน้องได้หลายตัวทั้งอาบน้ำและเข้าพัก — เข้าพักบ้านเดียวกันอยู่ห้องเดียวกัน (เกินจุห้อง = เพิ่มห้อง)
   const [catNames, setCatNames] = useState<string[]>([]);
-  const catName = catNames[0] || "";
   const toggleCat = (name: string) => {
-    if (service === "room") {
-      setCatNames([name]);
-      return;
-    }
     setCatNames((prev) =>
       prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]
     );
@@ -94,6 +97,8 @@ function BookPageInner() {
   const [date, setDate] = useState(todayISO());
   const [slots, setSlots] = useState<GroomSlot[] | null>(null);
   const [groomClosed, setGroomClosed] = useState(false);
+  // "together" = ร้านตั้งคิดเวลาตามจำนวนแมว: ทั้งบ้านเริ่มพร้อมกัน แล้วกันช่วงเวลาตามจำนวนตัว
+  const [groomMode, setGroomMode] = useState<"together" | "per_cat">("per_cat");
   const [time, setTime] = useState("");
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [groomProgram, setGroomProgram] = useState("");
@@ -105,6 +110,28 @@ function BookPageInner() {
   const [roomAvail, setRoomAvail] = useState<RoomAvail>(null);
   const [roomAvailErr, setRoomAvailErr] = useState("");
   const [loadingRoom, setLoadingRoom] = useState(false);
+
+  // บ้านเดียวกันอยู่ห้องเดียวกัน — เกินจุห้องค่อยเพิ่มห้อง · ค่าตัวที่เกินโควตาห้องคิดตามตั้งค่าห้อง
+  const selectedRoom = roomTypes.find((r) => r.id === roomType);
+  const roomsNeeded = selectedRoom
+    ? Math.max(1, Math.ceil(catNames.length / Math.max(1, selectedRoom.maxCats || 1)))
+    : 1;
+  const roomPrice = useMemo(() => {
+    if (!selectedRoom || !catNames.length || checkout <= checkin) return null;
+    const nights = Math.round(
+      (Date.parse(checkout + "T00:00:00Z") - Date.parse(checkin + "T00:00:00Z")) / 86400000
+    );
+    const extra = extraCatChargePerNight(selectedRoom, catNames.length);
+    return {
+      nights,
+      rooms: extra.rooms,
+      roomPerNight: selectedRoom.price,
+      extraCats: extra.extraCats,
+      extraCatPrice: selectedRoom.extraCatPrice || 0,
+      included: Math.max(1, selectedRoom.includedCats ?? 2),
+      total: (selectedRoom.price * extra.rooms + extra.perNight) * nights,
+    };
+  }, [selectedRoom, catNames.length, checkin, checkout]);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitErr, setSubmitErr] = useState("");
@@ -152,11 +179,6 @@ function BookPageInner() {
     if (customer?.cats?.length && !catNames.length) setCatNames([customer.cats[0].name]);
   }, [customer, catNames]);
 
-  // เปลี่ยนไปแท็บเข้าพัก — ถ้าเผลอเลือกไว้หลายตัว (จากแท็บอาบน้ำ) ตัดเหลือตัวแรกตัวเดียว
-  useEffect(() => {
-    if (service === "room" && catNames.length > 1) setCatNames((prev) => prev.slice(0, 1));
-  }, [service, catNames.length]);
-
   useEffect(() => {
     // roomType เริ่มว่างเพราะรอโหลด config ก่อน — เลือกห้องแรกที่ร้านนี้เปิดให้จองเองได้
     // และสลับให้อัตโนมัติถ้าห้องที่เลือกไว้ถูกลบ/เปลี่ยนชื่อจนไม่อยู่ในลิสต์แล้ว
@@ -169,19 +191,25 @@ function BookPageInner() {
     if (service !== "groom") return;
     let alive = true;
     setLoadingSlots(true);
-    setTime("");
-    fetch(`/api/bookings/availability?service=groom&date=${date}`)
+    // ส่งจำนวนน้องไปด้วย — โหมดคิดเวลา รอบที่ว่างขึ้นกับว่ามากี่ตัว (ใช้เวลานานแค่ไหน)
+    fetch(`/api/bookings/availability?service=groom&date=${date}&cats=${Math.max(1, catNames.length)}`)
       .then((r) => r.json())
       .then((d) => {
         if (!alive) return;
         setSlots(d.slots || []);
         setGroomClosed(Boolean(d.closed));
+        setGroomMode(d.mode === "together" ? "together" : "per_cat");
       })
       .catch(() => alive && setSlots([]))
       .finally(() => alive && setLoadingSlots(false));
     return () => {
       alive = false;
     };
+  }, [service, date, catNames.length]);
+
+  // เปลี่ยนวัน = รอบเดิมอาจไม่มี/เต็มแล้ว ให้เลือกใหม่
+  useEffect(() => {
+    setTime("");
   }, [service, date]);
 
   useEffect(() => {
@@ -218,8 +246,13 @@ function BookPageInner() {
   // แมวตัวแรกลงเวลาที่เลือก ตัวที่เหลือไหลไปสล็อตถัดไปอัตโนมัติถ้าสล็อตนั้นเต็ม
   const assignedPreview = useMemo(() => {
     if (!slots || !time || !catNames.length) return null;
+    if (groomMode === "together") {
+      const s = slots.find((x) => x.time === time);
+      return s && s.remaining > 0 ? catNames.map(() => time) : null;
+    }
     return assignGroomSlots(slots, time, catNames.length);
-  }, [slots, time, catNames]);
+  }, [slots, time, catNames, groomMode]);
+  const pickedSlot = slots?.find((x) => x.time === time);
 
   const canSubmit = useMemo(() => {
     if (!catNames.length) return false;
@@ -227,8 +260,10 @@ function BookPageInner() {
       if (!time) return false;
       return Boolean(assignedPreview);
     }
-    return Boolean(roomType && roomAvail && roomAvail.remaining > 0 && checkout > checkin);
-  }, [catNames, service, time, assignedPreview, roomType, roomAvail, checkin, checkout]);
+    return Boolean(
+      roomType && roomAvail && roomAvail.remaining >= roomsNeeded && checkout > checkin
+    );
+  }, [catNames, service, time, assignedPreview, roomType, roomAvail, checkin, checkout, roomsNeeded]);
 
   const submit = async (withSlip = true) => {
     if (!profile?.lineUserId || !canSubmit) return;
@@ -248,7 +283,7 @@ function BookPageInner() {
             }
           : {
               lineUserId: profile.lineUserId,
-              catName,
+              catNames,
               service,
               checkin,
               checkout,
@@ -430,7 +465,7 @@ function BookPageInner() {
         <>
           <div className="rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm">
             <p className="mb-2 text-xs font-bold text-brown-soft">
-              🐱 น้องแมว{service === "groom" ? " (เลือกได้หลายตัว — 1 ตัว = 1 คิว)" : ""}
+              🐱 น้องแมว (เลือกได้หลายตัว)
             </p>
             <div className="mb-3 flex flex-wrap gap-2">
               {customer.cats.map((c) => {
@@ -510,7 +545,11 @@ function BookPageInner() {
                         >
                           {s.time}
                           <span className="block text-[9px] font-normal opacity-80">
-                            {full ? "เต็มแล้ว" : `ว่าง ${s.remaining}`}
+                            {full
+                              ? "เต็มแล้ว"
+                              : groomMode === "together" && s.endTime
+                                ? `ถึง ${s.endTime}`
+                                : `ว่าง ${s.remaining}`}
                           </span>
                         </button>
                       );
@@ -524,7 +563,14 @@ function BookPageInner() {
                 )}
 
                 {/* พรีวิวคิวที่จะได้ — ถ้าน้องเกินที่สล็อตนี้รับไหว จะไหลไปสล็อตถัดไปให้เห็นก่อนกดจอง */}
-                {time && catNames.length > 1 && (
+                {time && groomMode === "together" && pickedSlot?.endTime && (
+                  <p className="mt-2 rounded-petflow-sm bg-paper px-3 py-2 text-[11px] font-bold text-brown">
+                    🕒 {catNames.length > 1 ? `น้องทั้ง ${catNames.length} ตัว` : catNames[0]} เริ่ม{" "}
+                    <span className="text-latte-deep">{time}</span> เสร็จประมาณ{" "}
+                    <span className="text-latte-deep">{pickedSlot.endTime}</span>
+                  </p>
+                )}
+                {time && groomMode !== "together" && catNames.length > 1 && (
                   <div className="mt-2 rounded-petflow-sm bg-paper px-3 py-2 text-[11px]">
                     {assignedPreview ? (
                       <>
@@ -604,13 +650,28 @@ function BookPageInner() {
                       roomAvail.remaining > 0 ? "bg-sage/15 text-ok" : "bg-wait/10 text-wait"
                     }`}
                   >
-                    {roomAvail.remaining > 0
+                    {roomAvail.remaining >= roomsNeeded
                       ? `✅ ว่าง ${roomAvail.remaining} ห้อง`
+                      : roomAvail.remaining > 0
+                        ? `ว่างแค่ ${roomAvail.remaining} ห้อง แต่น้อง ${catNames.length} ตัวต้องใช้ ${roomsNeeded} ห้อง`
                       : roomAvail.closed
                         ? "ร้านปิดวันเช็คอิน/เช็คเอาท์ที่เลือกไว้ — ลองเปลี่ยนวันดูนะคะ"
                         : "เต็มแล้วช่วงนี้ — ลองเปลี่ยนวันดูนะคะ"}
                   </p>
                 ) : null}
+                {roomPrice && (
+                  <div className="mt-2 rounded-petflow-sm bg-paper px-3 py-2 text-xs text-brown">
+                    <p className="font-bold">
+                      💰 ประมาณ ฿{roomPrice.total.toLocaleString()} ({roomPrice.nights} คืน)
+                    </p>
+                    <p className="text-brown-soft">
+                      ห้อง ฿{roomPrice.roomPerNight.toLocaleString()} × {roomPrice.rooms} ห้อง
+                      {roomPrice.extraCats > 0 &&
+                        ` + น้องตัวที่ ${roomPrice.included + 1} ขึ้นไป ${roomPrice.extraCats} ตัว × ฿${roomPrice.extraCatPrice}`}{" "}
+                      ต่อคืน
+                    </p>
+                  </div>
+                )}
               </>
             )}
           </div>

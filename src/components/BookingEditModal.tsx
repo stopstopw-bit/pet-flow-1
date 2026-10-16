@@ -192,8 +192,8 @@ export function BookingEditModal({
   onSaved,
 }: {
   booking: EditableBooking;
-  /** นัดอื่นในบ้านเดียวกัน นัดเดียวกัน (ไม่รวมตัวที่กำลังแก้) — ไว้เสนอเลื่อนวันให้ทั้งหมดทีเดียว */
-  siblings?: { id: string; catName: string }[];
+  /** นัดอื่นในบ้านเดียวกัน นัดเดียวกัน (ไม่รวมตัวที่กำลังแก้) — มีแล้วหน้าต่างนี้แก้ทั้งบ้านทีเดียว */
+  siblings?: { id: string; catName: string; notes?: string; groomProgram?: string }[];
   rooms: {
     id: string;
     name: string;
@@ -251,6 +251,11 @@ export function BookingEditModal({
   // ค่าเริ่มต้นติ๊กไว้เลย — ปกติเจ้าของเลื่อนนัด ก็อยากเลื่อนให้ครบทุกตัวในบ้านอยู่แล้ว
   const [applyToSiblings, setApplyToSiblings] = useState(true);
   const [groomProgram, setGroomProgram] = useState(booking.groomProgram || "");
+  // แก้ทั้งบ้าน: วัน/เวลา/ห้อง/รับ-ส่ง ใช้ร่วมกัน · ชื่อ โปรแกรม โน้ต แยกรายตัว
+  const household = siblings.length > 0;
+  const [catPrograms, setCatPrograms] = useState<Record<string, string>>(() =>
+    Object.fromEntries(siblings.map((x) => [x.id, x.groomProgram || ""]))
+  );
   // ปิดข้อความอัตโนมัติเฉพาะนัดนี้ (คนละเรื่องกับปิดทั้งร้านในหน้าตั้งค่า)
   const [autoOff, setAutoOff] = useState<string[]>(booking.autoOff || []);
   const toggleAuto = (id: string) =>
@@ -359,6 +364,48 @@ export function BookingEditModal({
       return;
     }
 
+    // 3) น้องตัวอื่นในบ้าน — ค่าที่ใช้ร่วมกัน + ชื่อ/โปรแกรม/โน้ตของแต่ละตัว
+    //    (วันเวลาเลื่อนไปแล้วในข้อ 1 จึงไม่ส่งซ้ำ — โหมดคิวแยกเวลารายตัวจะได้ไม่ถูกทับ)
+    if (household) {
+      const shared = {
+        action: "update",
+        customerName: payload.customerName,
+        service: payload.service,
+        arrivalTime: payload.arrivalTime ?? "",
+        transport: transportPayload,
+        autoOff,
+        silent: true,
+        ...(service === "room"
+          ? {
+              room: "room" in payload ? payload.room ?? "" : "",
+              roomUnit: "roomUnit" in payload ? payload.roomUnit : 0,
+              pickupTime: "pickupTime" in payload ? payload.pickupTime ?? "" : "",
+            }
+          : {}),
+      };
+      const results = await Promise.all(
+        siblings.map((x) =>
+          fetch("/api/bookings", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: x.id,
+              ...shared,
+              catName: String(fd.get(`cat_${x.id}`) || x.catName),
+              notes: String(fd.get(`notes_${x.id}`) || ""),
+              ...(service === "groom" ? { groomProgram: catPrograms[x.id] || "" } : {}),
+            }),
+          })
+        )
+      );
+      if (results.some((r) => !r.ok)) {
+        setSaving(false);
+        alert("บันทึกบางตัวไม่สำเร็จ ลองอีกครั้งนะ");
+        onSaved();
+        return;
+      }
+    }
+
     const count = Number(movedData.movedCount) || 1;
     const inv = movedData.invoice as
       | { kind: "none" }
@@ -395,7 +442,9 @@ export function BookingEditModal({
           <div className="min-w-0">
             <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Edit booking</p>
             <h2 id="booking-edit-title" className="truncate text-lg font-extrabold text-petflow-chocolate">
-              แก้ไขนัด · {booking.catName}
+              {household
+                ? `แก้ไขนัดทั้งบ้าน · ${[booking.catName, ...siblings.map((x) => x.catName)].join(", ")}`
+                : `แก้ไขนัด · ${booking.catName}`}
             </h2>
           </div>
           <button
@@ -419,7 +468,9 @@ export function BookingEditModal({
         />
         <form onSubmit={submit} className="space-y-3">
           <EditField label="ชื่อลูกค้า" name="customer" defaultValue={booking.customerName} required />
-          <EditField label="ชื่อน้องแมว" name="cat" defaultValue={booking.catName} required />
+          {!household && (
+            <EditField label="ชื่อน้องแมว" name="cat" defaultValue={booking.catName} required />
+          )}
           {service === "groom" ? (
             <>
               <EditField label="วันที่นัด" name="date" type="date" defaultValue={booking.date} required />
@@ -438,6 +489,7 @@ export function BookingEditModal({
                   ))}
                 </datalist>
               </label>
+              {!household && (
               <label className="block text-xs font-bold text-brown-soft">
                 โปรแกรมอาบน้ำ (ไม่บังคับ)
                 <select
@@ -453,6 +505,7 @@ export function BookingEditModal({
                   ))}
                 </select>
               </label>
+              )}
               <EditField
                 label="เวลาที่ลูกค้าแจ้งจะมาส่งน้อง (ถ้ามี)"
                 name="arrivalTime"
@@ -547,6 +600,7 @@ export function BookingEditModal({
               </div>
             </>
           )}
+          {!household && (
             <label className="flex items-start gap-2.5 rounded-petflow-sm border border-honey-deep/40 bg-honey/15 p-3 text-xs font-bold text-petflow-chocolate">
               <input
                 type="checkbox"
@@ -565,8 +619,62 @@ export function BookingEditModal({
                 </span>
               </span>
             </label>
+          )}
           <TransportPicker value={transport} onChange={changeTransport} />
-          <EditField label="โน้ต" name="notes" defaultValue={booking.notes || ""} textarea />
+          {household ? (
+            <div className="space-y-2">
+              <p className="text-xs font-extrabold text-petflow-chocolate">
+                🐱 น้องในนัดนี้ ({siblings.length + 1} ตัว)
+              </p>
+              {[{ id: booking.id, catName: booking.catName, notes: booking.notes }, ...siblings].map(
+                (x) => {
+                  const main = x.id === booking.id;
+                  return (
+                    <div
+                      key={x.id}
+                      className="space-y-2 rounded-petflow-sm border border-petflow-line bg-paper/50 p-3"
+                    >
+                      <EditField
+                        label="ชื่อน้องแมว"
+                        name={main ? "cat" : `cat_${x.id}`}
+                        defaultValue={x.catName}
+                        required
+                      />
+                      {service === "groom" && (
+                        <label className="block text-xs font-bold text-brown-soft">
+                          โปรแกรมอาบน้ำ
+                          <select
+                            value={main ? groomProgram : catPrograms[x.id] || ""}
+                            onChange={(e) =>
+                              main
+                                ? setGroomProgram(e.target.value)
+                                : setCatPrograms((p) => ({ ...p, [x.id]: e.target.value }))
+                            }
+                            className="mt-1 min-h-[44px] w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm text-brown"
+                          >
+                            <option value="">ยังไม่เลือก — ถามหน้างาน</option>
+                            {groomPrograms.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                      <EditField
+                        label="โน้ต"
+                        name={main ? "notes" : `notes_${x.id}`}
+                        defaultValue={x.notes || ""}
+                        textarea
+                      />
+                    </div>
+                  );
+                }
+              )}
+            </div>
+          ) : (
+            <EditField label="โน้ต" name="notes" defaultValue={booking.notes || ""} textarea />
+          )}
 
           {/* ปิดข้อความอัตโนมัติเฉพาะเคสนี้ — เช่น ลูกค้าประจำที่คุยกันทางแชทอยู่แล้ว */}
           <div className="rounded-petflow-sm border border-petflow-line bg-paper/50 p-3">
