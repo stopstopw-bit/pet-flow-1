@@ -207,6 +207,8 @@ async function handlePost(req: NextRequest) {
     return NextResponse.json({ error: "cat_name_required" }, { status: 400 });
   }
 
+  const transport = cleanTransport(body.transport);
+  const isRoom = body.service === "room";
   const booking = await addBooking({
     customerName: customer.name,
     catName: body.catName,
@@ -220,7 +222,10 @@ async function handlePost(req: NextRequest) {
     lineUserId: customer.lineUserId,
     notes: body.notes,
     groomProgram: body.groomProgram ? String(body.groomProgram) : undefined,
-    transport: cleanTransport(body.transport),
+    transport,
+    // เวลารับ/ส่งที่ร้านรู้แล้ว → ใส่ arrival/pickup ไว้เลย cron จะได้ไม่ถามลูกค้าซ้ำ
+    arrivalTime: isRoom ? transport?.pickupTime : undefined,
+    pickupTime: isRoom ? transport?.dropoffTime : undefined,
   });
 
   const cal = await createCalendarEvent({

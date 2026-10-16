@@ -19,6 +19,8 @@ type Bk = {
   checkout?: string;
   pickup: boolean;
   dropoff: boolean;
+  pickupTime?: string;
+  dropoffTime?: string;
   mapUrl?: string;
   address?: string;
   saved: boolean;
@@ -149,12 +151,12 @@ function BookingTransportContent() {
         bk.pickup && {
           label: "รับน้อง",
           date: isRoom ? bk.checkin : bk.date,
-          time: isRoom ? undefined : bk.time,
+          time: bk.pickupTime || (isRoom ? undefined : bk.time),
         },
         bk.dropoff && {
           label: "ส่งน้องกลับบ้าน",
           date: isRoom ? bk.checkout : bk.date,
-          time: undefined,
+          time: bk.dropoffTime,
         },
       ].filter((x): x is { label: string; date: string | undefined; time: string | undefined } => !!x)
     : [];

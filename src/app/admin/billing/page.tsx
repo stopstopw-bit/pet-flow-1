@@ -505,7 +505,7 @@ export default function BillingPage() {
     if (bk.service === "room" && rooms.length === 0) return;
     autoPicked.current = true;
     // กดปุ่ม "ออกบิล" จากตารางนัดส่งมาแค่ id เดียว — ดึงทั้งบ้านมาด้วย
-    const group = groupBookings(bookings).find((g) => g.some((x) => x.id === bId));
+    const group = groupBookings(bookings, { groomByDay: true }).find((g) => g.some((x) => x.id === bId));
     pickBooking(group || [bk]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookings, rooms]);
@@ -545,7 +545,7 @@ export default function BillingPage() {
   // บิลของบ้านรวมผูกกับ "นัดตัวแรก" ตัวเดียว ถ้าตัดทั้งกลุ่มเมื่อเจอบิลที่จ่ายแล้ว
   // บ้านที่ออกบิลไปแค่บางตัว (พนักงานลบบางแถวออก) จะหายทั้งกลุ่ม อีกหลายตัวออกบิลไม่ได้เลย
   // จึงดูจาก "ชื่อน้องที่ถูกออกบิลไปแล้ว" แทน แล้วเหลือเฉพาะตัวที่ยังไม่ได้ออกบิล
-  const bookingGroups = groupBookings(bookings)
+  const bookingGroups = groupBookings(bookings, { groomByDay: true })
     .map((group) => {
       const groupIds = new Set(group.map((b) => b.id));
       // ทั้งบิลที่จ่ายแล้วและบิลที่แค่ร่างไว้ (pending) ถือว่า "ออกบิลแล้ว" —

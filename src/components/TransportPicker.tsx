@@ -26,7 +26,7 @@ export function TransportPicker({
         บริการรับ-ส่ง
       </p>
       <p className="mb-2 text-[10px] text-brown-soft">
-        ติ๊กแล้วการ์ดยืนยันนัดจะมีปุ่มให้ลูกค้าส่งจุดรับ-ส่งเอง ไม่ต้องกรอกช่องด้านล่างก็ได้
+        ติ๊กแล้วการ์ดยืนยันนัดจะมีปุ่มให้ลูกค้าส่งจุดรับ-ส่งเอง · ช่องไหนรู้แล้วใส่ไว้เลย ระบบจะไม่ถามลูกค้าซ้ำ
       </p>
       <div className="flex flex-wrap gap-2">
         <button
@@ -50,6 +50,30 @@ export function TransportPicker({
       </div>
       {on && (
         <div className="mt-2.5 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            {value.pickup && (
+              <label className="block text-[11px] font-bold text-brown-soft">
+                เวลารับน้อง (ถ้ารู้แล้ว)
+                <input
+                  type="time"
+                  value={value.pickupTime || ""}
+                  onChange={(e) => onChange({ ...value, pickupTime: e.target.value || undefined })}
+                  className="mt-1 min-h-[44px] w-full rounded-petflow-sm border border-petflow-line bg-card px-3 text-sm text-brown"
+                />
+              </label>
+            )}
+            {value.dropoff && (
+              <label className="block text-[11px] font-bold text-brown-soft">
+                เวลาส่งกลับ (ถ้ารู้แล้ว)
+                <input
+                  type="time"
+                  value={value.dropoffTime || ""}
+                  onChange={(e) => onChange({ ...value, dropoffTime: e.target.value || undefined })}
+                  className="mt-1 min-h-[44px] w-full rounded-petflow-sm border border-petflow-line bg-card px-3 text-sm text-brown"
+                />
+              </label>
+            )}
+          </div>
           <input
             value={value.mapUrl || ""}
             onChange={(e) => onChange({ ...value, mapUrl: e.target.value })}

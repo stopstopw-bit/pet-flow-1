@@ -9,9 +9,12 @@ import { withResolvedTenant } from "@/lib/tenant-context";
 
 /** นัดของบ้านเดียวกันรอบเดียวกัน — รับ-ส่งทีเดียวทั้งบ้าน จุดรับ-ส่งจึงใช้ร่วมกัน */
 async function householdSiblings(b: NonNullable<Awaited<ReturnType<typeof getBooking>>>) {
-  const key = bookingGroupKey(b);
+  // อาบน้ำ: แมวบ้านเดียวกันวันเดียวกันอาจอยู่คนละสล็อต แต่ยังมารถคันเดียวกัน
+  const key = bookingGroupKey(b, { groomByDay: true });
   const all = await listBookings();
-  const same = all.filter((x) => x.status !== "cancelled" && bookingGroupKey(x) === key);
+  const same = all.filter(
+    (x) => x.status !== "cancelled" && bookingGroupKey(x, { groomByDay: true }) === key
+  );
   return same.length > 0 ? same : [b];
 }
 
@@ -45,6 +48,8 @@ async function handleGet(req: NextRequest) {
       checkout: b.checkout,
       pickup: !!t?.pickup,
       dropoff: !!t?.dropoff,
+      pickupTime: t?.pickupTime || (b.service === "room" ? b.arrivalTime : undefined),
+      dropoffTime: t?.dropoffTime || (b.service === "room" ? b.pickupTime : undefined),
       mapUrl: owner ? mapUrl : undefined,
       address: owner ? address : undefined,
       saved: !!(t?.mapUrl || t?.address),

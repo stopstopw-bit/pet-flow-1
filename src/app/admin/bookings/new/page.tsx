@@ -29,6 +29,25 @@ const FREEBIE_OPTIONS = ["กล้องวงจรปิด (CCTV)", "น้�
 const UNKNOWN_CAT = "น้องไม่ระบุชื่อ";
 const isUnknownCat = (name: string) => name === UNKNOWN_CAT || name.startsWith(`${UNKNOWN_CAT} (`);
 
+type GroomSlot = { time: string; capacity: number; booked: number; remaining: number };
+
+/**
+ * 1 แมว = 1 คิว — เรียงแมวลงสล็อตตั้งแต่เวลาที่เลือก เต็มแล้วไหลไปสล็อตถัดไป
+ * (หลักเดียวกับ assignGroomSlots ใน src/lib/availability.ts ที่ลูกค้าจองเอง)
+ * หลังบ้านต้องจองได้เสมอ: ตัวที่หาที่ว่างไม่ได้จะลงเวลาที่เลือกไว้ แล้วขึ้นเตือนว่าเกินคิว
+ */
+function spreadCatsOverSlots(slots: GroomSlot[], startTime: string, count: number): string[] {
+  const out: string[] = [];
+  const startIdx = slots.findIndex((sl) => sl.time === startTime);
+  if (startIdx !== -1) {
+    for (let i = startIdx; i < slots.length && out.length < count; i++) {
+      for (let n = slots[i].remaining; n > 0 && out.length < count; n--) out.push(slots[i].time);
+    }
+  }
+  while (out.length < count) out.push(startTime);
+  return out;
+}
+
 /**
  * เลือกลูกค้า + น้องแมว แบบแอปจองคิวทั่วไป (Fresha / Booksy / แอปโรงแรมสัตว์เลี้ยง)
  * 1) ค้นหา → แตะแถวลูกค้า → กลายเป็นการ์ดลูกค้าที่เลือกแล้ว (กด "เปลี่ยน" ได้)
@@ -429,6 +448,45 @@ export default function NewBookingPage() {
   // ห้องจริงที่ปักหมุด (เลขห้อง) — เฉพาะห้องเดี่ยว ไม่ใช่ห้องเชื่อม (ห้องเชื่อมจัดให้อัตโนมัติเหมือนเดิม)
   const [roomUnit, setRoomUnit] = useState<number | null>(null);
   const [transport, setTransport] = useState<BookingTransport>({});
+
+  // คิวอาบน้ำ: นับ 1 แมว = 1 คิว เหมือนฝั่งลูกค้าจองเอง หลายตัวจะไม่ไปกองอยู่เวลาเดียวกัน
+  const [groomAvail, setGroomAvail] = useState<GroomSlot[]>([]);
+  const [groomStart, setGroomStart] = useState("12:30");
+  const [catTimes, setCatTimes] = useState<string[]>([]);
+  const [availTick, setAvailTick] = useState(0);
+  useEffect(() => {
+    if (service !== "groom" || !appointmentDate) {
+      setGroomAvail([]);
+      return;
+    }
+    let alive = true;
+    fetch(`/api/bookings/availability?service=groom&date=${appointmentDate}`)
+      .then((r) => r.json())
+      .then((d) => alive && setGroomAvail(d.slots || []))
+      .catch(() => alive && setGroomAvail([]));
+    return () => {
+      alive = false;
+    };
+  }, [service, appointmentDate, availTick]);
+  const bookingCats = catNames.length > 0 ? catNames : catInput.trim() ? [catInput.trim()] : [];
+  const catKey = bookingCats.join("\u0000");
+  useEffect(() => {
+    setCatTimes(spreadCatsOverSlots(groomAvail, groomStart, bookingCats.length));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groomAvail, groomStart, catKey]);
+  /** รอบที่จะเกินคิวถ้าบันทึกตามนี้ — เตือนแต่ยังให้บันทึกได้ (หน้างานบางทีรับเพิ่มไหว) */
+  const overSlots = useMemo(() => {
+    const add = new Map<string, number>();
+    for (const t of catTimes) if (t) add.set(t, (add.get(t) || 0) + 1);
+    const out: { time: string; total: number; capacity: number }[] = [];
+    for (const [time, n] of add) {
+      const sl = groomAvail.find((x) => x.time === time);
+      if (!sl) continue;
+      const room = sl.remaining > 0 ? sl.remaining : 0;
+      if (n > room) out.push({ time, total: sl.booked + n, capacity: sl.capacity });
+    }
+    return out;
+  }, [catTimes, groomAvail]);
   const boardRooms = rooms.map((r) => ({
     id: r.id,
     name: r.name,
@@ -536,7 +594,7 @@ export default function NewBookingPage() {
       lineUserId: lineUserId || undefined,
       service,
       date: service === "groom" ? String(fd.get("date") || "") : undefined,
-      time: service === "groom" ? String(fd.get("time") || "") : undefined,
+      time: undefined as string | undefined,
       room: service === "room" ? String(fd.get("room") || "") : undefined,
       roomUnit:
         service === "room" && fd.get("roomUnit")
@@ -558,11 +616,12 @@ export default function NewBookingPage() {
     }[] = [];
     let failed = 0;
 
-    for (const cat of cats) {
+    for (const [i, cat] of cats.entries()) {
+      const time = service === "groom" ? catTimes[i] || groomStart || undefined : undefined;
       const res = await fetch("/api/bookings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...basePayload, catName: cat }),
+        body: JSON.stringify({ ...basePayload, time, catName: cat }),
       });
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -593,6 +652,7 @@ export default function NewBookingPage() {
       setTransport({});
       setRoomUnit(null);
       setGroomProgram("");
+      setAvailTick((n) => n + 1);
       form.reset();
       setTimeout(() => setSaved(false), 2500);
     }
@@ -738,24 +798,90 @@ export default function NewBookingPage() {
               value={appointmentDate}
               onChange={setAppointmentDate}
             />
-            <label className="block text-xs font-bold text-brown-soft">
-              รอบเวลา
-              <input
-                name="time"
-                type="time"
-                list="groom-slots"
-                defaultValue="12:30"
-                className="mt-1 min-h-[44px] w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm text-brown"
-              />
+            <div>
+              <p className="text-xs font-bold text-brown-soft">รอบเวลา (1 แมว = 1 คิว)</p>
+              <p className="mb-1.5 text-[10px] text-brown-faint">
+                แตะรอบที่ลูกค้ามา ถ้ามาหลายตัว ระบบเรียงตัวถัดไปลงรอบที่ว่างถัดไปให้ แก้เวลารายตัวได้ด้านล่าง
+              </p>
+              {groomAvail.length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-1.5">
+                  {groomAvail.map((sl) => {
+                    const picked = groomStart === sl.time;
+                    const full = sl.remaining <= 0;
+                    return (
+                      <button
+                        key={sl.time}
+                        type="button"
+                        onClick={() => setGroomStart(sl.time)}
+                        aria-pressed={picked}
+                        className={`min-h-[44px] rounded-petflow-sm px-3 py-1.5 text-left text-sm font-extrabold transition ${
+                          picked
+                            ? "bg-petflow-chocolate text-card"
+                            : full
+                              ? "border border-petflow-line bg-paper text-brown-faint"
+                              : "border border-petflow-line bg-paper text-brown"
+                        }`}
+                      >
+                        {sl.time}
+                        <span className="block text-[10px] font-bold opacity-80">
+                          {full ? "เต็มแล้ว" : `ว่าง ${sl.remaining}/${sl.capacity}`}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <label className="block text-[11px] font-bold text-brown-soft">
+                หรือพิมพ์เวลาเอง
+                <input
+                  type="time"
+                  list="groom-slots"
+                  value={groomStart}
+                  onChange={(e) => setGroomStart(e.target.value)}
+                  className="mt-1 min-h-[44px] w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm text-brown"
+                />
+              </label>
               <datalist id="groom-slots">
                 {groomSlots.map((t) => (
                   <option key={t} value={t} />
                 ))}
               </datalist>
-              <p className="mt-1 text-[10px] text-brown-faint">
-                เลือกจากรอบแนะนำ หรือพิมพ์เวลาเองได้
-              </p>
-            </label>
+
+              {bookingCats.length > 0 && (
+                <ul className="mt-2 space-y-1.5">
+                  {bookingCats.map((cat, i) => (
+                    <li
+                      key={`${cat}-${i}`}
+                      className="flex items-center gap-2 rounded-petflow-sm bg-paper px-3 py-1.5"
+                    >
+                      <span className="min-w-0 flex-1 truncate text-sm font-bold text-brown">{cat}</span>
+                      <input
+                        type="time"
+                        list="groom-slots"
+                        aria-label={`เวลาของ ${cat}`}
+                        value={catTimes[i] || ""}
+                        onChange={(e) =>
+                          setCatTimes((prev) => {
+                            const next = [...prev];
+                            next[i] = e.target.value;
+                            return next;
+                          })
+                        }
+                        className="min-h-[40px] w-[7.5rem] shrink-0 rounded-petflow-sm border border-petflow-line bg-card px-2 py-1.5 text-sm text-brown"
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {overSlots.length > 0 && (
+                <p className="mt-2 rounded-petflow-sm bg-wait/10 px-3 py-2 text-[11px] font-bold text-wait">
+                  {overSlots
+                    .map((o) => `รอบ ${o.time} จะมี ${o.total} ตัว (รับได้ ${o.capacity})`)
+                    .join(" · ")}
+                  {" "}— บันทึกได้ แต่เช็คหน้างานอีกทีนะคะ
+                </p>
+              )}
+            </div>
             <label className="block text-xs font-bold text-brown-soft">
               โปรแกรมอาบน้ำ (ไม่บังคับ)
               <select
