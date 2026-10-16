@@ -314,7 +314,7 @@ function ClientPetPicker({
               onClick={() => onSetUnknownCount(1)}
               className="rounded-full border border-dashed border-petflow-line px-3.5 py-2 text-sm font-bold text-brown-soft"
             >
-              ยังไม่ทราบตัว
+              ยังไม่ทราบชื่อ
             </button>
           )}
         </div>
@@ -325,7 +325,7 @@ function ClientPetPicker({
               <Icon name="paw" size={18} />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-extrabold text-petflow-chocolate">ยังไม่ทราบตัว</p>
+              <p className="text-sm font-extrabold text-petflow-chocolate">ยังไม่ทราบชื่อ</p>
               <p className="text-[11px] text-brown-soft">มากี่ตัว — ล็อกคิวตามจำนวนนี้ ใส่ชื่อทีหลังได้</p>
             </div>
             <div className="flex items-center gap-1">
@@ -353,7 +353,7 @@ function ClientPetPicker({
         <p className="mt-2 text-[11px] text-brown-faint">
           {catNames.length > 0
             ? `รวม ${catNames.length} ตัว · ล็อกคิว ${catNames.length} ที่ · ระบบสร้างนัดให้ทีละตัวและผูกเป็นบ้านเดียวกัน`
-            : "แตะชื่อน้องเพื่อเลือก เลือกได้หลายตัว · ไม่รู้ว่าตัวไหนมา กด “ยังไม่ทราบตัว”"}
+            : "แตะชื่อน้องเพื่อเลือก เลือกได้หลายตัว · ไม่รู้ว่าตัวไหนมา กด “ยังไม่ทราบชื่อ”"}
         </p>
       </section>
     </div>
@@ -519,7 +519,7 @@ export default function NewBookingPage() {
     const fd = new FormData(form);
     const cats = catNames.length > 0 ? catNames : catInput.trim() ? [catInput.trim()] : [];
     if (cats.length === 0) {
-      toast("กรอกชื่อน้องแมวอย่างน้อย 1 ชื่อ (หรือกด “ยังไม่ทราบตัว”)", "error");
+      toast("กรอกชื่อน้องแมวอย่างน้อย 1 ชื่อ (หรือกด “ยังไม่ทราบชื่อ”)", "error");
       return;
     }
 
