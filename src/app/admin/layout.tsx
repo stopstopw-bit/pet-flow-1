@@ -111,7 +111,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
   const isDashboard = pathname === "/admin";
 
   return (
-    <div className="min-h-screen bg-petflow-gradient pb-28 lg:pb-0">
+    <div className="min-h-screen bg-petflow-gradient pb-[calc(7.5rem+env(safe-area-inset-bottom))] lg:pb-0">
       <Toaster />
       {impersonating && (
         <div className="relative z-[60] flex items-center justify-between gap-2 bg-[#1a1d29] px-4 py-2 text-xs font-bold text-white print:hidden">

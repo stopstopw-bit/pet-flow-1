@@ -1,3 +1,5 @@
+import { roomPricing } from "./room-board";
+
 // ────────────────────────────────────────────────────────────
 // ข้อมูลร้าน (DEMO) — เป็นค่าตัวอย่างของ "PetFlow" ไว้โชว์ลูกค้า
 // ร้านจริงให้แก้ค่าในนี้ให้เป็นของร้านตัวเอง (ชื่อ เบอร์ แผนที่ โซเชียล)
@@ -420,18 +422,16 @@ export function getRoomById(id: string) {
 
 /** ค่าแมวเพิ่มต่อคืนของบ้านที่พัก n ตัวในห้องแบบนี้ (คิดต่อห้อง — n ตัวอาจใช้หลายห้อง) */
 export function extraCatChargePerNight(
-  room: Pick<RoomType, "maxCats" | "includedCats" | "extraCatPrice">,
+  room: Parameters<typeof roomPricing>[0],
   n: number
 ): { rooms: number; extraCats: number; perNight: number } {
-  const max = Math.max(1, room.maxCats || 1);
-  const rooms = Math.max(1, Math.ceil(n / max));
-  const included = Math.max(1, room.includedCats ?? 2);
+  const { cap, base, extraPrice } = roomPricing(room);
+  const rooms = Math.max(1, Math.ceil(n / Math.max(1, cap)));
   // กระจายแมวให้เท่าๆ กันในแต่ละห้อง แล้วนับตัวที่เกินโควตาของแต่ละห้อง
   let extraCats = 0;
   for (let i = 0; i < rooms; i++) {
     const inRoom = Math.floor(n / rooms) + (i < n % rooms ? 1 : 0);
-    extraCats += Math.max(0, inRoom - included);
+    extraCats += Math.max(0, inRoom - base);
   }
-  const price = Math.max(0, room.extraCatPrice || 0);
-  return { rooms, extraCats: price ? extraCats : 0, perNight: price * extraCats };
+  return { rooms, extraCats: extraPrice ? extraCats : 0, perNight: extraPrice * extraCats };
 }

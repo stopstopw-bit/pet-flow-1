@@ -21,6 +21,7 @@ import {
   type InvoiceItem,
   type InvoiceRecord,
 } from "./invoices-store";
+import { addDaysIso, extensionNote, isRoomLine, roomLineLabel, splitRoomLabel } from "./stay-line";
 
 export type DatePatch = {
   date?: string;
@@ -57,23 +58,27 @@ export async function findGroupSiblings(b: StoredBooking): Promise<StoredBooking
 /** จำนวนคืนที่บิลนี้คิดไว้ — บิลบ้านหลายตัวมีบรรทัดห้องต่อตัว ใช้บรรทัดที่คืนมากสุด */
 function billedNights(inv: InvoiceRecord): number {
   return (inv.items || [])
-    .filter((it) => it.kind === "room")
+    .filter(isRoomLine)
     .reduce((m, it) => Math.max(m, Math.round(Number(it.qty) || 1)), 0);
 }
 
-/** เปลี่ยนจำนวนคืนของบรรทัดห้องพัก — ราคาต่อคืนเดิม แก้ "× N คืน" ในชื่อรายการให้ตรง */
+/**
+ * เปลี่ยนจำนวนคืนของบรรทัดห้องพัก — ราคาต่อคืนเดิม แก้ "× N คืน" ในชื่อรายการให้ตรง
+ * note = ช่วงวันที่ของบิลนี้ (บิลพักต่อ) — ไม่ใส่ = ไม่มีหมายเหตุ
+ */
 function withNights(items: InvoiceItem[], nights: number, note?: string): InvoiceItem[] {
   return items.map((it) => {
-    if (it.kind !== "room") return it;
+    if (!isRoomLine(it)) return it;
     const qty = Math.max(1, Math.round(Number(it.qty) || 1));
     const unit = Math.round(Number(it.unitAmount ?? it.amount / qty) || 0);
-    const base = it.label.replace(/\s*×\s*\d+\s*คืน.*$/, "");
+    const { base } = splitRoomLabel(it.label);
     return {
       ...it,
+      kind: "room" as const,
       qty: nights,
       unitAmount: unit,
       amount: unit * nights,
-      label: `${base} × ${nights} คืน${note ? ` ${note}` : ""}`,
+      label: roomLineLabel(base, nights, note),
     };
   });
 }
@@ -82,7 +87,9 @@ function withNights(items: InvoiceItem[], nights: number, note?: string): Invoic
 export async function syncStayInvoice(
   bookingIds: string[],
   checkin: string,
-  checkout: string
+  checkout: string,
+  /** วันออกเดิม เมื่อเป็นการ "ต่อคืน" (วันเข้าเท่าเดิม วันออกเลื่อนออกไป) */
+  extendFrom?: string
 ): Promise<InvoiceSyncResult> {
   const nights = nightsBetween(checkin, checkout);
   if (nights <= 0) return { kind: "none" };
@@ -94,8 +101,44 @@ export async function syncStayInvoice(
 
   const paid = invoices.filter((i) => i.status === "paid");
   const pending = invoices.filter((i) => i.status !== "paid");
+
+  // ต่อคืนหลังจ่ายรอบแรกแล้ว → คิดเฉพาะ "วันออกเดิม → วันออกใหม่" ตรงๆ
+  // ไม่ย้อนนับจากวันเข้าพักแรกแล้วหักคืนที่จ่าย (นับคืนจากบิลเก่าพลาดได้ เช่นบิลที่เคยเปิดแก้
+  // หรือบิลที่ผูกกับน้องอีกตัว แล้วบิลใหม่จะเบิ้ลคืนที่จ่ายไปแล้ว)
+  const extra = extendFrom ? nightsBetween(extendFrom, checkout) : 0;
+  if (extra > 0 && paid.length > 0 && pending.length <= 1) {
+    const open = pending[0];
+    if (open?.packageId) {
+      return {
+        kind: "warn",
+        message: "บิลนี้ใช้คอร์สหักคืน — แก้จำนวนคืนในบิลเองนะ (ระบบไม่เปลี่ยนการหักคอร์สให้)",
+      };
+    }
+    if (open) {
+      // บิลพักต่อรอบก่อนยังไม่จ่าย → ต่อช่วงเดิมออกไปอีก
+      const total = billedNights(open) + extra;
+      const res = await updateInvoice(open.id, {
+        items: withNights(open.items, total, extensionNote(addDaysIso(checkout, -total), checkout)),
+      });
+      if (!res.ok) return { kind: "warn", message: "แก้บิลไม่สำเร็จ" };
+      return { kind: "updated", invoiceId: open.id, nights: total, total: res.invoice.total };
+    }
+    const last = paid[paid.length - 1];
+    const created = await createInvoice({
+      customerId: last.customerId,
+      lineUserId: last.lineUserId,
+      customerName: last.customerName,
+      catName: last.catName,
+      items: withNights(last.items.filter(isRoomLine), extra, extensionNote(extendFrom!, checkout)),
+      bookingId: last.bookingId,
+    });
+    return { kind: "created_extra", invoiceId: created.id, nights: extra, total: created.total };
+  }
   const paidNights = paid.reduce((s, i) => s + billedNights(i), 0);
   const stillDue = nights - paidNights;
+  // คืนที่ยังไม่ได้เก็บ = ตั้งแต่ "วันออกของรอบที่จ่ายแล้ว" ถึงวันออกใหม่ — ไม่ใช่ตั้งแต่วันเข้าพักแรก
+  const dueFrom = addDaysIso(checkin, paidNights);
+  const note = paidNights > 0 ? extensionNote(dueFrom, checkout) : undefined;
 
   if (pending.length > 1) {
     return {
@@ -118,9 +161,10 @@ export async function syncStayInvoice(
         message: `บิลที่ปิดแล้วคิดไปครบ ${paidNights} คืนแล้ว แต่ยังมีบิลค้างอีกใบ — เช็กว่าควรลบบิลค้างไหม`,
       };
     }
-    if (billedNights(open) === stillDue) return { kind: "none" };
+    const sameLabel = open.items.filter(isRoomLine).every((it) => !note || it.label.endsWith(note));
+    if (billedNights(open) === stillDue && sameLabel) return { kind: "none" };
     const res = await updateInvoice(open.id, {
-      items: withNights(open.items, stillDue, paid.length ? "(ต่อคืน)" : undefined),
+      items: withNights(open.items, stillDue, note),
     });
     if (!res.ok) return { kind: "warn", message: "แก้บิลไม่สำเร็จ" };
     return { kind: "updated", invoiceId: open.id, nights: stillDue, total: res.invoice.total };
@@ -137,13 +181,13 @@ export async function syncStayInvoice(
 
   // ลูกค้าอยู่ต่อหลังปิดบิลแล้ว → ออกบิลเฉพาะคืนที่เพิ่ม ราคาต่อคืนตามบิลล่าสุด
   const last = paid[paid.length - 1];
-  const roomItems = last.items.filter((it) => it.kind === "room");
+  const roomItems = last.items.filter(isRoomLine);
   const created = await createInvoice({
     customerId: last.customerId,
     lineUserId: last.lineUserId,
     customerName: last.customerName,
     catName: last.catName,
-    items: withNights(roomItems, stillDue, "(ต่อคืน)"),
+    items: withNights(roomItems, stillDue, note),
     bookingId: last.bookingId,
   });
   return { kind: "created_extra", invoiceId: created.id, nights: stillDue, total: created.total };
@@ -174,7 +218,13 @@ export async function rescheduleGroup(
   let invoice: InvoiceSyncResult = { kind: "none" };
   const h = updated[0];
   if (h && h.service === "room" && h.checkin && h.checkout) {
-    invoice = await syncStayInvoice(ids, h.checkin, h.checkout);
+    // วันเข้าเท่าเดิม แต่วันออกเลื่อนออกไป = ต่อคืน → บิลพักต่อคิดจากวันออกเดิม
+    const oldOut = host.checkout?.slice(0, 10);
+    const extendFrom =
+      host.checkin?.slice(0, 10) === h.checkin.slice(0, 10) && oldOut && oldOut < h.checkout.slice(0, 10)
+        ? oldOut
+        : undefined;
+    invoice = await syncStayInvoice(ids, h.checkin, h.checkout, extendFrom);
   }
   return { ok: true as const, updated, invoice, movedCount: updated.length };
 }

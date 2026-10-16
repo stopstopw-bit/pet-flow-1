@@ -248,7 +248,7 @@ export default function FinancePage() {
       </div>
 
       {formOpen && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4">
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 sm:items-center sm:p-4">
           <form
             onSubmit={async (e) => {
               await submit(e);
@@ -345,7 +345,7 @@ export default function FinancePage() {
                 />
               </label>
             </div>
-            <div className="sticky bottom-0 flex gap-2 border-t border-petflow-line bg-card px-5 py-3">
+            <div className="sticky bottom-0 flex gap-2 border-t border-petflow-line bg-card px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
               <button type="button" onClick={closeForm} className="h-11 flex-1 rounded-full bg-paper text-sm font-bold text-brown-soft">
                 ยกเลิก
               </button>
@@ -485,7 +485,7 @@ export default function FinancePage() {
         <button
           type="button"
           onClick={() => setZoomUrl(null)}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={zoomUrl} alt="รูปบิล" className="max-h-full max-w-full rounded-petflow object-contain" />

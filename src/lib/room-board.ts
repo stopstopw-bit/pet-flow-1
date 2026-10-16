@@ -137,6 +137,38 @@ export function roomCapacity(type: { maxCats?: number }): number {
   return type.maxCats && type.maxCats > 0 ? Math.floor(type.maxCats) : 1;
 }
 
+/**
+ * ราคาห้องคิดเป็นรายห้อง: ราคาห้องรวมแมวได้ `base` ตัว ตัวที่เกินคิดเพิ่มตัวละ `extraPrice`
+ * อ่านจากข้อความเดียวกับที่โชว์ลูกค้า เช่น cats "1–2 แมว" + extra "แมวที่ 3 +50"
+ */
+export function roomPricing(type: {
+  maxCats?: number;
+  cats?: { th?: string };
+  extra?: { th?: string };
+  /** ตั้งเป็นตัวเลขในหน้าตั้งค่าห้อง — มีแล้วใช้แทนการอ่านจากข้อความ extra */
+  includedCats?: number;
+  extraCatPrice?: number;
+}) {
+  const cap = roomCapacity(type);
+  const extraTxt = type.extra?.th || "";
+  const nth = /(\d+)/.exec(extraTxt.replace(/\+\s*\d+/g, ""));
+  const plus = /\+\s*(\d+)/.exec(extraTxt);
+  const nums = (type.cats?.th || "").match(/\d+/g);
+  const base = nth ? Math.max(1, Number(nth[1]) - 1) : nums ? Math.max(...nums.map(Number)) : cap;
+  const fromText = { base: Math.min(base, cap), extraPrice: plus ? Number(plus[1]) : 0 };
+  if (type.includedCats == null && type.extraCatPrice == null) return { cap, ...fromText };
+  return {
+    cap,
+    base: Math.max(1, type.includedCats ?? fromText.base),
+    extraPrice: Math.max(0, type.extraCatPrice ?? fromText.extraPrice),
+  };
+}
+
+/** ค่าห้องต่อคืนเมื่อมีแมว n ตัวอยู่ห้องเดียวกัน */
+export function roomNightPrice(price: number, pricing: { base: number; extraPrice: number }, n: number) {
+  return price + Math.max(0, n - pricing.base) * pricing.extraPrice;
+}
+
 /** นอนอยู่ในคืนของวันนี้ไหม (วันเช็คเอาท์ไม่นับ — เขาออกเช้าวันนั้น) */
 export function isStayingOn(b: BoardBooking, date: string): boolean {
   const ci = b.checkin || "";

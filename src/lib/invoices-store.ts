@@ -669,6 +669,82 @@ export async function markInvoiceSent(id: string) {
 const payingNow = new Set<string>();
 
 /** บิลทั้งหมดที่ผูกกับนัดเหล่านี้ (ไม่รวมบิลในถังขยะ) */
+/**
+ * บิลที่ยังเปิดอยู่ของนัดนี้ — นับรวมบิลของ "บ้านเดียวกัน นัดเดียวกัน" ด้วย
+ *
+ * บิลรวมทั้งบ้านผูก bookingId ไว้แค่ตัวเดียว ถ้าเรียกเก็บมัดจำจากการ์ดของน้องอีกตัว
+ * เดิมหาบิลไม่เจอ → มัดจำไปตกเป็นเครดิตล่วงหน้าแทน บิลจริงเลยไม่มีมัดจำ
+ * ตอนรับเงินต้องมานั่งกรอกยอดมัดจำซ้ำ
+ */
+export async function findOpenInvoiceForBooking(bookingId: string) {
+  const list = await listInvoices();
+  const direct = list.filter((i) => i.bookingId === bookingId);
+  const open = direct.find((i) => i.status !== "paid");
+  if (open) return open;
+  try {
+    const { getBooking, listBookingsByCustomerName } = await import("./bookings-store");
+    const { bookingGroupKey } = await import("./booking-group");
+    const bk = await getBooking(bookingId);
+    if (bk) {
+      const key = bookingGroupKey(bk);
+      const ids = new Set(
+        (await listBookingsByCustomerName(bk.customerName))
+          .filter((b) => bookingGroupKey(b) === key)
+          .map((b) => b.id)
+      );
+      const groupOpen = list.find(
+        (i) => i.status !== "paid" && !!i.bookingId && ids.has(i.bookingId)
+      );
+      if (groupOpen) return groupOpen;
+    }
+  } catch {
+    /* หานัดไม่เจอ — ใช้เฉพาะบิลที่ผูกตรง */
+  }
+  return direct[0];
+}
+
+/**
+ * ย้ายมัดจำที่เรียกเก็บไว้ก่อนมีบิล (เครดิตมัดจำล่วงหน้าของลูกค้า) เข้าบิลนี้ แล้วนับว่า "รับมัดจำแล้ว"
+ * ใช้กับบิลที่ออกไปก่อนแล้วแต่มัดจำไปค้างเป็นเครดิต — ไม่ต้องกรอกยอดเอง
+ * รายรับ: ถ้าเคยกดรับมัดจำล่วงหน้า (มีรายรับอยู่แล้ว) แค่ผูกเข้าบิล ไม่ลงซ้ำ ไม่งั้นลงรายรับก้อนมัดจำให้
+ */
+export async function applyDepositCreditToInvoice(id: string) {
+  const inv = await getInvoice(id);
+  if (!inv || inv.status === "paid") return { ok: false as const, error: "invalid" };
+  if ((inv.deposit || 0) > 0) return { ok: false as const, error: "has_deposit" };
+  const customer = await getCustomer(inv.customerId);
+  const amount = Math.min(inv.total, Math.round(customer?.depositCredit || 0));
+  if (amount <= 0) return { ok: false as const, error: "no_credit" };
+
+  await adjustDepositCredit(inv.customerId, -amount);
+  await attachAdvanceIncomeToInvoice(inv.customerId, id, amount);
+  await updateInvoice(id, { deposit: amount });
+
+  const already = await incomeForInvoice(id);
+  if (already < amount) {
+    const res = await receiveInvoiceDeposit(id);
+    if (!res.ok) return res;
+  } else {
+    const receivedAt = new Date().toISOString();
+    const sb = getSupabase();
+    if (sb) {
+      try {
+        await sb.from("invoices").update({ deposit_received_at: receivedAt }).eq("id", id).eq("tenant_id", requireTenantId());
+      } catch {
+        /* ยังไม่ได้รัน migration — ข้าม */
+      }
+    } else {
+      const m = mem.find((x) => x.id === id);
+      if (m) m.depositReceivedAt = receivedAt;
+    }
+  }
+  return {
+    ok: true as const,
+    deposit: amount,
+    remaining: Math.max(0, inv.total - amount),
+  };
+}
+
 export async function listInvoicesForBookings(bookingIds: string[]) {
   if (bookingIds.length === 0) return [];
   const sb = getSupabase();

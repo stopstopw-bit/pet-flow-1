@@ -1,7 +1,7 @@
 import { getLineCredentials } from "./line-config";
 import { politeCat } from "./line";
 import { buildConsentUrl, buildBookingTimeUrl, buildGroomInfoUrl } from "./liff-urls";
-import { renderTemplate, DEFAULT_MESSAGES } from "./messages";
+import { renderTemplate, DEFAULT_MESSAGES, DEEMED_CONSENT_NOTICE } from "./messages";
 import { formatThaiDateShort } from "./format-thai-date";
 import type { StoredBooking } from "./bookings-store";
 import type { InvoiceRecord } from "./invoices-store";
@@ -133,11 +133,12 @@ export function buildConsentInviteText(
   url: string
 ): string {
   if (!url) return "";
-  return renderTemplate(cfg.messages.consentInvite, {
+  const invite = renderTemplate(cfg.messages.consentInvite, {
     shop: cfg.business.name,
     cat: politeCat(b.catName),
     url,
   });
+  return `${invite}\n\n${DEEMED_CONSENT_NOTICE}`;
 }
 
 /** ห้องที่ทรายแมวฟรีมีเงื่อนไขจำนวนคืนขั้นต่ำ — ห้องอื่นๆ แถมทรายให้ตลอดการเข้าพักไม่ว่าจะกี่คืน */

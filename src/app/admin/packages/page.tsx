@@ -752,7 +752,7 @@ export default function AdminPackagesPage() {
         <button
           type="button"
           onClick={() => setZoomSlip(null)}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={zoomSlip} alt="สลิปโอนเงิน" className="max-h-full max-w-full rounded-petflow object-contain" />

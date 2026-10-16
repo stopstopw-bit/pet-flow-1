@@ -16,6 +16,8 @@ import {
   listTrashedInvoices,
   linkInvoiceToBooking,
   invoiceCatNames,
+  findOpenInvoiceForBooking,
+  applyDepositCreditToInvoice,
 } from "@/lib/invoices-store";
 import {
   getCustomer,
@@ -147,9 +149,8 @@ async function handleGet(req: NextRequest, id: string | null) {
   // ถ้านัดนี้มีหลายบิล (เช่นออกบิลใหม่ทับของเดิม) ให้เอาบิลที่ยังไม่จ่ายก่อนเสมอ
   // ไม่งั้นมัดจำที่เรียกเก็บจะไปผูกกับบิลเก่าที่จ่ายจบไปแล้ว แล้วบิลใหม่จะไม่เห็นมัดจำนั้นเลย
   if (bookingId) {
-    const list = await listInvoices();
-    const matches = list.filter((i) => i.bookingId === bookingId);
-    const inv = matches.find((i) => i.status !== "paid") || matches[0];
+    // นับบิลรวมทั้งบ้านด้วย — บิลบ้านเดียวกันผูก bookingId ไว้แค่ตัวเดียว
+    const inv = await findOpenInvoiceForBooking(bookingId);
     return NextResponse.json({ invoice: inv || null });
   }
 
@@ -660,6 +661,24 @@ async function handlePatch(req: NextRequest) {
         น้องแมว: inv.catName,
         รับรอบนี้: `${Number(body.amount)} บาท`,
         รับแล้วรวม: `${res.received} บาท`,
+        คงเหลือ: `${res.remaining} บาท`,
+        บิล: inv.id,
+      })
+    );
+    return NextResponse.json(res);
+  }
+
+  // มัดจำที่เรียกเก็บไว้ไปค้างเป็นเครดิตล่วงหน้า → ย้ายเข้าบิลนี้ + นับว่ารับแล้ว (ไม่ต้องกรอกยอด)
+  if (action === "apply_deposit_credit") {
+    const res = await applyDepositCreditToInvoice(id);
+    if (!res.ok) {
+      return NextResponse.json({ error: res.error }, { status: 400 });
+    }
+    await sendTelegram(
+      formatBookingTelegram("💰 รับมัดจำแล้ว", {
+        ลูกค้า: inv.customerName,
+        น้องแมว: inv.catName,
+        มัดจำ: `${res.deposit} บาท`,
         คงเหลือ: `${res.remaining} บาท`,
         บิล: inv.id,
       })

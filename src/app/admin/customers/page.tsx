@@ -1,5 +1,6 @@
 "use client";
 
+import { splitVaccinePhotos } from "@/lib/vaccine-photos";
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
@@ -17,6 +18,7 @@ import { CustomerLinkSection } from "@/components/CustomerLinkSection";
 import type { PointsHistoryEntry } from "@/lib/points-store";
 import { parseGroomInfo, groomInfoSummary } from "@/lib/groom-info";
 import type { Booking } from "@/lib/business";
+import { bookingGroupKey, groupBookings } from "@/lib/booking-group";
 import { ExportSheetsButton } from "@/components/ExportSheetsButton";
 import { BookingEditModal, type EditableBooking } from "@/components/BookingEditModal";
 import { RoomPlanSection } from "@/components/RoomPlanSection";
@@ -168,11 +170,24 @@ function CheckRow({
 const inputCls =
   "w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm outline-none transition focus:border-latte-deep focus:bg-card";
 
+/**
+ * หน้าลูกค้าเป็นของบ้านเดียวอยู่แล้ว — จัดกลุ่มแค่ "บริการ + วันเวลาเดียวกัน" ไม่ดูชื่อ/รหัสลูกค้าบนนัด
+ * (นัดที่ลูกค้าจองเองกับนัดที่ร้านลงให้ บางทีมีรหัสลูกค้าไม่ตรงกัน แล้วจะแตกเป็นคนละนัด)
+ */
+function groupHousehold(list: EditableBooking[]): EditableBooking[][] {
+  return groupBookings(list.map((b) => ({ ...b, customerId: "", customerName: "" }))).map((g) =>
+    g.map((x) => list.find((b) => b.id === x.id)!)
+  );
+}
+
 function CustomerAppointmentsSection({
   bookings,
+  catNames,
   onRefresh,
 }: {
   bookings: EditableBooking[];
+  /** แมวที่ลูกค้าบันทึกไว้ — ให้เลือกแทนชื่อชั่วคราว "น้องไม่ระบุชื่อ" ได้เลย */
+  catNames: string[];
   onRefresh: () => void;
 }) {
   const [editing, setEditing] = useState<EditableBooking | null>(null);
@@ -188,19 +203,27 @@ function CustomerAppointmentsSection({
       });
   }, []);
 
-  const cancelBooking = async (b: EditableBooking) => {
-    if (!confirm(`ยกเลิกนัด ${b.catName} · ${b.date}?`)) return;
-    const res = await fetch("/api/bookings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: b.id, action: "cancel" }),
-    });
-    if (res.ok) {
+  // บ้านเดียวกัน นัดเดียวกัน = 1 นัด (ใส่ชื่อน้องทุกตัว) ไม่แตกเป็นรายตัว
+  const groups = groupHousehold(bookings);
+
+  const cancelGroup = async (group: EditableBooking[]) => {
+    const names = group.map((b) => b.catName).join(", ");
+    if (!confirm(`ยกเลิกนัด ${names} · ${group[0].date}?`)) return;
+    const results = await Promise.all(
+      group.map((b) =>
+        fetch("/api/bookings", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: b.id, action: "cancel" }),
+        })
+      )
+    );
+    if (results.every((r) => r.ok)) {
       alert("ยกเลิกนัดแล้ว");
-      onRefresh();
     } else {
-      alert("ยกเลิกไม่สำเร็จ");
+      alert("ยกเลิกไม่สำเร็จบางตัว — ลองใหม่อีกครั้ง");
     }
+    onRefresh();
   };
 
   return (
@@ -210,6 +233,10 @@ function CustomerAppointmentsSection({
           booking={editing}
           rooms={rooms}
           groomSlots={groomSlots}
+          customerCats={catNames}
+          takenCatNames={bookings
+            .filter((x) => x.id !== editing.id && bookingGroupKey(x) === bookingGroupKey(editing))
+            .map((x) => x.catName)}
           onClose={() => setEditing(null)}
           onSaved={onRefresh}
         />
@@ -217,14 +244,17 @@ function CustomerAppointmentsSection({
       <CardHeader
         icon="calendar"
         title="นัดหมาย"
-        sub={bookings.length ? `${bookings.length} นัดที่กำลังจะมาถึง · แตะเพื่อแก้ไข` : undefined}
+        sub={groups.length ? `${groups.length} นัดที่กำลังจะมาถึง · แตะเพื่อแก้ไข` : undefined}
       />
       {bookings.length === 0 ? (
         <EmptyState icon="calendar" title="ยังไม่มีนัดที่กำลังจะมาถึง" />
       ) : (
         <ul className="divide-y divide-petflow-line rounded-petflow-sm border border-petflow-line bg-card">
-          {bookings.map((b) => (
-            <li key={b.id} className="flex items-center gap-1 pr-2">
+          {groups.map((group) => {
+            const b = group[0];
+            const many = group.length > 1;
+            return (
+            <li key={group.map((g) => g.id).join(",")} className="flex items-center gap-1 pr-2">
               <button
                 type="button"
                 onClick={() => setEditing(b)}
@@ -234,8 +264,18 @@ function CustomerAppointmentsSection({
                   <Icon name={b.service === "room" ? "bed" : "bath"} size={20} />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-extrabold text-petflow-chocolate">
-                    {b.catName} · {b.service === "room" ? "ห้องพัก" : "อาบน้ำ"}
+                  <span className="flex items-center gap-1.5">
+                    <span className="truncate text-sm font-extrabold text-petflow-chocolate">
+                      {b.service === "room" ? "ห้องพัก" : "อาบน้ำ"}
+                    </span>
+                    {many && (
+                      <span className="shrink-0 rounded-full bg-latte/25 px-1.5 py-px text-[10px] font-extrabold text-latte-deep">
+                        {group.length} ตัว
+                      </span>
+                    )}
+                  </span>
+                  <span className="block truncate text-[11px] font-bold text-brown">
+                    {group.map((g) => g.catName).join(", ")}
                   </span>
                   <span className="block truncate text-[11px] text-brown-soft">{bookingWhen(b)}</span>
                 </span>
@@ -249,12 +289,35 @@ function CustomerAppointmentsSection({
               </button>
               <MoreMenu
                 items={[
-                  { label: "แก้ไขนัด", icon: "edit", onClick: () => setEditing(b) },
-                  { label: "ยกเลิกนัด", icon: "x", danger: true, onClick: () => cancelBooking(b) },
+                  { label: many ? "แก้ไขนัดทั้งบ้าน" : "แก้ไขนัด", icon: "edit", onClick: () => setEditing(b) },
+                  // แก้เฉพาะบางตัว (เช่น ตัวเดียวเปลี่ยนห้อง/โปรแกรม) ซ่อนไว้ในเมนู
+                  ...(many
+                    ? group.slice(1).map((g) => ({
+                        label: `แก้เฉพาะ ${g.catName}`,
+                        icon: "edit",
+                        onClick: () => setEditing(g),
+                      }))
+                    : []),
+                  {
+                    label: many ? "ยกเลิกนัดทั้งบ้าน" : "ยกเลิกนัด",
+                    icon: "x",
+                    danger: true,
+                    onClick: () => cancelGroup(group),
+                  },
+                  // น้องบางตัวไม่มา (เช่น ป่วย) — ยกเลิกเฉพาะตัวนั้น ตัวอื่นในบ้านยังนัดอยู่
+                  ...(many
+                    ? group.map((g) => ({
+                        label: `ยกเลิกเฉพาะ ${g.catName}`,
+                        icon: "x",
+                        danger: true,
+                        onClick: () => cancelGroup([g]),
+                      }))
+                    : []),
                 ]}
               />
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
     </section>
@@ -478,8 +541,43 @@ function formatThaiDateTimeShort(iso: string) {
  * ที่เดียว จะได้ใช้เป็นหลักฐานได้ทันทีถ้ามีปัญหา ไม่ต้องไล่หา
  */
 function StaysConsentSection({ bookings }: { bookings: EditableBooking[] }) {
-  const stays = bookings
-    .filter((b) => b.service === "room" && b.status !== "cancelled")
+  // ชื่อห้องจริงแทน id (catflix → Catflix & Chill)
+  const [roomNames, setRoomNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    fetch("/api/config")
+      .then((r) => r.json())
+      .then((d) =>
+        setRoomNames(
+          Object.fromEntries(((d.config?.rooms || []) as { id: string; name: string }[]).map((r) => [r.id, r.name]))
+        )
+      )
+      .catch(() => {});
+  }, []);
+
+  // บ้านเดียวกัน ช่วงวันเดียวกัน = การเข้าพักครั้งเดียว (ระบบเก็บแถวละตัว) → รวมเป็นรายการเดียว
+  const stays = groupBookings(
+    bookings
+      .filter((b) => b.service === "room" && b.status !== "cancelled")
+      .map((b) => ({ ...b, customerName: b.customerName || "" }))
+  )
+    .map((group) => {
+      const signed = group.find((x) => x.consentAcceptedAt);
+      const rooms = new Map<string, number>();
+      for (const x of group) if (x.room) rooms.set(x.room, (rooms.get(x.room) || 0) + 1);
+      const roomUnits = new Set(group.map((x) => `${x.room}#${x.roomUnit ?? ""}`));
+      return {
+        ...(signed || group[0]),
+        id: group[0].id,
+        cats: group.map((x) => x.catName).filter(Boolean).join(", "),
+        roomText: Array.from(rooms.keys())
+          .map((r) => roomNames[r] || r)
+          .join(" + "),
+        roomCount: roomUnits.size > 1 ? roomUnits.size : 0,
+        careNote: Array.from(new Set(group.map((x) => x.careNote).filter(Boolean))).join(" · "),
+        consentSignature: signed?.consentSignature || group.find((x) => x.consentSignature)?.consentSignature,
+        vaccinePhotoUrl: group.find((x) => x.vaccinePhotoUrl)?.vaccinePhotoUrl,
+      };
+    })
     .sort((a, b) => (b.checkin || b.date).localeCompare(a.checkin || a.date));
 
   if (stays.length === 0) return null;
@@ -499,7 +597,8 @@ function StaysConsentSection({ bookings }: { bookings: EditableBooking[] }) {
                 <span className="font-bold text-brown">
                   {b.checkin || b.date}
                   {b.checkout ? ` → ${b.checkout}` : ""}
-                  {b.room ? ` · ห้อง ${b.room}` : ""}
+                  {b.roomText ? ` · ${b.roomText}` : ""}
+                  {b.roomCount ? ` (${b.roomCount} ห้อง)` : ""}
                 </span>
                 {staying && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-ok/20 px-2 py-0.5 text-[10px] font-extrabold text-ok">
@@ -508,6 +607,7 @@ function StaysConsentSection({ bookings }: { bookings: EditableBooking[] }) {
                   </span>
                 )}
               </div>
+              {b.cats && <p className="mt-0.5 text-[11px] text-brown-soft">{b.cats}</p>}
               <div className="mt-1.5 flex flex-wrap items-center gap-2">
                 {b.consentAcceptedAt ? (
                   <span className="inline-flex items-center gap-1 text-[10px] font-bold text-ok">
@@ -531,17 +631,18 @@ function StaysConsentSection({ bookings }: { bookings: EditableBooking[] }) {
                     ดูลายเซ็น
                   </a>
                 )}
-                {b.vaccinePhotoUrl && (
+                {splitVaccinePhotos(b.vaccinePhotoUrl).map((url, vi, all) => (
                   <a
-                    href={b.vaccinePhotoUrl}
+                    key={url}
+                    href={url}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex min-h-[32px] items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold bg-latte/30 text-petflow-chocolate"
                   >
                     <Icon name="doc" size={12} />
-                    ดูสมุดวัคซีน
+                    {all.length > 1 ? `สมุดวัคซีน ${vi + 1}` : "ดูสมุดวัคซีน"}
                   </a>
-                )}
+                ))}
                 {b.consentAcceptedAt && (
                   <span
                     className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold ${
@@ -615,30 +716,46 @@ function ServiceHistorySection({
       ),
   }));
 
-  const bookingRow = (b: EditableBooking): Row => ({
-    key: `b${b.id}`,
-    date: b.date,
-    text: `${b.catName} · ${b.service === "room" ? "ห้องพัก" : "อาบน้ำ"} · ${statusLabel(
-      b.status
-    )}`,
-    onDelete: () =>
-      remove("ลบนัดนี้ทิ้งถาวร? กู้คืนไม่ได้", () =>
-        fetch("/api/bookings", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: b.id, action: "delete" }),
-        })
-      ),
-  });
+  // นัดบ้านเดียวกัน นัดเดียวกัน (สถานะเดียวกัน) = 1 แถว ใส่ชื่อทุกตัว
+  const bookingRow = (group: EditableBooking[]): Row => {
+    const b = group[0];
+    return {
+      key: `b${group.map((g) => g.id).join(",")}`,
+      date: b.date,
+      text: `${group.map((g) => g.catName).join(", ")} · ${
+        b.service === "room" ? "ห้องพัก" : "อาบน้ำ"
+      } · ${statusLabel(b.status)}`,
+      onDelete: () =>
+        remove(
+          group.length > 1
+            ? `ลบนัดนี้ทั้งบ้าน (${group.length} ตัว) ทิ้งถาวร? กู้คืนไม่ได้`
+            : "ลบนัดนี้ทิ้งถาวร? กู้คืนไม่ได้",
+          () =>
+            Promise.all(
+              group.map((g) =>
+                fetch("/api/bookings", {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ id: g.id, action: "delete" }),
+                })
+              )
+            )
+        ),
+    };
+  };
+  const groupRows = (list: EditableBooking[]) => {
+    const byStatus = new Map<string, EditableBooking[]>();
+    for (const b of list) byStatus.set(b.status, [...(byStatus.get(b.status) || []), b]);
+    return Array.from(byStatus.values()).flatMap((l) => groupHousehold(l)).map(bookingRow);
+  };
 
   const byDateDesc = (a: Row, b: Row) => b.date.localeCompare(a.date);
-  const cancelledRows = pastBookings
-    .filter((b) => b.status === "cancelled")
-    .map(bookingRow)
-    .sort(byDateDesc);
+  const cancelledRows = groupRows(pastBookings.filter((b) => b.status === "cancelled")).sort(
+    byDateDesc
+  );
   const rows = [
     ...serviceRows,
-    ...pastBookings.filter((b) => b.status !== "cancelled").map(bookingRow),
+    ...groupRows(pastBookings.filter((b) => b.status !== "cancelled")),
   ].sort(byDateDesc);
 
   const visible = showAll ? rows : rows.slice(0, 8);
@@ -1130,8 +1247,18 @@ function CustomerSummaryCard({
       usedUses: number;
       status: string;
       groomProgram?: string;
+      planId?: string;
+      locked?: boolean;
+      outstanding?: number;
     }[]
   >([]);
+  /** แผนแบ่งจ่ายของคอร์ส (id แผน → งวด/ยอดค้าง) */
+  const [pkgPlans, setPkgPlans] = useState<
+    Record<string, { installments: number; installmentsLeft: number; nextInstallment: number; paid: number; price: number; payments: unknown[] }>
+  >({});
+  const [pkgInstallments, setPkgInstallments] = useState(1);
+  const [pkgFirstPay, setPkgFirstPay] = useState("");
+  const [pkgMethod, setPkgMethod] = useState<"transfer" | "cash">("transfer");
   const [pkgName, setPkgName] = useState("");
   /** "" = ใช้ได้ทุกโปรแกรม */
   const [pkgProgram, setPkgProgram] = useState("");
@@ -1142,6 +1269,7 @@ function CustomerSummaryCard({
   /** ค่าเริ่มต้น = ไม่แจ้ง / ไม่ใช่ยอดยกมา — เหมือนฝั่งเติมเครดิต Member */
   const [pkgNotify, setPkgNotify] = useState(false);
   const [pkgLegacy, setPkgLegacy] = useState(false);
+  const [pkgPreview, setPkgPreview] = useState<Record<string, unknown>[] | null>(null);
 
   /** ครั้งที่ยังใช้ได้รวมทุกคอร์ส (ไม่นับที่ยกเลิก/ใช้หมดแล้ว) */
   const packageUsesLeft = packages
@@ -1153,35 +1281,61 @@ function CustomerSummaryCard({
       .then((r) => r.json())
       .then((d) => setPackages(d.packages || []))
       .catch(() => {});
+    fetch(`/api/room-plans?customerId=${customer.id}`)
+      .then((r) => r.json())
+      .then((d) => {
+        const map: typeof pkgPlans = {};
+        for (const p of d.plans || []) if (p.kind === "package") map[p.id] = p;
+        setPkgPlans(map);
+      })
+      .catch(() => {});
   }, [customer.id]);
   useEffect(() => {
     loadPackages();
   }, [loadPackages]);
 
-  const sellPackage = async () => {
+  const packagePayload = () => {
     const uses = Math.round(Number(pkgUses) || 0);
     const price = Math.round(Number(pkgPrice) || 0);
+    return {
+      customerId: customer.id,
+      name: pkgName.trim(),
+      totalUses: uses,
+      price,
+      isLegacy: pkgLegacy,
+      notify: pkgNotify,
+      groomProgram: pkgProgram || undefined,
+      installments: pkgLegacy ? 1 : pkgInstallments,
+      firstPayment: !pkgLegacy && pkgInstallments > 1 ? Math.round(Number(pkgFirstPay) || 0) : undefined,
+      paymentMethod: pkgMethod,
+    };
+  };
+
+  const sellPackage = async () => {
+    const uses = Math.round(Number(pkgUses) || 0);
     if (!pkgName.trim() || uses <= 0) return;
     setPkgBusy(true);
     try {
       const res = await fetch("/api/packages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customerId: customer.id,
-          name: pkgName.trim(),
-          totalUses: uses,
-          price,
-          isLegacy: pkgLegacy,
-          notify: pkgNotify,
-          groomProgram: pkgProgram || undefined,
-        }),
+        body: JSON.stringify(packagePayload()),
       });
       const pkgData = await res.json().catch(() => ({}));
+      setPkgPreview(null);
+      if (!res.ok && pkgData.error) {
+        toast(pkgData.error, "error");
+        loadPackages();
+      }
       if (res.ok) {
         setMsg(
           `✅ ${pkgLegacy ? "ยกคอร์ส" : "ขายคอร์ส"} "${pkgName.trim()}" แล้ว` +
             (pkgLegacy ? " · ไม่นับรายรับเดือนนี้" : "") +
+            (pkgData.plan
+              ? pkgData.plan.remaining > 0
+                ? ` · ค้าง ${Math.round(pkgData.plan.remaining).toLocaleString()} บาท (ใช้ได้เมื่อจ่ายครบ)`
+                : " · จ่ายครบแล้ว"
+              : "") +
             (pkgNotify
               ? pkgData.notifyError
                 ? ` · ⚠️ ส่ง LINE ไม่ได้: ${pkgData.notifyError}`
@@ -1194,6 +1348,8 @@ function CustomerSummaryCard({
         setPkgPrice("");
         setPkgLegacy(false);
         setPkgNotify(false);
+        setPkgInstallments(1);
+        setPkgFirstPay("");
         loadPackages();
         setTimeout(() => setMsg(""), 2500);
       }
@@ -1202,14 +1358,85 @@ function CustomerSummaryCard({
     }
   };
 
+  const previewPackage = async () => {
+    const uses = Math.round(Number(pkgUses) || 0);
+    if (!pkgName.trim() || uses <= 0) return;
+    setPkgBusy(true);
+    try {
+      const res = await fetch("/api/packages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...packagePayload(), preview: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(data.preview)) {
+        setPkgPreview(data.preview);
+      } else {
+        setMsg("❌ ดูตัวอย่างการ์ดไม่สำเร็จ");
+      }
+    } finally {
+      setPkgBusy(false);
+    }
+  };
+
   const cancelPackage = async (id: string) => {
-    if (!confirm("ยกเลิกคอร์สนี้?")) return;
-    await fetch("/api/packages", {
+    const pk = packages.find((p) => p.id === id);
+    const plan = pk?.planId ? pkgPlans[pk.planId] : undefined;
+    if (
+      !confirm(
+        plan
+          ? "ยกเลิกคอร์สนี้? ยอดค้างจะไม่ต้องจ่ายต่อ (เงินงวดที่รับแล้วไม่ถูกลบ ต้องคืนลูกค้าเองถ้าจะคืน)"
+          : "ยกเลิกคอร์สนี้?"
+      )
+    )
+      return;
+    if (pk?.planId && plan) {
+      await fetch("/api/room-plans", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cancel", planId: pk.planId }),
+      });
+    } else {
+      await fetch("/api/packages", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cancel", packageId: id }),
+      });
+    }
+    loadPackages();
+  };
+
+  /** รับเงินงวดของคอร์สแบ่งจ่าย */
+  const payInstallment = async (planId: string, name: string) => {
+    const plan = pkgPlans[planId];
+    if (!plan) return;
+    const remaining = plan.price - plan.paid;
+    const raw = prompt(
+      `รับเงินงวด — ${name}\nค้าง ${Math.round(remaining).toLocaleString()} บาท · เหลือ ${plan.installmentsLeft} งวด\n\nรับรอบนี้กี่บาท?`,
+      String(plan.nextInstallment || "")
+    );
+    if (raw == null) return;
+    const amount = Math.round(Number(raw.replace(/[,\s฿]/g, "")) || 0);
+    if (amount <= 0) return;
+    const method = confirm("รับเป็นเงินสดใช่ไหม?\n(ตกลง = เงินสด · ยกเลิก = โอน)") ? "cash" : "transfer";
+    const res = await fetch("/api/room-plans", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "cancel", packageId: id }),
+      body: JSON.stringify({ action: "pay", planId, amount, paymentMethod: method, notify: customer.lineUserId ? undefined : false }),
     });
-    loadPackages();
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.ok) {
+      toast(
+        d.plan.remaining > 0
+          ? `รับแล้ว ${amount.toLocaleString()} บาท · ค้างอีก ${Math.round(d.plan.remaining).toLocaleString()} บาท`
+          : `รับครบแล้ว — คอร์สใช้ได้แล้ว`
+      );
+      loadPackages();
+    } else if (d.error === "over_due") {
+      toast(`เกินยอดค้าง — ค้างอยู่ ${Math.round(d.due).toLocaleString()} บาท`, "error");
+    } else {
+      toast("รับเงินไม่สำเร็จ", "error");
+    }
   };
 
   const heroCat = customer.cats.find((cat) => cat.photoDataUrl) || customer.cats[0];
@@ -1467,6 +1694,16 @@ function CustomerSummaryCard({
             </span>
           </li>
         )}
+        <li className="flex items-center gap-2">
+          <Icon name="user" size={14} className="text-brown-faint" />
+          {customer.idCardUrl ? (
+            <a href={customer.idCardUrl} target="_blank" rel="noreferrer" className="font-bold text-latte-deep underline">
+              ดูบัตรประชาชน (ขีดทับแล้ว)
+            </a>
+          ) : (
+            <span className="text-brown-faint">ยังไม่ได้แนบบัตรประชาชน</span>
+          )}
+        </li>
         <li className={`flex items-center gap-2 ${customer.marketingConsent ? "text-ok" : "font-bold text-wait"}`}>
           <Icon name={customer.marketingConsent ? "check" : "x"} size={14} />
           {customer.marketingConsent ? "ยินยอมรับข่าวสาร/โปร" : "ไม่รับข่าวสาร/โปร"}
@@ -1586,10 +1823,28 @@ function CustomerSummaryCard({
                           ใช้กับ {groomProgramName(p.groomProgram, groomPrograms) || "โปรแกรมที่ลบไปแล้ว"}
                         </span>
                       )}
+                      {p.planId && pkgPlans[p.planId] && (
+                        <span className={`block truncate text-[10px] font-bold ${p.locked ? "text-wait" : "text-ok"}`}>
+                          {p.locked
+                            ? `🔒 จ่ายแล้ว ${pkgPlans[p.planId].payments.length}/${pkgPlans[p.planId].installments} งวด`
+                            : `แบ่งจ่าย ${pkgPlans[p.planId].payments.length} งวด · จ่ายครบแล้ว`}
+                        </span>
+                      )}
                     </span>
-                    <span className={`shrink-0 font-extrabold ${left > 0 ? "text-ok" : "text-brown-faint"}`}>
-                      เหลือ {left}/{p.totalUses}
-                    </span>
+                    {p.locked && p.planId ? (
+                      <button
+                        type="button"
+                        onClick={() => payInstallment(p.planId!, p.name)}
+                        className="flex min-h-[36px] shrink-0 items-center gap-1 rounded-full bg-petflow-chocolate px-3 text-[11px] font-extrabold text-card"
+                      >
+                        <Icon name="money" size={14} />
+                        รับงวด · ค้าง {Math.round(p.outstanding || 0).toLocaleString()}
+                      </button>
+                    ) : (
+                      <span className={`shrink-0 font-extrabold ${left > 0 ? "text-ok" : "text-brown-faint"}`}>
+                        เหลือ {left}/{p.totalUses}
+                      </span>
+                    )}
                     <MoreMenu
                       items={[
                         { label: "ยกเลิกคอร์สนี้", icon: "x", danger: true, onClick: () => cancelPackage(p.id) },
@@ -1626,6 +1881,59 @@ function CustomerSummaryCard({
           />
         </div>
 
+        {!pkgLegacy && (
+          <div className="mt-2 space-y-2">
+            <select
+              value={pkgInstallments}
+              onChange={(e) => setPkgInstallments(Number(e.target.value))}
+              className={inputCls}
+              aria-label="การจ่ายเงิน"
+            >
+              <option value={1}>จ่ายเต็มครั้งเดียว</option>
+              {Array.from({ length: 11 }, (_, i) => i + 2).map((n) => (
+                <option key={n} value={n}>
+                  แบ่งจ่าย {n} งวด{Number(pkgPrice) > 0 ? ` (งวดละ ~${Math.ceil(Number(pkgPrice) / n).toLocaleString()})` : ""}
+                </option>
+              ))}
+            </select>
+            {pkgInstallments > 1 && (
+              <>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    value={pkgFirstPay}
+                    onChange={(e) => setPkgFirstPay(e.target.value)}
+                    placeholder="รับงวดแรกวันนี้ (บาท) — ว่าง = ยังไม่รับ"
+                    className={`min-w-0 flex-1 ${inputCls}`}
+                  />
+                  <select
+                    value={pkgMethod}
+                    onChange={(e) => setPkgMethod(e.target.value as "transfer" | "cash")}
+                    className={`!w-24 shrink-0 ${inputCls}`}
+                    aria-label="รับเงินทาง"
+                  >
+                    <option value="transfer">โอน</option>
+                    <option value="cash">เงินสด</option>
+                  </select>
+                </div>
+                <p className="flex items-center gap-1 text-[10px] font-bold text-wait">
+                  <Icon name="alert" size={12} />
+                  คอร์สจะยังใช้ไม่ได้จนกว่าจะจ่ายครบทุกงวด · รับงวดถัดไปได้ที่ปุ่ม &quot;รับงวด&quot; ในรายการคอร์ส
+                </p>
+              </>
+            )}
+          </div>
+        )}
+
+        {pkgPreview && (
+          <PreviewSendModal
+            messages={pkgPreview}
+            sending={pkgBusy}
+            onConfirm={sellPackage}
+            onCancel={() => setPkgPreview(null)}
+          />
+        )}
+
         <div className="mt-2 space-y-2">
           <CheckRow
             checked={pkgLegacy}
@@ -1650,7 +1958,7 @@ function CustomerSummaryCard({
         <button
           type="button"
           disabled={pkgBusy || !pkgName.trim() || !pkgUses}
-          onClick={sellPackage}
+          onClick={pkgNotify ? previewPackage : sellPackage}
           className="mt-2 flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-petflow-sm bg-sage px-3 py-2.5 text-sm font-extrabold text-card disabled:opacity-40"
         >
           <Icon name="plus" size={16} />
@@ -2797,6 +3105,7 @@ export default function CustomersPage() {
 
         <CustomerAppointmentsSection
           bookings={selected.history.upcomingBookings || []}
+          catNames={c.cats.map((x) => x.name)}
           onRefresh={() => open(c.id)}
         />
 

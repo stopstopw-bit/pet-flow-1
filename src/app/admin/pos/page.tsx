@@ -196,7 +196,7 @@ function SellView({ products, loaded, onSold }: { products: PosProduct[]; loaded
       <TodaySales sales={sales} onVoided={() => { loadSales(); onSold(); }} />
 
       {count > 0 && !checkout && (
-        <div className="fixed inset-x-0 bottom-[76px] z-30 px-4 lg:bottom-4 lg:left-64">
+        <div className="fixed inset-x-0 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-30 px-4 lg:bottom-4 lg:left-64">
           <button
             type="button"
             onClick={() => setCheckout(true)}
@@ -884,7 +884,7 @@ function Sheet({ title, onClose, children }: { title: string; onClose: () => voi
   return (
     <div className="fixed inset-0 z-[60] flex items-end justify-center bg-petflow-chocolate/40 backdrop-blur-[2px] sm:items-center sm:p-4" onClick={onClose}>
       <div
-        className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-petflow bg-card p-4 pb-8 shadow-petflow sm:rounded-petflow"
+        className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-petflow bg-card p-4 pb-[max(2rem,env(safe-area-inset-bottom))] shadow-petflow sm:rounded-petflow"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-center justify-between">

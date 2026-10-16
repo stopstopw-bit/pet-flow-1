@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { SELF_BOOKABLE_ROOM_IDS } from "@/lib/self-bookable-rooms";
 import { GROOM_PROGRAMS } from "@/lib/grooming-prices";
 import { extraCatChargePerNight } from "@/lib/business";
+import { roomPricing } from "@/lib/room-board";
 import { toJpegDataUrl } from "@/lib/image-convert";
 
 type Service = "groom" | "room";
@@ -79,6 +80,8 @@ function BookPageInner() {
           maxCats: r.maxCats,
           includedCats: r.includedCats,
           extraCatPrice: r.extraCatPrice,
+          cats: r.cats,
+          extra: r.extra,
         })),
     [config.rooms]
   );
@@ -127,8 +130,8 @@ function BookPageInner() {
       rooms: extra.rooms,
       roomPerNight: selectedRoom.price,
       extraCats: extra.extraCats,
-      extraCatPrice: selectedRoom.extraCatPrice || 0,
-      included: Math.max(1, selectedRoom.includedCats ?? 2),
+      extraCatPrice: roomPricing(selectedRoom).extraPrice,
+      included: roomPricing(selectedRoom).base,
       total: (selectedRoom.price * extra.rooms + extra.perNight) * nights,
     };
   }, [selectedRoom, catNames.length, checkin, checkout]);

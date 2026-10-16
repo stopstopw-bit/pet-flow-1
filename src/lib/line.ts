@@ -6,6 +6,7 @@
 import { formatBookingWhen, formatThaiDate } from "./format-thai-date";
 import { hasTransport, transportLabel, type BookingTransport } from "./transport";
 import { getLineCredentials } from "./line-config";
+import { DEEMED_CONSENT_NOTICE } from "./messages";
 import type { CardStyleConfig } from "./config-types";
 
 // สีแบรนด์ของการ์ด LINE — เปลี่ยนจากเขียวเดิม (#5A8F5A/#4A7348) มาเป็นโทน CI ของร้าน
@@ -384,6 +385,35 @@ export function buildAppointmentConfirmFlex(booking: {
   };
 }
 
+/** กล่องข้อความ "ไม่ตอบ = ยอมรับข้อตกลง" ใช้ในการ์ดที่ให้ลูกค้ายืนยันเงื่อนไขก่อนเข้าพัก */
+function deemedConsentBox(): Record<string, unknown> {
+  return {
+    type: "box",
+    layout: "vertical",
+    margin: "lg",
+    paddingAll: "12px",
+    backgroundColor: "#F4F1EC",
+    cornerRadius: "10px",
+    contents: [
+      {
+        type: "text",
+        text: "ข้อตกลงโดยปริยาย",
+        size: "xs",
+        weight: "bold",
+        color: "#5C4033",
+      },
+      {
+        type: "text",
+        text: DEEMED_CONSENT_NOTICE,
+        size: "xxs",
+        color: "#7A6A5A",
+        margin: "xs",
+        wrap: true,
+      },
+    ],
+  };
+}
+
 /** การ์ดเงื่อนไขก่อนเข้าพัก — มีปุ่มไปหน้ากดยอมรับ + แจ้งการดูแลเพิ่มเติม */
 export function buildConsentFlex(data: {
   businessName: string;
@@ -454,6 +484,7 @@ export function buildConsentFlex(data: {
       },
     ],
   });
+  body.push(deemedConsentBox());
   body.push({
     type: "text",
     text: "แจ้งการดูแลเพิ่มเติมของน้องในหน้าเดียวกันได้เลยค่ะ 🧡",
@@ -1347,6 +1378,9 @@ export function buildPrestayFlex(data: {
       ],
     });
   }
+
+  // มีปุ่มยืนยันการเข้าพัก → แจ้งว่าไม่ตอบ = ยอมรับโดยปริยาย
+  if (data.consentUrl) body.push(deemedConsentBox());
 
   if (style?.closing) {
     body.push({
@@ -2369,7 +2403,9 @@ export function buildMemberBalanceFlex(data: {
 export function buildRoomPlanFlex(data: {
   customerName: string;
   planName: string;
-  nights: { roomLabel: string; total: number; left: number }[];
+  nights: { roomLabel: string; total: number; left: number; unit?: "night" | "use" }[];
+  /** "package" = คอร์สทั่วไปแบบแบ่งจ่าย (นับครั้ง) — ใช้คำกลางแทน "แพ็กห้อง/คืน" */
+  kind?: "room" | "package";
   price: number;
   paid: number;
   remaining: number;
@@ -2398,11 +2434,20 @@ export function buildRoomPlanFlex(data: {
   });
   const fmt = (n: number) => `${Math.round(n).toLocaleString()} บาท`;
   const totalLeft = data.nights.reduce((n, x) => n + x.left, 0);
+  const generic = data.kind === "package";
+  const unitOf = (u?: "night" | "use") => (u === "use" || (!u && generic) ? "ครั้ง" : "คืน");
+  const mainUnit = unitOf(data.nights[0]?.unit);
 
   const contents: Record<string, unknown>[] = [
     {
       type: "text",
-      text: data.thisPayment ? "🧾 รับชำระแพ็กห้องแล้ว" : "🏠 คืนคงเหลือของคุณ",
+      text: data.thisPayment
+        ? generic
+          ? "🧾 รับชำระคอร์สแล้ว"
+          : "🧾 รับชำระแพ็กห้องแล้ว"
+        : generic
+          ? "🎫 คอร์สคงเหลือของคุณ"
+          : "🏠 คืนคงเหลือของคุณ",
       weight: "bold",
       size: "lg",
       color: "#5C4033",
@@ -2447,16 +2492,16 @@ export function buildRoomPlanFlex(data: {
     backgroundColor: "#FBF4E9",
     cornerRadius: "12px",
     contents: [
-      { type: "text", text: "คืนที่ใช้ได้อีก", size: "xs", color: "#A2907E", align: "center" },
+      { type: "text", text: `${mainUnit}ที่ใช้ได้อีก`, size: "xs", color: "#A2907E", align: "center" },
       {
         type: "text",
-        text: `${totalLeft} คืน`,
+        text: `${totalLeft} ${mainUnit}`,
         weight: "bold",
         size: "xxl",
         color: "#C4956A",
         align: "center",
       },
-      ...data.nights.map((n) => row(n.roomLabel, `${n.left} / ${n.total} คืน`, true)),
+      ...data.nights.map((n) => row(n.roomLabel, `${n.left} / ${n.total} ${unitOf(n.unit)}`, true)),
     ],
   });
 
@@ -2476,7 +2521,7 @@ export function buildRoomPlanFlex(data: {
     );
     contents.push({
       type: "text",
-      text: "เริ่มใช้คืนได้เมื่อชำระครบทุกงวดนะคะ",
+      text: generic ? "เริ่มใช้คอร์สได้เมื่อชำระครบทุกงวดนะคะ" : "เริ่มใช้คืนได้เมื่อชำระครบทุกงวดนะคะ",
       size: "xs",
       color: "#C0703A",
       margin: "md",
@@ -2485,20 +2530,22 @@ export function buildRoomPlanFlex(data: {
   } else {
     contents.push(row("สถานะ", "ชำระครบ ใช้ได้เลย ✅", true, "#6E8B5E"));
   }
-  contents.push({
-    type: "text",
-    text: "พักห้องไหน ระบบหักคืนของห้องนั้นให้ตามจริงนะคะ 🐾",
-    size: "xs",
-    color: "#A2907E",
-    margin: "lg",
-    wrap: true,
-  });
+  if (!generic) {
+    contents.push({
+      type: "text",
+      text: "พักห้องไหน ระบบหักคืนของห้องนั้นให้ตามจริงนะคะ 🐾",
+      size: "xs",
+      color: "#A2907E",
+      margin: "lg",
+      wrap: true,
+    });
+  }
 
   return {
     type: "flex",
     altText: data.thisPayment
-      ? `รับชำระแพ็กห้อง ${data.thisPayment} บาท · คงเหลือ ${data.remaining} บาท`
-      : `คืนคงเหลือ ${totalLeft} คืน`,
+      ? `รับชำระ${generic ? "คอร์ส" : "แพ็กห้อง"} ${data.thisPayment} บาท · คงเหลือ ${data.remaining} บาท`
+      : `${mainUnit}คงเหลือ ${totalLeft} ${mainUnit}`,
     contents: {
       type: "bubble",
       body: { type: "box", layout: "vertical", contents },

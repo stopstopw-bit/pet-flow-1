@@ -145,7 +145,7 @@ export function CatMediaGallery({
 
       {viewing && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-4"
           onClick={() => setViewing(null)}
         >
           <div className="max-h-full w-full max-w-lg text-center" onClick={(e) => e.stopPropagation()}>

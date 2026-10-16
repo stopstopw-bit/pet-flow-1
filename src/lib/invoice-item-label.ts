@@ -28,3 +28,19 @@ export function summarizeInvoiceItems(items: { label: string }[]): string {
     ? `${names.slice(0, 2).join(", ")} และอีก ${names.length - 2} รายการ`
     : names.join(", ");
 }
+
+/** ตัดอิโมจิทั้งหมดออกจากข้อความ (รวมตัวเชื่อม/ตัวเลือกสีที่ติดมา) */
+export function stripEmoji(text: string): string {
+  return text
+    .replace(/[\p{Extended_Pictographic}\u{1F3FB}-\u{1F3FF}\uFE0F\u200D]/gu, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+/**
+ * ชื่อรายการบนเอกสารทางการ (ใบเสนอราคา/ใบแจ้งหนี้/ใบเสร็จ) — เจ้าของร้านไม่ต้องการ
+ * อิโมจิหรือชื่อน้องบนเอกสาร จึงตัด "🐱 ชื่อน้อง · " ข้างหน้า แล้วล้างอิโมจิที่เหลือ (เช่น 🎁)
+ */
+export function formalItemLabel(label: string): string {
+  return stripEmoji(label.replace(/^🐱 .+? · /, ""));
+}
