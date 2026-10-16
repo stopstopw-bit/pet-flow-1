@@ -741,23 +741,73 @@ function PaymentTab({
 }) {
   const [form, setForm] = useState(config.payment);
   useEffect(() => setForm(config.payment), [config.payment]);
+  const [dep, setDep] = useState(config.bookingDeposit || {});
+  useEffect(() => setDep(config.bookingDeposit || {}), [config.bookingDeposit]);
+  const hasPromptpay = /^(0\d{9}|\d{13})$/.test(form.promptpayId || "");
 
   return (
     <form
       className="space-y-3 rounded-petflow bg-card p-4 shadow-petflow-sm"
       onSubmit={(e) => {
         e.preventDefault();
-        onSave({ payment: form });
+        onSave({
+          payment: form,
+          bookingDeposit: {
+            enabled: !!dep.enabled,
+            groomAmount: Math.max(0, Math.round(Number(dep.groomAmount) || 0)),
+            roomAmount: Math.max(0, Math.round(Number(dep.roomAmount) || 0)),
+          },
+        });
       }}
     >
       <Field label="ธนาคาร" value={form.bankName} onChange={(v) => setForm({ ...form, bankName: v })} />
       <Field label="เลขบัญชี" value={form.accountNumber} onChange={(v) => setForm({ ...form, accountNumber: v })} />
       <Field label="ชื่อบัญชี" value={form.accountName} onChange={(v) => setForm({ ...form, accountName: v })} />
       <Field
-        label="พร้อมเพย์ (เบอร์มือถือ หรือเลข 13 หลัก) — ใช้ทำ QR ที่หน้าขาย POS"
+        label="พร้อมเพย์ (เบอร์มือถือ หรือเลข 13 หลัก) — ใช้ทำ QR ที่หน้าขาย POS และมัดจำตอนจอง"
         value={form.promptpayId || ""}
         onChange={(v) => setForm({ ...form, promptpayId: v.replace(/[^0-9]/g, "") })}
       />
+      <div className="rounded-petflow-sm border border-petflow-line bg-paper/50 p-3">
+        <label className="flex items-start gap-2">
+          <input
+            type="checkbox"
+            checked={!!dep.enabled}
+            onChange={(e) => setDep({ ...dep, enabled: e.target.checked })}
+            className="mt-0.5 h-4 w-4 accent-latte-deep"
+          />
+          <span className="text-xs font-bold text-brown-soft">
+            เก็บมัดจำตอนลูกค้าจองเอง
+            <span className="mt-0.5 block text-[10px] font-normal text-brown-faint">
+              หน้าจองในแอปจะโชว์ยอดมัดจำ + QR พร้อมเพย์ ให้ลูกค้าโอนแล้วแนบสลิป
+              (หรือเลือก “โอนทีหลัง” ก็จองได้) · ยอดต่อ 1 การจอง ไม่คูณจำนวนน้อง
+            </span>
+          </span>
+        </label>
+        {dep.enabled && (
+          <div className="mt-2.5 grid grid-cols-2 gap-2">
+            <Field
+              label="มัดจำอาบน้ำ (บาท)"
+              type="number"
+              value={dep.groomAmount ? String(dep.groomAmount) : ""}
+              placeholder="0 = ไม่เก็บ"
+              onChange={(v) => setDep({ ...dep, groomAmount: Number(v) || 0 })}
+            />
+            <Field
+              label="มัดจำห้องพัก (บาท)"
+              type="number"
+              value={dep.roomAmount ? String(dep.roomAmount) : ""}
+              placeholder="0 = ไม่เก็บ"
+              onChange={(v) => setDep({ ...dep, roomAmount: Number(v) || 0 })}
+            />
+          </div>
+        )}
+        {dep.enabled && !hasPromptpay && (
+          <p className="mt-2 rounded bg-honey/20 px-2 py-1 text-[10px] font-bold text-wait">
+            ยังไม่ได้ใส่เลขพร้อมเพย์ — ลูกค้าจะเห็นแค่เลขบัญชีธนาคาร ไม่มี QR
+          </p>
+        )}
+      </div>
       <p className="rounded-petflow-sm bg-paper px-3 py-2 text-[11px] text-brown-faint">
         ข้อความสรุป/แจ้งมัดจำ/เก็บเงิน และข้อความอื่นๆ ที่ส่งให้ลูกค้า
         ย้ายไปแก้ที่แท็บ <b>ข้อความ</b> แล้ว

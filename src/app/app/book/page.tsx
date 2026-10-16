@@ -7,11 +7,20 @@ import { useConfig } from "@/components/ConfigProvider";
 import { PageHeader } from "@/components/PageHeader";
 import { SELF_BOOKABLE_ROOM_IDS } from "@/lib/self-bookable-rooms";
 import { GROOM_PROGRAMS } from "@/lib/grooming-prices";
+import { toJpegDataUrl } from "@/lib/image-convert";
 
 type Service = "groom" | "room";
 
 type GroomSlot = { time: string; capacity: number; booked: number; remaining: number };
 type RoomAvail = { capacity: number; booked: number; remaining: number; closed: boolean } | null;
+type DepositInfo = {
+  amount: number;
+  qr?: string;
+  promptpay?: string;
+  bankName?: string;
+  accountNumber?: string;
+  accountName?: string;
+};
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -100,8 +109,44 @@ function BookPageInner() {
   const [submitting, setSubmitting] = useState(false);
   const [submitErr, setSubmitErr] = useState("");
   const [done, setDone] = useState<
-    null | { service: Service; schedule?: { catName: string; time: string }[] }
+    null | {
+      service: Service;
+      schedule?: { catName: string; time: string }[];
+      ids: string[];
+      depositAmount: number;
+      slipSent: boolean;
+    }
   >(null);
+
+  // มัดจำ — ร้านเปิดไว้ในตั้งค่า › การชำระเงิน · ยอดคิดฝั่งเซิร์ฟเวอร์ (หน้านี้แค่แสดง)
+  const [deposit, setDeposit] = useState<DepositInfo | null>(null);
+  const [slip, setSlip] = useState("");
+  const [slipBusy, setSlipBusy] = useState(false);
+  const [slipErr, setSlipErr] = useState("");
+  const [lateSending, setLateSending] = useState(false);
+  const pickSlip = async (file: File) => {
+    setSlipBusy(true);
+    setSlipErr("");
+    try {
+      setSlip(await toJpegDataUrl(file, 1400));
+    } catch (e) {
+      setSlipErr(e instanceof Error ? e.message : "แนบรูปไม่สำเร็จ ลองใหม่อีกครั้ง");
+    } finally {
+      setSlipBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    let alive = true;
+    setDeposit(null);
+    fetch(`/api/bookings/deposit?service=${service}`)
+      .then((r) => (r.ok ? r.json() : { amount: 0 }))
+      .then((d: DepositInfo) => alive && setDeposit(d.amount > 0 ? d : null))
+      .catch(() => alive && setDeposit(null));
+    return () => {
+      alive = false;
+    };
+  }, [service]);
 
   useEffect(() => {
     if (customer?.cats?.length && !catNames.length) setCatNames([customer.cats[0].name]);
@@ -185,7 +230,7 @@ function BookPageInner() {
     return Boolean(roomType && roomAvail && roomAvail.remaining > 0 && checkout > checkin);
   }, [catNames, service, time, assignedPreview, roomType, roomAvail, checkin, checkout]);
 
-  const submit = async () => {
+  const submit = async (withSlip = true) => {
     if (!profile?.lineUserId || !canSubmit) return;
     setSubmitting(true);
     setSubmitErr("");
@@ -199,8 +244,17 @@ function BookPageInner() {
               date,
               time,
               groomProgram: groomProgram || undefined,
+              depositSlip: (withSlip && slip) || undefined,
             }
-          : { lineUserId: profile.lineUserId, catName, service, checkin, checkout, room: roomType };
+          : {
+              lineUserId: profile.lineUserId,
+              catName,
+              service,
+              checkin,
+              checkout,
+              room: roomType,
+              depositSlip: (withSlip && slip) || undefined,
+            };
       const res = await fetch("/api/bookings/self", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -215,7 +269,16 @@ function BookPageInner() {
                 time: b.time,
               }))
             : undefined;
-        setDone({ service, schedule });
+        const created: { id: string; depositStatus?: string; depositAmount?: number }[] =
+          Array.isArray(d.bookings) ? d.bookings : d.booking ? [d.booking] : [];
+        setDone({
+          service,
+          schedule,
+          ids: created.map((b) => b.id),
+          depositAmount: Number(created[0]?.depositAmount) || 0,
+          slipSent: created[0]?.depositStatus === "pending_review",
+        });
+        setSlip("");
       } else if (d.error === "slot_full" || d.error === "room_full") {
         setSubmitErr(
           service === "groom"
@@ -267,10 +330,61 @@ function BookPageInner() {
           <p className="mt-1 text-xs text-brown-soft">
             รอร้านกดยืนยันอีกนิดนะคะ — เช็คสถานะได้ที่เมนู “การจอง” ด้านล่าง
           </p>
+          {done.depositAmount > 0 &&
+            (done.slipSent ? (
+              <p className="mt-3 rounded-petflow-sm bg-sage/15 px-3 py-2 text-xs font-bold text-ok">
+                📎 ส่งสลิปมัดจำ {done.depositAmount.toLocaleString()} บาทแล้ว — รอร้านตรวจสลิปนะคะ
+              </p>
+            ) : (
+              <div className="mt-3 text-left">
+                <DepositCard
+                  deposit={deposit || { amount: done.depositAmount }}
+                  amountOverride={done.depositAmount}
+                  slip={slip}
+                  busy={slipBusy}
+                  error={slipErr}
+                  onPick={pickSlip}
+                  onClear={() => setSlip("")}
+                />
+                <button
+                  type="button"
+                  disabled={!slip || lateSending || !done.ids.length}
+                  onClick={async () => {
+                    setLateSending(true);
+                    setSlipErr("");
+                    try {
+                      const res = await fetch("/api/bookings/deposit", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ ids: done.ids, slip }),
+                      });
+                      if (res.ok) {
+                        setDone({ ...done, slipSent: true });
+                        setSlip("");
+                      } else {
+                        setSlipErr("ส่งสลิปไม่สำเร็จ — ลองใหม่อีกครั้ง หรือส่งสลิปในแชทร้านแทนนะคะ");
+                      }
+                    } catch {
+                      setSlipErr("เชื่อมต่อไม่สำเร็จ — ลองใหม่อีกครั้ง");
+                    } finally {
+                      setLateSending(false);
+                    }
+                  }}
+                  className="mt-2 w-full rounded-petflow-sm bg-gradient-to-r from-honey to-honey-deep py-3 text-sm font-extrabold text-petflow-chocolate shadow-petflow-sm disabled:opacity-50"
+                >
+                  {lateSending ? "กำลังส่งสลิป…" : "📎 ส่งสลิปมัดจำ"}
+                </button>
+                <p className="mt-1.5 text-center text-[11px] text-brown-faint">
+                  ยังไม่สะดวกโอนตอนนี้ก็ได้ค่ะ — ร้านจะติดต่อเรื่องมัดจำอีกครั้ง
+                </p>
+              </div>
+            ))}
           <button
             type="button"
             onClick={() => {
               setDone(null);
+              setSlip("");
+              setSlipErr("");
               setTime("");
               setGroomProgram("");
             }}
@@ -501,19 +615,141 @@ function BookPageInner() {
             )}
           </div>
 
+          {deposit && canSubmit && (
+            <DepositCard
+              deposit={deposit}
+              slip={slip}
+              busy={slipBusy}
+              error={slipErr}
+              onPick={pickSlip}
+              onClear={() => setSlip("")}
+            />
+          )}
+
           {submitErr && (
             <p className="mt-3 text-center text-xs font-bold text-wait">{submitErr}</p>
           )}
           <button
             type="button"
             disabled={!canSubmit || submitting}
-            onClick={submit}
+            onClick={() => submit(true)}
             className="mt-4 w-full rounded-petflow-sm bg-gradient-to-r from-honey to-honey-deep py-3.5 text-sm font-extrabold text-petflow-chocolate shadow-petflow-sm disabled:opacity-50"
           >
-            {submitting ? "กำลังส่งคำขอ…" : "🐾 ยืนยันจองคิว"}
+            {submitting
+              ? "กำลังส่งคำขอ…"
+              : deposit && slip
+                ? "🐾 ยืนยันจอง + ส่งสลิปมัดจำ"
+                : "🐾 ยืนยันจองคิว"}
           </button>
+          {deposit && canSubmit && slip && (
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => submit(false)}
+              className="mt-2 w-full rounded-petflow-sm bg-card py-2.5 text-xs font-bold text-brown-soft ring-1 ring-petflow-line disabled:opacity-50"
+            >
+              จองก่อน โอนทีหลัง
+            </button>
+          )}
+          {deposit && canSubmit && !slip && (
+            <p className="mt-2 text-center text-[11px] text-brown-faint">
+              ยังไม่ได้แนบสลิป — กดจองได้เลย (โอนทีหลัง) แล้วค่อยแนบสลิปหลังจองได้ค่ะ
+            </p>
+          )}
         </>
       )}
+    </div>
+  );
+}
+
+/** ขั้นมัดจำ: ยอด + QR พร้อมเพย์ตามยอด + แนบสลิป (ไม่บังคับ — โอนทีหลังได้) */
+function DepositCard({
+  deposit,
+  amountOverride,
+  slip,
+  busy,
+  error,
+  onPick,
+  onClear,
+}: {
+  deposit: DepositInfo;
+  amountOverride?: number;
+  slip: string;
+  busy: boolean;
+  error: string;
+  onPick: (f: File) => void;
+  onClear: () => void;
+}) {
+  const amount = amountOverride || deposit.amount;
+  // QR ผูกยอดไว้ — ถ้ายอดของนัดไม่ตรงกับยอดปัจจุบันในตั้งค่า (ร้านเพิ่งแก้) อย่าโชว์ QR ยอดผิด
+  const showQr = !!deposit.qr && (!amountOverride || amountOverride === deposit.amount);
+  return (
+    <div className="mt-4 rounded-petflow border border-honey-deep/40 bg-honey/10 p-4 shadow-petflow-sm">
+      <p className="text-xs font-bold text-brown-soft">💰 มัดจำเพื่อยืนยันคิว</p>
+      <p className="mt-0.5 text-2xl font-extrabold text-petflow-chocolate">
+        {amount.toLocaleString()} <span className="text-sm">บาท</span>
+      </p>
+      {showQr ? (
+        <div className="mt-3 flex flex-col items-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={deposit.qr}
+            alt={`QR พร้อมเพย์ ${amount} บาท`}
+            className="h-52 w-52 rounded-petflow-sm bg-white p-2"
+          />
+          <p className="mt-1.5 text-center text-[11px] text-brown-soft">
+            สแกนด้วยแอปธนาคาร — ยอดขึ้นให้อัตโนมัติ
+            {deposit.promptpay ? ` · พร้อมเพย์ ${deposit.promptpay}` : ""}
+            {deposit.accountName ? ` · ${deposit.accountName}` : ""}
+          </p>
+          <a
+            href={deposit.qr}
+            download="deposit-qr.png"
+            className="mt-1.5 rounded-full bg-card px-3 py-1 text-[11px] font-bold text-latte-deep ring-1 ring-petflow-line"
+          >
+            บันทึกรูป QR
+          </a>
+        </div>
+      ) : deposit.accountNumber ? (
+        <p className="mt-2 rounded-petflow-sm bg-card px-3 py-2 text-xs text-brown">
+          โอนเข้า {deposit.bankName} <b>{deposit.accountNumber}</b>
+          {deposit.accountName ? ` (${deposit.accountName})` : ""}
+        </p>
+      ) : null}
+
+      <label className="mt-3 flex min-h-[56px] cursor-pointer items-center gap-3 rounded-petflow-sm border border-dashed border-petflow-line bg-paper px-3 py-3">
+        <input
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) onPick(f);
+            e.target.value = "";
+          }}
+        />
+        {slip ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={slip} alt="สลิปโอนมัดจำ" className="h-14 w-14 shrink-0 rounded-lg object-cover" />
+        ) : (
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-card text-lg">
+            🧾
+          </span>
+        )}
+        <span className="text-xs font-bold text-brown-soft">
+          {busy ? "กำลังแนบสลิป…" : slip ? "แนบสลิปแล้ว — แตะเพื่อเปลี่ยนรูป" : "โอนแล้ว แตะเพื่อแนบสลิป"}
+        </span>
+      </label>
+      {slip && (
+        <button
+          type="button"
+          onClick={onClear}
+          className="mt-1.5 text-[11px] font-bold text-brown-faint underline"
+        >
+          เอาสลิปออก
+        </button>
+      )}
+      {error && <p className="mt-1.5 text-[11px] font-bold text-wait">{error}</p>}
     </div>
   );
 }
