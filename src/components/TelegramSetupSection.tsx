@@ -16,7 +16,7 @@ type TelegramStatus = {
 export function TelegramSetupSection({ adminCode }: { adminCode: string }) {
   const [status, setStatus] = useState<TelegramStatus | null>(null);
   const [botToken, setBotToken] = useState("");
-  const [ownerChatIds, setOwnerChatIds] = useState("2075576799");
+  const [ownerChatIds, setOwnerChatIds] = useState("");
   const [appUrl, setAppUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -136,13 +136,12 @@ export function TelegramSetupSection({ adminCode }: { adminCode: string }) {
           type="text"
           value={ownerChatIds}
           onChange={(e) => setOwnerChatIds(e.target.value)}
-          placeholder="2075576799"
+          placeholder="เช่น 123456789"
           className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-xs"
         />
         <span className="mt-1 block text-[10px] font-normal">
-          หลายคนใส่คั่นด้วย comma เช่น 2075576799,123456789 ·
-          ให้แฟนทักบอทพิมพ์ <code>/start</code> บอทจะบอก Chat ID ให้เอา
-          มาต่อท้ายตรงนี้
+          ทักบอทของร้านใน Telegram แล้วพิมพ์ <code>/start</code> บอทจะตอบเลข Chat ID มาให้
+          · ถ้าให้หลายคนรับแจ้งเตือน ใส่คั่นด้วย comma เช่น 123456789,987654321
         </span>
       </label>
 
@@ -152,7 +151,7 @@ export function TelegramSetupSection({ adminCode }: { adminCode: string }) {
           type="url"
           value={appUrl}
           onChange={(e) => setAppUrl(e.target.value)}
-          placeholder="https://petflow-hotel-five.vercel.app"
+          placeholder="https://ชื่อร้าน.vercel.app"
           className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-xs"
         />
       </label>
