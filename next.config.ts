@@ -5,8 +5,8 @@ const nextConfig: NextConfig = {
   // schema.sql ถูกอ่านตอนรัน (ปุ่ม "สร้างตารางอัตโนมัติ" / "Copy SQL" ในหน้าติดตั้ง)
   // ถ้าไม่บอกไว้ตรงนี้ ไฟล์จะไม่ถูก deploy ไปด้วย แล้วปุ่มจะพังบนเครื่องจริง
   outputFileTracingIncludes: {
-    "/api/setup": ["./supabase/schema.sql"],
-    "/admin/setup": ["./supabase/schema.sql"],
+    "/api/setup": ["./supabase/schema.sql", "./supabase/full-setup.sql"],
+    "/admin/setup": ["./supabase/schema.sql", "./supabase/full-setup.sql"],
   },
   images: {
     remotePatterns: [

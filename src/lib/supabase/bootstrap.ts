@@ -98,7 +98,7 @@ export async function checkSetupStatus(): Promise<SetupStatus> {
 }
 
 function loadSchemaSql() {
-  const path = join(process.cwd(), "supabase", "schema.sql");
+  const path = join(process.cwd(), "supabase", "full-setup.sql");
   return readFileSync(path, "utf-8");
 }
 
