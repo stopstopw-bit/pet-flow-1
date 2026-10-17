@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import MigrateOldDb from "./MigrateOldDb";
 
 type Tenant = {
   id: string;
@@ -182,6 +183,8 @@ export default function PlatformDashboard() {
       <p className="mb-5 text-xs text-white/50">
         จัดการทุกร้านบนแพลตฟอร์มจากที่เดียว — สร้างร้านใหม่, ระงับ/เปิดใช้งาน, เข้าดูแทน
       </p>
+
+      <MigrateOldDb />
 
       <form
         onSubmit={createTenant}
