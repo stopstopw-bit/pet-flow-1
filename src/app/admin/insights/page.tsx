@@ -4,12 +4,16 @@ import { useEffect, useMemo, useState } from "react";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { Icon } from "@/components/Icon";
 import { resolveRange, inRange, type RangeId } from "@/lib/date-range";
+import { SalesActions } from "@/components/SalesActions";
+import type { InsightBooking } from "@/lib/sales-insights";
 
-type Cat = { name?: string; breed?: string };
+type Cat = { name?: string; breed?: string; birthday?: string };
 type Customer = {
   id: string;
   name: string;
   cats: Cat[];
+  lineUserId?: string;
+  marketingConsent?: boolean;
   isMember?: boolean;
   tier?: string;
   createdAt?: string;
@@ -30,6 +34,7 @@ type Invoice = {
 };
 type Pkg = {
   id: string;
+  customerId?: string;
   name: string;
   price: number;
   totalUses: number;
@@ -79,6 +84,7 @@ export default function InsightsPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [packages, setPackages] = useState<Pkg[]>([]);
   const [promoStats, setPromoStats] = useState<PromoStat[]>([]);
+  const [bookings, setBookings] = useState<InsightBooking[]>([]);
   const [loading, setLoading] = useState(true);
   const [rangeId, setRangeId] = useState<RangeId>("all");
   const [customRange, setCustomRange] = useState(() => {
@@ -93,8 +99,10 @@ export default function InsightsPage() {
       fetch("/api/invoices").then((r) => r.json()),
       fetch("/api/packages?all=1").then((r) => r.json()).catch(() => ({ packages: [] })),
       fetch("/api/coupons/stats").then((r) => r.json()).catch(() => ({ perPromo: [] })),
+      fetch("/api/bookings").then((r) => r.json()).catch(() => ({ bookings: [] })),
     ])
-      .then(([c, i, p, cp]) => {
+      .then(([c, i, p, cp, b]) => {
+        setBookings(b.bookings || []);
         setCustomers(c.customers || []);
         setInvoices(i.invoices || []);
         setPackages(p.packages || []);
@@ -220,6 +228,13 @@ export default function InsightsPage() {
       <div>
         <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Insights</p>
         <h1 className="text-xl font-extrabold text-petflow-chocolate">สรุปข้อมูลร้าน</h1>
+      </div>
+
+      <SalesActions customers={customers} invoices={invoices} bookings={bookings} packages={packages} />
+
+      <div className="pt-2">
+        <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Details</p>
+        <h2 className="text-base font-extrabold text-petflow-chocolate">ข้อมูลตามช่วงเวลา</h2>
       </div>
 
       <DateRangePicker

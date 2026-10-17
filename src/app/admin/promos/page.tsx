@@ -20,6 +20,7 @@ import {
   type BroadcastActionId,
 } from "@/lib/broadcast-constants";
 import type { SegmentId } from "@/lib/customer-segments";
+import { BROADCAST_DRAFT_KEY } from "@/components/SalesActions";
 import { Icon } from "@/components/Icon";
 import { EmptyState, MoreMenu, SearchField, SectionLabel, Segmented } from "@/components/ui";
 
@@ -125,6 +126,8 @@ export default function PromosAdminPage() {
   const [broadcastBreed, setBroadcastBreed] = useState("");
   const [broadcastInactive, setBroadcastInactive] = useState(0);
   const [broadcastSegments, setBroadcastSegments] = useState<SegmentId[]>([]);
+  // กลุ่มเจาะจงรายคนที่ส่งมาจากหน้าสรุปข้อมูล (ปุ่ม "ส่งโปรกลุ่มนี้")
+  const [targetGroup, setTargetGroup] = useState<{ label: string; customerIds: string[] } | null>(null);
   const [regularMinVisits, setRegularMinVisits] = useState(3);
   const [broadcastTitle, setBroadcastTitle] = useState("");
   const [broadcastBody, setBroadcastBody] = useState("");
@@ -161,8 +164,26 @@ export default function PromosAdminPage() {
   }, [load]);
 
   useEffect(() => {
+    if (!new URLSearchParams(window.location.search).has("from")) return;
+    try {
+      const raw = sessionStorage.getItem(BROADCAST_DRAFT_KEY);
+      if (!raw) return;
+      sessionStorage.removeItem(BROADCAST_DRAFT_KEY);
+      const d = JSON.parse(raw);
+      if (!Array.isArray(d.customerIds) || d.customerIds.length === 0) return;
+      setTargetGroup({ label: String(d.label || "กลุ่มที่เลือก"), customerIds: d.customerIds.map(String) });
+      if (d.title) setBroadcastTitle(String(d.title));
+      if (d.body) setBroadcastBody(String(d.body));
+      setView("broadcast");
+    } catch {
+      /* ไม่มีร่าง — เปิดหน้าโปรตามปกติ */
+    }
+  }, []);
+
+  useEffect(() => {
     setBroadcastLoading(true);
     const q = new URLSearchParams({ tier: broadcastTier });
+    if (targetGroup) q.set("customerIds", targetGroup.customerIds.join(","));
     if (broadcastBreed) q.set("breed", broadcastBreed);
     if (broadcastInactive > 0) q.set("inactiveDays", String(broadcastInactive));
     if (broadcastSegments.length) q.set("segments", broadcastSegments.join(","));
@@ -177,7 +198,7 @@ export default function PromosAdminPage() {
         setBroadcastNoConsent(d.skippedNoConsent ?? 0);
       })
       .finally(() => setBroadcastLoading(false));
-  }, [broadcastTier, broadcastBreed, broadcastInactive, broadcastSegments, regularMinVisits]);
+  }, [broadcastTier, broadcastBreed, broadcastInactive, broadcastSegments, regularMinVisits, targetGroup]);
 
   const sendBroadcast = async () => {
     if (!broadcastTitle.trim() || !broadcastBody.trim()) {
@@ -220,6 +241,7 @@ export default function PromosAdminPage() {
         inactiveDays: broadcastInactive || undefined,
         segments: broadcastSegments,
         regularMinVisits,
+        customerIds: targetGroup?.customerIds,
         title: broadcastTitle,
         body: broadcastBody,
         imageData: broadcastImage.startsWith("data:") ? broadcastImage : undefined,
@@ -453,6 +475,20 @@ export default function PromosAdminPage() {
           <section>
             <SectionLabel>Audience · กลุ่มผู้รับ</SectionLabel>
             <div className="space-y-3 rounded-petflow bg-card p-4 shadow-petflow-sm">
+              {targetGroup && (
+                <div className="flex items-center justify-between gap-2 rounded-petflow-sm bg-sage/20 px-3 py-2 text-xs">
+                  <span className="min-w-0 font-bold text-brown">
+                    จากสรุปข้อมูล: {targetGroup.label} · {targetGroup.customerIds.length} คน
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setTargetGroup(null)}
+                    className="shrink-0 font-bold text-latte-deep underline"
+                  >
+                    ล้าง
+                  </button>
+                </div>
+              )}
               {/* กลุ่มสำเร็จรูป — ติ๊กหลายอันได้ = ต้องตรงทุกข้อ */}
               <div className="flex flex-wrap gap-2">
                 {SEGMENT_CHIPS.map((chip) => {

@@ -155,10 +155,40 @@ function payrollTag(employeeId: string, month: string) {
   return `[payroll:${employeeId}:${month}]`;
 }
 
-function monthRange(month: string) {
+export function monthRange(month: string) {
   const [y, m] = month.split("-").map(Number);
   const last = new Date(y, m, 0).getDate();
   return { from: `${month}-01`, to: `${month}-${String(last).padStart(2, "0")}` };
+}
+
+type GroomBooking = Awaited<ReturnType<typeof listBookings>>[number];
+type AnyInvoice = Awaited<ReturnType<typeof listInvoices>>[number];
+
+/**
+ * ยอดอาบน้ำต่อนัด (บิลที่จ่ายแล้ว) — บิลหนึ่งใบอาจรวมทั้งบ้าน: จับคู่บรรทัดอาบน้ำกับแมวตามชื่อ
+ * (บรรทัดที่ไม่ระบุชื่อแมว นับให้นัดที่ผูกกับบิล) · ใช้ทั้งค่าคอมและหน้าผลงานพนักงาน
+ */
+export function groomRevenueByBooking(bookings: GroomBooking[], invoices: AnyInvoice[]) {
+  const byId = new Map(bookings.map((b) => [b.id, b]));
+  const revenueOf = new Map<string, number>();
+  for (const inv of invoices) {
+    if (inv.status !== "paid" || inv.deletedAt || !inv.bookingId) continue;
+    const anchor = byId.get(inv.bookingId);
+    if (!anchor) continue;
+    const household = bookings.filter(
+      (b) =>
+        b.service === "groom" &&
+        b.customerName === anchor.customerName &&
+        (b.date || "") === (anchor.date || "")
+    );
+    for (const it of inv.items || []) {
+      if (it.kind !== "grooming") continue;
+      const target =
+        (it.catName && household.find((b) => b.catName === it.catName)) || anchor;
+      revenueOf.set(target.id, (revenueOf.get(target.id) || 0) + (Number(it.amount) || 0));
+    }
+  }
+  return revenueOf;
 }
 
 /** สรุปเงินเดือน + ค่าคอมของเดือน (YYYY-MM) */
@@ -181,28 +211,7 @@ export async function computePayroll(month: string): Promise<PayrollLine[]> {
   );
   const ops = await listBookingOps(groomed.map((b) => b.id));
   const groomerOf = new Map(ops.filter((o) => o.groomer).map((o) => [o.bookingId, o.groomer!]));
-  const byId = new Map(bookings.map((b) => [b.id, b]));
-
-  // ยอดอาบน้ำต่อนัด — บิลหนึ่งใบอาจรวมทั้งบ้าน: จับคู่บรรทัดอาบน้ำกับแมวตามชื่อ
-  // (บรรทัดที่ไม่ระบุชื่อแมว นับให้นัดที่ผูกกับบิล)
-  const revenueOf = new Map<string, number>();
-  for (const inv of invoices) {
-    if (inv.status !== "paid" || inv.deletedAt || !inv.bookingId) continue;
-    const anchor = byId.get(inv.bookingId);
-    if (!anchor) continue;
-    const household = bookings.filter(
-      (b) =>
-        b.service === "groom" &&
-        b.customerName === anchor.customerName &&
-        (b.date || "") === (anchor.date || "")
-    );
-    for (const it of inv.items || []) {
-      if (it.kind !== "grooming") continue;
-      const target =
-        (it.catName && household.find((b) => b.catName === it.catName)) || anchor;
-      revenueOf.set(target.id, (revenueOf.get(target.id) || 0) + (Number(it.amount) || 0));
-    }
-  }
+  const revenueOf = groomRevenueByBooking(bookings, invoices);
 
   return employees.map((employee) => {
     const mine = groomed.filter((b) => groomerOf.get(b.id) === employee.id);

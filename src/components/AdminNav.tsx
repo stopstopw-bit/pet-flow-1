@@ -17,6 +17,7 @@ export const ADMIN_TABS = [
   { href: "/admin/tax", label: "เอกสารรายได้ / ภาษี", icon: "📑" },
   { href: "/admin/payroll", label: "เงินเดือน & ค่าคอม", icon: "💰" },
   { href: "/admin/insights", label: "สรุปข้อมูล", icon: "📊" },
+  { href: "/admin/staff-performance", label: "ผลงานพนักงาน", icon: "🏆" },
   { href: "/admin/promos", label: "โปร", icon: "✨" },
   { href: "/admin/coupons", label: "คูปอง", icon: "🎟️" },
   { href: "/admin/birthdays", label: "วันเกิดลูกค้า", icon: "🎂" },
