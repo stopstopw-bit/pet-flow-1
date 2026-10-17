@@ -15,19 +15,29 @@ const storage = new AsyncLocalStorage<string>();
 /**
  * เรียกจาก store function เพื่อเอา tenant_id ปัจจุบันไปกรอง query
  *
- * ถ้า route ที่เรียกมายังไม่ได้ wrap ด้วย withTenant()/withBootstrapTenant()
- * (ยังมีอีกหลายไฟล์ที่ทยอยแปลงอยู่ — ดู T3) จะ fallback ไปใช้ร้าน bootstrap
- * แทนการพัง — ปลอดภัยตอนนี้เพราะมีร้านเดียว แต่ต้องรัดให้ throw แทนทันทีที่ทุก
- * route ห่อ context ครบแล้ว ไม่งั้นบั๊กจะเงียบเมื่อมีร้านที่ 2
+ * ต้องอยู่ใน withTenant()/withResolvedTenant()/withBootstrapTenant() เสมอ — ถ้าไม่อยู่ให้ throw
+ * เดิม fallback ไปร้าน bootstrap (env TENANT_ID) แบบเงียบ ๆ ซึ่งพอมีร้านที่ 2 จะกลายเป็น
+ * "เจ้าของร้าน B เห็นข้อมูลร้าน A" โดยไม่มีใครรู้ — พังดัง ๆ ปลอดภัยกว่าข้อมูลปนกันเงียบ ๆ
  */
 export function requireTenantId(): string {
-  const id = storage.getStore() || getBootstrapTenantId();
+  const id = storage.getStore();
   if (!id) {
     throw new Error(
-      "ไม่มี tenant context และไม่มี TENANT_ID — ตั้งค่า TENANT_ID ใน env หรือ wrap route ด้วย withTenant()"
+      "ไม่มี tenant context — wrap route ด้วย withTenant()/withResolvedTenant() ก่อนเรียก store"
     );
   }
   return id;
+}
+
+/**
+ * ร้านที่กำลังประมวลผลคือร้าน bootstrap (env TENANT_ID) ไหม
+ * ค่าที่ตั้งใน env (LINE/Telegram/Google/บัญชีธนาคาร) เป็นของร้านนี้ร้านเดียว —
+ * ร้านอื่นต้องใช้ค่าที่ตั้งเองในหลังบ้าน ห้ามยืมของร้าน bootstrap
+ */
+export function isBootstrapTenant(): boolean {
+  const id = storage.getStore();
+  const bootstrap = getBootstrapTenantId();
+  return !!id && !!bootstrap && id === bootstrap;
 }
 
 /** ใช้ใน API route หลังบ้านที่ล็อกอินแล้ว (มี session.tenantId) */

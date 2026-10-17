@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listCustomers, updateCat, updateCatMedia } from "@/lib/customers-store";
 import { listBookings } from "@/lib/bookings-store";
-import { uploadDataUrlToStorage } from "@/lib/supabase/storage";
+import { uploadPrivateDataUrl } from "@/lib/supabase/storage";
 import { getSupabase } from "@/lib/supabase/server";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { withTenant } from "@/lib/tenant-context";
+import { privatizeTenantFiles } from "@/lib/privatize-files";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,7 +54,7 @@ async function handlePost() {
     for (const b of bookings) {
       if (!b.consentSignature?.startsWith("data:")) continue;
       try {
-        const url = await uploadDataUrlToStorage(
+        const url = await uploadPrivateDataUrl(
           `consent-signatures/${b.id}-backfill`,
           b.consentSignature
         );
@@ -72,5 +73,9 @@ async function handlePost() {
     );
   }
 
-  return NextResponse.json({ ok: true, photos, media, signatures, errors });
+  // ไฟล์ที่อัปไว้แล้วแต่อยู่ใน bucket สาธารณะ → ย้ายไป bucket ส่วนตัว
+  const privatized = await privatizeTenantFiles();
+  errors.push(...privatized.errors);
+
+  return NextResponse.json({ ok: true, photos, media, signatures, privatized: privatized.moved, errors });
 }

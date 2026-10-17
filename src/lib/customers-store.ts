@@ -9,7 +9,7 @@ import { listBookings } from "./bookings-store";
 import { getAccount, getPointsHistory } from "./points-store";
 import { getSupabase } from "./supabase/server";
 import { seedEnabled } from "./demo-seed";
-import { uploadDataUrlToStorage } from "./supabase/storage";
+import { uploadPrivateDataUrl } from "./supabase/storage";
 import { getSiteConfig } from "./config-store";
 import { requireTenantId } from "./tenant-context";
 
@@ -1190,7 +1190,7 @@ export async function updateCat(
   if (patch.photoDataUrl?.startsWith("data:")) {
     patch = {
       ...patch,
-      photoDataUrl: await uploadDataUrlToStorage(
+      photoDataUrl: await uploadPrivateDataUrl(
         `cats/${catId}/profile-${Date.now()}`,
         patch.photoDataUrl
       ),
@@ -1673,7 +1673,7 @@ export async function updateCatMedia(
   media = await Promise.all(
     media.map(async (m) =>
       m.dataUrl.startsWith("data:")
-        ? { ...m, dataUrl: await uploadDataUrlToStorage(`cats/${catId}/media-${m.id}`, m.dataUrl) }
+        ? { ...m, dataUrl: await uploadPrivateDataUrl(`cats/${catId}/media-${m.id}`, m.dataUrl) }
         : m
     )
   );

@@ -1,6 +1,6 @@
 import type { Booking, BookingStatus } from "./business";
 import { getSupabase } from "./supabase/server";
-import { uploadDataUrlToStorage } from "./supabase/storage";
+import { uploadPrivateDataUrl } from "./supabase/storage";
 import { seedEnabled } from "./demo-seed";
 import { requireTenantId } from "./tenant-context";
 import type { BookingTransport } from "./transport";
@@ -299,7 +299,7 @@ export async function acceptBookingConsent(
   const note = (careNote || "").trim();
   let sig = (signature || "").trim();
   if (sig.startsWith("data:")) {
-    sig = await uploadDataUrlToStorage(`consent-signatures/${id}-${Date.now()}`, sig);
+    sig = await uploadPrivateDataUrl(`consent-signatures/${id}-${Date.now()}`, sig);
   }
   // แนบได้หลายรูป → อัปโหลดทีละรูป แล้วเก็บรวมในคอลัมน์เดิม (คั่นบรรทัด)
   const vaccineUrls: string[] = [];
@@ -308,7 +308,7 @@ export async function acceptBookingConsent(
     if (!v) continue;
     vaccineUrls.push(
       v.startsWith("data:")
-        ? await uploadDataUrlToStorage(`consent-vaccine/${id}-${Date.now()}-${i}`, v)
+        ? await uploadPrivateDataUrl(`consent-vaccine/${id}-${Date.now()}-${i}`, v)
         : v
     );
   }

@@ -4,6 +4,7 @@ import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { withTenant } from "@/lib/tenant-context";
 import { listActiveTenantIds } from "@/lib/tenant-directory";
 import { verifyCronSecret } from "@/lib/cron-auth";
+import { privatizeTenantFiles } from "@/lib/privatize-files";
 
 /**
  * Backup อัตโนมัติทุกคืน — ยกข้อมูลทั้งร้านลง Google Sheets
@@ -28,7 +29,14 @@ export async function GET(req: NextRequest) {
 }
 
 async function runForTenant() {
-  const result = await exportToGoogleSheets();
+  // ย้ายไฟล์ส่วนตัวลูกค้าที่ยังค้างใน bucket สาธารณะ (ของเก่าก่อนมี bucket ส่วนตัว) ไป bucket ส่วนตัว
+  // เรียกซ้ำทุกคืนได้ — ไม่มีอะไรให้ย้ายก็จบเร็ว · พังก็ไม่ให้ backup ล้มตาม
+  const privatized = await privatizeTenantFiles().catch((e) => ({
+    ok: false,
+    moved: 0,
+    errors: [e instanceof Error ? e.message : String(e)],
+  }));
+  const result = { ...(await exportToGoogleSheets()), privatized };
 
   if (result.ok) {
     await sendTelegram(

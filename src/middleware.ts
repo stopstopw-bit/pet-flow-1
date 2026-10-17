@@ -55,6 +55,8 @@ const SHARED_API = [
   "/api/points",
   "/api/coupons",
   "/api/invoices",
+  // ไฟล์ส่วนตัว (บัตรประชาชน/สลิป/รูปแมว) — route ตรวจเองว่าเป็นคนของร้านนั้น
+  "/api/files",
 ];
 
 function matches(path: string, list: string[]) {
@@ -164,7 +166,9 @@ export async function middleware(req: NextRequest) {
       }
     }
 
-    if (matches(pathname, PUBLIC_API)) return NextResponse.next();
+    // ใช้ proceed() ไม่ใช่ NextResponse.next() — ไม่งั้น header x-tenant-slug ที่ผู้เรียกปลอมมาจะหลุดถึง route
+    // และ /s/<slug>/api/... จะไม่ถูก rewrite ไป path จริง
+    if (matches(pathname, PUBLIC_API)) return proceed();
     if (req.method === "GET" && matches(pathname, PUBLIC_GET)) {
       return proceed();
     }

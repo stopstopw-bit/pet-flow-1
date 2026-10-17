@@ -47,6 +47,27 @@ export function isSupabaseConfigured() {
   return Boolean(getSupabaseUrl() && process.env.SUPABASE_SERVICE_ROLE_KEY?.trim());
 }
 
+/**
+ * key ที่ใช้เชื่อม Supabase เป็นสิทธิ์ระดับไหน — ต้องเป็น service_role/secret ถึงจะ bypass RLS ได้
+ * ถ้าเผลอใส่ anon/publishable แล้วเปิด RLS → แอปอ่าน/เขียนข้อมูลไม่ได้ทั้งระบบ
+ */
+export function getSupabaseKeyRole(): "service_role" | "anon" | "unknown" | "missing" {
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  if (!key) return "missing";
+  if (key.startsWith("sb_secret_")) return "service_role";
+  if (key.startsWith("sb_publishable_")) return "anon";
+  const payload = key.split(".")[1];
+  if (!payload) return "unknown";
+  try {
+    const role = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"))?.role;
+    if (role === "service_role") return "service_role";
+    if (role === "anon" || role === "authenticated") return "anon";
+  } catch {
+    /* ไม่ใช่ JWT */
+  }
+  return "unknown";
+}
+
 export function getSupabase() {
   const url = getSupabaseUrl();
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();

@@ -1,5 +1,5 @@
 import { getSupabase } from "./supabase/server";
-import { uploadDataUrlToStorage } from "./supabase/storage";
+import { uploadDataUrlToStorage, uploadPrivateDataUrl } from "./supabase/storage";
 import { requireTenantId } from "./tenant-context";
 
 /**
@@ -531,7 +531,7 @@ export async function attachOrderSlip(id: string, slipDataUrl: string) {
   if (order.status !== "pending") {
     return { ok: false as const, error: "not_pending" };
   }
-  const url = await uploadDataUrlToStorage(`package-slips/${id}`, slipDataUrl);
+  const url = await uploadPrivateDataUrl(`package-slips/${id}`, slipDataUrl);
 
   const sb = getSupabase();
   if (sb) {

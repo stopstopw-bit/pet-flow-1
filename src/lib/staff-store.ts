@@ -1,6 +1,6 @@
 import { getSupabase } from "./supabase/server";
 import { requireTenantId } from "./tenant-context";
-import { generateSalt, hashPassword } from "./auth";
+import { generateSalt, getBootstrapTenantId, hashPassword } from "./auth";
 
 /**
  * บัญชีพนักงาน — เจ้าของสร้างให้ พร้อมเลือกเมนูที่พนักงานคนนั้นมองเห็นได้
@@ -246,5 +246,6 @@ export async function verifyStaffLogin(
   if (!s) return null;
   const hash = await hashPassword(password, s.passwordSalt);
   if (hash !== s.passwordHash) return null;
-  return { ...s, tenantId: requireTenantId() };
+  // โหมดไม่มีฐานข้อมูล (dev) มีร้านเดียวคือร้าน bootstrap
+  return { ...s, tenantId: getBootstrapTenantId() || "" };
 }
