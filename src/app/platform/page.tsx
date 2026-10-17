@@ -57,14 +57,25 @@ export default function PlatformDashboard() {
     setTimeout(() => setCopiedLinkFor(""), 1500);
   };
 
+  /** session ผู้ดูแลระบบหมดอายุ (อยู่ได้ 1 วัน) ระหว่างเปิดหน้าค้างไว้ — พากลับไปล็อกอินใหม่ แทนที่จะโชว์ "unauthorized" เฉยๆ */
+  const expired = useCallback(
+    (res: Response | null) => {
+      if (res?.status !== 401) return false;
+      router.replace("/platform/login?expired=1");
+      return true;
+    },
+    [router]
+  );
+
   const load = useCallback(async () => {
     const res = await fetch("/api/platform/tenants").catch(() => null);
+    if (expired(res)) return;
     if (res?.ok) {
       const d = await res.json();
       setTenants(d.tenants || []);
     }
     setLoading(false);
-  }, []);
+  }, [expired]);
 
   useEffect(() => {
     load();
@@ -81,6 +92,7 @@ export default function PlatformDashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, slug }),
       });
+      if (expired(res)) return;
       const d = await res.json().catch(() => ({}));
       if (res.ok) {
         setMsg("");
@@ -104,11 +116,12 @@ export default function PlatformDashboard() {
   const setStatus = async (id: string, status: Tenant["status"]) => {
     setBusyId(id);
     try {
-      await fetch(`/api/platform/tenants/${id}`, {
+      const res = await fetch(`/api/platform/tenants/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "set_status", status }),
       });
+      if (expired(res)) return;
       load();
     } finally {
       setBusyId("");
@@ -129,6 +142,7 @@ export default function PlatformDashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "reset_owner_login" }),
       });
+      if (expired(res)) return;
       const d = await res.json().catch(() => ({}));
       if (res.ok) {
         setOwnerLogin({
@@ -154,6 +168,7 @@ export default function PlatformDashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "impersonate" }),
       });
+      if (expired(res)) return;
       const d = await res.json().catch(() => ({}));
       if (res.ok) router.push(d.redirect || "/admin");
     } finally {
