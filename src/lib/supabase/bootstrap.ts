@@ -24,7 +24,26 @@ const REQUIRED_TABLES = [
 
 /** ต่อ Supabase ผ่านปุ่มเชื่อมใน Vercel จะได้ POSTGRES_URL_NON_POOLING แทน DATABASE_URL — รับได้ทั้งคู่ */
 function getDatabaseUrl() {
-  return (process.env.DATABASE_URL || process.env.POSTGRES_URL_NON_POOLING || "").trim();
+  return normalizeDatabaseUrl(process.env.DATABASE_URL || process.env.POSTGRES_URL_NON_POOLING || "");
+}
+
+/**
+ * รหัสฐานข้อมูลที่มี / ? # @ % ทำให้ URL พัง ("Invalid URL") หรือถูกตัดเงียบ ๆ
+ * — แยกรหัสออกเอง (ใช้ @ ตัวสุดท้ายเป็นตัวคั่น host) แล้วเข้ารหัสให้ถูกต้อง
+ * ลอก [ ] ที่หลงเหลือจาก [YOUR-PASSWORD] ด้วย
+ */
+export function normalizeDatabaseUrl(raw: string) {
+  const url = raw.trim().replace(/^["']|["']$/g, "");
+  const m = url.match(/^(postgres(?:ql)?:\/\/)([^:/@]+):(.*)@([^@]*)$/i);
+  if (!m) return url;
+  const [, scheme, user, rawPass, rest] = m;
+  let pass = rawPass.replace(/^\[(.*)\]$/, "$1");
+  try {
+    pass = decodeURIComponent(pass);
+  } catch {
+    // มี % ที่ไม่ใช่การเข้ารหัส — ถือว่าเป็นตัวอักษรในรหัสจริง
+  }
+  return `${scheme}${user}:${encodeURIComponent(pass)}@${rest}`;
 }
 
 /**
@@ -128,10 +147,19 @@ export async function bootstrapDatabase() {
     };
   }
 
-  const client = new (await import("pg")).default.Client({
-    connectionString: withoutSslParams(url),
-    ssl: { rejectUnauthorized: false },
-  });
+  let client: import("pg").Client;
+  try {
+    client = new (await import("pg")).default.Client({
+      connectionString: withoutSslParams(url),
+      ssl: { rejectUnauthorized: false },
+    });
+  } catch (e) {
+    return {
+      ok: false as const,
+      error: "bad_database_url",
+      message: `DATABASE_URL รูปแบบไม่ถูกต้อง (${e instanceof Error ? e.message : String(e)}) — คัดลอกใหม่จาก Supabase › Connect › Session pooler`,
+    };
+  }
 
   try {
     await client.connect();
