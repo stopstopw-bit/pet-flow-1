@@ -38,6 +38,8 @@ export type GroomingConfig = {
 };
 
 export type CrmConfig = {
+  /** เปิด/ปิด การส่งข้อความตามลูกค้าที่หายไป (ไม่ตั้ง = เปิด) */
+  followUpEnabled?: boolean;
   /** จำนวนวันที่ไม่มาใช้บริการ = ถือว่าหายไป */
   inactiveDays: number;
   /** ไม่ส่งตามซ้ำภายในกี่วัน */

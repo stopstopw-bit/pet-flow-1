@@ -2169,6 +2169,11 @@ function CrmTab({
       <p className="text-xs text-brown-soft">
         ตั้งค่าตรวจจับลูกค้าที่หายไป + ข้อความตามทาง LINE · ใช้ใน Admin และ Telegram Bot
       </p>
+      <Toggle
+        label="ส่งข้อความตามลูกค้าที่หายไป (เฉพาะคนที่เคยมาแล้วไม่มาเกินจำนวนวันด้านล่าง)"
+        checked={form.followUpEnabled !== false}
+        onChange={(v) => setForm({ ...form, followUpEnabled: v })}
+      />
       <Field
         label="ถือว่าหายไป (วัน)"
         type="number"

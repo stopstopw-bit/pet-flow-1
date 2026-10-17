@@ -24,6 +24,7 @@ export function getDefaultSiteConfig(): SiteConfig {
       version: 1,
       updatedAt: new Date().toISOString(),
       crm: {
+        followUpEnabled: true,
         inactiveDays: 60,
         followUpCooldownDays: 30,
         followUpMessage:

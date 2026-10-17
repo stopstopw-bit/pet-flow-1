@@ -50,6 +50,16 @@ export function formatFollowUpMessage(
     .replace(/\{cats\}/g, data.cats);
 }
 
+/** ร้านปิดการตามลูกค้าได้ในตั้งค่า — ค่าเดิมที่ยังไม่มีช่องนี้ถือว่าเปิด */
+export function isFollowUpEnabled(crm: { followUpEnabled?: boolean }) {
+  return crm.followUpEnabled !== false;
+}
+
+/** หายไปจริงไหม — ต้องเคยมาใช้บริการ และไม่มานานเกินเกณฑ์ (ลูกค้าใหม่ไม่นับ) */
+function isInactiveVisit(visits: number, daysSinceVisit: number | null, threshold: number) {
+  return visits > 0 && daysSinceVisit != null && daysSinceVisit >= threshold;
+}
+
 export function canSendFollowUp(
   customer: Pick<CustomerRecord, "lineUserId" | "lastFollowUpAt">,
   cooldownDays: number,
@@ -77,13 +87,7 @@ export async function listInactiveCustomers(
     const lastVisitDate = await getCustomerLastVisitDate(customer.id);
     const daysSinceVisit = lastVisitDate ? daysBetween(lastVisitDate, now) : null;
 
-    const isInactive =
-      visits > 0 &&
-      lastVisitDate != null &&
-      daysSinceVisit != null &&
-      daysSinceVisit >= threshold;
-
-    if (!isInactive) continue;
+    if (!isInactiveVisit(visits, daysSinceVisit, threshold)) continue;
 
     results.push({
       customer,
@@ -91,7 +95,7 @@ export async function listInactiveCustomers(
       daysSinceVisit,
       visits,
       hasLine: Boolean(customer.lineUserId),
-      canFollowUp: canSendFollowUp(customer, cooldown, now),
+      canFollowUp: isFollowUpEnabled(config.crm) && canSendFollowUp(customer, cooldown, now),
       lastFollowUpAt: customer.lastFollowUpAt,
     });
   }
@@ -113,6 +117,24 @@ export async function sendCustomerFollowUp(
   }
 
   const config = await getSiteConfig();
+  if (!isFollowUpEnabled(config.crm)) {
+    return { ok: false, error: "ร้านปิดการตามลูกค้าไว้ — เปิดได้ที่ ตั้งค่า › ลูกค้า" };
+  }
+
+  const summary = await customerSummary(customerId);
+  const lastVisitDate = await getCustomerLastVisitDate(customerId);
+  const daysSinceVisit = lastVisitDate ? daysBetween(lastVisitDate) : null;
+  // ข้อความนี้บอกลูกค้าว่า "หายไป {days} วัน" — ส่งได้เฉพาะคนที่หายไปจริง
+  if (!isInactiveVisit(summary?.visits ?? 0, daysSinceVisit, config.crm.inactiveDays)) {
+    return {
+      ok: false,
+      error:
+        daysSinceVisit == null
+          ? "ลูกค้ายังไม่เคยมาใช้บริการ — ยังไม่ต้องตาม"
+          : `ลูกค้าเพิ่งมาเมื่อ ${daysSinceVisit} วันก่อน (เกณฑ์หายไป ${config.crm.inactiveDays} วัน)`,
+    };
+  }
+
   if (!options?.force && !canSendFollowUp(customer, config.crm.followUpCooldownDays)) {
     return {
       ok: false,
@@ -120,15 +142,7 @@ export async function sendCustomerFollowUp(
     };
   }
 
-  const lastVisitDate = await getCustomerLastVisitDate(customerId);
-  const daysSinceVisit = lastVisitDate ? daysBetween(lastVisitDate) : config.crm.inactiveDays;
-  const cats = customer.cats.map((c) => c.name).join(", ") || "น้องแมว";
-  const template = options?.message?.trim() || config.crm.followUpMessage;
-  const text = formatFollowUpMessage(template, {
-    name: politeName(customer.name),
-    days: daysSinceVisit,
-    cats,
-  });
+  const text = followUpText(customer, daysSinceVisit!, config.crm.followUpMessage, options?.message);
 
   await pushLineMessage(customer.lineUserId, [{ type: "text", text }]);
 
@@ -139,11 +153,27 @@ export async function sendCustomerFollowUp(
   return { ok: true, message: text, customer: updated };
 }
 
+function followUpText(
+  customer: CustomerRecord,
+  days: number,
+  template: string,
+  override?: string
+) {
+  const cats = customer.cats.map((c) => c.name).join(", ") || "น้องแมว";
+  return formatFollowUpMessage(override?.trim() || template, {
+    name: politeName(customer.name),
+    days,
+    cats,
+  });
+}
+
 export async function sendInactiveFollowUps(options?: {
   inactiveDays?: number;
   limit?: number;
   force?: boolean;
 }) {
+  const config = await getSiteConfig();
+  if (!isFollowUpEnabled(config.crm)) return { sent: 0, total: 0, eligible: 0, errors: [] };
   const inactive = await listInactiveCustomers(options?.inactiveDays);
   const eligible = inactive.filter((x) => x.hasLine && (options?.force || x.canFollowUp));
   const batch = options?.limit ? eligible.slice(0, options.limit) : eligible;
@@ -167,17 +197,21 @@ export async function customerActivityInfo(customerId: string) {
   const lastVisitDate = await getCustomerLastVisitDate(customerId);
   const config = await getSiteConfig();
   const daysSinceVisit = lastVisitDate ? daysBetween(lastVisitDate) : null;
-  const inactive =
-    summary.visits > 0 &&
-    daysSinceVisit != null &&
-    daysSinceVisit >= config.crm.inactiveDays;
+  const inactive = isInactiveVisit(summary.visits, daysSinceVisit, config.crm.inactiveDays);
+  const followUpEnabled = isFollowUpEnabled(config.crm);
 
   return {
     ...summary,
     lastVisitDate,
     daysSinceVisit,
     inactive,
-    canFollowUp: canSendFollowUp(summary.customer, config.crm.followUpCooldownDays),
+    followUpEnabled,
+    canFollowUp: followUpEnabled && canSendFollowUp(summary.customer, config.crm.followUpCooldownDays),
+    /** ข้อความที่จะส่งจริง — ให้แอดมินเห็นก่อนกดส่ง */
+    followUpPreview:
+      inactive && daysSinceVisit != null
+        ? followUpText(summary.customer, daysSinceVisit, config.crm.followUpMessage)
+        : undefined,
   };
 }
 
