@@ -39,7 +39,9 @@ type Summary = {
   lastVisitDate?: string | null;
   daysSinceVisit?: number | null;
   inactive?: boolean;
+  followUpEnabled?: boolean;
   canFollowUp?: boolean;
+  followUpPreview?: string;
   serviceLog?: CustomerServiceLog;
   history: {
     bookings: Booking[];
@@ -1359,7 +1361,9 @@ function CustomerSummaryCard({
   lastVisitDate,
   daysSinceVisit,
   inactive,
+  followUpEnabled,
   canFollowUp,
+  followUpPreview,
   onSaved,
 }: {
   customer: CustomerRecord;
@@ -1368,7 +1372,9 @@ function CustomerSummaryCard({
   lastVisitDate?: string | null;
   daysSinceVisit?: number | null;
   inactive?: boolean;
+  followUpEnabled?: boolean;
   canFollowUp?: boolean;
+  followUpPreview?: string;
   onSaved: () => void;
 }) {
   const [name, setName] = useState(customer.name);
@@ -1773,7 +1779,7 @@ function CustomerSummaryCard({
       setMsg("❌ ลูกค้ายังไม่ได้ผูก LINE");
       return;
     }
-    if (!confirm(`ส่งข้อความตาม ${customer.name} ทาง LINE?`)) return;
+    if (!confirm(`ส่งข้อความนี้ให้ ${customer.name} ทาง LINE?\n\n${followUpPreview || ""}`)) return;
     setFollowUpBusy(true);
     const res = await fetch("/api/customers", {
       method: "PATCH",
@@ -2178,13 +2184,13 @@ function CustomerSummaryCard({
         </p>
       </div>
 
-      {(inactive || customer.lineUserId) && (
+      {inactive && followUpEnabled !== false && (
         <div className="mb-3 flex items-center gap-3 rounded-petflow-sm border border-petflow-line bg-card/85 p-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sage/20 text-ok">
             <Icon name="send" size={18} />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-extrabold text-petflow-chocolate">ตามลูกค้าทาง LINE</p>
+            <p className="text-xs font-extrabold text-petflow-chocolate">ทักลูกค้าที่หายไปทาง LINE</p>
             <p className="truncate text-[10px] text-brown-faint">
               {customer.lastFollowUpAt
                 ? `ส่งล่าสุด: ${customer.lastFollowUpAt.slice(0, 10)}`
@@ -2199,7 +2205,7 @@ function CustomerSummaryCard({
             onClick={sendFollowUp}
             className="min-h-[40px] shrink-0 rounded-full bg-sage/25 px-3.5 py-2 text-xs font-bold text-ok disabled:opacity-50"
           >
-            {followUpBusy ? "กำลังส่ง…" : canFollowUp ? "ส่งข้อความ" : "ส่งซ้ำ (ข้าม cooldown)"}
+            {followUpBusy ? "กำลังส่ง…" : canFollowUp ? "ส่งข้อความ" : "ส่งซ้ำอีกครั้ง"}
           </button>
         </div>
       )}
@@ -3088,7 +3094,9 @@ export default function CustomersPage() {
           lastVisitDate={selected.lastVisitDate}
           daysSinceVisit={selected.daysSinceVisit}
           inactive={selected.inactive}
+          followUpEnabled={selected.followUpEnabled}
           canFollowUp={selected.canFollowUp}
+          followUpPreview={selected.followUpPreview}
           onSaved={() => open(c.id)}
         />
 
