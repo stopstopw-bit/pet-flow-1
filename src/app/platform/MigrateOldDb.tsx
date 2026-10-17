@@ -7,7 +7,7 @@ type Report = {
   ok: boolean;
   schema: string;
   tables: { table: string; rows: number; error?: string }[];
-  files: { copied: number; failed: number; error?: string };
+  files: { copied: number; failed: number };
 };
 
 /**
@@ -77,7 +77,6 @@ export default function MigrateOldDb() {
           <p>
             รูป: {report.files.copied} ไฟล์
             {report.files.failed ? ` · ไม่สำเร็จ ${report.files.failed}` : ""}
-            {report.files.error ? ` · ${report.files.error}` : ""}
           </p>
           {failed.map((t) => (
             <p key={t.table} className="text-wait">
