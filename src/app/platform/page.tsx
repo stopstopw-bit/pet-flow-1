@@ -33,6 +33,7 @@ export default function PlatformDashboard() {
   const router = useRouter();
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState("");
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [creating, setCreating] = useState(false);
@@ -74,6 +75,11 @@ export default function PlatformDashboard() {
     if (res?.ok) {
       const d = await res.json();
       setTenants(d.tenants || []);
+      setLoadErr("");
+    } else {
+      // อย่าโชว์ "ยังไม่มีร้าน" ตอนโหลดพลาด — ทำให้เข้าใจผิดว่าข้อมูลหาย
+      const d = await res?.json().catch(() => null);
+      setLoadErr(d?.error || (res ? `HTTP ${res.status}` : "เชื่อมต่อไม่ได้"));
     }
     setLoading(false);
   }, [expired]);
@@ -269,6 +275,10 @@ export default function PlatformDashboard() {
 
       {loading ? (
         <p className="text-center text-sm text-white/40">กำลังโหลด…</p>
+      ) : loadErr ? (
+        <p className="rounded-petflow border border-white/10 bg-[#232637] p-6 text-center text-sm text-white/70">
+          ❌ โหลดรายชื่อร้านไม่ได้: {loadErr}
+        </p>
       ) : tenants.length === 0 ? (
         <p className="rounded-petflow border border-white/10 bg-[#232637] p-6 text-center text-sm text-white/40">
           ยังไม่มีร้านบนแพลตฟอร์ม
