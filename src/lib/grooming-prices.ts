@@ -20,6 +20,8 @@ export type GroomProgram = {
   id: string;
   name: string;
   breeds: GroomBreedPrice[];
+  /** บริการย่อยที่รวมอยู่ในโปรแกรม (แท็ก เช่น ตัดเล็บ, เช็ดหู) — โชว์ตอนเลือกโปรแกรม/บนบอร์ดคิว */
+  includes?: string[];
 };
 
 export const GROOM_PROGRAMS: GroomProgram[] = [
@@ -93,8 +95,15 @@ export function groomProgramName(id?: string, programs: GroomProgram[] = GROOM_P
   return programs.find((p) => p.id === id)?.name || "";
 }
 
-export function groomSizeLabel(size: GroomSize) {
-  return GROOM_SIZES.find((s) => s.id === size)?.label || "";
+/** ไซส์อาบน้ำพร้อมป้ายช่วงน้ำหนักที่ร้านตั้งเอง (ไม่ตั้ง = ค่าเริ่มต้น) */
+export function resolveGroomSizes(
+  labels?: Partial<Record<GroomSize, string>>
+): { id: GroomSize; label: string }[] {
+  return GROOM_SIZES.map((s) => ({ ...s, label: labels?.[s.id]?.trim() || s.label }));
+}
+
+export function groomSizeLabel(size: GroomSize, labels?: Partial<Record<GroomSize, string>>) {
+  return resolveGroomSizes(labels).find((s) => s.id === size)?.label || "";
 }
 
 /** ราคาอาบน้ำจาก โปรแกรม+พันธุ์+ไซส์ (0 ถ้าไม่เจอ) */

@@ -66,6 +66,8 @@ const SCHEMA_CHECKS: { table: string; column: string; feature: string }[] = [
   { table: "customer_packages", column: "groom_program", feature: "คอร์สอาบน้ำแยกตามโปรแกรม" },
   { table: "bookings", column: "transport", feature: "บริการรับ-ส่งในนัด" },
   { table: "bookings", column: "deposit_status", feature: "มัดจำ + สลิปตอนลูกค้าจองเอง" },
+  { table: "booking_ops", column: "care_checks", feature: "บอร์ดคิวอาบน้ำ + เช็คลิสต์ดูแลรายวัน" },
+  { table: "payroll_employees", column: "groom_commission_pct", feature: "เงินเดือน + ค่าคอมพนักงาน" },
 ];
 
 export type SchemaCheckRow = {
@@ -551,6 +553,26 @@ where staff_note like '%🎁%';`,
           on conflict (id) do nothing;
         end if;
       end $$;
+    `,
+  },
+  {
+    // บอร์ดคิวอาบน้ำ (เริ่มทำ/ช่างที่รับ) + เช็คลิสต์ดูแลรายวันของน้องที่เข้าพัก — แยกจาก bookings
+    name: "booking_ops.setup",
+    sql: `
+      create table if not exists booking_ops (booking_id text primary key, tenant_id text not null, groom_started_at timestamptz, groomer text, care_checks jsonb not null default '{}'::jsonb, updated_at timestamptz not null default now());
+      alter table booking_ops add column if not exists tenant_id text;
+      create index if not exists booking_ops_tenant_idx on booking_ops (tenant_id);
+      alter table booking_ops enable row level security;
+    `,
+  },
+  {
+    // เงินเดือน + ค่าคอมพนักงาน — แยกตารางเพราะ site_config เปิดให้แอปลูกค้าอ่าน
+    name: "payroll_employees.setup",
+    sql: `
+      create table if not exists payroll_employees (id text primary key, tenant_id text not null, name text not null, base_salary numeric not null default 0, groom_commission_pct numeric not null default 0, groom_commission_per_cat numeric not null default 0, active boolean not null default true, created_at timestamptz not null default now());
+      alter table payroll_employees add column if not exists tenant_id text;
+      create index if not exists payroll_employees_tenant_idx on payroll_employees (tenant_id);
+      alter table payroll_employees enable row level security;
     `,
   },
 ];

@@ -31,6 +31,8 @@ export function StaffSection() {
   const [newMenus, setNewMenus] = useState<string[]>([
     "/admin",
     "/admin/schedule",
+    "/admin/queue",
+    "/admin/care",
     "/admin/bookings/new",
     "/admin/customers",
     "/admin/billing",

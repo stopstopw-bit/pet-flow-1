@@ -32,6 +32,7 @@ import { DEPOSIT_STATUS_LABEL } from "@/lib/booking-deposit";
 import { GroomClashNote, confirmClashes, useGroomClashes } from "@/components/GroomClashNote";
 import { addDaysIso, nightsBetweenIso } from "@/lib/stay-line";
 import { formatThaiDateShort } from "@/lib/format-thai-date";
+import { roomColorMap } from "@/lib/room-colors";
 
 type CalendarDay = EditableBooking & {
   customerId?: string;
@@ -262,6 +263,7 @@ function RoomMonthAvailability({
         name: r.name,
         count: r.count || 0,
         maxCats: roomCapacity(r),
+        composedOf: r.composedOf,
         closures: r.closures,
       })),
     [rooms]
@@ -482,7 +484,7 @@ function RoomMonthAvailability({
                 type="button"
                 onClick={() => onPick(d.key)}
                 aria-label={`${d.day} ว่าง ${Math.max(0, d.free)} ห้อง`}
-                className={`flex min-h-[48px] flex-col items-center justify-center gap-0.5 rounded-lg py-1 transition ${
+                className={`flex min-h-[52px] flex-col items-center justify-center gap-0.5 rounded-lg py-1 transition sm:min-h-[72px] lg:min-h-[88px] ${
                   full ? "bg-red-50 text-red-600" : low ? "bg-honey/30 text-petflow-chocolate" : "bg-sage/20 text-brown"
                 } ${past ? "opacity-45" : ""} ${
                   ranged
@@ -490,8 +492,8 @@ function RoomMonthAvailability({
                     : ""
                 } ${isSelected ? "ring-2 ring-latte-deep" : d.key === today ? "ring-1 ring-honey-deep" : ""}`}
               >
-                <span className="text-sm font-extrabold leading-none">{d.day}</span>
-                <span className="text-[9px] font-bold leading-none">{full ? "เต็ม" : `ว่าง ${d.free}`}</span>
+                <span className="text-sm font-extrabold leading-none sm:text-lg">{d.day}</span>
+                <span className="text-[9px] font-bold leading-none sm:text-[11px]">{full ? "เต็ม" : `ว่าง ${d.free}`}</span>
               </button>
             );
           })}
@@ -610,8 +612,10 @@ export function BookingCalendar() {
       maxCats?: number;
       composedOf?: { typeId: string; units: number }[];
       closures?: RoomClosure[];
+      color?: string;
     }[]
   >([]);
+  const roomColors = useMemo(() => roomColorMap(rooms), [rooms]);
   const [roomClosures, setRoomClosures] = useState<RoomClosure[]>([]);
   /** ห้องที่กำลังตั้งปิด/เปิด (แตะห้องว่างหรือห้องที่ปิดในผังห้อง) */
   const [closingUnit, setClosingUnit] = useState<{ typeId: string; typeName: string; unit: number; current?: RoomClosure } | null>(null);
@@ -1723,11 +1727,29 @@ export function BookingCalendar() {
 
         {view === "month" && (
         <>
-        <p className="mb-2.5 text-xs text-brown-soft">แตะวันที่เพื่อดูรายการของวันนั้น</p>
-        <div className="grid grid-cols-7 gap-1.5 text-center">
-          {["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"].map((d) => (
-            <div key={d} className="pb-1 text-xs font-bold text-brown-faint">
-              {d}
+        {/* ปฏิทินเดือนแบบเต็มจอ — ช่องใหญ่ เห็นชื่อน้องในแต่ละวัน แยกสีตามประเภทห้อง */}
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-brown-soft">แตะวันที่เพื่อดูรายการของวันนั้น</p>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            {rooms
+              .filter((r) => (r.count || 0) > 0 || r.composedOf?.length)
+              .map((r) => (
+                <span key={r.id} className="inline-flex items-center gap-1.5 text-[11px] font-bold text-brown-soft">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: roomColors[r.id] }} />
+                  {r.name}
+                </span>
+              ))}
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-brown-soft">
+              <Icon name="bath" size={12} className="text-latte-deep" />
+              อาบน้ำ
+            </span>
+          </div>
+        </div>
+        <div className="grid grid-cols-7 gap-1 sm:gap-1.5 lg:gap-2">
+          {["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัส", "ศุกร์", "เสาร์"].map((d, i) => (
+            <div key={d} className="pb-1 text-center text-xs font-bold text-brown-faint">
+              <span className="sm:hidden">{["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"][i]}</span>
+              <span className="hidden sm:inline">{d}</span>
             </div>
           ))}
           {Array.from({ length: startPad }).map((_, i) => (
@@ -1737,47 +1759,86 @@ export function BookingCalendar() {
             const day = i + 1;
             const key = `${ym}-${String(day).padStart(2, "0")}`;
             const dayItems = liveBookings.filter((b) => bookingOnDate(b, key));
-            const stays = dayItems.filter((b) => b.service === "room").length;
+            const stayItems = dayItems.filter((b) => b.service === "room");
+            const stays = stayItems.length;
             const appts = dayItems.length - stays;
             const isToday = key === today;
             const isSelected = key === activeDate;
+            const isPast = key < today;
             const keyClosed =
               closedWeekdays.includes(new Date(`${key}T00:00:00`).getDay()) ||
               closedDates.some((c) => c.date === key);
+            // สีพื้นช่อง = ประเภทห้องที่มีน้องพักมากที่สุดวันนั้น
+            const byRoom = new Map<string, number>();
+            for (const b of stayItems) byRoom.set(b.room || "", (byRoom.get(b.room || "") || 0) + 1);
+            const topRoom = [...byRoom.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+            const tint = topRoom ? roomColors[topRoom] : undefined;
+            const groups = groupBookings(dayItems).sort((a, b) =>
+              a[0].service === b[0].service
+                ? (a[0].time || "").localeCompare(b[0].time || "")
+                : a[0].service === "room"
+                  ? -1
+                  : 1
+            );
+            const shown = groups.slice(0, 3);
             return (
               <button
                 key={key}
                 type="button"
                 onClick={() => pickDate(key)}
-                className={`flex min-h-[54px] flex-col items-center justify-center gap-0.5 rounded-xl py-2 transition ${
+                aria-label={`${day} · พัก ${stays} · อาบน้ำ ${appts}`}
+                style={tint && !isSelected && !keyClosed ? { background: `${tint}33` } : undefined}
+                className={`flex min-h-[64px] flex-col items-stretch gap-1 rounded-xl p-1.5 text-left transition sm:min-h-[104px] sm:p-2 lg:min-h-[128px] ${
                   isSelected
                     ? "bg-latte/40 text-petflow-chocolate ring-2 ring-latte-deep"
                     : isToday
-                      ? "bg-honey/40 text-petflow-chocolate ring-1 ring-honey-deep"
+                      ? "bg-honey/30 text-petflow-chocolate ring-2 ring-honey-deep"
                       : keyClosed
                         ? "bg-wait/10 text-brown-faint hover:bg-wait/15"
-                        : stays > 0
-                          ? "bg-sage/25 text-brown hover:bg-sage/35"
-                          : "bg-paper/60 text-brown hover:bg-paper"
-                }`}
+                        : "bg-paper/60 text-brown hover:brightness-95"
+                } ${isPast && !isSelected ? "opacity-60" : ""}`}
               >
-                <span className="text-base font-extrabold leading-none">{day}</span>
-                {keyClosed && (
-                  <span className="rounded-full bg-wait px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">
-                    ปิด
-                  </span>
-                )}
-                {!keyClosed && stays > 0 && (
-                  <span className="rounded-full bg-ok px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">
-                    พัก{stays > 1 ? ` ${stays}` : ""}
-                  </span>
-                )}
-                {!keyClosed && appts > 0 && (
-                  <span className="rounded-full bg-latte-deep px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">
-                    {appts} นัด
-                  </span>
-                )}
-                {!keyClosed && stays === 0 && appts === 0 && <span className="h-[15px]" />}
+                <span className="flex items-center justify-between gap-1">
+                  <span className="text-sm font-extrabold leading-none sm:text-base">{day}</span>
+                  {keyClosed && (
+                    <span className="rounded-full bg-wait px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">
+                      ปิด
+                    </span>
+                  )}
+                </span>
+                {/* มือถือ: จุดสีห้อง + จำนวน */}
+                <span className="flex flex-wrap items-center gap-0.5 sm:hidden">
+                  {[...byRoom.keys()].map((r) => (
+                    <span key={r} className="h-1.5 w-1.5 rounded-full" style={{ background: roomColors[r] || "#9ca3af" }} />
+                  ))}
+                  {appts > 0 && <span className="text-[9px] font-bold text-latte-deep">{appts}นัด</span>}
+                </span>
+                {/* จอใหญ่: ชื่อน้องในแต่ละวัน */}
+                <span className="hidden min-w-0 flex-col gap-0.5 sm:flex">
+                  {shown.map((g) => {
+                    const b = g[0];
+                    const names = g.map((x) => x.catName).join(", ");
+                    const color = b.service === "room" ? roomColors[b.room || ""] || "#9ca3af" : undefined;
+                    return (
+                      <span
+                        key={b.id}
+                        title={`${names} · ${b.customerName}`}
+                        className={`block truncate rounded-md px-1.5 py-0.5 text-[10px] font-bold leading-tight lg:text-[11px] ${
+                          color ? "text-petflow-chocolate" : "bg-card/80 text-latte-deep"
+                        }`}
+                        style={color ? { background: `${color}66`, borderLeft: `3px solid ${color}` } : undefined}
+                      >
+                        {b.service === "room" ? "" : b.time ? `${b.time} ` : "🛁 "}
+                        {names}
+                      </span>
+                    );
+                  })}
+                  {groups.length > shown.length && (
+                    <span className="px-1 text-[10px] font-bold text-brown-faint">
+                      +{groups.length - shown.length} รายการ
+                    </span>
+                  )}
+                </span>
               </button>
             );
           })}
