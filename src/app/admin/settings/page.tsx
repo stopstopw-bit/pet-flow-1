@@ -7,6 +7,7 @@ import Link from "next/link";
 import type { SiteConfig, BoardingRuleBlock } from "@/lib/config-types";
 import type { RoomType } from "@/lib/business";
 import { GROOM_SIZES, resolveGroomPrograms, type GroomProgram, type GroomSize } from "@/lib/grooming-prices";
+import { roomColorMap } from "@/lib/room-colors";
 import { adminJson } from "@/lib/admin-fetch";
 import { toJpegDataUrl } from "@/lib/image-convert";
 import { extractLogoColors } from "@/lib/color-extract";
@@ -1196,6 +1197,24 @@ function RoomsTab({
             <p className="mt-1 text-[10px] text-brown-faint">
               แมวของบ้านเดียวกันช่วงวันเดียวกันเท่านั้นที่นอนรวมห้องได้ · คนละบ้านไม่รวมกันเสมอ
             </p>
+            <label className="mt-2 flex items-center gap-2 text-[11px] font-bold text-brown-soft">
+              สีในปฏิทิน
+              <input
+                type="color"
+                value={room.color || roomColorMap(rooms)[room.id]}
+                onChange={(e) => updateRoom(idx, { color: e.target.value })}
+                className="h-8 w-12 cursor-pointer rounded border border-petflow-line bg-card"
+              />
+              {room.color && (
+                <button
+                  type="button"
+                  onClick={() => updateRoom(idx, { color: undefined })}
+                  className="text-[10px] font-bold text-latte-deep underline"
+                >
+                  ใช้สีอัตโนมัติ
+                </button>
+              )}
+            </label>
             {(room.maxCats ?? 1) > 1 && (
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 <Field
@@ -1313,6 +1332,13 @@ function GroomProgramsTab({
     () => setPrograms(resolveGroomPrograms(config.groomPricePrograms)),
     [config.groomPricePrograms]
   );
+  // ป้ายช่วงน้ำหนักของ 3 ไซส์ — ราคาในตารางคิดตามช่วงนี้
+  const [sizeLabels, setSizeLabels] = useState<Partial<Record<GroomSize, string>>>(
+    config.groomSizeLabels || {}
+  );
+  useEffect(() => setSizeLabels(config.groomSizeLabels || {}), [config.groomSizeLabels]);
+  const sizes = GROOM_SIZES.map((sz) => ({ ...sz, label: sizeLabels[sz.id]?.trim() || sz.label }));
+  const [tagDraft, setTagDraft] = useState<Record<string, string>>({});
 
   const updateProgram = (idx: number, patch: Partial<GroomProgram>) =>
     setPrograms((prev) => prev.map((p, i) => (i === idx ? { ...p, ...patch } : p)));
@@ -1371,6 +1397,23 @@ function GroomProgramsTab({
       <p className="text-[11px] text-brown-faint">
         ตารางราคาที่ใช้ตอนคิดเงินและตอนลูกค้าเลือกโปรแกรมตอนจอง — เพิ่ม/ลบโปรแกรมหรือแถวพันธุ์ได้เอง
       </p>
+      <div className="rounded-petflow border border-petflow-line bg-card p-4">
+        <p className="text-xs font-extrabold text-petflow-chocolate">⚖️ ช่วงน้ำหนัก (ไซส์)</p>
+        <p className="mb-2 mt-0.5 text-[10px] text-brown-faint">
+          ราคาแต่ละแถวคิดตามช่วงน้ำหนักนี้ เช่น &quot;0–4 กก.&quot; · &quot;4–6 กก.&quot; · &quot;มากกว่า 6 กก.&quot;
+        </p>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {GROOM_SIZES.map((sz) => (
+            <input
+              key={sz.id}
+              value={sizeLabels[sz.id] ?? ""}
+              placeholder={sz.label}
+              onChange={(e) => setSizeLabels((cur) => ({ ...cur, [sz.id]: e.target.value }))}
+              className="min-w-0 rounded-petflow-sm border border-petflow-line bg-paper px-2.5 py-2 text-xs font-bold text-brown"
+            />
+          ))}
+        </div>
+      </div>
       {programs.map((prog, progIdx) => (
         <div key={prog.id} className="rounded-petflow border border-petflow-line bg-card p-4">
           <div className="mb-3 flex items-center justify-between gap-2">
@@ -1388,6 +1431,47 @@ function GroomProgramsTab({
               <Icon name="trash" size={14} />
               ลบโปรแกรม
             </button>
+          </div>
+
+          {/* บริการย่อยที่รวมในโปรแกรม — โชว์เป็นแท็กตอนเลือกโปรแกรมและบนบอร์ดคิว */}
+          <div className="mb-3">
+            <p className="mb-1 text-[10px] font-bold text-brown-soft">รวมบริการย่อย (แท็ก)</p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {(prog.includes || []).map((tag, tagIdx) => (
+                <span
+                  key={`${tag}-${tagIdx}`}
+                  className="inline-flex items-center gap-1 rounded-full bg-sage/25 px-2.5 py-1 text-[11px] font-bold text-brown"
+                >
+                  {tag}
+                  <button
+                    type="button"
+                    aria-label={`ลบ ${tag}`}
+                    onClick={() =>
+                      updateProgram(progIdx, {
+                        includes: (prog.includes || []).filter((_, k) => k !== tagIdx),
+                      })
+                    }
+                    className="text-brown-faint"
+                  >
+                    <Icon name="x" size={12} />
+                  </button>
+                </span>
+              ))}
+              <input
+                value={tagDraft[prog.id] || ""}
+                onChange={(e) => setTagDraft((d) => ({ ...d, [prog.id]: e.target.value }))}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter") return;
+                  e.preventDefault();
+                  const tag = (tagDraft[prog.id] || "").trim();
+                  if (!tag) return;
+                  updateProgram(progIdx, { includes: [...(prog.includes || []), tag] });
+                  setTagDraft((d) => ({ ...d, [prog.id]: "" }));
+                }}
+                placeholder="พิมพ์แล้วกด Enter เช่น ตัดเล็บ"
+                className="min-w-[160px] flex-1 rounded-full border border-dashed border-petflow-line bg-paper px-3 py-1 text-[11px]"
+              />
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -1413,7 +1497,7 @@ function GroomProgramsTab({
                   </button>
                 </div>
                 <div className="flex gap-2">
-                  {GROOM_SIZES.map((sz) => (
+                  {sizes.map((sz) => (
                     <label key={sz.id} className="flex-1 text-[10px] font-bold text-brown-soft">
                       {sz.label}
                       <input
@@ -1453,7 +1537,7 @@ function GroomProgramsTab({
       <button
         type="button"
         disabled={saving}
-        onClick={() => onSave({ groomPricePrograms: programs })}
+        onClick={() => onSave({ groomPricePrograms: programs, groomSizeLabels: sizeLabels })}
         className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-petflow-chocolate text-sm font-extrabold text-card shadow-petflow-sm disabled:opacity-50"
       >
         <Icon name="check" size={18} strokeWidth={2.2} />
