@@ -251,6 +251,23 @@ export function AdminSidebar() {
   const navRef = useRef<HTMLElement | null>(null);
   // เมนูยาวกว่าจอเตี้ยๆ → เลื่อนให้เห็นเมนูหน้าที่เปิดอยู่เสมอ
   // (top-[76px] = ใต้แถบหัวหลังบ้านที่ติดอยู่ด้านบน ไม่ให้เมนูมุดใต้หัว)
+  // กล่องเมนูต้องจบในจอเสมอ — หน้าแดชบอร์ดมีแถบหัวสูง เมนูเริ่มต่ำกว่า 76px
+  // ถ้าใช้ความสูงตายตัว ท้ายเมนูจะล้นขอบล่างจนกดเมนูสุดท้ายไม่ได้
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    const fit = () => {
+      const top = Math.max(nav.getBoundingClientRect().top, 76);
+      nav.style.maxHeight = `${Math.max(window.innerHeight - top - 24, 200)}px`;
+    };
+    fit();
+    window.addEventListener("scroll", fit, { passive: true });
+    window.addEventListener("resize", fit);
+    return () => {
+      window.removeEventListener("scroll", fit);
+      window.removeEventListener("resize", fit);
+    };
+  }, []);
   useEffect(() => {
     // เลื่อนเฉพาะในกล่องเมนู ไม่ใช้ scrollIntoView เพราะจะพาทั้งหน้าเลื่อนตามไปด้วย
     const nav = navRef.current;
