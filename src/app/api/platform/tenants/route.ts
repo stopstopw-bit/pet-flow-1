@@ -27,7 +27,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const sb = getSupabase();
-  if (!sb) return NextResponse.json({ tenants: [] });
+  if (!sb) {
+    return NextResponse.json(
+      { error: "ยังไม่ได้ตั้ง NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY ใน Vercel" },
+      { status: 500 }
+    );
+  }
 
   const { data, error } = await sb
     .from("tenants")
