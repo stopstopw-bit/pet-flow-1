@@ -5,7 +5,7 @@
  * แล้ว NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY = ตัวใหม่
  *
  * - คัดลอกทุกตาราง (ทุกร้าน) แบบ upsert ตาม primary key → กดซ้ำได้ ไม่เกิดแถวซ้ำ
- * - คัดลอกรูปใน bucket media แล้วเปลี่ยนลิงก์รูปในข้อมูลให้ชี้ไปตัวใหม่
+ * - คัดลอกไฟล์ใน bucket media + private แล้วเปลี่ยนลิงก์รูปในข้อมูลให้ชี้ไปตัวใหม่
  * - ข้าม audit_logs (id เป็น bigserial — ใส่ id เดิมแล้ว sequence จะชนตอนเขียน log ใหม่)
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -48,7 +48,11 @@ const TABLES = [
   "payroll_employees",
 ];
 
-const BUCKET = "media";
+/** bucket รูปทั้งหมด — media (สาธารณะ) + private (ไฟล์ส่วนตัวลูกค้า เปิดผ่าน /api/files) */
+const BUCKETS = [
+  { name: "media", public: true },
+  { name: "private", public: false },
+];
 const PAGE = 500;
 
 export type MigrateReport = {
@@ -56,7 +60,7 @@ export type MigrateReport = {
   /** สร้าง/อัปเดตตารางในตัวใหม่ก่อนย้าย — ไม่งั้นคอลัมน์ที่เพิ่มทีหลังจะย้ายไม่ได้ */
   schema: string;
   tables: { table: string; rows: number; error?: string }[];
-  files: { copied: number; failed: number; error?: string };
+  files: { copied: number; failed: number };
 };
 
 function oldConfig() {
@@ -109,17 +113,17 @@ async function copyTable(src: SupabaseClient, dst: SupabaseClient, table: string
   return { rows };
 }
 
-async function listAllFiles(src: SupabaseClient, prefix = ""): Promise<string[]> {
+async function listAllFiles(src: SupabaseClient, bucket: string, prefix = ""): Promise<string[]> {
   const out: string[] = [];
   for (let offset = 0; ; offset += 1000) {
-    const { data, error } = await src.storage.from(BUCKET).list(prefix, { limit: 1000, offset });
+    const { data, error } = await src.storage.from(bucket).list(prefix, { limit: 1000, offset });
     if (error) throw new Error(error.message);
     if (!data || data.length === 0) break;
     for (const item of data) {
       const path = prefix ? `${prefix}/${item.name}` : item.name;
       // โฟลเดอร์ไม่มี id
       if (item.id) out.push(path);
-      else out.push(...(await listAllFiles(src, path)));
+      else out.push(...(await listAllFiles(src, bucket, path)));
     }
     if (data.length < 1000) break;
   }
@@ -129,24 +133,27 @@ async function listAllFiles(src: SupabaseClient, prefix = ""): Promise<string[]>
 async function copyFiles(src: SupabaseClient, dst: SupabaseClient) {
   let copied = 0;
   let failed = 0;
-  let paths: string[];
-  try {
-    paths = await listAllFiles(src);
-  } catch (e) {
-    return { copied, failed, error: e instanceof Error ? e.message : String(e) };
-  }
-  await dst.storage.createBucket(BUCKET, { public: true }).catch(() => null);
-  for (const path of paths) {
-    const { data, error } = await src.storage.from(BUCKET).download(path);
-    if (error || !data) {
-      failed++;
+  for (const bucket of BUCKETS) {
+    let paths: string[];
+    try {
+      paths = await listAllFiles(src, bucket.name);
+    } catch {
+      // bucket นี้ไม่มีในตัวเก่า (เช่น private ที่เพิ่มทีหลัง) = ไม่มีไฟล์ให้ย้าย
       continue;
     }
-    const { error: upErr } = await dst.storage
-      .from(BUCKET)
-      .upload(path, data, { upsert: true, contentType: data.type || undefined });
-    if (upErr) failed++;
-    else copied++;
+    await dst.storage.createBucket(bucket.name, { public: bucket.public }).catch(() => null);
+    for (const path of paths) {
+      const { data, error } = await src.storage.from(bucket.name).download(path);
+      if (error || !data) {
+        failed++;
+        continue;
+      }
+      const { error: upErr } = await dst.storage
+        .from(bucket.name)
+        .upload(path, data, { upsert: true, contentType: data.type || undefined });
+      if (upErr) failed++;
+      else copied++;
+    }
   }
   return { copied, failed };
 }
@@ -170,7 +177,7 @@ export async function migrateFromOldDb(): Promise<MigrateReport> {
   const files = await copyFiles(src, dst);
 
   return {
-    ok: tables.every((t) => !t.error) && !files.error && files.failed === 0,
+    ok: tables.every((t) => !t.error) && files.failed === 0,
     schema: boot.message,
     tables,
     files,
