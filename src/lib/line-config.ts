@@ -1,4 +1,5 @@
 import { getSecrets } from "./secrets-store";
+import { isBootstrapTenant } from "./tenant-context";
 
 export type LineCredentials = {
   channelToken: string;
@@ -31,7 +32,8 @@ export async function getLineCredentials(): Promise<LineCredentials | null> {
       source: "database",
     };
   }
-  if (envToken) {
+  // LINE OA ใน env เป็นของร้าน bootstrap — ร้านอื่นที่ยังไม่ตั้ง LINE ต้องไม่ส่งข้อความผ่าน OA ร้านนี้
+  if (envToken && isBootstrapTenant()) {
     return {
       channelToken: envToken,
       channelSecret: process.env.LINE_CHANNEL_SECRET?.trim(),

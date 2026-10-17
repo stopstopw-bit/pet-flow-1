@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { getSecrets } from "./secrets-store";
+import { isBootstrapTenant } from "./tenant-context";
 
 export type TelegramCredentials = {
   botToken: string;
@@ -74,7 +75,8 @@ export async function getTelegramCredentials(): Promise<TelegramCredentials | nu
     .map((s) => s.trim())
     .filter(Boolean);
 
-  if (envToken) {
+  // บอท/แชทเจ้าของใน env เป็นของร้าน bootstrap — ไม่งั้นยอดขายร้านอื่นจะเด้งไปหาเจ้าของร้านนี้
+  if (envToken && isBootstrapTenant()) {
     return {
       botToken: envToken,
       ownerChatIds: envChats,

@@ -1,7 +1,7 @@
 import { getDefaultSiteConfig } from "./defaults/site-config";
 import type { SiteConfig } from "./config-types";
 import { getSupabase } from "./supabase/server";
-import { requireTenantId } from "./tenant-context";
+import { isBootstrapTenant, requireTenantId } from "./tenant-context";
 import { uploadDataUrlToStorage } from "./supabase/storage";
 import { createHash } from "crypto";
 
@@ -76,6 +76,11 @@ function mergeConfig(base: SiteConfig, patch: Partial<SiteConfig>): SiteConfig {
 
 export async function getSiteConfig(): Promise<SiteConfig> {
   const defaults = getDefaultSiteConfig();
+  // บัญชีธนาคาร/พร้อมเพย์ใน env (BANK_*, PROMPTPAY_ID) เป็นของร้าน bootstrap —
+  // ร้านอื่นที่ยังไม่ตั้งเองต้องเห็นช่องว่าง ไม่ใช่เลขบัญชีร้านอื่นบนการ์ดโอนเงิน
+  if (!isBootstrapTenant()) {
+    defaults.payment = { ...defaults.payment, bankName: "", accountNumber: "", accountName: "", promptpayId: undefined };
+  }
   const sb = getSupabase();
 
   if (sb) {

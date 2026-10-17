@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { BLOG_POSTS } from "@/lib/blog-posts";
 import { listArticles } from "@/lib/articles-store";
+import { withBootstrapTenant } from "@/lib/tenant-context";
 import SiteFooter from "@/components/SiteFooter";
 
 // บทความที่เขียนเองจากหลังบ้านโผล่ภายใน ~5 นาทีหลังบันทึก
@@ -30,7 +31,10 @@ export const metadata: Metadata = {
 export default async function BlogIndexPage() {
   // รวมบทความจากหลังบ้าน (DB) + บทความ SEO เดิม (โค้ด) เรียงตามวันที่
   // ถ้า slug ซ้ำ ให้ฉบับที่แก้ในหลังบ้าน (DB) แทนที่ของเดิมเสมอ — ไม่โชว์ซ้ำ
-  const dbArticles = await listArticles();
+  // บล็อกหน้าเว็บหลักเป็นของร้าน bootstrap (env TENANT_ID) — ไม่ได้ตั้งก็โชว์แค่บทความในโค้ด
+  const dbArticles = await Promise.resolve()
+    .then(() => withBootstrapTenant(() => listArticles()))
+    .catch(() => []);
   const dbSlugs = new Set(dbArticles.map((a) => a.slug));
   const posts = [
     ...dbArticles.map((a) => ({

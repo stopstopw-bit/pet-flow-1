@@ -54,12 +54,16 @@ export async function tenantIdForSlug(slug: string): Promise<string | null> {
 /**
  * request → tenant_id ที่ต้องใช้กรอง query
  * ลำดับ: slug (header/cookie) → ร้าน bootstrap (env TENANT_ID) → throw
+ *
+ * ถ้ามี slug แต่หาร้านไม่เจอ (พิมพ์ผิด/ร้านถูกระงับ) ต้อง throw — ห้ามตกไปร้าน bootstrap
+ * ไม่งั้นลูกค้าของร้านที่ถูกระงับจะไปสมัคร/จองลงในร้าน bootstrap แทน
  */
 export async function resolveTenantId(req: NextRequest): Promise<string> {
   const slug = getTenantSlugFromRequest(req);
   if (slug) {
     const id = await tenantIdForSlug(slug);
     if (id) return id;
+    throw new Error(`ไม่พบร้าน "${slug}" หรือร้านนี้ปิดใช้งานอยู่`);
   }
   const bootstrap = getBootstrapTenantId();
   if (bootstrap) return bootstrap;

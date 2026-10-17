@@ -10,7 +10,7 @@ import {
 } from "@/lib/finance-store";
 import { getSessionFrom } from "@/lib/auth";
 import { withTenant } from "@/lib/tenant-context";
-import { uploadDataUrlToStorage } from "@/lib/supabase/storage";
+import { uploadPrivateDataUrl } from "@/lib/supabase/storage";
 import { logAudit } from "@/lib/audit-log";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { requireTenantId } from "@/lib/tenant-context";
@@ -31,7 +31,7 @@ async function requireTenantSession(req: NextRequest) {
 async function storeReceipt(id: string, receipt?: string): Promise<string | undefined> {
   if (!receipt) return undefined;
   try {
-    return await uploadDataUrlToStorage(`finance-receipts/${id}.jpg`, receipt);
+    return await uploadPrivateDataUrl(`finance-receipts/${id}`, receipt);
   } catch {
     return undefined;
   }

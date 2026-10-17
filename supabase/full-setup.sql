@@ -1159,5 +1159,15 @@ begin
 end $$;
 
 
+-- เปิด RLS ทุกตาราง (ดู migrations/012) — ต้องใช้ service_role key ใน Vercel ตามคู่มือ
+do $$
+declare
+  r record;
+begin
+  for r in select tablename from pg_tables where schemaname = 'public' loop
+    execute format('alter table public.%I enable row level security', r.tablename);
+  end loop;
+end $$;
+
 -- ให้ PostgREST โหลด schema ใหม่
 notify pgrst, 'reload schema';
