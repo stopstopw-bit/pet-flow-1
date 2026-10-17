@@ -36,6 +36,7 @@ import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { withTenant } from "@/lib/tenant-context";
 import { pushLineMessage, buildMemberBalanceFlex } from "@/lib/line";
 import { getSiteConfig } from "@/lib/config-store";
+import { customerServiceLog } from "@/lib/customer-service-log";
 
 async function requireTenant(req: NextRequest) {
   const session = await verifySession(req.cookies.get(SESSION_COOKIE)?.value);
@@ -69,7 +70,11 @@ async function handleGet(req: NextRequest) {
   if (id) {
     const activity = await customerActivityInfo(id);
     if (!activity) return NextResponse.json({ error: "not found" }, { status: 404 });
-    return NextResponse.json(activity);
+    const serviceLog = await customerServiceLog(
+      id,
+      activity.history.pastBookings.map((b) => b.id)
+    );
+    return NextResponse.json({ ...activity, serviceLog });
   }
 
   if (q) {

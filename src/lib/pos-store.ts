@@ -404,6 +404,23 @@ export async function listSales(date: string): Promise<PosSale[]> {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+/** บิลขายหน้าร้านที่ผูกกับลูกค้าคนนี้ (เฉพาะที่ไม่ได้ยกเลิก) — ใช้ในประวัติใช้บริการ */
+export async function listSalesByCustomer(customerId: string): Promise<PosSale[]> {
+  const sb = getSupabase();
+  if (sb) {
+    const { data, error } = await sb
+      .from("pos_sales")
+      .select("*").eq("tenant_id", requireTenantId())
+      .eq("customer_id", customerId)
+      .eq("status", "paid")
+      .order("created_at", { ascending: false });
+    return error ? [] : ((data as SaleRow[] | null) || []).map(saleFromRow);
+  }
+  return [...memSales.values()]
+    .filter((s) => s.customerId === customerId && s.status === "paid")
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
 export async function getSale(id: string): Promise<PosSale | null> {
   const sb = getSupabase();
   if (sb) {

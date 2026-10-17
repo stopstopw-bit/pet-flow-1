@@ -17,7 +17,9 @@ import { PreviewSendModal } from "@/components/PreviewSendModal";
 import { CustomerLinkSection } from "@/components/CustomerLinkSection";
 import type { PointsHistoryEntry } from "@/lib/points-store";
 import { parseGroomInfo, groomInfoSummary } from "@/lib/groom-info";
-import type { Booking } from "@/lib/business";
+import { BOOKING_STATUS_LABELS, type Booking } from "@/lib/business";
+import type { CustomerServiceLog } from "@/lib/customer-service-log";
+import { shortItemLabel, summarizeInvoiceItems } from "@/lib/invoice-item-label";
 import { bookingGroupKey, groupBookings } from "@/lib/booking-group";
 import { ExportSheetsButton } from "@/components/ExportSheetsButton";
 import { BookingEditModal, type EditableBooking } from "@/components/BookingEditModal";
@@ -38,11 +40,20 @@ type Summary = {
   daysSinceVisit?: number | null;
   inactive?: boolean;
   canFollowUp?: boolean;
+  serviceLog?: CustomerServiceLog;
   history: {
     bookings: Booking[];
     upcomingBookings: EditableBooking[];
     pastBookings: EditableBooking[];
-    services: { id: string; service: string; date: string; amount?: number; catName: string }[];
+    services: {
+      id: string;
+      service: string;
+      date: string;
+      amount?: number;
+      catName: string;
+      invoiceId?: string;
+      bookingId?: string;
+    }[];
     points: PointsHistoryEntry[];
     memberTopups: MemberTopupRecord[];
     memberCreditUsage: MemberCreditUsageRecord[];
@@ -101,9 +112,7 @@ function bookingWhen(b: EditableBooking) {
 }
 
 function statusLabel(status: Booking["status"]) {
-  if (status === "confirmed") return "ยืนยันแล้ว";
-  if (status === "cancelled") return "ยกเลิกแล้ว";
-  return "รอยืนยัน";
+  return BOOKING_STATUS_LABELS[status] || "รอยืนยัน";
 }
 
 /** หัวการ์ดส่วนต่างๆ ในหน้าลูกค้า: ไอคอนในกรอบมน · ชื่อ · ค่าด้านขวา (ถ้ามี) */
@@ -670,25 +679,56 @@ function StaysConsentSection({ bookings }: { bookings: EditableBooking[] }) {
   );
 }
 
+type ServiceKind = "groom" | "room" | "product" | "other";
+
+const SERVICE_KIND_LABELS: Record<Exclude<ServiceKind, "other">, string> = {
+  groom: "อาบน้ำ",
+  room: "ห้องพัก",
+  product: "สินค้า",
+};
+
+const PAY_LABELS: Record<string, string> = {
+  transfer: "โอน",
+  cash: "เงินสด",
+  member_credit: "เครดิต Member",
+  promptpay: "QR พร้อมเพย์",
+};
+
+/** ประเภทบริการของรายการในบิล — ใช้ kind ที่บันทึกไว้ก่อน บิลเก่าที่ไม่มี kind เดาจากชื่อ */
+function itemServiceKind(it: { label: string; kind?: string }): ServiceKind {
+  if (it.kind === "grooming") return "groom";
+  if (it.kind === "room") return "room";
+  if (it.kind === "product") return "product";
+  if (it.kind) return "other";
+  if (/อาบ|กรูม|ตัดขน|groom/i.test(it.label)) return "groom";
+  if (/ห้อง|ฝากเลี้ยง|คืน/.test(it.label)) return "room";
+  return "other";
+}
+
 /**
- * ประวัติใช้บริการ — รวมรายการที่บันทึกไว้กับนัดที่ผ่านมาเป็นไทม์ไลน์เดียว เรียงใหม่ก่อน
+ * ประวัติใช้บริการ — รวมบิลที่ปิดแล้ว, นัดที่ผ่านมา และบิลขายหน้าร้าน (POS)
+ * เป็นไทม์ไลน์เดียว เรียงใหม่ก่อน พร้อมสรุปว่าลูกค้าใช้อะไรไปกี่ครั้ง
  *
  * ลูกค้าเก่าบางรายมีเป็นร้อยแถวและส่วนใหญ่เป็นนัดที่ยกเลิก เลยพับนัดที่ยกเลิก
- * ไว้ต่างหาก และโชว์แค่ 8 แถวแรกก่อน กดดูทั้งหมดได้
+ * ไว้ต่างหาก และโชว์แค่ 8 แถวแรกก่อน กดดูทั้งหมดได้ · กดแถวที่มีบิลเพื่อดูรายการ
  */
 function ServiceHistorySection({
   customerId,
   services,
   pastBookings,
+  log,
   onChanged,
 }: {
   customerId: string;
-  services: { id: string; service: string; date: string; amount?: number; catName: string }[];
+  services: Summary["history"]["services"];
   pastBookings: EditableBooking[];
+  log?: CustomerServiceLog;
   onChanged: () => void;
 }) {
   const [showAll, setShowAll] = useState(false);
   const [showCancelled, setShowCancelled] = useState(false);
+  const [filter, setFilter] = useState<"all" | Exclude<ServiceKind, "other">>("all");
+  const [openKey, setOpenKey] = useState<string | null>(null);
 
   const remove = async (label: string, req: () => Promise<unknown>) => {
     if (!confirm(label)) return;
@@ -696,35 +736,78 @@ function ServiceHistorySection({
     onChanged();
   };
 
-  type Row = { key: string; date: string; text: string; onDelete: () => void };
+  type Row = {
+    key: string;
+    date: string;
+    text: string;
+    sub?: string;
+    amount?: number;
+    kinds: ServiceKind[];
+    detail?: { label: string; amount: number }[];
+    detailNote?: string;
+    onDelete?: () => void;
+  };
 
-  const serviceRows: Row[] = services.map((s) => ({
-    key: `s${s.id}`,
-    date: s.date,
-    text: `${s.catName} · ${s.service}${s.amount ? ` · ${s.amount} บาท` : ""}`,
-    onDelete: () =>
-      remove("ลบรายการนี้ออกจากประวัติ? กู้คืนไม่ได้", () =>
-        fetch("/api/customers", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            id: customerId,
-            action: "delete_service_record",
-            serviceId: s.id,
-          }),
-        })
-      ),
+  const billById = new Map((log?.bills || []).map((b) => [b.id, b]));
+  const groomers = log?.groomers || {};
+
+  const serviceRows: Row[] = services.map((s) => {
+    const bill = s.invoiceId ? billById.get(s.invoiceId) : undefined;
+    const kinds = bill
+      ? Array.from(new Set(bill.items.map(itemServiceKind)))
+      : s.service.split(", ").map((label) => itemServiceKind({ label }));
+    const groomer = s.bookingId ? groomers[s.bookingId] : undefined;
+    return {
+      key: `s${s.id}`,
+      date: s.date,
+      text: `${s.catName} · ${bill ? summarizeInvoiceItems(bill.items) : s.service}`,
+      sub: groomer ? `ช่าง ${groomer}` : undefined,
+      amount: s.amount,
+      kinds,
+      detail: bill?.items.map((it) => ({ label: it.label, amount: it.amount })),
+      detailNote: bill
+        ? `บิล ${bill.id}${bill.paymentMethod ? ` · จ่ายด้วย${PAY_LABELS[bill.paymentMethod] || bill.paymentMethod}` : ""}`
+        : undefined,
+      onDelete: () =>
+        remove("ลบรายการนี้ออกจากประวัติ? กู้คืนไม่ได้", () =>
+          fetch("/api/customers", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: customerId,
+              action: "delete_service_record",
+              serviceId: s.id,
+            }),
+          })
+        ),
+    };
+  });
+
+  const posRows: Row[] = (log?.posSales || []).map((p) => ({
+    key: `p${p.id}`,
+    date: p.date,
+    text: `ซื้อหน้าร้าน · ${summarizeInvoiceItems(p.items.map((it) => ({ label: it.name })))}`,
+    amount: p.total,
+    kinds: ["product"],
+    detail: p.items.map((it) => ({
+      label: `${it.name}${it.qty > 1 ? ` × ${it.qty}` : ""}`,
+      amount: it.price * it.qty,
+    })),
+    detailNote: `${p.no} · จ่ายด้วย${PAY_LABELS[p.method] || p.method} · ยกเลิกบิลได้ที่หน้า POS`,
   }));
 
   // นัดบ้านเดียวกัน นัดเดียวกัน (สถานะเดียวกัน) = 1 แถว ใส่ชื่อทุกตัว
   const bookingRow = (group: EditableBooking[]): Row => {
     const b = group[0];
+    const names = Array.from(new Set(group.map((g) => groomers[g.id]).filter(Boolean)));
     return {
       key: `b${group.map((g) => g.id).join(",")}`,
       date: b.date,
       text: `${group.map((g) => g.catName).join(", ")} · ${
         b.service === "room" ? "ห้องพัก" : "อาบน้ำ"
       } · ${statusLabel(b.status)}`,
+      sub: names.length ? `ช่าง ${names.join(", ")}` : undefined,
+      kinds: [b.service === "room" ? "room" : "groom"],
       onDelete: () =>
         remove(
           group.length > 1
@@ -753,24 +836,99 @@ function ServiceHistorySection({
   const cancelledRows = groupRows(pastBookings.filter((b) => b.status === "cancelled")).sort(
     byDateDesc
   );
-  const rows = [
+  const allRows = [
     ...serviceRows,
+    ...posRows,
     ...groupRows(pastBookings.filter((b) => b.status !== "cancelled")),
   ].sort(byDateDesc);
 
+  // สรุป: นับเป็น "วันที่มาใช้" ต่อประเภท — บิลกับนัดของวันเดียวกันจะได้ไม่นับซ้ำ
+  // (นัดที่ยังไม่ปิดงาน/ไม่มา ไม่นับ)
+  const daysByKind: Record<Exclude<ServiceKind, "other">, Set<string>> = {
+    groom: new Set(),
+    room: new Set(),
+    product: new Set(),
+  };
+  for (const r of [...serviceRows, ...posRows]) {
+    for (const k of r.kinds) if (k !== "other") daysByKind[k].add(r.date.slice(0, 10));
+  }
+  for (const b of pastBookings) {
+    if (b.status !== "ready" && b.status !== "done") continue;
+    daysByKind[b.service === "room" ? "room" : "groom"].add((b.date || b.checkin || "").slice(0, 10));
+  }
+  const totalSpend =
+    (log?.bills || []).reduce((s, b) => s + (b.total || 0), 0) +
+    (log?.posSales || []).reduce((s, p) => s + (p.total || 0), 0);
+
+  // ใช้อะไรบ่อย — นับจากรายการในบิล + POS (ชื่อย่อ ไม่เอาชื่อน้อง/ไซส์)
+  const itemCounts = new Map<string, number>();
+  const bump = (name: string, n: number) => {
+    if (!name) return;
+    itemCounts.set(name, (itemCounts.get(name) || 0) + n);
+  };
+  for (const b of log?.bills || [])
+    for (const it of b.items)
+      if (itemServiceKind(it) !== "other" || it.kind === "service" || it.kind === "custom")
+        bump(shortItemLabel(it.label), it.qty || 1);
+  for (const p of log?.posSales || []) for (const it of p.items) bump(it.name, it.qty || 1);
+  const topItems = Array.from(itemCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+
+  const rows = filter === "all" ? allRows : allRows.filter((r) => r.kinds.includes(filter));
   const visible = showAll ? rows : rows.slice(0, 8);
 
   const rowList = (list: Row[]) => (
     <ul className="divide-y divide-petflow-line rounded-petflow-sm border border-petflow-line text-xs">
-      {list.map((r) => (
-        <li key={r.key} className="flex min-h-[48px] items-center gap-2 py-1.5 pl-3 pr-1.5">
-          <span className="min-w-0 flex-1">
-            <span className="block truncate font-bold text-brown">{r.text}</span>
-            <span className="block text-[11px] text-brown-faint">{r.date}</span>
-          </span>
-          <MoreMenu items={[{ label: "ลบรายการนี้", icon: "trash", danger: true, onClick: r.onDelete }]} />
-        </li>
-      ))}
+      {list.map((r) => {
+        const expanded = openKey === r.key;
+        return (
+          <li key={r.key} className="py-1.5 pl-3 pr-1.5">
+            <div className="flex min-h-[44px] items-center gap-2">
+              <button
+                type="button"
+                disabled={!r.detail?.length}
+                onClick={() => setOpenKey(expanded ? null : r.key)}
+                className="min-w-0 flex-1 text-left"
+              >
+                <span className={`block font-bold text-brown ${expanded ? "" : "truncate"}`}>
+                  {r.text}
+                </span>
+                <span className="block text-[11px] text-brown-faint">
+                  {r.date}
+                  {r.sub ? ` · ${r.sub}` : ""}
+                  {r.detail?.length ? (expanded ? " · ซ่อนรายการ" : " · ดูรายการ") : ""}
+                </span>
+              </button>
+              {r.amount ? (
+                <span className="shrink-0 font-extrabold text-brown">
+                  ฿{r.amount.toLocaleString()}
+                </span>
+              ) : null}
+              {r.onDelete ? (
+                <MoreMenu
+                  items={[{ label: "ลบรายการนี้", icon: "trash", danger: true, onClick: r.onDelete }]}
+                />
+              ) : (
+                <span className="w-2 shrink-0" />
+              )}
+            </div>
+            {expanded && r.detail && (
+              <div className="mb-1 mr-2 mt-1 rounded-petflow-sm bg-paper px-3 py-2 text-[11px] text-brown-soft">
+                <ul className="space-y-0.5">
+                  {r.detail.map((d, i) => (
+                    <li key={i} className="flex gap-2">
+                      <span className="min-w-0 flex-1">{d.label}</span>
+                      <span className="shrink-0 font-bold">฿{d.amount.toLocaleString()}</span>
+                    </li>
+                  ))}
+                </ul>
+                {r.detailNote && <p className="mt-1 text-brown-faint">{r.detailNote}</p>}
+              </div>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 
@@ -780,11 +938,61 @@ function ServiceHistorySection({
         icon="receipt"
         title="ประวัติใช้บริการ"
         right={
-          rows.length > 0 ? (
-            <span className="shrink-0 text-[11px] font-bold text-brown-faint">{rows.length} รายการ</span>
+          allRows.length > 0 ? (
+            <span className="shrink-0 text-[11px] font-bold text-brown-faint">{allRows.length} รายการ</span>
           ) : undefined
         }
       />
+
+      {allRows.length > 0 && (
+        <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {(Object.keys(SERVICE_KIND_LABELS) as Exclude<ServiceKind, "other">[]).map((k) => (
+            <div key={k} className="rounded-petflow-sm bg-paper px-3 py-2">
+              <div className="text-[11px] font-bold text-brown-faint">{SERVICE_KIND_LABELS[k]}</div>
+              <div className="text-base font-extrabold text-brown">
+                {daysByKind[k].size} <span className="text-[11px] font-bold">ครั้ง</span>
+              </div>
+            </div>
+          ))}
+          <div className="rounded-petflow-sm bg-paper px-3 py-2">
+            <div className="text-[11px] font-bold text-brown-faint">ยอดใช้จ่ายรวม</div>
+            <div className="text-base font-extrabold text-latte-deep">฿{totalSpend.toLocaleString()}</div>
+          </div>
+        </div>
+      )}
+
+      {topItems.length > 0 && (
+        <div className="mb-3">
+          <div className="mb-1 text-[11px] font-bold text-brown-faint">ใช้บ่อย</div>
+          <div className="flex flex-wrap gap-1.5">
+            {topItems.map(([name, n]) => (
+              <span
+                key={name}
+                className="rounded-full bg-paper px-2.5 py-1 text-[11px] font-bold text-brown-soft"
+              >
+                {name} × {n}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {allRows.length > 0 && (
+        <Segmented
+          className="mb-3"
+          value={filter}
+          onChange={(v) => {
+            setFilter(v);
+            setShowAll(false);
+          }}
+          options={[
+            { id: "all", label: "ทั้งหมด" },
+            { id: "groom", label: "อาบน้ำ" },
+            { id: "room", label: "ห้องพัก" },
+            { id: "product", label: "สินค้า" },
+          ]}
+        />
+      )}
 
       {rows.length === 0 ? (
         <EmptyState icon="receipt" title="ยังไม่มีประวัติ" />
@@ -3120,6 +3328,7 @@ export default function CustomersPage() {
           customerId={c.id}
           services={selected.history.services}
           pastBookings={selected.history.pastBookings || []}
+          log={selected.serviceLog}
           onChanged={() => open(c.id)}
         />
 
