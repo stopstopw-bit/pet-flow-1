@@ -109,6 +109,9 @@ function AdminShell({ children }: { children: React.ReactNode }) {
 
   // แดชบอร์ด: แถบหัวสูง ให้การ์ดสรุปเกยขึ้นไป · หน้าอื่นมีหัวข้อของตัวเองอยู่แล้ว ใช้แถบหัวแบบเตี้ย
   const isDashboard = pathname === "/admin";
+  // หน้าปฏิทิน/บอร์ดคิว/เช็คลิสต์ — ใช้จอกว้างเต็มที่ เห็นทั้งเดือนในหน้าเดียว
+  const isWide = ["/admin/schedule", "/admin/queue", "/admin/care"].includes(pathname);
+  const maxW = isWide ? "max-w-[1600px]" : "max-w-3xl lg:max-w-6xl";
 
   return (
     <div className="min-h-screen bg-petflow-gradient pb-[calc(7.5rem+env(safe-area-inset-bottom))] lg:pb-0">
@@ -132,7 +135,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
       {isDashboard ? (
         <header className="print:hidden">
           <HeaderBand className="pb-12 lg:pb-14">
-            <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 pb-1 pt-5 lg:max-w-6xl lg:px-6 lg:pt-6">
+            <div className={`mx-auto flex ${maxW} items-center gap-3 px-4 pb-1 pt-5 lg:px-6 lg:pt-6`}>
               <Logo size={46} />
               <div className="min-w-0 flex-1">
                 <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-petflow-chocolate/60">
@@ -156,7 +159,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
         </header>
       ) : (
         <header className="sticky top-0 z-30 border-b border-petflow-line/70 bg-cream/85 backdrop-blur-md print:hidden">
-          <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-2.5 lg:max-w-6xl lg:px-6">
+          <div className={`mx-auto flex ${maxW} items-center gap-3 px-4 py-2.5 lg:px-6`}>
             <Logo size={34} />
             <div className="min-w-0 flex-1 leading-tight">
               {/* ชื่อหน้าอยู่ที่หัวของแต่ละหน้าแล้ว แถบนี้จึงแสดงแค่ชื่อร้าน ไม่ให้หัวซ้ำสองชั้น */}
@@ -168,7 +171,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
         </header>
       )}
       <AdminNav menuOpen={menuOpen} setMenuOpen={setMenuOpen} />
-      <div className={`mx-auto max-w-3xl ${isDashboard ? "-mt-8" : "mt-4 lg:mt-6"} px-4 lg:grid lg:max-w-6xl lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-6 lg:px-6`}>
+      <div className={`mx-auto ${maxW} ${isDashboard ? "-mt-8" : "mt-4 lg:mt-6"} px-4 lg:grid lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-6 lg:px-6`}>
         <aside className="print:hidden">
           <AdminSidebar />
         </aside>

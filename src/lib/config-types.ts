@@ -284,6 +284,10 @@ export type SiteConfig = {
   closedWeekdays?: number[];
   /** วันหยุดเฉพาะวัน (ปีใหม่, ปิดพักร้อน ฯลฯ) — เพิ่ม/ลบได้ในหลังบ้าน */
   closedDates?: { date: string; note?: string }[];
+  /** งานดูแลรายวันของน้องที่เข้าพัก (เช็คลิสต์) — ไม่ตั้ง = ใช้ DEFAULT_CARE_TASKS */
+  careTasks?: { id: string; label: string }[];
+  /** ป้ายช่วงน้ำหนักของไซส์อาบน้ำ (เช่น "0–4 กก.") — ไม่ตั้ง = ใช้ค่าใน GROOM_SIZES */
+  groomSizeLabels?: Partial<Record<"kitten" | "m" | "l", string>>;
   transport: LocalizedLines;
   pointsRewards: PointsRewardConfig[];
   grooming: GroomingConfig;

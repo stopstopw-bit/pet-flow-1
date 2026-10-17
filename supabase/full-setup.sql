@@ -1102,6 +1102,34 @@ create unique index if not exists pos_closings_tenant_date_idx on pos_closings (
 
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- 19b) บอร์ดคิวอาบน้ำ + เช็คลิสต์ดูแลรายวัน + เงินเดือน/ค่าคอมพนักงาน
+-- ─────────────────────────────────────────────────────────────────────────────
+create table if not exists booking_ops (
+  booking_id text primary key,
+  tenant_id text not null,
+  groom_started_at timestamptz,
+  groomer text,                                   -- payroll_employees.id
+  care_checks jsonb not null default '{}'::jsonb, -- { "YYYY-MM-DD": { taskId: { at, by } } }
+  updated_at timestamptz not null default now()
+);
+create index if not exists booking_ops_tenant_idx on booking_ops (tenant_id);
+alter table booking_ops enable row level security;
+
+create table if not exists payroll_employees (
+  id text primary key,
+  tenant_id text not null,
+  name text not null,
+  base_salary numeric not null default 0,
+  groom_commission_pct numeric not null default 0,
+  groom_commission_per_cat numeric not null default 0,
+  active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+create index if not exists payroll_employees_tenant_idx on payroll_employees (tenant_id);
+alter table payroll_employees enable row level security;
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- 20) Storage bucket "media" (โค้ดสร้างเองตอนใช้ครั้งแรกด้วย แต่สร้างไว้ก่อนกันพลาด)
 -- ─────────────────────────────────────────────────────────────────────────────
 do $$

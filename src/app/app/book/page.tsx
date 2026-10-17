@@ -6,7 +6,7 @@ import { useLiff } from "@/components/LiffProvider";
 import { useConfig } from "@/components/ConfigProvider";
 import { PageHeader } from "@/components/PageHeader";
 import { SELF_BOOKABLE_ROOM_IDS } from "@/lib/self-bookable-rooms";
-import { GROOM_PROGRAMS } from "@/lib/grooming-prices";
+import { resolveGroomPrograms } from "@/lib/grooming-prices";
 import { extraCatChargePerNight } from "@/lib/business";
 import { roomPricing } from "@/lib/room-board";
 import { toJpegDataUrl } from "@/lib/image-convert";
@@ -501,12 +501,24 @@ function BookPageInner() {
                     className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm"
                   >
                     <option value="">ยังไม่เลือก — ให้ทางร้านแนะนำหน้างาน</option>
-                    {GROOM_PROGRAMS.map((p) => (
+                    {resolveGroomPrograms(config.groomPricePrograms).map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name}
                       </option>
                     ))}
                   </select>
+                  {(() => {
+                    const tags = resolveGroomPrograms(config.groomPricePrograms).find((p) => p.id === groomProgram)?.includes;
+                    return tags?.length ? (
+                      <span className="mt-1.5 flex flex-wrap gap-1">
+                        {tags.map((t) => (
+                          <span key={t} className="rounded-full bg-sage/25 px-2 py-0.5 text-[10px] font-bold text-brown">
+                            ✓ {t}
+                          </span>
+                        ))}
+                      </span>
+                    ) : null;
+                  })()}
                 </label>
                 <label className="mb-3 block text-xs font-bold text-brown-soft">
                   📅 วันที่

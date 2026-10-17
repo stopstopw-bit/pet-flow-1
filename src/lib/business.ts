@@ -76,6 +76,8 @@ export type RoomType = {
   config?: { th: string; en: string };
   note?: { th: string; en: string };
   image: string;
+  /** สีประจำห้องในปฏิทินเดือน (#rrggbb) — ไม่ตั้ง = ไล่ตามลำดับ (ดู room-colors.ts) */
+  color?: string;
   amenities: { th: string[]; en: string[] };
 };
 

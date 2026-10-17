@@ -14,7 +14,7 @@ import { formatThaiDateShort } from "@/lib/format-thai-date";
 import { bangkokToday } from "@/lib/bangkok-date";
 import {
   GROOM_PROGRAMS,
-  GROOM_SIZES,
+  resolveGroomSizes,
   groomPrice,
   groomProgram,
   groomSizeLabel,
@@ -193,9 +193,10 @@ function joinCatNames(names: string[]): string | undefined {
 
 function computeLine(
   it: Item,
-  programs: GroomProgram[] = GROOM_PROGRAMS
+  programs: GroomProgram[] = GROOM_PROGRAMS,
+  sizeLabels?: Partial<Record<GroomSize, string>>
 ): ReturnType<typeof computeLineBase> {
-  const base = computeLineBase(it, programs);
+  const base = computeLineBase(it, programs, sizeLabels);
   const d = Math.max(0, it.discount || 0);
   if (it.kind === "freebie" || d <= 0 || base.amount <= 0) return base;
   const off =
@@ -213,7 +214,8 @@ function computeLine(
 
 function computeLineBase(
   it: Item,
-  programs: GroomProgram[] = GROOM_PROGRAMS
+  programs: GroomProgram[] = GROOM_PROGRAMS,
+  sizeLabels?: Partial<Record<GroomSize, string>>
 ): {
   label: string;
   amount: number;
@@ -230,7 +232,7 @@ function computeLineBase(
   if (it.kind === "grooming") {
     const prog = groomProgram(it.program, programs);
     const unit = it.priceOverride ?? groomPrice(it.program, it.breed, it.size, programs);
-    const base = `${prog?.name || "อาบน้ำ"} · ${it.breed} · ${groomSizeLabel(it.size)}`;
+    const base = `${prog?.name || "อาบน้ำ"} · ${it.breed} · ${groomSizeLabel(it.size, sizeLabels)}`;
     return {
       label: withCat(qty > 1 ? `${base} × ${qty}` : base),
       amount: unit * qty,
@@ -452,6 +454,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
   const [billMonth, setBillMonth] = useState("");
   // ตารางราคาโปรแกรมอาบน้ำ — ค่าเริ่มต้นของระบบ จนกว่า config จะโหลดเสร็จ (มีโปรแกรมที่ร้านเพิ่มเองด้วย)
   const [groomPrograms, setGroomPrograms] = useState<GroomProgram[]>(GROOM_PROGRAMS);
+  const [groomSizeLabels, setGroomSizeLabels] = useState<Partial<Record<GroomSize, string>>>({});
   const [items, setItems] = useState<Item[]>([newGrooming()]);
   // ขายเร็ว ไม่ระบุลูกค้า — ใช้ลูกค้าโครง "ลูกค้าหน้าร้าน" แทน (สำหรับขายสินค้าล้วนๆ ไม่มีนัด)
   const [quickSale, setQuickSale] = useState(false);
@@ -508,6 +511,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
       }))
     );
     setGroomPrograms(resolveGroomPrograms(config?.groomPricePrograms));
+    setGroomSizeLabels(config?.groomSizeLabels || {});
     if (config?.payment) setPay(config.payment);
     if (config?.business?.name) setShopName(config.business.name);
     if (config?.billing) setBillMsg(config.billing);
@@ -651,7 +655,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
       if (aDue !== bDue) return aDue ? -1 : 1;
       return aDue ? kb.localeCompare(ka) : ka.localeCompare(kb);
     });
-  const lines = items.map((it) => computeLine(it, groomPrograms));
+  const lines = items.map((it) => computeLine(it, groomPrograms, groomSizeLabels));
   const subtotal = lines.reduce((s, l) => s + l.amount, 0);
   const selectedPromo = promos.find((p) => p.id === promoId);
   const promoDiscount = selectedPromo
@@ -1863,7 +1867,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
           <SectionLabel>Items · รายการ</SectionLabel>
           <div className="space-y-3">
             {items.map((item, i) => {
-              const line = computeLine(item, groomPrograms);
+              const line = computeLine(item, groomPrograms, groomSizeLabels);
               const prog = groomProgram(item.program, groomPrograms);
               const stdUnit = standardUnitPrice(item, groomPrograms);
               const isSpecial =
@@ -1993,7 +1997,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
                           }
                           className={sub}
                         >
-                          {GROOM_SIZES.map((s) => (
+                          {resolveGroomSizes(groomSizeLabels).map((s) => (
                             <option key={s.id} value={s.id}>
                               {s.label}
                             </option>
