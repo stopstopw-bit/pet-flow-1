@@ -39,8 +39,30 @@ export function isPlaceholderSupabaseUrl(raw?: string): boolean {
   return !!m && !/^[a-z0-9]{20}$/.test(m[1]);
 }
 
+/**
+ * อ่าน env ตอนรันจริง — `process.env.NEXT_PUBLIC_*` แบบตรงๆ ถูก Next ฝังค่าไว้ตั้งแต่ตอน build
+ * ถ้าค่าใน Vercel เปลี่ยนทีหลัง เว็บจะยังชี้ที่เก่า (เคยเจอชี้ไปโปรเจกต์ที่ลบไปแล้ว)
+ */
+export function runtimeEnv(key: string): string | undefined {
+  return process.env[key];
+}
+
+export function getSupabaseUrlSource(): { source: string; host: string | null }[] {
+  const host = (v?: string) => {
+    const u = normalizeSupabaseUrl(v);
+    return u ? new URL(u).host : null;
+  };
+  return [
+    { source: "NEXT_PUBLIC_SUPABASE_URL", host: host(runtimeEnv("NEXT_PUBLIC_SUPABASE_URL")) },
+    { source: "SUPABASE_URL", host: host(runtimeEnv("SUPABASE_URL")) },
+    { source: "build", host: host(process.env.NEXT_PUBLIC_SUPABASE_URL) },
+  ];
+}
+
 export function getSupabaseUrl() {
-  return normalizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL);
+  return normalizeSupabaseUrl(
+    runtimeEnv("NEXT_PUBLIC_SUPABASE_URL") || runtimeEnv("SUPABASE_URL") || process.env.NEXT_PUBLIC_SUPABASE_URL
+  );
 }
 
 export function isSupabaseConfigured() {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPlatformSessionFrom } from "@/lib/platform-auth";
-import { getSupabase, getSupabaseUrl } from "@/lib/supabase/server";
+import { getSupabase, getSupabaseUrl, getSupabaseUrlSource } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit-log";
 import { generateSalt, hashPassword } from "@/lib/auth";
 import { withTenant } from "@/lib/tenant-context";
@@ -77,7 +77,10 @@ async function probeSupabase(): Promise<string> {
         : code === "TimeoutError" || code === "UND_ERR_CONNECT_TIMEOUT"
           ? "ต่อช้าเกินไป"
           : cause?.message || String(e);
-    return `ต่อ ${host} ไม่ได้: ${why}${code ? ` (${code})` : ""}`;
+    const sources = getSupabaseUrlSource()
+      .map((s) => `${s.source}=${s.host ?? "-"}`)
+      .join(", ");
+    return `ต่อ ${host} ไม่ได้: ${why}${code ? ` (${code})` : ""} [${sources}]`;
   }
 }
 

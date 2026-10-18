@@ -1,6 +1,6 @@
 import { readFileSync } from "fs";
 import { join } from "path";
-import { getSupabase, getSupabaseUrl, isSupabaseConfigured, isPlaceholderSupabaseUrl } from "./server";
+import { getSupabase, getSupabaseUrl, isSupabaseConfigured, isPlaceholderSupabaseUrl, runtimeEnv } from "./server";
 
 export type SetupStatus = {
   supabaseUrl: boolean;
@@ -61,7 +61,7 @@ function withoutSslParams(url: string) {
 }
 
 export async function checkSetupStatus(): Promise<SetupStatus> {
-  const rawUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)?.trim();
+  const rawUrl = (runtimeEnv("NEXT_PUBLIC_SUPABASE_URL") || runtimeEnv("SUPABASE_URL") || process.env.NEXT_PUBLIC_SUPABASE_URL)?.trim();
   const supabaseUrl = Boolean(rawUrl);
   const serviceKey = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY?.trim());
   const databaseUrl = Boolean(getDatabaseUrl());
