@@ -190,7 +190,7 @@ export default function PlatformDashboard() {
         จัดการทุกร้านบนแพลตฟอร์มจากที่เดียว — สร้างร้านใหม่, ระงับ/เปิดใช้งาน, เข้าดูแทน
       </p>
 
-      <MigrateOldDb />
+      <MigrateOldDb explainMissing={!loading && !loadErr && tenants.length === 0} />
 
       <form
         onSubmit={createTenant}
