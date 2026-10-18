@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPlatformSessionFrom } from "@/lib/platform-auth";
-import { getSupabase } from "@/lib/supabase/server";
+import { getSupabase, getSupabaseUrl } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit-log";
 import { generateSalt, hashPassword } from "@/lib/auth";
 import { withTenant } from "@/lib/tenant-context";
@@ -38,7 +38,10 @@ export async function GET(req: NextRequest) {
     .from("tenants")
     .select("id, slug, name, status, template, trial_ends_at, created_at, owner_username")
     .order("created_at", { ascending: false });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    const hint = /fetch failed/i.test(error.message) ? await probeSupabase() : "";
+    return NextResponse.json({ error: hint ? `${error.message} — ${hint}` : error.message }, { status: 500 });
+  }
 
   return NextResponse.json({
     tenants: (data || []).map((t) => ({
@@ -52,6 +55,30 @@ export async function GET(req: NextRequest) {
       ownerUsername: t.owner_username,
     })),
   });
+}
+
+/**
+ * "fetch failed" ไม่บอกอะไรเลย — ลองต่อ Supabase ตรงๆ แล้วบอกว่าต่อไปที่ไหน และพังเพราะอะไร
+ * (ชื่อโดเมนผิด / ต่อไม่ติด / ช้าเกิน) ไม่โชว์ key
+ */
+async function probeSupabase(): Promise<string> {
+  const url = getSupabaseUrl();
+  if (!url) return "ไม่มี NEXT_PUBLIC_SUPABASE_URL";
+  const host = new URL(url).host;
+  try {
+    const res = await fetch(`${url}/auth/v1/health`, { signal: AbortSignal.timeout(8000) });
+    return `ต่อ ${host} ได้ (HTTP ${res.status}) แต่คำขอเมื่อกี้ล้ม — ลองรีเฟรชอีกครั้ง`;
+  } catch (e) {
+    const cause = (e as { cause?: { code?: string; message?: string } })?.cause;
+    const code = cause?.code || (e instanceof Error ? e.name : "");
+    const why =
+      code === "ENOTFOUND" || code === "EAI_AGAIN"
+        ? "หาโดเมนนี้ไม่เจอ — ที่อยู่ Supabase ผิด"
+        : code === "TimeoutError" || code === "UND_ERR_CONNECT_TIMEOUT"
+          ? "ต่อช้าเกินไป"
+          : cause?.message || String(e);
+    return `ต่อ ${host} ไม่ได้: ${why}${code ? ` (${code})` : ""}`;
+  }
 }
 
 function slugify(s: string) {
