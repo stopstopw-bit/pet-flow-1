@@ -10,6 +10,7 @@ import {
   verifySession,
 } from "@/lib/auth";
 import { findTenantByLegacyOwnerCode, findTenantByOwnerLogin } from "@/lib/tenant-directory";
+import { getSupabase } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -37,12 +38,20 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const username = String(body.username || "").trim();
   const password = String(body.password || "");
+  // ร้านที่หน้าล็อกอินถูกเปิดมา (/s/<slug>/admin/login) — ว่าง = หน้า /admin/login แบบไม่ระบุร้าน
+  const shop = String(body.shop || "").trim().toLowerCase();
   if (!username) {
     return NextResponse.json({ error: "กรอก username" }, { status: 400 });
   }
 
   let payload:
-    | { role: "owner" | "staff"; name: string; tenantId: string; menus?: string[] }
+    | {
+        role: "owner" | "staff";
+        name: string;
+        tenantId: string;
+        tenantSlug?: string;
+        menus?: string[];
+      }
     | null = null;
 
   // 1) เจ้าของร้าน — username+password ค้นข้ามทุกร้าน
@@ -88,6 +97,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "username หรือ password ไม่ถูกต้อง" }, { status: 401 });
   }
 
+  const tenantSlug = await slugForTenant(payload.tenantId);
+  if (tenantSlug) payload.tenantSlug = tenantSlug;
+  // ล็อกอินจากลิงก์ของร้านหนึ่ง ต้องเป็นบัญชีของร้านนั้นเท่านั้น
+  if (shop && tenantSlug !== shop) {
+    return NextResponse.json(
+      { error: `บัญชีนี้ไม่ใช่ของร้าน "${shop}" — ใช้ username/password ของร้านนี้` },
+      { status: 401 }
+    );
+  }
+
   let token: string;
   try {
     token = await signSession(payload);
@@ -101,6 +120,13 @@ export async function POST(req: NextRequest) {
   const res = NextResponse.json({ ok: true, ...payload });
   res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
   return res;
+}
+
+async function slugForTenant(tenantId: string): Promise<string | undefined> {
+  const sb = getSupabase();
+  if (!sb) return undefined;
+  const { data } = await sb.from("tenants").select("slug").eq("id", tenantId).maybeSingle();
+  return (data as { slug?: string } | null)?.slug || undefined;
 }
 
 /** ออกจากระบบ */

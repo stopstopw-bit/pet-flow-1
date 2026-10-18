@@ -113,9 +113,10 @@ export async function PATCH(
       role: "owner",
       name: `${tenant.name} (เข้าดูแทน)`,
       tenantId: id,
+      tenantSlug: tenant.slug,
       impersonating: true,
     });
-    const res = NextResponse.json({ ok: true, redirect: "/admin" });
+    const res = NextResponse.json({ ok: true, redirect: `/s/${tenant.slug}/admin` });
     res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions(1));
     return res;
   }
