@@ -43,6 +43,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: hint ? `${error.message} — ${hint}` : error.message }, { status: 500 });
   }
 
+  await repairBadSlugs(sb, data || []);
+
   return NextResponse.json({
     tenants: (data || []).map((t) => ({
       id: t.id,
@@ -84,12 +86,47 @@ async function probeSupabase(): Promise<string> {
   }
 }
 
+/**
+ * ลิงก์ร้าน /s/<slug> รับแค่ a-z 0-9 และ - (ดู middleware) — ห้ามมีตัวไทย/สระลอยติดมา
+ * ไม่งั้นสร้างร้านได้แต่เปิดลิงก์แล้วขึ้น 404
+ */
 function slugify(s: string) {
   return s
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9ก-๙-]+/g, "-")
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-{2,}/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+const VALID_SLUG = /^[a-z0-9-]+$/;
+
+/** ซ่อมร้านที่สร้างไว้ก่อนแก้ slugify — slug มีตัวอักษรที่ลิงก์เปิดไม่ได้ */
+async function repairBadSlugs(
+  sb: NonNullable<ReturnType<typeof getSupabase>>,
+  rows: { id: string; slug: string; owner_username: string | null }[]
+) {
+  for (const t of rows) {
+    if (VALID_SLUG.test(t.slug)) continue;
+    const fixed = slugify(t.slug);
+    if (!fixed || rows.some((o) => o.slug === fixed)) continue;
+    const update: Record<string, string> = { slug: fixed };
+    if (t.owner_username === t.slug) update.owner_username = fixed;
+    const { error } = await sb.from("tenants").update(update).eq("id", t.id);
+    if (error) continue;
+    await logAudit({
+      tenantId: t.id,
+      actorType: "platform",
+      actorId: "platform_owner",
+      action: "repair_tenant_slug",
+      resourceType: "tenant",
+      resourceId: t.id,
+      beforeState: { slug: t.slug },
+      afterState: { slug: fixed },
+    });
+    if (update.owner_username) t.owner_username = fixed;
+    t.slug = fixed;
+  }
 }
 
 /** สร้างร้านใหม่ — username เจ้าของ = slug โดย default, password สุ่มให้ */
