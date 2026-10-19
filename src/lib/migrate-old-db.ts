@@ -9,7 +9,7 @@
  * - ข้าม audit_logs (id เป็น bigserial — ใส่ id เดิมแล้ว sequence จะชนตอนเขียน log ใหม่)
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { getSupabase, getSupabaseUrl, normalizeSupabaseUrl } from "@/lib/supabase/server";
+import { getDirectoryDb, getSupabaseUrl, normalizeSupabaseUrl } from "@/lib/supabase/server";
 import { bootstrapDatabase } from "@/lib/supabase/bootstrap";
 
 /** เรียงให้ตารางแม่มาก่อนตารางลูก (foreign key) — ตามลำดับใน supabase/full-setup.sql */
@@ -76,7 +76,7 @@ export function migrateStatus() {
   if (!old) {
     return { configured: false, ready: false, message: "ยังไม่ได้ตั้ง OLD_SUPABASE_URL / OLD_SUPABASE_SERVICE_ROLE_KEY ใน Vercel" };
   }
-  if (!current || !getSupabase()) {
+  if (!current || !getDirectoryDb()) {
     return { configured: true, ready: false, message: "ยังไม่ได้ตั้งฐานข้อมูลตัวใหม่ใน Vercel" };
   }
   if (old.url === current) {
@@ -160,7 +160,7 @@ async function copyFiles(src: SupabaseClient, dst: SupabaseClient) {
 
 export async function migrateFromOldDb(): Promise<MigrateReport> {
   const old = oldConfig();
-  const dst = getSupabase();
+  const dst = getDirectoryDb();
   const toUrl = getSupabaseUrl();
   if (!old || !dst || !toUrl) throw new Error(migrateStatus().message);
 

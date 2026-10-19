@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyStaffLogin } from "@/lib/staff-store";
+import { withTenant } from "@/lib/tenant-context";
+import { tenantIdForSlug } from "@/lib/tenant-resolve";
 import {
   SESSION_COOKIE,
   getBootstrapTenantId,
@@ -10,7 +12,7 @@ import {
   verifySession,
 } from "@/lib/auth";
 import { findTenantByLegacyOwnerCode, findTenantByOwnerLogin } from "@/lib/tenant-directory";
-import { getSupabase } from "@/lib/supabase/server";
+import { getDirectoryDb } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -62,7 +64,11 @@ export async function POST(req: NextRequest) {
 
   // 2) พนักงาน — username+password ค้นข้ามทุกร้านเช่นกัน
   if (!payload) {
-    const staff = await verifyStaffLogin(username, password);
+    // ล็อกอินจากลิงก์ร้าน → ค้นในฐานของร้านนั้น (เผื่อร้านแยกไปฐานของตัวเองแล้ว)
+    const shopId = shop ? await tenantIdForSlug(shop) : null;
+    const staff = shopId
+      ? await withTenant(shopId, () => verifyStaffLogin(username, password))
+      : await verifyStaffLogin(username, password);
     if (staff) {
       payload = {
         role: "staff",
@@ -123,7 +129,7 @@ export async function POST(req: NextRequest) {
 }
 
 async function slugForTenant(tenantId: string): Promise<string | undefined> {
-  const sb = getSupabase();
+  const sb = getDirectoryDb();
   if (!sb) return undefined;
   const { data } = await sb.from("tenants").select("slug").eq("id", tenantId).maybeSingle();
   return (data as { slug?: string } | null)?.slug || undefined;

@@ -1,6 +1,6 @@
 import { readFileSync } from "fs";
 import { join } from "path";
-import { getSupabase, getSupabaseUrl, isSupabaseConfigured, isPlaceholderSupabaseUrl, runtimeEnv } from "./server";
+import { getDirectoryDb, getSupabaseUrl, isSupabaseConfigured, isPlaceholderSupabaseUrl, runtimeEnv } from "./server";
 
 export type SetupStatus = {
   supabaseUrl: boolean;
@@ -93,7 +93,7 @@ export async function checkSetupStatus(): Promise<SetupStatus> {
     };
   }
 
-  const sb = getSupabase();
+  const sb = getDirectoryDb();
   if (!sb) {
     return {
       supabaseUrl,
