@@ -1,4 +1,4 @@
-import { getSupabase } from "./supabase/server";
+import { getDirectoryDb } from "./supabase/server";
 import { hashOwnerCode, hashPassword } from "./auth";
 import { getBootstrapTenantId } from "./auth";
 
@@ -21,7 +21,7 @@ export async function findTenantByOwnerLogin(
   username: string,
   password: string
 ): Promise<{ id: string; name: string; status: string } | null> {
-  const sb = getSupabase();
+  const sb = getDirectoryDb();
   if (!sb) return null;
   const norm = username.trim().toLowerCase();
   const { data } = await sb
@@ -45,7 +45,7 @@ export async function findTenantByOwnerLogin(
 export async function findTenantByLegacyOwnerCode(
   code: string
 ): Promise<{ id: string; name: string; status: string } | null> {
-  const sb = getSupabase();
+  const sb = getDirectoryDb();
   if (!sb) return null;
   const hash = await hashOwnerCode(code);
   const { data } = await sb
@@ -63,7 +63,7 @@ export async function findTenantByLegacyOwnerCode(
  * (เตือนนัด, สรุปเช้า/เย็น ฯลฯ) ไม่มี Supabase (dev) = เหลือแค่ร้าน bootstrap เดียว
  */
 export async function listActiveTenantIds(): Promise<string[]> {
-  const sb = getSupabase();
+  const sb = getDirectoryDb();
   const bootstrap = getBootstrapTenantId();
   if (!sb) return bootstrap ? [bootstrap] : [];
   const { data } = await sb.from("tenants").select("id").in("status", ["trial", "active"]);

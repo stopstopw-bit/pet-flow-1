@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { getSupabase } from "./supabase/server";
+import { getDirectoryDb } from "./supabase/server";
 import { getBootstrapTenantId } from "./auth";
 
 /**
@@ -35,7 +35,7 @@ export async function tenantIdForSlug(slug: string): Promise<string | null> {
   const cached = slugToId.get(key);
   if (cached) return cached;
 
-  const sb = getSupabase();
+  const sb = getDirectoryDb();
   if (!sb) return null;
   const { data } = await sb
     .from("tenants")

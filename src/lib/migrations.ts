@@ -1,4 +1,4 @@
-import { getSupabase } from "./supabase/server";
+import { getDirectoryDb } from "./supabase/server";
 
 /**
  * ระบบอัปเดตโครงสร้างฐานข้อมูลอัตโนมัติ (auto-migrate)
@@ -84,7 +84,7 @@ export async function checkSchema(): Promise<{
   connected: boolean;
   rows: SchemaCheckRow[];
 }> {
-  const sb = getSupabase();
+  const sb = getDirectoryDb();
   if (!sb) return { ok: false, connected: false, rows: [] };
 
   const rows: SchemaCheckRow[] = [];
@@ -597,7 +597,7 @@ function looksLikeMissingFunction(msg: string) {
  * คืน true ถ้าคอลัมน์พร้อมใช้ (idempotent — "add column if not exists")
  */
 export async function ensureMigration(name: string): Promise<boolean> {
-  const sb = getSupabase();
+  const sb = getDirectoryDb();
   if (!sb) return false;
   const m = MIGRATIONS.find((x) => x.name === name);
   if (!m) return false;
@@ -616,7 +616,7 @@ export async function ensureMigration(name: string): Promise<boolean> {
 
 /** รันทุก migration ผ่าน exec_sql (idempotent — ปลอดภัยรันซ้ำ) */
 export async function runMigrations(): Promise<MigrateResult> {
-  const sb = getSupabase();
+  const sb = getDirectoryDb();
   if (!sb) {
     return {
       ok: false,

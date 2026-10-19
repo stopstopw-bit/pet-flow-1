@@ -195,6 +195,13 @@ export async function middleware(req: NextRequest) {
       url.search = `?next=${encodeURIComponent(pathname)}`;
       return withCookie(NextResponse.redirect(url));
     }
+    // เปิดลิงก์ของร้านหนึ่ง แต่คุกกี้ล็อกอินค้างเป็นของอีกร้าน — ห้ามโชว์หลังบ้านร้านที่ค้างอยู่
+    if (tenantSlug && session.tenantSlug !== tenantSlug) {
+      const url = req.nextUrl.clone();
+      url.pathname = `/s/${tenantSlug}/admin/login`;
+      url.search = "";
+      return withCookie(NextResponse.redirect(url));
+    }
   }
 
   return proceed();

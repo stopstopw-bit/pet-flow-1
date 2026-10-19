@@ -90,7 +90,11 @@ export function getSupabaseKeyRole(): "service_role" | "anon" | "unknown" | "mis
   return "unknown";
 }
 
-export function getSupabase() {
+/**
+ * ฐานกลางของแพลตฟอร์ม — ตารางรายชื่อร้าน (tenants), audit, ระบบแพลตฟอร์ม
+ * ใช้ตัวนี้กับงานที่ไม่ได้เป็นของร้านใดร้านหนึ่ง แม้ร้านนั้นจะย้ายไปฐานของตัวเองแล้ว
+ */
+export function getDirectoryDb() {
   const url = getSupabaseUrl();
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
   if (!url || !key) return null;
@@ -100,4 +104,54 @@ export function getSupabase() {
     });
   }
   return client;
+}
+
+/**
+ * ร้านที่กำลังประมวลผลอยู่ — tenant-context.ts ลงทะเบียนให้ตอนโหลด
+ * (ไม่ import ตรง ๆ เพราะไฟล์นี้ถูกดึงเข้า middleware ที่ใช้ async_hooks ไม่ได้)
+ */
+let readCurrentTenant: (() => string | undefined) | null = null;
+export function setCurrentTenantReader(fn: () => string | undefined) {
+  readCurrentTenant = fn;
+}
+
+/**
+ * ร้านที่แยกไปใช้ฐานของตัวเอง — ตั้ง env 2 ตัวใน Vercel (id ร้าน เปลี่ยน - เป็น _):
+ *   TENANT_DB_URL__<id>  = https://<ref>.supabase.co
+ *   TENANT_DB_KEY__<id>  = service_role key ของฐานนั้น
+ * ไม่ตั้ง = ใช้ฐานกลางเหมือนเดิม ดูขั้นตอนใน SEPARATE_SHOP_DB.md
+ */
+export function tenantDbEnvNames(tenantId: string) {
+  const id = tenantId.replace(/-/g, "_");
+  return { url: `TENANT_DB_URL__${id}`, key: `TENANT_DB_KEY__${id}` };
+}
+
+const tenantClients = new Map<string, SupabaseClient>();
+
+/** client ของฐานแยกของร้านนี้ — null ถ้าร้านนี้ยังใช้ฐานกลาง */
+export function getTenantDb(tenantId: string): SupabaseClient | null {
+  const cached = tenantClients.get(tenantId);
+  if (cached) return cached;
+  const names = tenantDbEnvNames(tenantId);
+  const url = normalizeSupabaseUrl(runtimeEnv(names.url));
+  const key = runtimeEnv(names.key)?.trim();
+  if (!url || !key) return null;
+  const c = createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  tenantClients.set(tenantId, c);
+  return c;
+}
+
+/**
+ * ฐานข้อมูลของร้านที่กำลังประมวลผลอยู่ — ร้านที่แยกฐานแล้วได้ฐานของตัวเอง
+ * ร้านอื่น (และงานที่ไม่อยู่ใน withTenant) ได้ฐานกลาง
+ */
+export function getSupabase() {
+  const tenantId = readCurrentTenant?.();
+  if (tenantId) {
+    const own = getTenantDb(tenantId);
+    if (own) return own;
+  }
+  return getDirectoryDb();
 }

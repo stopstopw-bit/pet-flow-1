@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPlatformSessionFrom } from "@/lib/platform-auth";
-import { getSupabase } from "@/lib/supabase/server";
+import { getDirectoryDb } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit-log";
 import {
   SESSION_COOKIE,
@@ -35,7 +35,7 @@ export async function PATCH(
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
   const action = String(body.action || "");
-  const sb = getSupabase();
+  const sb = getDirectoryDb();
   if (!sb) return NextResponse.json({ error: "no_db" }, { status: 500 });
 
   const { data: tenant } = await sb
@@ -113,9 +113,10 @@ export async function PATCH(
       role: "owner",
       name: `${tenant.name} (เข้าดูแทน)`,
       tenantId: id,
+      tenantSlug: tenant.slug,
       impersonating: true,
     });
-    const res = NextResponse.json({ ok: true, redirect: "/admin" });
+    const res = NextResponse.json({ ok: true, redirect: `/s/${tenant.slug}/admin` });
     res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions(1));
     return res;
   }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPlatformSessionFrom } from "@/lib/platform-auth";
-import { getSupabase, getSupabaseUrl, getSupabaseUrlSource } from "@/lib/supabase/server";
+import { getDirectoryDb, getSupabaseUrl, getSupabaseUrlSource } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit-log";
 import { generateSalt, hashPassword } from "@/lib/auth";
 import { withTenant } from "@/lib/tenant-context";
@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
   if (!(await requirePlatform(req))) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const sb = getSupabase();
+  const sb = getDirectoryDb();
   if (!sb) {
     return NextResponse.json(
       { error: "ยังไม่ได้ตั้ง NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY ใน Vercel" },
@@ -103,7 +103,7 @@ const VALID_SLUG = /^[a-z0-9-]+$/;
 
 /** ซ่อมร้านที่สร้างไว้ก่อนแก้ slugify — slug มีตัวอักษรที่ลิงก์เปิดไม่ได้ */
 async function repairBadSlugs(
-  sb: NonNullable<ReturnType<typeof getSupabase>>,
+  sb: NonNullable<ReturnType<typeof getDirectoryDb>>,
   rows: { id: string; slug: string; owner_username: string | null }[]
 ) {
   for (const t of rows) {
@@ -144,7 +144,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "ตั้ง slug ไม่ได้ — ลองใส่ชื่อเป็นภาษาอังกฤษ" }, { status: 400 });
   }
 
-  const sb = getSupabase();
+  const sb = getDirectoryDb();
   if (!sb) return NextResponse.json({ error: "no_db" }, { status: 500 });
 
   // username ของเจ้าของร้าน = slug (unique อยู่แล้ว), password สุ่มให้ — เก็บแค่แฮช

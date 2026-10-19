@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type { NextRequest } from "next/server";
 import { getBootstrapTenantId } from "./auth";
 import { resolveTenantId } from "./tenant-resolve";
+import { setCurrentTenantReader } from "./supabase/server";
 
 /**
  * ตัวร้านที่กำลังประมวลผลอยู่ตอนนี้ — เซ็ตครั้งเดียวตอนเข้า API route
@@ -11,6 +12,8 @@ import { resolveTenantId } from "./tenant-resolve";
  * ที่ต้องกรองด้วย tenant_id โดยไม่ผ่านทั้งสองนี้ก่อน ไม่งั้นข้อมูลข้ามร้านได้
  */
 const storage = new AsyncLocalStorage<string>();
+// ให้ getSupabase() รู้ว่ากำลังทำงานให้ร้านไหน แล้วเลือกฐานของร้านนั้น (ถ้าแยกฐานไว้)
+setCurrentTenantReader(() => storage.getStore());
 
 /**
  * เรียกจาก store function เพื่อเอา tenant_id ปัจจุบันไปกรอง query
