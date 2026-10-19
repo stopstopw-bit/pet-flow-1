@@ -1,4 +1,3 @@
-import { BUSINESS } from "@/lib/business";
 import { getAppUrlFromEnv } from "@/lib/line-config";
 import { buildLiffUrl } from "@/lib/liff-urls";
 import {
@@ -12,9 +11,12 @@ import {
 export type { BroadcastAction, BroadcastActionId, BroadcastTemplate };
 export { BROADCAST_ACTIONS, BROADCAST_TEMPLATES };
 
+type ShopContact = { lineOa?: string; maps?: string };
+
 export function resolveBroadcastActionUri(
   actionId: BroadcastActionId,
-  liffId?: string
+  liffId?: string,
+  shop: ShopContact = {}
 ): string {
   const appBase = getAppUrlFromEnv() || "https://petflow.example.com";
   const lid = liffId?.trim();
@@ -37,9 +39,9 @@ export function resolveBroadcastActionUri(
         ? buildLiffUrl(lid, { path: "bookings" })
         : `${appBase}/app/bookings`;
     case "line_chat":
-      return `https://line.me/R/ti/p/${BUSINESS.lineOa}`;
+      return shop.lineOa ? `https://line.me/R/ti/p/${shop.lineOa}` : `${appBase}/app`;
     case "maps":
-      return BUSINESS.maps;
+      return shop.maps || `${appBase}/app`;
     default:
       return `${appBase}/app`;
   }
@@ -47,13 +49,14 @@ export function resolveBroadcastActionUri(
 
 export function buildBroadcastButtons(
   actionIds: BroadcastActionId[],
-  liffId?: string
+  liffId?: string,
+  shop: ShopContact = {}
 ) {
   return actionIds.slice(0, 3).map((id) => {
     const preset = BROADCAST_ACTIONS.find((a) => a.id === id);
     return {
       label: preset?.label || id,
-      uri: resolveBroadcastActionUri(id, liffId),
+      uri: resolveBroadcastActionUri(id, liffId, shop),
     };
   });
 }

@@ -5,7 +5,7 @@ import { logAudit } from "@/lib/audit-log";
 import { generateSalt, hashPassword } from "@/lib/auth";
 import { withTenant } from "@/lib/tenant-context";
 import { replaceSiteConfig } from "@/lib/config-store";
-import { getDefaultSiteConfig } from "@/lib/defaults/site-config";
+import { getBlankShopConfig } from "@/lib/defaults/site-config";
 
 /** สุ่มรหัสผ่านให้อ่านง่าย จำง่าย — ตัวอักษร/ตัวเลขที่ไม่สับสน (ตัด 0/O, 1/I ออก) */
 function generatePassword(): string {
@@ -173,9 +173,8 @@ export async function POST(req: NextRequest) {
 
   // ชื่อร้านที่ตั้งตอนสร้างต้องไปโผล่ทุกที่ในระบบของร้านนั้นทันที (business.name) —
   // ไม่งั้นร้านใหม่จะเห็น "PetFlow" (ค่า default) ทั่วทั้งระบบจนกว่าจะเข้าไปแก้เองในตั้งค่า
-  const seedConfig = getDefaultSiteConfig();
-  seedConfig.business.name = name;
-  await withTenant(data.id, () => replaceSiteConfig(seedConfig));
+  // ช่องที่เป็นของร้าน (บัญชีธนาคาร/LINE/เบอร์/ลิงก์) เริ่มว่าง ไม่เอาของร้านอื่นหรือ env มาใส่
+  await withTenant(data.id, () => replaceSiteConfig(getBlankShopConfig(name)));
 
   await logAudit({
     tenantId: data.id,

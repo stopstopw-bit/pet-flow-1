@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { BUSINESS } from "@/lib/business";
 import {
   createInvoice,
   getInvoice,
@@ -137,7 +136,7 @@ async function handleGet(req: NextRequest, id: string | null) {
     return NextResponse.json({
       invoice: inv,
       payment: await getPaymentConfig(),
-      mapsUrl: BUSINESS.maps,
+      mapsUrl: (await getSiteConfig()).business.maps,
     });
   }
 

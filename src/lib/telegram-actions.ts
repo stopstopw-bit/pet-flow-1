@@ -10,6 +10,7 @@ import { TIER_LABELS } from "./customer-tier";
 import { listInvoices } from "./invoices-store";
 import { pushLineMessage, buildReminderFlex } from "./line";
 import { getSiteConfig } from "./config-store";
+import { getLineCredentials } from "./line-config";
 import { formatBookingTelegram, sendTelegram } from "./telegram";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -274,7 +275,7 @@ export async function sendBookingConfirmFromTelegram(query: string) {
     };
   }
 
-  const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
+  const liffId = (await getLineCredentials())?.liffId;
   const base = process.env.NEXT_PUBLIC_APP_URL || "";
   const confirmUrl = liffId
     ? `https://liff.line.me/${liffId}?id=${b.id}`

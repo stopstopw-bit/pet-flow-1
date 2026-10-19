@@ -8,23 +8,24 @@ import { roomPricing } from "./room-board";
 export const BUSINESS = {
   name: "PetFlow",
   tagline: { th: "โรงแรมแมว · อาบน้ำ & กรูมมิ่ง", en: "Cat Hotel · Grooming & Spa" },
-  lineOa: "@petflow",
-  phones: ["02-123-4567"],
+  // ช่องติดต่อทั้งหมดเป็นของแต่ละร้าน — เริ่มว่างเสมอ ร้านใหม่ต้องไม่ได้ LINE/เบอร์/ลิงก์ของร้านอื่นติดมา
+  lineOa: "",
+  phones: [] as string[],
   address: "",
-  maps: "https://www.google.com/maps",
-  facebook: "petflow",
+  maps: "",
+  facebook: "",
   /** โซเชียลมีเดีย — ใส่ลิงก์ทางการของร้าน */
   social: {
-    line: "https://line.me/R/ti/p/@petflow",
-    instagram: "https://www.instagram.com/",
-    tiktok: "https://www.tiktok.com/",
-    facebook: "https://www.facebook.com/",
+    line: "",
+    instagram: "",
+    tiktok: "",
+    facebook: "",
   },
-  reviewUrl: "https://www.google.com/maps",
+  reviewUrl: "",
   reviewButtonText: "⭐ รีวิวให้เราหน่อยนะคะ",
   location: {
-    th: "กรุงเทพฯ",
-    en: "Bangkok",
+    th: "",
+    en: "",
   },
   pointsRate: 100, // บาท = 1 แต้ม
   // จ่ายด้วยเครดิต Member ไม่ได้แต้ม — ได้ส่วนลดตอนซื้อเครดิตไปแล้ว
