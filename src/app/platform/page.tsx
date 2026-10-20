@@ -136,6 +136,27 @@ export default function PlatformDashboard() {
     }
   };
 
+  const rename = async (t: Tenant) => {
+    const name = prompt("ชื่อร้านใหม่", t.name)?.trim();
+    if (!name || name === t.name) return;
+    setBusyId(t.id);
+    try {
+      const res = await fetch(`/api/platform/tenants/${t.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "rename", name }),
+      });
+      if (expired(res)) return;
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || "แก้ชื่อไม่สำเร็จ");
+      }
+      load();
+    } finally {
+      setBusyId("");
+    }
+  };
+
   const resetOwnerLogin = async (t: Tenant) => {
     if (
       !confirm(
@@ -319,6 +340,14 @@ export default function PlatformDashboard() {
                   <button
                     type="button"
                     disabled={busyId === t.id}
+                    onClick={() => rename(t)}
+                    className="rounded-full bg-latte/20 px-3 py-1.5 text-[11px] font-extrabold text-latte-deep disabled:opacity-40"
+                  >
+                    ✏️ แก้ชื่อ
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busyId === t.id}
                     onClick={() => resetOwnerLogin(t)}
                     className="rounded-full bg-honey/20 px-3 py-1.5 text-[11px] font-extrabold text-latte-deep disabled:opacity-40"
                   >
@@ -332,6 +361,18 @@ export default function PlatformDashboard() {
                   >
                     🔑 เข้าดูแทน
                   </button>
+                  {t.status === "trial" && (
+                    <button
+                      type="button"
+                      disabled={busyId === t.id}
+                      onClick={() => {
+                        if (confirm(`เปลี่ยน "${t.name}" จากทดลองใช้เป็นลูกค้าจริง?`)) setStatus(t.id, "active");
+                      }}
+                      className="rounded-full bg-sage/20 px-3 py-1.5 text-[11px] font-bold text-ok disabled:opacity-40"
+                    >
+                      ✅ ใช้งานจริง
+                    </button>
+                  )}
                   {t.status !== "suspended" ? (
                     <button
                       type="button"
