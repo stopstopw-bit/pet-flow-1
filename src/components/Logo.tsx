@@ -6,6 +6,9 @@ import { useConfig } from "@/components/ConfigProvider";
 export function Logo({ size = 48 }: { size?: number }) {
   const { config } = useConfig();
   const src = config.branding?.logoUrl || "/logo.jpg";
+  // โลโก้ที่ร้านอัปโหลดอยู่ใน Supabase Storage (ต่างโดเมน) — ไม่ผ่านตัวย่อรูปของ Next
+  // ไม่งั้นโดนบล็อกเพราะโดเมนไม่อยู่ใน images.remotePatterns แล้วรูปแตก
+  const external = !src.startsWith("/");
 
   return (
     <div
@@ -14,11 +17,11 @@ export function Logo({ size = 48 }: { size?: number }) {
     >
       <Image
         src={src}
-        alt="PetFlow"
+        alt={config.business?.name || "PetFlow"}
         width={size}
         height={size}
         className="h-full w-full object-cover"
-        unoptimized={src.startsWith("data:")}
+        unoptimized={external}
         priority
       />
     </div>
