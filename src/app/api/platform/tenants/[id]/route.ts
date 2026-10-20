@@ -3,6 +3,12 @@ import { getPlatformSessionFrom } from "@/lib/platform-auth";
 import { getDirectoryDb } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit-log";
 import {
+  clearTenantGateCache,
+  ensureDueDateColumn,
+  isMissingDueDate,
+  extendDueDate,
+} from "@/lib/tenant-billing";
+import {
   SESSION_COOKIE,
   generateSalt,
   hashPassword,
@@ -51,6 +57,7 @@ export async function PATCH(
       return NextResponse.json({ error: "invalid_status" }, { status: 400 });
     }
     await sb.from("tenants").update({ status }).eq("id", id);
+    clearTenantGateCache();
     await logAudit({
       tenantId: id,
       actorType: "platform",
@@ -83,6 +90,46 @@ export async function PATCH(
       afterState: { name },
     });
     return NextResponse.json({ ok: true });
+  }
+
+  if (action === "set_due_date" || action === "paid_month") {
+    // วันครบกำหนดจ่ายรายเดือน — ถึงวันนั้นยังไม่จ่าย ร้านปิดเองอัตโนมัติ (ดู tenant-billing.ts)
+    const read = () => sb.from("tenants").select("due_date").eq("id", id).maybeSingle();
+    let { data: cur, error: readErr } = await read();
+    if (readErr && isMissingDueDate(readErr.message) && (await ensureDueDateColumn())) {
+      ({ data: cur, error: readErr } = await read());
+    }
+    if (readErr) return NextResponse.json({ error: readErr.message }, { status: 500 });
+    const before = (cur?.due_date as string | null) || null;
+
+    let dueDate: string | null;
+    const update: Record<string, unknown> = {};
+    if (action === "set_due_date") {
+      const v = String(body.dueDate || "").trim();
+      if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+        return NextResponse.json({ error: "วันที่ไม่ถูกต้อง" }, { status: 400 });
+      }
+      dueDate = v || null;
+    } else {
+      // รับเงินสด/โอนนอกระบบ → ต่อ 1 เดือน (ดู extendDueDate) · ทดลองใช้อยู่ = เปลี่ยนเป็นใช้งานจริงด้วย
+      dueDate = extendDueDate(before, 1);
+      if (tenant.status === "trial") update.status = "active";
+    }
+    update.due_date = dueDate;
+    const { error } = await sb.from("tenants").update(update).eq("id", id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    clearTenantGateCache();
+    await logAudit({
+      tenantId: id,
+      actorType: "platform",
+      actorId: "platform_owner",
+      action: action === "paid_month" ? "tenant_paid_month" : "set_tenant_due_date",
+      resourceType: "tenant",
+      resourceId: id,
+      beforeState: { dueDate: before, status: tenant.status },
+      afterState: { dueDate, status: update.status || tenant.status },
+    });
+    return NextResponse.json({ ok: true, dueDate });
   }
 
   if (action === "reset_owner_login") {

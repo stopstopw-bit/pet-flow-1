@@ -28,6 +28,7 @@ export const ADMIN_TABS = [
   { href: "/admin/settings", label: "ตั้งค่า", icon: "⚙️" },
   { href: "/admin/trash", label: "ถังขยะ", icon: "🗑️" },
   { href: "/admin/setup", label: "ติดตั้ง", icon: "🚀" },
+  { href: "/admin/subscription", label: "ค่าบริการ PetFlow", icon: "🧾" },
 ] as const;
 
 const TABS = ADMIN_TABS;

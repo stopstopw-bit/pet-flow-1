@@ -1,6 +1,7 @@
 import { getDirectoryDb } from "./supabase/server";
 import { hashOwnerCode, hashPassword } from "./auth";
 import { getBootstrapTenantId } from "./auth";
+import { isTenantOpen, tenantGateById } from "./tenant-billing";
 
 /**
  * ค้นหาร้านข้ามทุกร้าน — ใช้เฉพาะตอนล็อกอิน (ยังไม่รู้ว่าเป็นร้านไหนจนกว่าจะเจอ username)
@@ -67,7 +68,10 @@ export async function listActiveTenantIds(): Promise<string[]> {
   const bootstrap = getBootstrapTenantId();
   if (!sb) return bootstrap ? [bootstrap] : [];
   const { data } = await sb.from("tenants").select("id").in("status", ["trial", "active"]);
-  const ids = (data || []).map((t: { id: string }) => t.id);
+  const all = (data || []).map((t: { id: string }) => t.id);
+  // ร้านที่เลยวันครบกำหนดจ่าย — ไม่ต้องส่งเตือน/สรุปให้
+  const gates = await Promise.all(all.map((id) => tenantGateById(id).catch(() => null)));
+  const ids = all.filter((_, i) => !gates[i] || isTenantOpen(gates[i]!));
   // ร้าน bootstrap อาจไม่มีแถวใน tenants (ร้านเดิมก่อน multi-tenant) — เติมเข้าไปกันตกหล่น
   if (bootstrap && !ids.includes(bootstrap)) ids.push(bootstrap);
   return ids;

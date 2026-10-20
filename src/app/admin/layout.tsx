@@ -39,12 +39,41 @@ function LogoutButton({ onClick, subtle }: { onClick: () => void; subtle?: boole
   );
 }
 
+/** เตือนก่อนถึงวันครบกำหนดจ่ายค่าบริการ 7 วัน และตอนเลยกำหนดแล้ว */
+function DueBanner({ dueDate, pathname }: { dueDate: string | null; pathname: string }) {
+  if (!dueDate) return null;
+  const today = new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10);
+  const days = Math.round((Date.parse(dueDate) - Date.parse(today)) / 86400_000);
+  if (days > 7) return null;
+  const when = new Date(`${dueDate}T00:00:00+07:00`).toLocaleDateString("th-TH", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "Asia/Bangkok",
+  });
+  const text =
+    days <= 0
+      ? "ร้านถูกระงับชั่วคราวเพราะเลยวันครบกำหนดชำระค่าบริการ ชำระแล้วอัปสลิปเพื่อเปิดใช้ต่อ"
+      : `ครบกำหนดชำระค่าบริการ PetFlow วันที่ ${when} (อีก ${days} วัน) ไม่ชำระร้านจะถูกระงับอัตโนมัติ`;
+  return (
+    <div className={`px-4 py-2 text-center text-xs font-bold text-white print:hidden ${days <= 0 ? "bg-red-600" : "bg-amber-600"}`}>
+      {text}
+      {pathname !== "/admin/subscription" && (
+        <a href="/admin/subscription" className="ml-2 underline">
+          ชำระค่าบริการ
+        </a>
+      )}
+    </div>
+  );
+}
+
 function AdminShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [ok, setOk] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [impersonating, setImpersonating] = useState(false);
+  const [dueDate, setDueDate] = useState<string | null>(null);
   // ชื่อร้านมาจาก config ของแต่ละร้าน (multi-tenant) — ไม่ hardcode
   const { config } = useConfig();
   const shopName = config.business?.name || "PetFlow";
@@ -71,6 +100,16 @@ function AdminShell({ children }: { children: React.ReactNode }) {
       sessionStorage.setItem("petflow-role", me.role);
       sessionStorage.setItem("petflow-staff-name", me.name || "พนักงาน");
       setImpersonating(Boolean(me.impersonating));
+      setDueDate(me.dueDate || null);
+      // เลยวันครบกำหนดจ่ายค่าบริการ — ร้านถูกปิด เหลือหน้าค่าบริการไว้อัปสลิปหน้าเดียว
+      if (me.overdue) {
+        if (pathname !== "/admin/subscription") {
+          router.replace("/admin/subscription");
+          return;
+        }
+        setOk(true);
+        return;
+      }
       if (me.role === "staff") {
         sessionStorage.setItem("petflow-menus", JSON.stringify(me.menus || []));
       } else {
@@ -170,6 +209,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
       )}
+      <DueBanner dueDate={dueDate} pathname={pathname} />
       <AdminNav menuOpen={menuOpen} setMenuOpen={setMenuOpen} />
       <div className={`mx-auto ${maxW} ${isDashboard ? "-mt-8" : "mt-4 lg:mt-6"} px-4 lg:grid lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-6 lg:px-6`}>
         <aside className="print:hidden">

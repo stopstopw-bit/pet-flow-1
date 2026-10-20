@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type { NextRequest } from "next/server";
 import { getBootstrapTenantId } from "./auth";
 import { resolveTenantId } from "./tenant-resolve";
+import { isTenantOpen, tenantGateById } from "./tenant-billing";
 import { setCurrentTenantReader } from "./supabase/server";
 
 /**
@@ -43,8 +44,21 @@ export function isBootstrapTenant(): boolean {
   return !!id && !!bootstrap && id === bootstrap;
 }
 
-/** ใช้ใน API route หลังบ้านที่ล็อกอินแล้ว (มี session.tenantId) */
-export function withTenant<T>(tenantId: string, fn: () => Promise<T>): Promise<T> {
+/**
+ * ใช้ใน API route หลังบ้านที่ล็อกอินแล้ว (มี session.tenantId)
+ * ร้านที่ถูกระงับ/เลยวันครบกำหนดจ่าย ใช้หลังบ้านต่อไม่ได้ แม้ session ยังไม่หมดอายุ
+ * ร้านที่ไม่มีแถวใน tenants (ร้าน bootstrap เดิม) หรืออ่านสถานะไม่ได้ = ปล่อยผ่าน
+ */
+export async function withTenant<T>(tenantId: string, fn: () => Promise<T>): Promise<T> {
+  const gate = await tenantGateById(tenantId).catch(() => null);
+  if (gate && !isTenantOpen(gate)) {
+    throw new Error("ร้านนี้ถูกระงับการใช้งาน (เลยวันครบกำหนดชำระ หรือถูกปิดโดยผู้ดูแลระบบ)");
+  }
+  return storage.run(tenantId, fn);
+}
+
+/** เหมือน withTenant แต่ไม่ตรวจว่าร้านเปิดอยู่ — ใช้กับหน้า "ค่าบริการ" ที่ร้านค้างจ่ายต้องเข้าได้ */
+export function withTenantEvenIfClosed<T>(tenantId: string, fn: () => Promise<T>): Promise<T> {
   return storage.run(tenantId, fn);
 }
 
