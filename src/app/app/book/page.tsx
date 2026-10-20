@@ -10,6 +10,7 @@ import { resolveGroomPrograms } from "@/lib/grooming-prices";
 import { extraCatChargePerNight } from "@/lib/business";
 import { roomPricing } from "@/lib/room-board";
 import { toJpegDataUrl } from "@/lib/image-convert";
+import { PetPickList, type PetPickItem } from "@/components/PetPickList";
 
 type Service = "groom" | "room";
 
@@ -95,6 +96,30 @@ function BookPageInner() {
       prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]
     );
   };
+  // รูป + สายพันธุ์ของน้อง (customer.cats มีแค่ id/ชื่อ) — โหลดไม่ได้ก็ยังเลือกได้ แค่ไม่มีรูป
+  const [catDetails, setCatDetails] = useState<PetPickItem[]>([]);
+  const customerId = customer?.id;
+  useEffect(() => {
+    if (!customerId) return;
+    let cancelled = false;
+    fetch("/api/customers/cat-photo", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : { cats: [] }))
+      .then((d) => {
+        if (!cancelled) setCatDetails(d.cats || []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [customerId]);
+  const petItems: PetPickItem[] = useMemo(
+    () =>
+      (customer?.cats || []).map((c) => {
+        const d = catDetails.find((x) => x.id === c.id);
+        return { id: c.id, name: c.name, breed: d?.breed, photoDataUrl: d?.photoDataUrl };
+      }),
+    [customer?.cats, catDetails]
+  );
 
   // groom state
   const [date, setDate] = useState(todayISO());
@@ -467,28 +492,8 @@ function BookPageInner() {
       ) : (
         <>
           <div className="rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm">
-            <p className="mb-2 text-xs font-bold text-brown-soft">
-              🐱 น้องแมว (เลือกได้หลายตัว)
-            </p>
-            <div className="mb-3 flex flex-wrap gap-2">
-              {customer.cats.map((c) => {
-                const active = catNames.includes(c.name);
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => toggleCat(c.name)}
-                    className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${
-                      active
-                        ? "border-latte-deep bg-latte-deep text-white"
-                        : "border-petflow-line bg-paper text-brown"
-                    }`}
-                  >
-                    {active ? "✓ " : ""}
-                    {c.name}
-                  </button>
-                );
-              })}
+            <div className="mb-4">
+              <PetPickList pets={petItems} selected={catNames} onToggle={toggleCat} />
             </div>
 
             {service === "groom" ? (
