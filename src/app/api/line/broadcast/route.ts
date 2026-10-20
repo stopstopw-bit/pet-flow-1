@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFrom } from "@/lib/auth";
 import { withTenant } from "@/lib/tenant-context";
-import { BUSINESS } from "@/lib/business";
 import { storeBroadcastImage } from "@/lib/broadcast-image-store";
 import { getBroadcastAudience, type CustomerTier, type CustomerRecord } from "@/lib/customers-store";
 import {
@@ -141,7 +140,8 @@ async function handlePost(req: NextRequest) {
   const base = getAppUrlFromEnv() || "";
   const promoUrl = `${base}/app/promos`;
   const imageUrl = await resolveLineImageUrl(body);
-  const buttons = buildBroadcastButtons(actions, creds?.liffId);
+  const shopConfig = await getSiteConfig();
+  const buttons = buildBroadcastButtons(actions, creds?.liffId, shopConfig.business);
 
   try {
     const flex = buildPromoFlex({
@@ -159,7 +159,7 @@ async function handlePost(req: NextRequest) {
       // ลูกค้าที่ยังไม่มีบัญชี LINE จริงผูกอยู่ (สร้างตอน LIFF ยังไม่ตั้งค่า) — ไม่ได้รับข้อความนี้
       skipped: result.skipped,
       tier: query.tier === "all" ? "ทุกระดับ" : TIER_LABELS[query.tier],
-      maps: BUSINESS.maps,
+      maps: shopConfig.business.maps,
     });
   } catch (e) {
     return NextResponse.json(

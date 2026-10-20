@@ -22,7 +22,8 @@ export async function getLineCredentials(): Promise<LineCredentials | null> {
   const secrets = await getSecrets();
   const line = secrets.line;
   const envToken = process.env.LINE_CHANNEL_TOKEN?.trim();
-  const envLiff = process.env.NEXT_PUBLIC_LIFF_ID?.trim();
+  // LIFF ใน env เป็นของร้าน bootstrap เท่านั้น — ร้านอื่นที่ยังไม่ตั้งต้องว่าง
+  const envLiff = isBootstrapTenant() ? process.env.NEXT_PUBLIC_LIFF_ID?.trim() : undefined;
 
   if (line?.channelToken) {
     return {
@@ -98,7 +99,7 @@ export function getAppUrlFromEnv() {
 }
 
 export function bookingConfirmUrl(bookingId: string, liffId?: string) {
-  const lid = liffId || process.env.NEXT_PUBLIC_LIFF_ID;
+  const lid = liffId;
   const base =
     getAppUrlFromEnv() || "https://petflow.example.com";
   if (lid) {
@@ -109,7 +110,7 @@ export function bookingConfirmUrl(bookingId: string, liffId?: string) {
 
 /** ลิงก์หน้ากรอกจุดรับ-ส่งน้อง — เปิดผ่าน LIFF ถ้ามี ไม่งั้นเปิดหน้าเว็บตรงๆ */
 export function bookingTransportUrl(bookingId: string, liffId?: string) {
-  const lid = liffId || process.env.NEXT_PUBLIC_LIFF_ID;
+  const lid = liffId;
   const id = encodeURIComponent(bookingId);
   if (lid) return `https://liff.line.me/${lid}?path=booking-transport&id=${id}`;
   return `${getAppUrlFromEnv()}/app/booking-transport?id=${id}`;

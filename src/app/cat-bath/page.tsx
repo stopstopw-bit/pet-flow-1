@@ -7,7 +7,7 @@ import SiteFooter from "@/components/SiteFooter";
 /** หน้าอาบน้ำแมว — เมนู + ราคาเต็ม (SEO service page) · ร้านไม่มีบริการตัดขน */
 
 const SITE_URL = process.env.NEXT_PUBLIC_APP_URL || "https://petflow.example.com";
-const PHONE_MAIN = BUSINESS.phones[0];
+const PHONE_MAIN = BUSINESS.phones[0] || "";
 const LINE_URL = "https://line.me/R/ti/p/@petflow";
 
 export const metadata: Metadata = {
@@ -194,12 +194,14 @@ export default function CatBathPage() {
           >
             💬 LINE @petflow
           </a>
-          <a
-            href={`tel:${PHONE_MAIN.replace(/-/g, "")}`}
-            className="rounded-petflow-sm bg-latte-deep px-6 py-3.5 text-sm font-extrabold text-white shadow-petflow-sm"
-          >
-            📞 {PHONE_MAIN}
-          </a>
+          {PHONE_MAIN ? (
+            <a
+              href={`tel:${PHONE_MAIN.replace(/-/g, "")}`}
+              className="rounded-petflow-sm bg-latte-deep px-6 py-3.5 text-sm font-extrabold text-white shadow-petflow-sm"
+            >
+              📞 {PHONE_MAIN}
+            </a>
+          ) : null}
         </div>
         <p className="mt-4 text-[11px]">
           <Link href="/cat-hotel" className="font-bold text-latte-deep underline">

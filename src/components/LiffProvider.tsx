@@ -178,8 +178,9 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
         setReady(true);
       }
 
-      let liffId = process.env.NEXT_PUBLIC_LIFF_ID?.trim() || "";
-      if (!liffId) {
+      // ถามเซิร์ฟเวอร์ทุกครั้งว่าร้านนี้ใช้ LIFF ไหน — ห้ามใช้ค่าใน env ตรง ๆ เพราะเป็นของร้านเดียว
+      let liffId = "";
+      {
         try {
           // no-store — LINE's in-app webview can hold onto a stale cached response,
           // ทำให้ตกไปเป็น "dev-user" ค้างแม้ร้านตั้ง LIFF ID เสร็จแล้วก็ตาม

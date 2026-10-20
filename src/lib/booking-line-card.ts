@@ -1,4 +1,3 @@
-import { BUSINESS } from "./business";
 import { getSiteConfig } from "./config-store";
 import { bookingConfirmUrl as buildConfirmUrl, bookingTransportUrl } from "./line-config";
 import { hasTransport, type BookingTransport } from "./transport";
@@ -30,8 +29,8 @@ export async function buildBookingConfirmFlex(
 ) {
   const config = await getSiteConfig();
   const location =
-    config.business.location.th || BUSINESS.location.th;
-  const mapsUrl = config.business.maps || BUSINESS.maps;
+    config.business.location.th;
+  const mapsUrl = config.business.maps;
 
   const { groomProgram: groomProgramId, ...rest } = booking;
 

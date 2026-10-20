@@ -74,6 +74,54 @@ function mergeConfig(base: SiteConfig, patch: Partial<SiteConfig>): SiteConfig {
   return next;
 }
 
+/** ค่าตัวอย่างเดิมที่เคยถูกใส่ให้ทุกร้านตอนสร้าง — ไม่ใช่ข้อมูลจริงของร้านไหน */
+const OLD_PLACEHOLDERS = new Set([
+  "@petflow",
+  "02-123-4567",
+  "petflow",
+  "https://line.me/R/ti/p/@petflow",
+  "https://www.google.com/maps",
+  "https://www.instagram.com/",
+  "https://www.tiktok.com/",
+  "https://www.facebook.com/",
+  "กรุงเทพฯ",
+  "Bangkok",
+]);
+
+/**
+ * ร้านที่สร้างก่อนแก้ ได้ค่าของร้าน bootstrap/ค่าตัวอย่างติดมาใน config ที่บันทึกไว้
+ * (LINE @petflow, เบอร์, บัญชีธนาคารจาก env) — ตัดทิ้งตอนอ่าน ให้เห็นเป็นช่องว่างแทน
+ */
+function dropCopiedShopValues(stored: Partial<SiteConfig>): Partial<SiteConfig> {
+  const out = { ...stored };
+  const clean = (v: unknown) => (typeof v === "string" && OLD_PLACEHOLDERS.has(v.trim()) ? "" : v);
+  if (stored.business) {
+    const b = { ...stored.business } as Record<string, unknown>;
+    for (const k of ["lineOa", "maps", "facebook", "reviewUrl"]) b[k] = clean(b[k]);
+    if (Array.isArray(b.phones)) b.phones = (b.phones as string[]).filter((p) => !OLD_PLACEHOLDERS.has(p));
+    if (b.location && typeof b.location === "object") {
+      const loc = b.location as { th?: string; en?: string };
+      b.location = { th: clean(loc.th) as string, en: clean(loc.en) as string };
+    }
+    if (b.social && typeof b.social === "object") {
+      b.social = Object.fromEntries(
+        Object.entries(b.social as Record<string, unknown>).map(([k, v]) => [k, clean(v)])
+      );
+    }
+    out.business = b as SiteConfig["business"];
+  }
+  const envAccount = process.env.BANK_ACCOUNT_NUMBER?.trim();
+  if (
+    stored.payment &&
+    !isBootstrapTenant() &&
+    (stored.payment.accountNumber === "XXX-X-XXXXX-X" ||
+      (envAccount && stored.payment.accountNumber === envAccount))
+  ) {
+    out.payment = { bankName: "", accountNumber: "", accountName: "", promptpayId: undefined };
+  }
+  return out;
+}
+
 export async function getSiteConfig(): Promise<SiteConfig> {
   const defaults = getDefaultSiteConfig();
   // บัญชีธนาคาร/พร้อมเพย์ใน env (BANK_*, PROMPTPAY_ID) เป็นของร้าน bootstrap —
@@ -103,7 +151,7 @@ export async function getSiteConfig(): Promise<SiteConfig> {
         })().catch(() => {});
       }
       return mergeConfig(defaults, {
-        ...stored,
+        ...dropCopiedShopValues(stored),
         updatedAt: data.updated_at || defaults.updatedAt,
       });
     }

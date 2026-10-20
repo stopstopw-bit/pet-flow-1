@@ -18,6 +18,17 @@ import { BREED_OPTIONS } from "../cat-breeds";
 import { GROOM_PROGRAMS } from "../grooming-prices";
 import type { SiteConfig } from "../config-types";
 
+/**
+ * ค่าเริ่มต้นของร้านที่เพิ่งสร้าง — ทุกอย่างที่เป็นของแต่ละร้าน (บัญชีธนาคาร, LINE, เบอร์, ลิงก์)
+ * ว่างหมด ห้ามดึงค่าจาก env หรือร้านอื่นมาใส่ให้
+ */
+export function getBlankShopConfig(name: string): SiteConfig {
+  const config = getDefaultSiteConfig();
+  config.business.name = name;
+  config.payment = { bankName: "", accountNumber: "", accountName: "", promptpayId: undefined };
+  return config;
+}
+
 export function getDefaultSiteConfig(): SiteConfig {
   return JSON.parse(
     JSON.stringify({

@@ -13,7 +13,7 @@ import SiteFooter, { SocialLinks } from "@/components/SiteFooter";
  */
 
 const SITE_URL = process.env.NEXT_PUBLIC_APP_URL || "https://petflow.example.com";
-const PHONE_MAIN = BUSINESS.phones[0];
+const PHONE_MAIN = BUSINESS.phones[0] || "";
 const LINE_URL = "https://line.me/R/ti/p/@petflow";
 const MAPS_URL = BUSINESS.maps;
 
@@ -125,7 +125,7 @@ function jsonLd() {
           BUSINESS.social.facebook,
           BUSINESS.social.instagram,
           BUSINESS.social.tiktok,
-        ],
+        ].filter(Boolean),
         areaServed: AREAS.map((a) => ({ "@type": "Place", name: a })),
         makesOffer: [
           { "@type": "Offer", name: "รับฝากแมว ห้องพักแมวห้องแอร์", price: "350", priceCurrency: "THB" },
@@ -222,20 +222,24 @@ export default function HomePage() {
               >
                 💬 จองผ่าน LINE @petflow
               </a>
-              <a
-                href={`tel:${PHONE_MAIN.replace(/-/g, "")}`}
-                className="rounded-petflow-sm bg-latte-deep px-6 py-3.5 text-center text-sm font-extrabold text-white shadow-petflow-sm active:scale-[0.98]"
-              >
-                📞 โทร {PHONE_MAIN}
-              </a>
-              <a
-                href={MAPS_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="rounded-petflow-sm border-2 border-latte-deep bg-card px-6 py-3 text-center text-sm font-extrabold text-latte-deep shadow-petflow-sm active:scale-[0.98]"
-              >
-                🗺️ Google Maps นำทางมาร้าน
-              </a>
+              {PHONE_MAIN ? (
+                <a
+                  href={`tel:${PHONE_MAIN.replace(/-/g, "")}`}
+                  className="rounded-petflow-sm bg-latte-deep px-6 py-3.5 text-center text-sm font-extrabold text-white shadow-petflow-sm active:scale-[0.98]"
+                >
+                  📞 โทร {PHONE_MAIN}
+                </a>
+              ) : null}
+              {MAPS_URL ? (
+                <a
+                  href={MAPS_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-petflow-sm border-2 border-latte-deep bg-card px-6 py-3 text-center text-sm font-extrabold text-latte-deep shadow-petflow-sm active:scale-[0.98]"
+                >
+                  🗺️ Google Maps นำทางมาร้าน
+                </a>
+              ) : null}
             </div>
             <div className="mt-5">
               <SocialLinks />
@@ -497,12 +501,14 @@ export default function HomePage() {
               </span>
             ))}
           </div>
-          <a
-            href={MAPS_URL}
-            className="mt-5 inline-block rounded-petflow-sm bg-honey/40 px-6 py-3 text-sm font-extrabold text-petflow-chocolate"
-          >
-            🗺️ นำทางด้วย Google Maps
-          </a>
+          {MAPS_URL ? (
+            <a
+              href={MAPS_URL}
+              className="mt-5 inline-block rounded-petflow-sm bg-honey/40 px-6 py-3 text-sm font-extrabold text-petflow-chocolate"
+            >
+              🗺️ นำทางด้วย Google Maps
+            </a>
+          ) : null}
         </section>
 
         {/* ── FAQ ── */}
@@ -572,12 +578,14 @@ export default function HomePage() {
             >
               💬 LINE @petflow
             </a>
-            <a
-              href={`tel:${PHONE_MAIN.replace(/-/g, "")}`}
-              className="rounded-petflow-sm bg-latte-deep px-6 py-3.5 text-sm font-extrabold text-white shadow-petflow-sm active:scale-[0.98]"
-            >
-              📞 {PHONE_MAIN}
-            </a>
+            {PHONE_MAIN ? (
+              <a
+                href={`tel:${PHONE_MAIN.replace(/-/g, "")}`}
+                className="rounded-petflow-sm bg-latte-deep px-6 py-3.5 text-sm font-extrabold text-white shadow-petflow-sm active:scale-[0.98]"
+              >
+                📞 {PHONE_MAIN}
+              </a>
+            ) : null}
           </div>
           <Link href="/app" className="mt-5 inline-block text-xs font-bold text-latte-deep underline">
             เป็นสมาชิกอยู่แล้ว? เข้าระบบสมาชิก (สะสมแต้ม/จองคิว) →
