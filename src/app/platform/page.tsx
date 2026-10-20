@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import MigrateOldDb from "./MigrateOldDb";
+import ShopQuestions from "./ShopQuestions";
 
 type Tenant = {
   id: string;
@@ -191,6 +192,8 @@ export default function PlatformDashboard() {
       </p>
 
       <MigrateOldDb explainMissing={!loading && !loadErr && tenants.length === 0} />
+
+      <ShopQuestions />
 
       <form
         onSubmit={createTenant}

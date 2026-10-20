@@ -575,6 +575,15 @@ where staff_note like '%🎁%';`,
       alter table payroll_employees enable row level security;
     `,
   },
+  {
+    // คำตอบแบบสอบถามเจ้าของร้านใหม่ (/shop-questions) — ระดับแพลตฟอร์ม ยังไม่ผูกกับร้านไหน
+    name: "shop_intake.setup",
+    sql: `
+      create table if not exists shop_intake (id text primary key, shop_name text, answers jsonb not null default '{}'::jsonb, text text, created_at timestamptz not null default now(), updated_at timestamptz not null default now());
+      create index if not exists shop_intake_updated_idx on shop_intake (updated_at desc);
+      alter table shop_intake enable row level security;
+    `,
+  },
 ];
 
 export type MigrateResult = {
