@@ -15,6 +15,8 @@ export default function ShopQuestions({ tenants }: { tenants: ShopRef[] }) {
   const [open, setOpen] = useState("");
   const [msg, setMsg] = useState("");
   const [pick, setPick] = useState("");
+  // เปิดแบบสอบถามของร้านที่เลือกในหน้านี้เลย — ผู้ดูแลระบบกรอกแทนเจ้าของร้านได้
+  const [filling, setFilling] = useState(false);
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const picked = tenants.find((t) => t.id === pick);
@@ -35,6 +37,18 @@ export default function ShopQuestions({ tenants }: { tenants: ShopRef[] }) {
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  // แบบสอบถามในกรอบด้านล่างส่งคำตอบสำเร็จ → โหลดรายการใหม่ให้เห็นทันที
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      if (e.origin === window.location.origin && e.data?.type === "petflow-shop-questions-sent") {
+        setMsg("ได้รับคำตอบแล้ว");
+        load();
+      }
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
   }, [load]);
 
   const copy = async (text: string, done: string) => {
@@ -60,12 +74,15 @@ export default function ShopQuestions({ tenants }: { tenants: ShopRef[] }) {
     <div className="mb-6 rounded-petflow border border-white/10 bg-[#232637] p-4">
       <p className="mb-1 text-sm font-extrabold">📝 แบบสอบถามเจ้าของร้านใหม่</p>
       <p className="mb-3 text-xs text-white/50">
-        เลือกร้าน แล้วส่งลิงก์ให้เจ้าของร้านตอบ — คำตอบจะผูกกับร้านนั้นเลย
+        เลือกร้าน แล้วกรอกในหน้านี้เลย หรือส่งลิงก์ให้เจ้าของร้านตอบ — คำตอบจะผูกกับร้านนั้น และขึ้นด้านล่างนี้
       </p>
       <div className="mb-3 grid gap-2 sm:flex sm:flex-wrap sm:items-center">
         <select
           value={pick}
-          onChange={(e) => setPick(e.target.value)}
+          onChange={(e) => {
+            setPick(e.target.value);
+            setFilling(false);
+          }}
           className="rounded-petflow-sm border border-white/15 bg-black/30 px-3 py-2 text-xs"
         >
           <option value="">— เลือกร้าน —</option>
@@ -85,9 +102,23 @@ export default function ShopQuestions({ tenants }: { tenants: ShopRef[] }) {
             >
               คัดลอกลิงก์
             </button>
+            <button
+              type="button"
+              onClick={() => setFilling(!filling)}
+              className="rounded-petflow-sm border border-white/20 px-4 py-1.5 text-xs font-extrabold"
+            >
+              {filling ? "ปิดแบบสอบถาม" : "📝 กรอกในหน้านี้"}
+            </button>
           </>
         )}
       </div>
+      {filling && link && (
+        <iframe
+          src={`/s/${picked?.slug}/shop-questions`}
+          title={`แบบสอบถาม ${picked?.name}`}
+          className="mb-3 h-[80vh] w-full rounded-petflow-sm border border-white/10 bg-white"
+        />
+      )}
       {msg && <p className="mb-2 text-xs text-white/70">{msg}</p>}
       {err && <p className="text-xs font-bold text-white/70">❌ {err}</p>}
       {items && items.length === 0 && <p className="text-xs text-white/50">ยังไม่มีใครตอบ</p>}
