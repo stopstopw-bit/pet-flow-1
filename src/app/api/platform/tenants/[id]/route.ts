@@ -9,7 +9,7 @@ import {
   extendDueDate,
 } from "@/lib/tenant-billing";
 import {
-  SESSION_COOKIE,
+  shopSessionCookie,
   generateSalt,
   hashPassword,
   sessionCookieOptions,
@@ -185,7 +185,7 @@ export async function PATCH(
       impersonating: true,
     });
     const res = NextResponse.json({ ok: true, redirect: `/s/${tenant.slug}/admin` });
-    res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions(1));
+    res.cookies.set(shopSessionCookie(tenant.slug), token, sessionCookieOptions(1));
     return res;
   }
 

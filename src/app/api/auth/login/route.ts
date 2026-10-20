@@ -4,6 +4,8 @@ import { withTenant } from "@/lib/tenant-context";
 import { tenantIdForSlug } from "@/lib/tenant-resolve";
 import {
   SESSION_COOKIE,
+  SESSION_COOKIE_NAME_HEADER,
+  shopSessionCookie,
   getBootstrapTenantId,
   getOwnerCode,
   isOwnerCodeConfigured,
@@ -129,7 +131,8 @@ export async function POST(req: NextRequest) {
   }
 
   const res = NextResponse.json({ ok: true, ...payload });
-  res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
+  // ล็อกอินจากลิงก์ร้าน → คุกกี้ของร้านนั้นเท่านั้น ไม่ทับการล็อกอินของร้านอื่นในเครื่องเดียวกัน
+  res.cookies.set(shop ? shopSessionCookie(shop) : SESSION_COOKIE, token, sessionCookieOptions());
   return res;
 }
 
@@ -141,8 +144,10 @@ async function slugForTenant(tenantId: string): Promise<string | undefined> {
 }
 
 /** ออกจากระบบ */
-export async function DELETE() {
+export async function DELETE(req: NextRequest) {
   const res = NextResponse.json({ ok: true });
-  res.cookies.set(SESSION_COOKIE, "", { ...sessionCookieOptions(), maxAge: 0 });
+  // ออกเฉพาะร้านที่กดออก — ร้านอื่นที่ล็อกอินค้างไว้ในเครื่องเดียวกันยังอยู่
+  const name = req.headers.get(SESSION_COOKIE_NAME_HEADER) || SESSION_COOKIE;
+  res.cookies.set(name, "", { ...sessionCookieOptions(), maxAge: 0 });
   return res;
 }
