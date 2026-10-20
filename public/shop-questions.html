@@ -442,7 +442,7 @@ function render(){
       return `<section><h3>${esc(T(s.title))} <button class="jump" type="button" data-jump="${si}">แก้ไข</button></h3><dl>${rows}</dl></section>`;
     }).join("");
     main.innerHTML = `<h1>ตรวจคำตอบแล้วกดส่ง</h1>
-      <p class="lead">ถ้ากดส่งไม่ได้ ให้กด "คัดลอกคำตอบ" แล้ววางส่งใน LINE แทน</p>
+      <p class="lead">กด "ส่งคำตอบ" คำตอบจะเข้าระบบทันที ถ้ากดส่งไม่ได้ ให้กด "คัดลอกคำตอบ" แล้ววางส่งใน LINE แทน</p>
       <div id="status"></div>
       <div class="actions">
         <button class="btn main" id="send" type="button">${submitted ? "ส่งอีกครั้ง (แก้ไขแล้ว)" : "ส่งคำตอบ"}</button>
@@ -489,9 +489,11 @@ main.addEventListener("click", async e => {
     try {
       const res = await fetch("/api/shop-questions", {method: "POST", headers: {"Content-Type": "application/json"},
         body: JSON.stringify({id: state.sid, slug: SLUG, shopName: A("shopName") || "", answers: {a: state.a, other: state.other, note: state.note}, text: summaryText()})});
-      if (!res.ok) throw new Error("HTTP " + res.status);
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || ("HTTP " + res.status)); }
       submitted = true; render(); setStatus("ส่งคำตอบแล้ว ขอบคุณค่ะ ทีมงานจะนำไปตั้งค่าร้านให้");
-    } catch(err){ render(); setStatus("ส่งไม่สำเร็จ กด \"คัดลอกคำตอบ\" แล้ววางส่งใน LINE แทนได้เลย", true); }
+      // เปิดอยู่ในหน้าผู้ดูแลระบบ (/platform) — บอกหน้าแม่ให้โหลดรายการคำตอบใหม่
+      if (window.parent !== window) window.parent.postMessage({type: "petflow-shop-questions-sent"}, location.origin);
+    } catch(err){ render(); setStatus("ส่งไม่สำเร็จ (" + esc(err.message || "") + ") กด \"คัดลอกคำตอบ\" แล้ววางส่งใน LINE แทนได้เลย", true); }
   }
 });
 // ช่องที่ทำให้ตาราง/การ์ดเปลี่ยน (จำนวน, ชื่อไซส์, บริการอื่นๆ) วาดหน้าใหม่ตอนออกจากช่อง
