@@ -288,7 +288,10 @@ const ALLQ = SECTIONS.flatMap(s => s.qs);
 const optV = o => typeof o === "string" ? o : o.v;
 const fKey = (qid, v) => qid + "~" + v;
 
-const KEY = "petflow-shop-questions-v1";
+// ลิงก์ของแต่ละร้านคือ /s/<slug>/shop-questions — แนบ slug ไปกับคำตอบให้ผูกกับร้านนั้น
+const SLUG = ((location.pathname.match(/^\/s\/([a-z0-9-]+)\//i) || [])[1] || "").toLowerCase();
+// แยกที่เก็บร่างคำตอบต่อร้าน กันเปิดลิงก์สองร้านในเครื่องเดียวแล้วคำตอบปนกัน
+const KEY = "petflow-shop-questions-v1" + (SLUG ? ":" + SLUG : "");
 let state = {a:{}, other:{}, note:{}, open:{}, step:0};
 try { const s = JSON.parse(localStorage.getItem(KEY) || "null"); if (s && s.a) state = Object.assign(state, s); } catch(e){}
 function save(){ try { localStorage.setItem(KEY, JSON.stringify(state)); } catch(e){} }
@@ -459,7 +462,7 @@ main.addEventListener("click", async e => {
     b.disabled = true; b.textContent = "กำลังส่ง…";
     try {
       const res = await fetch("/api/shop-questions", {method: "POST", headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({id: state.sid, shopName: A("shopName") || "", answers: {a: state.a, other: state.other, note: state.note}, text: summaryText()})});
+        body: JSON.stringify({id: state.sid, slug: SLUG, shopName: A("shopName") || "", answers: {a: state.a, other: state.other, note: state.note}, text: summaryText()})});
       if (!res.ok) throw new Error("HTTP " + res.status);
       submitted = true; render(); setStatus("ส่งคำตอบแล้ว ขอบคุณค่ะ ทีมงานจะนำไปตั้งค่าร้านให้");
     } catch(err){ render(); setStatus("ส่งไม่สำเร็จ กด \"คัดลอกคำตอบ\" แล้ววางส่งใน LINE แทนได้เลย", true); }

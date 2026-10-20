@@ -4,13 +4,16 @@ import { ensureMigration } from "./migrations";
 /**
  * คำตอบแบบสอบถามเจ้าของร้านใหม่ (หน้า /shop-questions) — ใช้ตั้งค่าร้านก่อนเปิดใช้จริง
  *
- * เป็นข้อมูลระดับแพลตฟอร์ม ไม่ผูก tenant เพราะตอนตอบยังไม่มีร้านในระบบ
+ * เก็บระดับแพลตฟอร์ม (getDirectoryDb) — ตอบผ่านลิงก์ของร้าน (/s/<slug>/shop-questions) จะผูก tenant_id
+ * ไว้ด้วย เพื่อเอาไปตั้งค่าร้านนั้นต่อ · ตอบผ่านลิงก์กลาง (/shop-questions) = ยังไม่ผูกร้าน
  * อ่านได้เฉพาะผู้ดูแลแพลตฟอร์ม (/platform) · id มาจากเบราว์เซอร์ผู้ตอบ
  * ส่งซ้ำหลังแก้คำตอบ = ทับแถวเดิม ไม่เกิดแถวซ้ำ
  */
 
 export type ShopIntake = {
   id: string;
+  /** ร้านในระบบที่คำตอบนี้เป็นของ — ว่าง = ตอบผ่านลิงก์กลาง ยังไม่ผูกร้าน */
+  tenantId: string;
   shopName: string;
   text: string;
   answers: Record<string, unknown>;
@@ -20,6 +23,7 @@ export type ShopIntake = {
 
 type IntakeRow = {
   id: string;
+  tenant_id: string | null;
   shop_name: string | null;
   text: string | null;
   answers: Record<string, unknown> | null;
@@ -32,6 +36,7 @@ const mem: ShopIntake[] = [];
 function rowToIntake(r: IntakeRow): ShopIntake {
   return {
     id: r.id,
+    tenantId: r.tenant_id || "",
     shopName: r.shop_name || "",
     text: r.text || "",
     answers: r.answers || {},
@@ -40,12 +45,14 @@ function rowToIntake(r: IntakeRow): ShopIntake {
   };
 }
 
-function isMissingTable(msg: string) {
-  return /shop_intake/i.test(msg) && /(does not exist|could not find|schema cache|PGRST205|42P01)/i.test(msg);
+/** ตาราง/คอลัมน์ยังไม่มี — DB ที่ยังไม่เคยรัน migration shop_intake.setup ฉบับล่าสุด */
+function isMissingSchema(msg: string) {
+  return /(shop_intake|tenant_id)/i.test(msg) && /(does not exist|could not find|schema cache|PGRST204|PGRST205|42P01|42703)/i.test(msg);
 }
 
 export async function saveShopIntake(input: {
   id: string;
+  tenantId: string;
   shopName: string;
   text: string;
   answers: Record<string, unknown>;
@@ -61,14 +68,15 @@ export async function saveShopIntake(input: {
   }
   const row = {
     id: input.id,
+    tenant_id: input.tenantId || null,
     shop_name: input.shopName,
     text: input.text,
     answers: input.answers,
     updated_at: now,
   };
   let { error } = await sb.from("shop_intake").upsert(row);
-  // ตารางยังไม่มี (ร้านยังไม่เคยกดอัปเดตฐานข้อมูล) — สร้างให้เองแล้วลองใหม่ครั้งเดียว
-  if (error && isMissingTable(error.message) && (await ensureMigration("shop_intake.setup"))) {
+  // ตาราง/คอลัมน์ยังไม่มี (ยังไม่เคยกดอัปเดตฐานข้อมูล) — สร้างให้เองแล้วลองใหม่ครั้งเดียว
+  if (error && isMissingSchema(error.message) && (await ensureMigration("shop_intake.setup"))) {
     ({ error } = await sb.from("shop_intake").upsert(row));
   }
   if (error) throw new Error(error.message);
@@ -77,13 +85,19 @@ export async function saveShopIntake(input: {
 export async function listShopIntakes(): Promise<ShopIntake[]> {
   const sb = getDirectoryDb();
   if (!sb) return mem;
-  const { data, error } = await sb
-    .from("shop_intake")
-    .select("id, shop_name, text, answers, created_at, updated_at")
-    .order("updated_at", { ascending: false })
-    .limit(200);
+  const query = () =>
+    sb
+      .from("shop_intake")
+      .select("id, tenant_id, shop_name, text, answers, created_at, updated_at")
+      .order("updated_at", { ascending: false })
+      .limit(200);
+  let { data, error } = await query();
+  // ตารางมีแต่ยังไม่มีคอลัมน์ tenant_id — เติมให้แล้วอ่านใหม่ครั้งเดียว
+  if (error && /tenant_id/i.test(error.message) && isMissingSchema(error.message) && (await ensureMigration("shop_intake.setup"))) {
+    ({ data, error } = await query());
+  }
   if (error) {
-    if (isMissingTable(error.message)) return [];
+    if (isMissingSchema(error.message)) return [];
     throw new Error(error.message);
   }
   return (data as IntakeRow[]).map(rowToIntake);

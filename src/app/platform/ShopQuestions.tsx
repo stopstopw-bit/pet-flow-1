@@ -2,19 +2,24 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-type Item = { id: string; shopName: string; text: string; createdAt: string; updatedAt: string };
+type Item = { id: string; tenantId: string; shopName: string; text: string; createdAt: string; updatedAt: string };
+type ShopRef = { id: string; slug: string; name: string };
 
 /**
- * คำตอบแบบสอบถามเจ้าของร้านใหม่ — ส่งลิงก์ /shop-questions ให้เจ้าของร้านตอบ
- * แล้วมาเปิดอ่านตรงนี้ก่อนตั้งค่าร้านให้
+ * คำตอบแบบสอบถามเจ้าของร้านใหม่ — เลือกร้านแล้วส่งลิงก์ /s/<slug>/shop-questions ให้เจ้าของร้านตอบ
+ * คำตอบจะผูกกับร้านนั้น แล้วมาเปิดอ่านตรงนี้ก่อนตั้งค่าร้านให้
  */
-export default function ShopQuestions() {
+export default function ShopQuestions({ tenants }: { tenants: ShopRef[] }) {
   const [items, setItems] = useState<Item[] | null>(null);
   const [err, setErr] = useState("");
   const [open, setOpen] = useState("");
   const [msg, setMsg] = useState("");
+  const [pick, setPick] = useState("");
 
-  const link = typeof window !== "undefined" ? `${window.location.origin}/shop-questions` : "/shop-questions";
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const picked = tenants.find((t) => t.id === pick);
+  const link = picked ? `${origin}/s/${picked.slug}/shop-questions` : "";
+  const nameOf = (tenantId: string) => tenants.find((t) => t.id === tenantId)?.name || "";
 
   const load = useCallback(async () => {
     setErr("");
@@ -42,61 +47,92 @@ export default function ShopQuestions() {
   };
 
   const remove = async (it: Item) => {
-    if (!confirm(`ลบคำตอบของ "${it.shopName || "ไม่มีชื่อร้าน"}"?`)) return;
+    if (!confirm(`ลบคำตอบของ "${it.shopName || nameOf(it.tenantId) || "ไม่มีชื่อร้าน"}"?`)) return;
     const res = await fetch(`/api/platform/shop-questions?id=${encodeURIComponent(it.id)}`, { method: "DELETE" });
     if (res.ok) load();
     else setMsg("ลบไม่สำเร็จ");
   };
 
+  // คำตอบของร้านที่เลือก ขึ้นก่อน
+  const shown = (items || []).slice().sort((a, b) => Number(b.tenantId === pick) - Number(a.tenantId === pick));
+
   return (
     <div className="mb-6 rounded-petflow border border-white/10 bg-[#232637] p-4">
       <p className="mb-1 text-sm font-extrabold">📝 แบบสอบถามเจ้าของร้านใหม่</p>
-      <p className="mb-3 text-xs text-white/50">ส่งลิงก์นี้ให้เจ้าของร้านตอบ คำตอบจะขึ้นด้านล่าง</p>
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <code className="break-all rounded bg-black/30 px-2 py-1 text-xs">{link}</code>
-        <button
-          type="button"
-          onClick={() => copy(link, "คัดลอกลิงก์แล้ว")}
-          className="rounded-petflow-sm bg-latte-deep px-4 py-1.5 text-xs font-extrabold text-white"
+      <p className="mb-3 text-xs text-white/50">
+        เลือกร้าน แล้วส่งลิงก์ให้เจ้าของร้านตอบ — คำตอบจะผูกกับร้านนั้นเลย
+      </p>
+      <div className="mb-3 grid gap-2 sm:flex sm:flex-wrap sm:items-center">
+        <select
+          value={pick}
+          onChange={(e) => setPick(e.target.value)}
+          className="rounded-petflow-sm border border-white/15 bg-black/30 px-3 py-2 text-xs"
         >
-          คัดลอกลิงก์
-        </button>
+          <option value="">— เลือกร้าน —</option>
+          {tenants.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name} ({t.slug})
+            </option>
+          ))}
+        </select>
+        {link && (
+          <>
+            <code className="break-all rounded bg-black/30 px-2 py-1 text-xs">{link}</code>
+            <button
+              type="button"
+              onClick={() => copy(link, "คัดลอกลิงก์แล้ว")}
+              className="rounded-petflow-sm bg-latte-deep px-4 py-1.5 text-xs font-extrabold text-white"
+            >
+              คัดลอกลิงก์
+            </button>
+          </>
+        )}
       </div>
       {msg && <p className="mb-2 text-xs text-white/70">{msg}</p>}
       {err && <p className="text-xs font-bold text-white/70">❌ {err}</p>}
       {items && items.length === 0 && <p className="text-xs text-white/50">ยังไม่มีใครตอบ</p>}
       <div className="space-y-2">
-        {items?.map((it) => (
-          <div key={it.id} className="rounded-petflow-sm border border-white/10 p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <button type="button" onClick={() => setOpen(open === it.id ? "" : it.id)} className="text-left">
-                <span className="text-sm font-bold">{it.shopName || "ไม่มีชื่อร้าน"}</span>
-                <span className="ml-2 text-[11px] text-white/50">
-                  ส่งล่าสุด {new Date(it.updatedAt).toLocaleString("th-TH", { timeZone: "Asia/Bangkok" })}
-                </span>
-              </button>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => copy(it.text, "คัดลอกคำตอบแล้ว")}
-                  className="rounded-petflow-sm border border-white/20 px-3 py-1 text-[11px] font-bold"
-                >
-                  คัดลอก
+        {shown.map((it) => {
+          const shop = nameOf(it.tenantId);
+          return (
+            <div key={it.id} className="rounded-petflow-sm border border-white/10 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <button type="button" onClick={() => setOpen(open === it.id ? "" : it.id)} className="text-left">
+                  <span className="text-sm font-bold">{it.shopName || shop || "ไม่มีชื่อร้าน"}</span>
+                  <span
+                    className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                      shop ? "bg-emerald-500/20 text-emerald-200" : "bg-white/10 text-white/50"
+                    }`}
+                  >
+                    {shop ? `ร้าน: ${shop}` : "ยังไม่ผูกร้าน"}
+                  </span>
+                  <span className="ml-2 text-[11px] text-white/50">
+                    ส่งล่าสุด {new Date(it.updatedAt).toLocaleString("th-TH", { timeZone: "Asia/Bangkok" })}
+                  </span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => remove(it)}
-                  className="rounded-petflow-sm border border-white/20 px-3 py-1 text-[11px] font-bold text-white/60"
-                >
-                  ลบ
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => copy(it.text, "คัดลอกคำตอบแล้ว")}
+                    className="rounded-petflow-sm border border-white/20 px-3 py-1 text-[11px] font-bold"
+                  >
+                    คัดลอก
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => remove(it)}
+                    className="rounded-petflow-sm border border-white/20 px-3 py-1 text-[11px] font-bold text-white/60"
+                  >
+                    ลบ
+                  </button>
+                </div>
               </div>
+              {open === it.id && (
+                <pre className="mt-2 max-h-[60vh] overflow-auto whitespace-pre-wrap break-words text-xs text-white/80">{it.text}</pre>
+              )}
             </div>
-            {open === it.id && (
-              <pre className="mt-2 max-h-[60vh] overflow-auto whitespace-pre-wrap break-words text-xs text-white/80">{it.text}</pre>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
