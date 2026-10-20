@@ -17,6 +17,8 @@ export default function ShopQuestions({ tenants }: { tenants: ShopRef[] }) {
   const [pick, setPick] = useState("");
   // เปิดแบบสอบถามของร้านที่เลือกในหน้านี้เลย — ผู้ดูแลระบบกรอกแทนเจ้าของร้านได้
   const [filling, setFilling] = useState(false);
+  // คำตอบที่กำลังเอาไปตั้งค่าร้าน
+  const [applying, setApplying] = useState("");
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const picked = tenants.find((t) => t.id === pick);
@@ -142,6 +144,15 @@ export default function ShopQuestions({ tenants }: { tenants: ShopRef[] }) {
                   </span>
                 </button>
                 <div className="flex gap-2">
+                  {shop && (
+                    <button
+                      type="button"
+                      onClick={() => setApplying(applying === it.id ? "" : it.id)}
+                      className="rounded-petflow-sm bg-latte-deep px-3 py-1 text-[11px] font-extrabold text-white"
+                    >
+                      ⚙️ ตั้งค่าร้านจากคำตอบ
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => copy(it.text, "คัดลอกคำตอบแล้ว")}
@@ -158,6 +169,7 @@ export default function ShopQuestions({ tenants }: { tenants: ShopRef[] }) {
                   </button>
                 </div>
               </div>
+              {applying === it.id && <ApplyPanel id={it.id} shop={shop} onDone={setMsg} />}
               {open === it.id && (
                 <pre className="mt-2 max-h-[60vh] overflow-auto whitespace-pre-wrap break-words text-xs text-white/80">{it.text}</pre>
               )}
@@ -165,6 +177,108 @@ export default function ShopQuestions({ tenants }: { tenants: ShopRef[] }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+type Change = { key: string; label: string; before: string; after: string };
+
+/** ดูก่อนว่าจะเปลี่ยนอะไรในตั้งค่าร้าน (ค่าเดิม → ค่าใหม่) เลือกข้อที่ต้องการ แล้วกดตั้งค่า */
+function ApplyPanel({ id, shop, onDone }: { id: string; shop: string; onDone: (msg: string) => void }) {
+  const [changes, setChanges] = useState<Change[] | null>(null);
+  const [manual, setManual] = useState<string[]>([]);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    setErr("");
+    try {
+      const res = await fetch(`/api/platform/shop-questions/apply?id=${encodeURIComponent(id)}`);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) return setErr(d.error || `HTTP ${res.status}`);
+      setChanges(d.changes || []);
+      setManual(d.manual || []);
+      setPicked(new Set((d.changes || []).map((c: Change) => c.key)));
+    } catch {
+      setErr("เชื่อมต่อไม่ได้");
+    }
+  }, [id]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const toggle = (key: string) => {
+    const next = new Set(picked);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setPicked(next);
+  };
+
+  const apply = async () => {
+    if (!confirm(`ตั้งค่าร้าน "${shop}" ${picked.size} ข้อ ตามคำตอบนี้?`)) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const res = await fetch("/api/platform/shop-questions/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, keys: [...picked] }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) return setErr(d.error || `HTTP ${res.status}`);
+      onDone(`ตั้งค่าร้าน ${shop} แล้ว ${d.applied} ข้อ`);
+      await load();
+    } catch {
+      setErr("เชื่อมต่อไม่ได้");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 rounded-petflow-sm border border-white/15 bg-black/20 p-3">
+      {err && <p className="mb-2 text-xs font-bold text-red-300">❌ {err}</p>}
+      {!changes && !err && <p className="text-xs text-white/50">กำลังเทียบกับตั้งค่าร้าน…</p>}
+      {changes && changes.length === 0 && (
+        <p className="mb-2 text-xs text-white/60">ตั้งค่าร้านตรงกับคำตอบแล้วทุกข้อ</p>
+      )}
+      {changes && changes.length > 0 && (
+        <>
+          <p className="mb-2 text-xs text-white/60">ติ๊กข้อที่จะตั้งให้ร้าน {shop} (ค่าเดิม → ค่าใหม่)</p>
+          <div className="space-y-1.5">
+            {changes.map((c) => (
+              <label key={c.key} className="flex cursor-pointer gap-2 text-xs">
+                <input type="checkbox" checked={picked.has(c.key)} onChange={() => toggle(c.key)} className="mt-0.5" />
+                <span>
+                  <span className="font-bold">{c.label}</span>
+                  <span className="block text-white/40 line-through">{c.before}</span>
+                  <span className="block text-emerald-200">{c.after}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <button
+            type="button"
+            disabled={busy || picked.size === 0}
+            onClick={apply}
+            className="mt-3 rounded-petflow-sm bg-latte-deep px-4 py-1.5 text-xs font-extrabold text-white disabled:opacity-40"
+          >
+            {busy ? "กำลังตั้งค่า…" : `ตั้งค่าที่เลือก (${picked.size} ข้อ)`}
+          </button>
+        </>
+      )}
+      {manual.length > 0 && (
+        <div className="mt-3 text-xs text-white/60">
+          <p className="font-bold">ยังต้องตั้งเองในหลังบ้านร้าน (ดูคำตอบด้านล่าง)</p>
+          <ul className="ml-4 list-disc">
+            {manual.map((m) => (
+              <li key={m}>{m}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

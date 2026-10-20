@@ -113,3 +113,15 @@ export async function deleteShopIntake(id: string): Promise<void> {
   const { error } = await sb.from("shop_intake").delete().eq("id", id);
   if (error) throw new Error(error.message);
 }
+
+export async function getShopIntake(id: string): Promise<ShopIntake | null> {
+  const sb = getDirectoryDb();
+  if (!sb) return mem.find((x) => x.id === id) || null;
+  const { data, error } = await sb
+    .from("shop_intake")
+    .select("id, tenant_id, shop_name, text, answers, created_at, updated_at")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ? rowToIntake(data as IntakeRow) : null;
+}
