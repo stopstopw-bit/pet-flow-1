@@ -75,7 +75,10 @@ function shopPrefix() {
 
 function AdminShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const pathname = usePathname();
+  // ลิงก์ร้าน /s/<slug>/admin/... → เทียบหน้าด้วย path ที่ตัด /s/<slug> ออก
+  // (ไม่งั้นหน้าล็อกอินของลิงก์ร้านไม่ถูกนับเป็นหน้าล็อกอิน เมนูหลังร้านเลยโผล่ทับ)
+  const fullPath = usePathname();
+  const pathname = fullPath.replace(/^\/s\/[a-z0-9-]+(?=\/)/i, "");
   const [ok, setOk] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [impersonating, setImpersonating] = useState(false);
@@ -98,7 +101,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
       if (!res || !res.ok) {
         sessionStorage.removeItem("petflow-role");
         sessionStorage.removeItem("petflow-menus");
-        router.replace(`${shopPrefix()}/admin/login?next=${encodeURIComponent(pathname)}`);
+        router.replace(`${shopPrefix()}/admin/login?next=${encodeURIComponent(fullPath)}`);
         return;
       }
       const me = await res.json().catch(() => null);
@@ -137,7 +140,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
     return () => {
       alive = false;
     };
-  }, [pathname, router]);
+  }, [pathname, fullPath, router]);
 
   if (!ok) return null;
 

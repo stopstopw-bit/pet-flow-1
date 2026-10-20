@@ -28,7 +28,9 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch("/api/config");
+      // บอกร้านตามลิงก์ที่เปิดอยู่ (/s/<slug>/...) ตรง ๆ — ไม่พึ่ง session/cookie ที่อาจเป็นของร้านอื่น
+      const m = window.location.pathname.match(/^\/s\/([a-z0-9-]+)(?:\/|$)/i);
+      const res = await fetch(m ? `/api/config?shop=${m[1].toLowerCase()}` : "/api/config");
       const data = await res.json();
       if (data.config) setConfig(data.config);
     } catch {
