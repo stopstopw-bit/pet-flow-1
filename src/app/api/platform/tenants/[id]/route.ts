@@ -64,6 +64,27 @@ export async function PATCH(
     return NextResponse.json({ ok: true });
   }
 
+  if (action === "rename") {
+    // ชื่อร้านในหน้าผู้ดูแลระบบ — ไม่แตะ slug/ลิงก์ร้าน เพราะลูกค้าและ LINE ใช้ลิงก์เดิมอยู่
+    const name = String(body.name || "").trim();
+    if (!name || name.length > 100) {
+      return NextResponse.json({ error: "ชื่อร้านต้องมี 1–100 ตัวอักษร" }, { status: 400 });
+    }
+    const { error } = await sb.from("tenants").update({ name }).eq("id", id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    await logAudit({
+      tenantId: id,
+      actorType: "platform",
+      actorId: "platform_owner",
+      action: "rename_tenant",
+      resourceType: "tenant",
+      resourceId: id,
+      beforeState: { name: tenant.name },
+      afterState: { name },
+    });
+    return NextResponse.json({ ok: true });
+  }
+
   if (action === "reset_owner_login") {
     // ตั้ง/รีเซ็ต username+password ของเจ้าของร้าน — ใช้กับร้านเก่าที่ยังไม่มี หรือลืม password
     const username = String(body.username || tenant.slug).trim().toLowerCase();
