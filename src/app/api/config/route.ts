@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   // หน้าเว็บอยู่ร้านไหน (/s/<slug>/...) ต้องได้โลโก้/ชื่อ/สีของร้านนั้นเสมอ — เดิมเอาร้านใน session
   // มาก่อน พอล็อกอินร้าน A ค้างไว้แล้วเปิดหน้าร้าน B ก็เห็นหน้าตาร้าน A (ดูเหมือนแก้ร้านหนึ่งแล้วร้านอื่นเปลี่ยนตาม)
-  const pageShop = shopFromReferer(req);
+  const pageShop = req.nextUrl.searchParams.get("shop")?.trim().toLowerCase() || shopFromReferer(req);
   if (pageShop) {
     const id = await tenantIdForSlug(pageShop);
     if (!id) return NextResponse.json({ error: "shop not found" }, { status: 404 });
