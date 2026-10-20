@@ -110,20 +110,31 @@ const OTHER = "อื่นๆ";
 // ทุกข้อแบบเลือกจะมี "อื่นๆ" ต่อท้ายให้อัตโนมัติ
 const A = id => state.a[id];
 const has = (id, v) => { const x = A(id); return Array.isArray(x) ? x.includes(v) : x === v; };
+// ร้านรับหมา แมว หรือทั้งสองอย่าง — คำว่า {p} ในคำถามจะเปลี่ยนตามที่เลือก
+// ตัวเลือก/ช่องที่ใส่ only:"dog" หรือ only:"cat" จะขึ้นเฉพาะร้านที่รับสัตว์นั้น
+const PETS_BOTH = "ทั้งหมาและแมว";
+const isCat = () => A("pets") === "แมว" || A("pets") === PETS_BOTH;
+const isDog = () => A("pets") !== "แมว";
+const PET = () => A("pets") === "แมว" ? "แมว" : A("pets") === PETS_BOTH ? "หมา/แมว" : "หมา";
+const T = x => String(x == null ? "" : x).replace(/\{p\}/g, PET());
+const okFor = x => !x || typeof x === "string" || !x.only || (x.only === "dog" ? isDog() : isCat());
 const countOf = (id, max) => { const x = A(id); if (!x) return 0; const n = parseInt(x === OTHER ? (state.other[id] || "") : x, 10); return Math.max(0, Math.min(max, n || 0)); };
 
 const SECTIONS = [
  {title:"ข้อมูลร้าน", lead:"ข้อมูลที่ลูกค้าจะเห็นในแอปและใน LINE", qs:[
+  {id:"pets",t:"one",q:"ร้านรับดูแลน้องอะไรบ้าง",o:["หมา","แมว",PETS_BOTH],hint:"เลือกก่อน คำถามข้อต่อๆ ไปจะเปลี่ยนให้ตรงกับร้าน"},
   {id:"shopName",t:"text",q:"ชื่อร้าน"},
   {id:"shopNameEn",t:"text",q:"ชื่อร้านภาษาอังกฤษ (ถ้ามี)"},
-  {id:"tagline",t:"text",q:"คำโปรยใต้ชื่อร้าน",hint:"เช่น โรงแรมน้องหมา · อาบน้ำตัดขน"},
+  {id:"tagline",t:"text",q:"คำโปรยใต้ชื่อร้าน",hint:"เช่น โรงแรมน้อง{p} · อาบน้ำตัดขน"},
   {id:"phone",t:"text",q:"เบอร์โทรร้าน"},
   {id:"lineOa",t:"text",q:"LINE OA ของร้าน",hint:"เช่น @myshop"},
   {id:"address",t:"long",q:"ที่อยู่ร้าน",ph:"บ้านเลขที่ ถนน แขวง/ตำบล เขต/อำเภอ จังหวัด"},
   {id:"maps",t:"text",q:"ลิงก์ Google Maps ของร้าน"},
   {id:"reviewUrl",t:"text",q:"ลิงก์ให้ลูกค้ารีวิวร้าน (Google รีวิว)",hint:"ไม่มีก็เว้นไว้ได้ เดี๋ยวช่วยหาให้"},
-  {id:"reviewBtn",t:"one",q:"คำบนปุ่มชวนรีวิว",o:["⭐ รีวิวให้เราหน่อยนะคะ","⭐ รีวิวให้เราหน่อยนะครับ","ช่วยรีวิวร้านหน่อยนะ 🐶"]},
-  {id:"social",t:"text",q:"Facebook / IG / TikTok ของร้าน"},
+  {id:"reviewBtn",t:"one",q:"คำบนปุ่มชวนรีวิว",o:["⭐ รีวิวให้เราหน่อยนะคะ","⭐ รีวิวให้เราหน่อยนะครับ",{v:"ช่วยรีวิวร้านหน่อยนะ 🐶",only:"dog"},{v:"ช่วยรีวิวร้านหน่อยนะ 🐱",only:"cat"}]},
+  {id:"facebook",t:"text",q:"Facebook ของร้าน",hint:"ชื่อเพจหรือลิงก์ เช่น facebook.com/myshop · ไม่มีก็เว้นไว้"},
+  {id:"instagram",t:"text",q:"Instagram ของร้าน",hint:"เช่น @myshop · ไม่มีก็เว้นไว้"},
+  {id:"tiktok",t:"text",q:"TikTok ของร้าน",hint:"เช่น @myshop · ไม่มีก็เว้นไว้"},
   {id:"walkin",t:"one",q:"รับลูกค้าแบบไหน",o:[{v:"ต้องจองล่วงหน้าเท่านั้น",f:"อยากให้ป้ายในแอปบอกลูกค้าว่าอะไร",ph:"เช่น รับเฉพาะลูกค้าที่จองล่วงหน้า เพื่อดูแลน้องได้เต็มที่"},"จองหรือ walk-in ก็ได้",{v:"walk-in ได้บางบริการ",f:"บริการไหนบ้างที่ walk-in ได้"}]},
   {id:"color",t:"one",q:"สีประจำร้านที่ชอบ",o:["เขียว","ฟ้า/น้ำเงิน","ชมพู","ส้ม","น้ำตาล","ม่วง","เหลือง"]},
  ]},
@@ -157,22 +168,25 @@ const SECTIONS = [
     {v:"ใบเสร็จมีเลขผู้เสียภาษี",f:"เลขผู้เสียภาษี และชื่อตามทะเบียน"},
     {v:"จด VAT แล้ว ต้องมีใบกำกับภาษี",f:"เลขผู้เสียภาษี ชื่อนิติบุคคล และสาขา",ph:"เช่น 0105xxxxxxxxx บจก. ... สำนักงานใหญ่"}]},
  ]},
- {title:"ห้องพักน้องหมา", lead:"ห้องแต่ละแบบตั้งราคาแยกกันได้", qs:[
+ {title:"ห้องพักน้อง{p}", lead:"ห้องแต่ละแบบตั้งราคาแยกกันได้", qs:[
   {id:"roomTypes",t:"one",q:"มีห้องกี่แบบ",o:["1","2","3","4","5","6"],hint:"เลือกแล้วจะมีช่องให้กรอกของแต่ละแบบ"},
   {id:"rooms",t:"repeat",q:"ห้องแต่ละแบบ",item:"ห้องแบบที่",n:()=>countOf("roomTypes",10),fields:[
     {k:"name",l:"ชื่อห้อง",ph:"เช่น ห้องเล็ก"},
     {k:"count",l:"มีกี่ห้อง",u:"ห้อง",num:1},
     {k:"price",l:"ราคาต่อคืน",u:"บาท",num:1},
-    {k:"dogSize",l:"เหมาะกับหมาหนักไม่เกิน",u:"กก.",num:1},
+    {k:"dogSize",l:"เหมาะกับหมาหนักไม่เกิน",u:"กก.",num:1,only:"dog"},
     {k:"size",l:"ขนาดห้อง (กว้าง×ยาว)",ph:"เช่น 1×1.5 ม."},
-    {k:"maxDogs",l:"หมาบ้านเดียวกันนอนรวมได้สูงสุด",u:"ตัว",num:1},
-    {k:"included",l:"ราคานี้รวมหมากี่ตัว",u:"ตัว",num:1},
+    {k:"maxDogs",l:"{p}บ้านเดียวกันนอนรวมได้สูงสุด",u:"ตัว",num:1},
+    {k:"included",l:"ราคานี้รวม{p}กี่ตัว",u:"ตัว",num:1},
     {k:"extra",l:"ตัวที่เกิน คิดเพิ่มคืนละ",u:"บาท",num:1},
     {k:"note",l:"จุดเด่นของห้องนี้",ph:"เช่น ห้องติดกระจก เห็นวิว มีกล้อง"}]},
+  {id:"catRoom",t:"many",q:"ห้องแมวมีอะไรบ้าง",show:isCat,o:["กระบะทราย","คอนโด/ที่ปีนป่าย","ที่ลับเล็บ","ชั้นนอนสูง","หน้าต่างดูวิว"]},
+  {id:"litter",t:"one",q:"ทรายแมวระหว่างฝาก",show:isCat,o:["ลูกค้าเอามาเอง","ร้านมีให้ ฟรี",{v:"ร้านมีให้ คิดเงินเพิ่ม",f:"วันละกี่บาท",u:"บาท"}]},
   {id:"inRoom",t:"many",q:"ห้องพักมีอะไรให้บ้าง",o:["แอร์","กล้องดูออนไลน์","ที่นอน","ชามน้ำ/อาหาร",
-    {v:"พาเดินเล่น/ออกห้องน้ำ",f:"วันละกี่รอบ",u:"รอบ"},
+    {v:"พาเดินเล่น/ออกห้องน้ำ",f:"วันละกี่รอบ",u:"รอบ",only:"dog"},
     {v:"ส่งรูป/วิดีโอให้เจ้าของ",f:"วันละกี่ครั้ง",u:"ครั้ง"},
-    {v:"ลานวิ่งเล่น",f:"ปล่อยวิ่งวันละกี่นาที / กี่รอบ"}]},
+    {v:"ลานวิ่งเล่น",f:"ปล่อยวิ่งวันละกี่นาที / กี่รอบ"},
+    {v:"ห้องปล่อยเล่น",f:"ปล่อยเล่นวันละกี่นาที / กี่รอบ",only:"cat"}]},
   {id:"longStay",t:"many",q:"พักยาวมีส่วนลดไหม",o:["ไม่มี",
     {v:"พัก 7 คืนขึ้นไปลด",f:"ลดกี่ % หรือกี่บาท",ph:"เช่น 10%"},
     {v:"พัก 15 คืนขึ้นไปลด",f:"ลดกี่ % หรือกี่บาท",ph:"เช่น 15%"},
@@ -181,17 +195,18 @@ const SECTIONS = [
   {id:"minNights",t:"one",q:"ต้องพักขั้นต่ำกี่คืน",o:["ไม่มีขั้นต่ำ","1 คืน","2 คืน","3 คืน"]},
  ]},
  {title:"กฎการรับฝาก", lead:"ระบบจะทำหน้ากฎให้ลูกค้ากดยอมรับก่อนเข้าพัก", qs:[
-  {id:"vaccines",t:"many",q:"ต้องฉีดวัคซีนอะไรถึงรับฝาก",o:["รวม 5 โรค/7 โรค","พิษสุนัขบ้า","ไอกรน (Kennel cough)","ไม่บังคับ"]},
+  {id:"vaccines",t:"many",q:"ต้องฉีดวัคซีนอะไรถึงรับฝาก",o:[{v:"หมา: รวม 5 โรค/7 โรค",only:"dog"},{v:"หมา: ไอกรน (Kennel cough)",only:"dog"},{v:"แมว: รวม 3 โรค/4 โรค (ไข้หัด หวัดแมว)",only:"cat"},{v:"แมว: ลิวคีเมีย (FeLV)",only:"cat"},"พิษสุนัขบ้า","ไม่บังคับ"]},
   {id:"vaccineAge",t:"one",q:"วัคซีนต้องฉีดมาไม่เกินกี่เดือน",o:["ไม่เกิน 12 เดือน","ไม่เกิน 6 เดือน","ไม่กำหนด"]},
   {id:"vaccineProof",t:"one",q:"ต้องส่งรูปสมุดวัคซีนไหม",o:["ต้องส่งทุกครั้ง","ส่งครั้งแรกครั้งเดียว","ไม่ต้อง"]},
   {id:"flea",t:"one",q:"ต้องหยดยาเห็บหมัดก่อนเข้าพักไหม",o:[{v:"ต้องหยด",f:"ต้องหยดมาไม่เกินกี่วัน",u:"วัน"},"ไม่บังคับ",{v:"ร้านหยดให้ คิดเงินเพิ่ม",f:"ครั้งละกี่บาท",u:"บาท"}]},
-  {id:"notAccept",t:"many",q:"ไม่รับฝากหมาแบบไหน",o:["รับหมด","หมาดุ/กัด","หมาติดสัด","หมาป่วย",
-    {v:"หมาไม่ทำหมัน",f:"ไม่รับเพศไหน / ตั้งแต่อายุเท่าไหร่"},
-    {v:"ลูกหมาอายุน้อย",f:"น้อยกว่ากี่เดือนไม่รับ",u:"เดือน"},
-    {v:"หมาแก่มาก",f:"อายุเกินกี่ปีไม่รับ",u:"ปี"},
-    {v:"หมาตัวใหญ่มาก",f:"หนักเกินกี่กิโลไม่รับ",u:"กก."}]},
+  {id:"notAccept",t:"many",q:"ไม่รับฝาก{p}แบบไหน",o:["รับหมด","{p}ดุ/กัด","{p}ติดสัด","{p}ป่วย",
+    {v:"{p}ไม่ทำหมัน",f:"ไม่รับเพศไหน / ตั้งแต่อายุเท่าไหร่"},
+    {v:"ลูก{p}อายุน้อย",f:"น้อยกว่ากี่เดือนไม่รับ",u:"เดือน"},
+    {v:"{p}แก่มาก",f:"อายุเกินกี่ปีไม่รับ",u:"ปี"},
+    {v:"หมาตัวใหญ่มาก",f:"หนักเกินกี่กิโลไม่รับ",u:"กก.",only:"dog"},
+    {v:"แมวที่ยังไม่ตรวจ FIV/FeLV",only:"cat"}]},
   {id:"food",t:"one",q:"อาหารระหว่างฝาก",o:["ลูกค้าเอามาเอง","ร้านมีให้ ฟรี",{v:"ร้านมีให้ คิดเงินเพิ่ม",f:"วันละกี่บาท",u:"บาท"}]},
-  {id:"bring",t:"many",q:"ลูกค้าต้องเตรียมอะไรมา",o:["อาหาร","ขนม","ผ้าห่ม/ที่นอน","ของเล่น","ยา (ถ้ามี)","สายจูง","สมุดวัคซีน"]},
+  {id:"bring",t:"many",q:"ลูกค้าต้องเตรียมอะไรมา",o:["อาหาร","ขนม","ผ้าห่ม/ที่นอน","ของเล่น","ยา (ถ้ามี)",{v:"สายจูง",only:"dog"},{v:"ทรายแมว",only:"cat"},{v:"กระเป๋า/กรงใส่แมว",only:"cat"},"สมุดวัคซีน"]},
   {id:"meds",t:"one",q:"ป้อนยาให้ไหม",o:["ป้อนให้ ฟรี",{v:"ป้อนให้ คิดเพิ่ม",f:"วันละกี่บาท",u:"บาท"},"ไม่ป้อนยา"]},
   {id:"sick",t:"one",q:"ถ้าน้องป่วยระหว่างฝาก",o:["โทรแจ้งก่อน แล้วพาไปหาหมอ","พาไปหาหมอทันที แล้วแจ้ง","ให้เจ้าของมารับ"]},
   {id:"vetCost",t:"one",q:"ค่าหมอใครจ่าย",o:["เจ้าของจ่ายทั้งหมด",{v:"ร้านออกก่อน แล้วเก็บทีหลัง",f:"มีค่าพาไปหาหมอไหม กี่บาท",u:"บาท"}]},
@@ -199,7 +214,7 @@ const SECTIONS = [
  ]},
  {title:"อาบน้ำตัดขน", lead:"ใช้ตั้งตารางราคาและคิวอาบน้ำ", qs:[
   {id:"services",t:"many",q:"มีบริการอะไรบ้าง",o:["อาบน้ำ-เป่าขน","ตัดขนทั้งตัว","ตัดแต่ง/เล็มขน","สปา/หมักขน","อาบน้ำยารักษาผิว","ตัดเล็บอย่างเดียว"],hint:"เลือกแล้วจะมีตารางให้ใส่ราคา"},
-  {id:"includes",t:"many",q:"อาบน้ำ 1 ครั้งรวมอะไรแล้ว",o:["ตัดเล็บ","เช็ดหู","บีบต่อมก้น","ตัดขนเท้า","ตัดขนก้น","แปรงฟัน","น้ำหอม"]},
+  {id:"includes",t:"many",q:"อาบน้ำ 1 ครั้งรวมอะไรแล้ว",o:["ตัดเล็บ","เช็ดหู",{v:"บีบต่อมก้น",only:"dog"},"ตัดขนเท้า","ตัดขนก้น","แปรงฟัน","น้ำหอม"]},
   {id:"priceBy",t:"one",q:"ราคาแบ่งตามอะไร",o:["น้ำหนัก/ขนาดตัว","สายพันธุ์","ขนสั้น/ขนยาว",{v:"ขนาด + ขนสั้น/ยาว",f:"ขนยาวแพงกว่าขนสั้นเท่าไหร่",ph:"เช่น +100 บาท ทุกไซส์"}]},
   {id:"sizeCount",t:"one",q:"แบ่งไซส์กี่ไซส์",o:["3","4","5","6"],hint:"เลือกแล้วจะมีช่องให้ตั้งชื่อและน้ำหนักแต่ละไซส์"},
   {id:"sizes",t:"repeat",q:"แต่ละไซส์",item:"ไซส์ที่",n:()=>countOf("sizeCount",8),fields:[
@@ -208,16 +223,17 @@ const SECTIONS = [
   {id:"prices",t:"grid",q:"ราคาแต่ละบริการ แต่ละไซส์ (บาท)",hint:"ใส่เฉพาะช่องที่มี ช่องไหนไม่มีบริการเว้นไว้ได้"},
   {id:"addons",t:"many",q:"บริการเสริมที่คิดเงินแยก",o:[
     {v:"ขนพันกัน",f:"คิดเพิ่มกี่บาท",ph:"เช่น 100–300 บาท ตามความยาก"},
-    {v:"หมาดุ",f:"คิดเพิ่มกี่บาท",u:"บาท"},
+    {v:"{p}ดุ",f:"คิดเพิ่มกี่บาท",u:"บาท"},
     {v:"แปรงฟัน",f:"ราคา",u:"บาท"},
     {v:"ทำความสะอาดคราบน้ำตา",f:"ราคา",u:"บาท"},
     {v:"กำจัดเห็บหมัด",f:"ราคา",ph:"เช่น 150–400 บาท ตามไซส์"},
     {v:"ย้อมสี/แต่งขน",f:"ราคา",u:"บาท"}]},
   {id:"freebies",t:"many",q:"อาบน้ำแล้วแถมอะไรให้ลูกค้า",o:["ไม่มีของแถม","ผ้าพันคอ","โบว์/กิ๊บ","น้ำหอม","ขนม"]},
-  {id:"breeds",t:"long",q:"สายพันธุ์หมาที่มาใช้บริการบ่อย",ph:"เช่น ปอม ชิวาว่า พุดเดิ้ล ชิสุ โกลเด้น",hint:"ใช้เป็นตัวเลือกตอนลูกค้าสมัคร"},
+  {id:"breeds",t:"long",q:"สายพันธุ์หมาที่มาใช้บริการบ่อย",ph:"เช่น ปอม ชิวาว่า พุดเดิ้ล ชิสุ โกลเด้น",hint:"ใช้เป็นตัวเลือกตอนลูกค้าสมัคร",show:isDog},
+  {id:"catBreeds",t:"long",q:"สายพันธุ์แมวที่มาใช้บริการบ่อย",ph:"เช่น เปอร์เซีย สก็อตติช โฟลด์ บริติช ช็อตแฮร์ เมนคูน ไทย",hint:"ใช้เป็นตัวเลือกตอนลูกค้าสมัคร",show:isCat},
   {id:"slots",t:"many",q:"รับคิวอาบน้ำรอบกี่โมงบ้าง",o:["9:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00"]},
   {id:"perSlot",t:"one",q:"แต่ละรอบรับพร้อมกันได้กี่ตัว",o:["1 ตัว","2 ตัว","3 ตัว","4 ตัว"]},
-  {id:"groomTime",t:"one",q:"อาบหมา 1 ตัวใช้เวลาประมาณ",o:["ไม่เกิน 1 ชม.","1–2 ชม.","2–3 ชม.",{v:"แล้วแต่ไซส์",f:"แต่ละไซส์ใช้เวลากี่นาที",ph:"เช่น S 60 / M 90 / L 120 นาที"}]},
+  {id:"groomTime",t:"one",q:"อาบ{p} 1 ตัวใช้เวลาประมาณ",o:["ไม่เกิน 1 ชม.","1–2 ชม.","2–3 ชม.",{v:"แล้วแต่ไซส์",f:"แต่ละไซส์ใช้เวลากี่นาที",ph:"เช่น S 60 / M 90 / L 120 นาที"}]},
   {id:"waitPickup",t:"one",q:"อาบเสร็จแล้วรับช้าได้ไหม",o:["รับช้าได้ ไม่คิดเงิน",{v:"รับช้าคิดเพิ่ม",f:"ช้าเกินกี่ชั่วโมง คิดเท่าไหร่",ph:"เช่น เกิน 2 ชม. คิด 100 บาท"}]},
   {id:"askBefore",t:"many",q:"ก่อนอาบน้ำอยากถามอะไรเจ้าของ",o:["นิสัยตอนอาบน้ำ","โรคผิวหนัง","แพ้แชมพู","เคยอาบที่อื่นไหม","ทรงที่อยากได้","ทำหมันหรือยัง"]},
  ]},
@@ -271,7 +287,7 @@ const SECTIONS = [
     {k:"commission",l:"ค่าคอม",ph:"เช่น 10% ของยอด หรือ ตัวละ 50 บาท"}]},
   {id:"staffSee",t:"many",q:"พนักงานเห็นอะไรได้บ้าง",o:["คิวอาบน้ำ","ตารางห้องพัก","งานดูแลน้องรายวัน","ข้อมูลลูกค้า","หน้าคิดเงิน","ยอดขาย/รายได้"]},
   {id:"payroll",t:"one",q:"ใช้ระบบคิดเงินเดือนและค่าคอมไหม",o:["ใช้","ไม่ใช้"]},
-  {id:"care",t:"many",q:"งานดูแลน้องที่ฝากพักทุกวัน",o:["อาหารเช้า","อาหารเย็น","เปลี่ยนน้ำ","พาเดิน/ออกห้องน้ำ","ทำความสะอาดห้อง","ให้ยา","ส่งรูปให้เจ้าของ","เล่นด้วย"]},
+  {id:"care",t:"many",q:"งานดูแลน้องที่ฝากพักทุกวัน",o:["อาหารเช้า","อาหารเย็น","เปลี่ยนน้ำ",{v:"พาเดิน/ออกห้องน้ำ",only:"dog"},{v:"ตักทราย/ล้างกระบะทราย",only:"cat"},"ทำความสะอาดห้อง","ให้ยา","ส่งรูปให้เจ้าของ","เล่นด้วย"]},
  ]},
  {title:"เชื่อมระบบและข้อมูลเก่า", lead:"ข้อสุดท้ายแล้ว", qs:[
   {id:"pics",t:"many",q:"มีรูปอะไรจะส่งมาให้บ้าง (ส่งทาง LINE)",o:["โลโก้ร้าน","รูปห้องพัก","รูปเมนูราคาอาบน้ำ","โปสเตอร์กฎการฝาก","รูปผลงานอาบน้ำตัดขน","QR พร้อมเพย์"],hint:"ใช้ทำหน้าร้านในแอป"},
@@ -286,6 +302,8 @@ const SECTIONS = [
 SECTIONS.forEach(s => s.qs.forEach(q => { if ((q.t==="one"||q.t==="many") && !q.o.some(o => (o.v||o) === OTHER)) q.o.push(OTHER); }));
 const ALLQ = SECTIONS.flatMap(s => s.qs);
 const optV = o => typeof o === "string" ? o : o.v;
+const optsOf = q => q.o.filter(okFor);
+const fieldsOf = q => q.fields.filter(okFor);
 const fKey = (qid, v) => qid + "~" + v;
 
 // ลิงก์ของแต่ละร้านคือ /s/<slug>/shop-questions — แนบ slug ไปกับคำตอบให้ผูกกับร้านนั้น
@@ -320,7 +338,7 @@ function answerText(q){
   if (q.t === "repeat") {
     const n = q.n(); const out = [];
     for (let i = 0; i < n; i++) {
-      const parts = q.fields.map(f => { const x = (A(`${q.id}.${i}.${f.k}`) || "").trim(); return x ? `${f.l} ${x}${f.u ? " " + f.u : ""}` : ""; }).filter(Boolean);
+      const parts = fieldsOf(q).map(f => { const x = (A(`${q.id}.${i}.${f.k}`) || "").trim(); return x ? `${T(f.l)} ${x}${f.u ? " " + f.u : ""}` : ""; }).filter(Boolean);
       if (parts.length) out.push(`${q.item} ${i+1}: ` + parts.join(" · "));
     }
     return out.join("\n");
@@ -332,12 +350,13 @@ function answerText(q){
   }
   const v = A(q.id);
   if (v == null || v === "" || (Array.isArray(v) && !v.length)) return "";
-  const picked = Array.isArray(v) ? v : [String(v)];
+  // ตัวเลือกของสัตว์ที่ร้านไม่ได้รับ (เคยเลือกไว้ก่อนเปลี่ยนข้อแรก) ไม่ต้องนับ
+  const picked = (Array.isArray(v) ? v : [String(v)]).filter(p => okFor((q.o || []).find(o => optV(o) === p)));
   const parts = picked.map(p => {
     if (p === OTHER) { const o = (state.other[q.id] || "").trim(); return o ? OTHER + ": " + o : OTHER; }
     const opt = (q.o || []).find(o => optV(o) === p);
     const d = opt && opt.f ? (A(fKey(q.id, p)) || "").trim() : "";
-    return d ? `${p} (${opt.f}: ${d}${opt.u ? " " + opt.u : ""})` : p;
+    return d ? `${T(p)} (${T(opt.f)}: ${d}${opt.u ? " " + opt.u : ""})` : T(p);
   });
   return parts.join(", ") + (q.t === "num" && q.unit ? " " + q.unit : "");
 }
@@ -354,26 +373,27 @@ function fieldBox(id, key, val, unit, ph, num){
 function renderQ(q){
   if (!visible(q)) return "";
   const v = A(q.id);
-  let h = `<div class="q"><div class="q-label" id="l-${q.id}">${esc(q.q)}${q.t==="many"?' <span class="q-hint">(เลือกได้หลายข้อ)</span>':""}</div>`;
-  if (q.hint) h += `<div class="q-hint">${esc(q.hint)}</div>`;
+  let h = `<div class="q"><div class="q-label" id="l-${q.id}">${esc(T(q.q))}${q.t==="many"?' <span class="q-hint">(เลือกได้หลายข้อ)</span>':""}</div>`;
+  if (q.hint) h += `<div class="q-hint">${esc(T(q.hint))}</div>`;
   if (q.t === "one" || q.t === "many") {
     h += `<div class="opts" role="group" aria-labelledby="l-${q.id}">` + q.o.map((o,i) => {
+      if (!okFor(o)) return "";
       const ov = optV(o);
       const on = q.t === "one" ? v === ov : Array.isArray(v) && v.includes(ov);
-      return `<button type="button" class="opt" id="o-${q.id}-${i}" data-q="${q.id}" data-o="${esc(ov)}" aria-pressed="${on}">${esc(ov)}</button>`;
+      return `<button type="button" class="opt" id="o-${q.id}-${i}" data-q="${q.id}" data-o="${esc(ov)}" aria-pressed="${on}">${esc(T(ov))}</button>`;
     }).join("") + `</div>`;
     q.o.forEach((o,i) => {
       const ov = optV(o);
-      if (typeof o === "string" || !o.f || !has(q.id, ov)) return;
-      h += `<div class="follow"><label class="f-label" for="fu-${q.id}-${i}">${esc(ov)}: ${esc(o.f)}</label>${fieldBox(`fu-${q.id}-${i}`, fKey(q.id, ov), A(fKey(q.id, ov)), o.u, o.ph, !!o.u)}</div>`;
+      if (typeof o === "string" || !o.f || !okFor(o) || !has(q.id, ov)) return;
+      h += `<div class="follow"><label class="f-label" for="fu-${q.id}-${i}">${esc(T(ov))}: ${esc(T(o.f))}</label>${fieldBox(`fu-${q.id}-${i}`, fKey(q.id, ov), A(fKey(q.id, ov)), o.u, o.ph, !!o.u)}</div>`;
     });
     if (has(q.id, OTHER)) h += `<div class="follow"><label class="f-label" for="other-${q.id}">${["roomTypes","sizeCount","staffCount"].includes(q.id) ? "พิมพ์จำนวน" : "อื่นๆ พิมพ์เพิ่ม"}</label><input class="field" id="other-${q.id}" data-other="${q.id}" value="${esc(state.other[q.id] || "")}"></div>`;
   } else if (q.t === "repeat") {
     const n = q.n();
     if (!n) h += `<div class="q-hint">เลือกจำนวนในข้อด้านบนก่อน</div>`;
     for (let i = 0; i < n; i++) {
-      h += `<div class="card"><div class="card-title">${esc(q.item)} ${i+1}</div><div class="card-grid">` + q.fields.map(f =>
-        `<div class="cf"><label class="f-label" for="r-${q.id}-${i}-${f.k}">${esc(f.l)}</label>${fieldBox(`r-${q.id}-${i}-${f.k}`, `${q.id}.${i}.${f.k}`, A(`${q.id}.${i}.${f.k}`), f.u, f.ph, f.num)}</div>`).join("") + `</div></div>`;
+      h += `<div class="card"><div class="card-title">${esc(q.item)} ${i+1}</div><div class="card-grid">` + fieldsOf(q).map(f =>
+        `<div class="cf"><label class="f-label" for="r-${q.id}-${i}-${f.k}">${esc(T(f.l))}</label>${fieldBox(`r-${q.id}-${i}-${f.k}`, `${q.id}.${i}.${f.k}`, A(`${q.id}.${i}.${f.k}`), f.u, f.ph, f.num)}</div>`).join("") + `</div></div>`;
     }
   } else if (q.t === "grid") {
     const rows = gridRows(), cols = gridCols();
@@ -399,7 +419,7 @@ function summaryText(){
   SECTIONS.forEach(s => {
     const lines = s.qs.filter(visible).map(q => [q, fullText(q)]).filter(([,t]) => t);
     if (!lines.length) return;
-    out += `\n【${s.title}】\n` + lines.map(([q,t]) => t.includes("\n") ? `• ${q.q}:\n  ${t.replace(/\n/g, "\n  ")}` : `• ${q.q}: ${t}`).join("\n") + "\n";
+    out += `\n【${T(s.title)}】\n` + lines.map(([q,t]) => t.includes("\n") ? `• ${T(q.q)}:\n  ${t.replace(/\n/g, "\n  ")}` : `• ${T(q.q)}: ${t}`).join("\n") + "\n";
   });
   return out;
 }
@@ -413,13 +433,13 @@ function render(){
   if (step < TOTAL) {
     const s = SECTIONS[step];
     main.innerHTML = (step === 0 ? `<p class="msg">ตอบเท่าที่รู้ ข้ามข้อที่ยังไม่แน่ใจได้เลย ถ้าไม่มีตัวเลือกที่ตรง กด "อื่นๆ" แล้วพิมพ์เองได้ทุกข้อ คำตอบจะจำไว้ในเครื่องนี้ ปิดแล้วกลับมาทำต่อได้</p>` : "")
-      + `<h1>${esc(s.title)}</h1>` + (s.lead ? `<p class="lead">${esc(s.lead)}</p>` : "") + s.qs.map(renderQ).join("");
+      + `<h1>${esc(T(s.title))}</h1>` + (s.lead ? `<p class="lead">${esc(s.lead)}</p>` : "") + s.qs.map(renderQ).join("");
     next.hidden = false; next.textContent = step === TOTAL - 1 ? "ดูสรุปคำตอบ" : "ถัดไป";
   } else {
     next.hidden = true;
     const blocks = SECTIONS.map((s,si) => {
-      const rows = s.qs.filter(visible).map(q => { const t = fullText(q); return `<dt>${esc(q.q)}</dt><dd>${t ? esc(t) : '<span class="empty">ยังไม่ตอบ</span>'}</dd>`; }).join("");
-      return `<section><h3>${esc(s.title)} <button class="jump" type="button" data-jump="${si}">แก้ไข</button></h3><dl>${rows}</dl></section>`;
+      const rows = s.qs.filter(visible).map(q => { const t = fullText(q); return `<dt>${esc(T(q.q))}</dt><dd>${t ? esc(t) : '<span class="empty">ยังไม่ตอบ</span>'}</dd>`; }).join("");
+      return `<section><h3>${esc(T(s.title))} <button class="jump" type="button" data-jump="${si}">แก้ไข</button></h3><dl>${rows}</dl></section>`;
     }).join("");
     main.innerHTML = `<h1>ตรวจคำตอบแล้วกดส่ง</h1>
       <p class="lead">ถ้ากดส่งไม่ได้ ให้กด "คัดลอกคำตอบ" แล้ววางส่งใน LINE แทน</p>
@@ -428,8 +448,8 @@ function render(){
         <button class="btn main" id="send" type="button">${submitted ? "ส่งอีกครั้ง (แก้ไขแล้ว)" : "ส่งคำตอบ"}</button>
         <button class="btn" id="copy" type="button">คัดลอกคำตอบ</button>
       </div>
-      <div class="sum">${blocks}</div>
-      <textarea class="field" id="copybox" readonly hidden></textarea>`;
+      <textarea class="field" id="copybox" rows="8" readonly hidden></textarea>
+      <div class="sum">${blocks}</div>`;
   }
   window.scrollTo(0,0);
 }
@@ -455,9 +475,15 @@ main.addEventListener("click", async e => {
     document.getElementById("n-" + id)?.focus({preventScroll:true});
   } else if (b.dataset.jump) { state.step = +b.dataset.jump; save(); render(); }
   else if (b.id === "copy") {
+    // เบราว์เซอร์ในแอป (LINE/Facebook) มักไม่ให้ใช้ clipboard API หรือบอกว่าสำเร็จแต่ไม่ได้คัดลอกจริง
+    // จึงโชว์ข้อความไว้ในกล่องเสมอ แล้วลองคัดลอกจากกล่อง (execCommand ต้องเรียกทันทีตอนกด) ก่อนค่อยลอง API
     const text = summaryText();
-    try { await navigator.clipboard.writeText(text); setStatus("คัดลอกแล้ว ไปวางส่งใน LINE ได้เลย"); }
-    catch(err){ const box = document.getElementById("copybox"); box.hidden = false; box.value = text; box.focus(); box.select(); setStatus("กดค้างที่ข้อความด้านล่าง แล้วเลือกคัดลอก"); }
+    const box = document.getElementById("copybox");
+    box.hidden = false; box.value = text; box.focus(); box.select(); box.setSelectionRange(0, text.length);
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch(err){}
+    if (!ok && navigator.clipboard) { try { await navigator.clipboard.writeText(text); ok = true; } catch(err){} }
+    setStatus(ok ? "คัดลอกแล้ว ไปวางส่งใน LINE ได้เลย ถ้าวางแล้วไม่มีอะไร กดค้างที่ข้อความด้านล่าง แล้วเลือกคัดลอก" : "กดค้างที่ข้อความด้านล่าง แล้วเลือกคัดลอก");
   } else if (b.id === "send") {
     b.disabled = true; b.textContent = "กำลังส่ง…";
     try {
