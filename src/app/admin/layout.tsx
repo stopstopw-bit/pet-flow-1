@@ -67,6 +67,12 @@ function DueBanner({ dueDate, pathname }: { dueDate: string | null; pathname: st
   );
 }
 
+/** อยู่ในลิงก์ร้าน /s/<slug>/... → ออกจากระบบ/หมดเวลาแล้วต้องกลับหน้าล็อกอินของร้านเดิม */
+function shopPrefix() {
+  const m = window.location.pathname.match(/^\/s\/([a-z0-9-]+)\//i);
+  return m ? `/s/${m[1].toLowerCase()}` : "";
+}
+
 function AdminShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -92,7 +98,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
       if (!res || !res.ok) {
         sessionStorage.removeItem("petflow-role");
         sessionStorage.removeItem("petflow-menus");
-        router.replace(`/admin/login?next=${encodeURIComponent(pathname)}`);
+        router.replace(`${shopPrefix()}/admin/login?next=${encodeURIComponent(pathname)}`);
         return;
       }
       const me = await res.json().catch(() => null);
@@ -143,7 +149,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
     // ต้องล้างคุกกี้ที่เซิร์ฟเวอร์ด้วย ไม่ใช่แค่ล้างใน sessionStorage
     await fetch("/api/auth/login", { method: "DELETE" }).catch(() => {});
     sessionStorage.clear();
-    router.push("/admin/login");
+    router.push(`${shopPrefix()}/admin/login`);
   };
 
   // แดชบอร์ด: แถบหัวสูง ให้การ์ดสรุปเกยขึ้นไป · หน้าอื่นมีหัวข้อของตัวเองอยู่แล้ว ใช้แถบหัวแบบเตี้ย

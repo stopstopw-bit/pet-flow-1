@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Logo } from "@/components/Logo";
+import { useConfig } from "@/components/ConfigProvider";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -12,6 +13,7 @@ export default function AdminLoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const { config } = useConfig();
   // เปิดมาจากลิงก์ร้าน /s/<slug>/admin/login → ล็อกอินได้แค่บัญชีของร้านนั้น
   const [shop, setShop] = useState("");
   useEffect(() => {
@@ -64,7 +66,7 @@ export default function AdminLoginPage() {
         <div className="mb-6 flex flex-col items-center text-center">
           <Logo size={64} />
           <h1 className="mt-4 text-lg font-extrabold text-petflow-chocolate">
-            PetFlow Admin
+            {config.business?.name || "PetFlow"}
           </h1>
           <p className="mt-1 text-xs text-brown-soft">เข้าสู่ระบบเจ้าของ / พนักงาน</p>
           {shop && (
