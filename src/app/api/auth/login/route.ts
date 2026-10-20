@@ -13,6 +13,7 @@ import {
 } from "@/lib/auth";
 import { findTenantByLegacyOwnerCode, findTenantByOwnerLogin } from "@/lib/tenant-directory";
 import { getDirectoryDb } from "@/lib/supabase/server";
+import { isOverdue, tenantGateById } from "@/lib/tenant-billing";
 
 export const dynamic = "force-dynamic";
 
@@ -20,12 +21,16 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const session = await verifySession(req.cookies.get(SESSION_COOKIE)?.value);
   if (!session) return NextResponse.json({ ok: false }, { status: 401 });
+  // วันครบกำหนดจ่ายค่าบริการ — หลังบ้านใช้เตือนก่อนถึงวัน และพาไปหน้าค่าบริการเมื่อเลยกำหนด
+  const gate = await tenantGateById(session.tenantId).catch(() => null);
   return NextResponse.json({
     ok: true,
     role: session.role,
     name: session.name,
     menus: session.menus,
     impersonating: session.impersonating || false,
+    dueDate: gate?.dueDate || null,
+    overdue: isOverdue(gate?.dueDate),
   });
 }
 

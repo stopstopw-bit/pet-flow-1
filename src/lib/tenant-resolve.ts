@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { getDirectoryDb } from "./supabase/server";
+import { isTenantOpen, tenantGateBySlug } from "./tenant-billing";
 import { getBootstrapTenantId } from "./auth";
 
 /**
@@ -16,9 +16,6 @@ import { getBootstrapTenantId } from "./auth";
 export const TENANT_SLUG_HEADER = "x-tenant-slug";
 export const TENANT_COOKIE = "pf_tenant";
 
-/** cache slug→id ใน process (รีเซ็ตเมื่อ deploy ใหม่) — กัน query ตาราง tenants ทุก request */
-const slugToId = new Map<string, string>();
-
 /** อ่าน slug ร้านจาก request — header (middleware ใส่) ก่อน แล้วค่อย cookie */
 export function getTenantSlugFromRequest(req: NextRequest): string | null {
   const fromHeader = req.headers.get(TENANT_SLUG_HEADER);
@@ -28,27 +25,12 @@ export function getTenantSlugFromRequest(req: NextRequest): string | null {
   return null;
 }
 
-/** slug → tenant_id (เฉพาะร้าน trial/active) — null ถ้าไม่พบ */
+/** slug → tenant_id (เฉพาะร้าน trial/active ที่ยังไม่เลยวันครบกำหนดจ่าย) — null ถ้าไม่พบ */
 export async function tenantIdForSlug(slug: string): Promise<string | null> {
   const key = slug.trim().toLowerCase();
   if (!key) return null;
-  const cached = slugToId.get(key);
-  if (cached) return cached;
-
-  const sb = getDirectoryDb();
-  if (!sb) return null;
-  const { data } = await sb
-    .from("tenants")
-    .select("id, status")
-    .eq("slug", key)
-    .in("status", ["trial", "active"])
-    .limit(1)
-    .maybeSingle();
-
-  const id = (data as { id?: string } | null)?.id;
-  if (!id) return null;
-  slugToId.set(key, id);
-  return id;
+  const gate = await tenantGateBySlug(key).catch(() => null);
+  return gate && isTenantOpen(gate) ? gate.id : null;
 }
 
 /**

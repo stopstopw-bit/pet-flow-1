@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import MigrateOldDb from "./MigrateOldDb";
 import ShopQuestions from "./ShopQuestions";
+import Subscriptions from "./Subscriptions";
 
 type Tenant = {
   id: string;
@@ -12,6 +13,8 @@ type Tenant = {
   status: "trial" | "active" | "suspended" | "cancelled";
   template: string | null;
   trialEndsAt: string | null;
+  /** วันครบกำหนดจ่ายค่าบริการ — ถึงวันนี้ยังไม่จ่าย ร้านปิดเองอัตโนมัติ */
+  dueDate: string | null;
   createdAt: string;
   ownerUsername: string | null;
 };
@@ -136,6 +139,28 @@ export default function PlatformDashboard() {
     }
   };
 
+  /** วันนี้ตามเวลาไทย — เทียบกับวันครบกำหนดจ่าย */
+  const today = new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10);
+
+  const billing = async (t: Tenant, body: Record<string, unknown>) => {
+    setBusyId(t.id);
+    try {
+      const res = await fetch(`/api/platform/tenants/${t.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (expired(res)) return;
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || "บันทึกไม่สำเร็จ");
+      }
+      load();
+    } finally {
+      setBusyId("");
+    }
+  };
+
   const rename = async (t: Tenant) => {
     const name = prompt("ชื่อร้านใหม่", t.name)?.trim();
     if (!name || name === t.name) return;
@@ -214,6 +239,7 @@ export default function PlatformDashboard() {
 
       <MigrateOldDb explainMissing={!loading && !loadErr && tenants.length === 0} />
 
+      <Subscriptions tenants={tenants} onChanged={load} />
       <ShopQuestions tenants={tenants} />
 
       <form
@@ -328,6 +354,33 @@ export default function PlatformDashboard() {
                     /{t.slug} · {t.ownerUsername ? `username: ${t.ownerUsername}` : "ยังไม่ได้ตั้ง login"} · สร้างเมื่อ{" "}
                     {t.createdAt.slice(0, 10)}
                   </p>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px]">
+                    <label className="flex items-center gap-1 text-white/60">
+                      📅 ครบกำหนดจ่าย
+                      <input
+                        type="date"
+                        value={t.dueDate || ""}
+                        disabled={busyId === t.id}
+                        onChange={(e) => billing(t, { action: "set_due_date", dueDate: e.target.value })}
+                        className="rounded border border-white/15 bg-black/30 px-1.5 py-0.5 text-white [color-scheme:dark]"
+                      />
+                    </label>
+                    {t.dueDate && today >= t.dueDate && (
+                      <span className="rounded-full bg-red-500/25 px-2 py-0.5 font-bold text-red-200">
+                        ⛔ ค้างจ่าย ระงับอัตโนมัติ
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      disabled={busyId === t.id}
+                      onClick={() => {
+                        if (confirm(`รับเงิน "${t.name}" แล้ว ต่ออายุอีก 1 เดือน?`)) billing(t, { action: "paid_month" });
+                      }}
+                      className="rounded-full bg-sage/20 px-2.5 py-0.5 font-bold text-ok disabled:opacity-40"
+                    >
+                      💰 รับเงินแล้ว +1 เดือน
+                    </button>
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   <button

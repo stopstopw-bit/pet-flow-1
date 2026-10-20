@@ -347,6 +347,7 @@ export const ADMIN_TAB_ICONS: Record<string, string> = {
   "/admin/settings": "settings",
   "/admin/trash": "trash",
   "/admin/setup": "rocket",
+  "/admin/subscription": "receipt",
 };
 
 /** ชื่อภาษาอังกฤษสั้นๆ ของเมนู — ใช้เป็นหัวเล็กเหนือชื่อไทย และในแถบเมนูล่าง */
@@ -374,6 +375,7 @@ export const ADMIN_TAB_EN: Record<string, string> = {
   "/admin/settings": "Settings",
   "/admin/trash": "Trash",
   "/admin/setup": "Setup",
+  "/admin/subscription": "Subscription",
 };
 
 /** จัดกลุ่มเมนูในแผ่นเมนูทั้งหมด/แถบซ้าย */
@@ -395,5 +397,5 @@ export const ADMIN_TAB_GROUPS: { title: string; hrefs: string[] }[] = [
     title: "Marketing",
     hrefs: ["/admin/promos", "/admin/coupons", "/admin/birthdays", "/admin/packages", "/admin/cards", "/admin/articles"],
   },
-  { title: "System", hrefs: ["/admin/staff", "/admin/settings", "/admin/trash", "/admin/setup"] },
+  { title: "System", hrefs: ["/admin/staff", "/admin/settings", "/admin/trash", "/admin/setup", "/admin/subscription"] },
 ];
