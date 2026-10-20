@@ -1,5 +1,6 @@
 import { getDirectoryDb } from "./supabase/server";
-import { getSiteConfig, updateSiteConfig } from "./config-store";
+import { getSiteConfig, replaceSiteConfig } from "./config-store";
+import { getDefaultSiteConfig } from "./defaults/site-config";
 import { withTenant } from "./tenant-context";
 import { clearTenantGateCache } from "./tenant-billing";
 import { logAudit } from "./audit-log";
@@ -21,30 +22,49 @@ const BACK_HOME = /back\s*home/i;
 export async function fixSwappedShops(): Promise<boolean> {
   const sb = getDirectoryDb();
   if (!sb) return false;
-  const cols =
-    "id, slug, name, owner_username, owner_password_hash, owner_password_salt, owner_code_hash";
-  const { data: rows } = await sb.from("tenants").select(cols).in("slug", [FROM_SLUG, TO_SLUG]);
+  // select * — ร้านเก่าบางฐานไม่มีคอลัมน์ login ครบ ถ้าระบุชื่อคอลัมน์แล้วขาดตัวเดียว query จะพังเงียบ
+  const { data: rows, error } = await sb.from("tenants").select("*").in("slug", [FROM_SLUG, TO_SLUG]);
+  if (error) throw new Error(`อ่านรายชื่อร้านไม่ได้: ${error.message}`);
   const a = rows?.find((r) => r.slug === FROM_SLUG);
   const b = rows?.find((r) => r.slug === TO_SLUG);
   if (!a || !b) return false;
 
   const aConfig = await withTenant(a.id, () => getSiteConfig());
-  const bConfig = await withTenant(b.id, () => getSiteConfig());
-  // ร้าน petflow ต้องถือการตั้งค่าของ Back Home อยู่ (มีโลโก้ของตัวเอง) และร้าน Back Home ยังไม่มี
-  if (!BACK_HOME.test(aConfig.business?.name || "") || !aConfig.branding?.logoUrl) return false;
-  if (bConfig.branding?.logoUrl) return false;
+  // ร้านที่ลิงก์ petflow ยังถือการตั้งค่าของ Back Home อยู่ = ยังไม่ได้ย้าย
+  if (!BACK_HOME.test(aConfig.business?.name || "")) return false;
 
-  const identity = (t: typeof a) => ({
-    slug: t.slug,
-    name: t.name,
-    owner_username: t.owner_username,
-    owner_password_hash: t.owner_password_hash,
-    owner_password_salt: t.owner_password_salt,
-    owner_code_hash: t.owner_code_hash,
-  });
+  // ทำก่อนสลับ: ร้านที่จะกลายเป็น petflow ต้องเป็นหน้าตา PetFlow — ชื่อ PetFlow + โลโก้/สีเริ่มต้น
+  // (เผื่อเจ้าของเพิ่งใส่โลโก้ Back Home ซ้ำไว้ในร้านนี้ระหว่างรอ)
+  const petflowName = BACK_HOME.test(a.name || "") ? "PetFlow" : a.name;
+  const bConfig = await withTenant(b.id, () => getSiteConfig());
+  await withTenant(b.id, () =>
+    replaceSiteConfig({
+      ...bConfig,
+      business: { ...bConfig.business, name: petflowName },
+      branding: getDefaultSiteConfig().branding,
+    })
+  );
+  const LOGIN_COLS = [
+    "slug",
+    "name",
+    "owner_username",
+    "owner_password_hash",
+    "owner_password_salt",
+    "owner_code_hash",
+  ];
+  const identity = (t: Record<string, unknown>) =>
+    Object.fromEntries(LOGIN_COLS.filter((c) => c in t).map((c) => [c, t[c]]));
   // slug/username เป็น unique — พักร้าน a ไว้ที่ค่าชั่วคราวก่อนสลับ
+  // ขั้นแรกล็อกด้วยเงื่อนไข slug เดิม — ถ้าอีกเครื่องสลับไปก่อนแล้ว จะไม่มีแถวถูกแก้ แล้วหยุดตรงนี้
+  const { data: locked, error: lockErr } = await sb
+    .from("tenants")
+    .update({ slug: `swap-${Date.now()}`, ...("owner_username" in a ? { owner_username: null } : {}) })
+    .eq("id", a.id)
+    .eq("slug", FROM_SLUG)
+    .select("id");
+  if (lockErr) throw new Error(`สลับร้านไม่สำเร็จ: ${lockErr.message}`);
+  if (!locked?.length) return false;
   const steps = [
-    () => sb.from("tenants").update({ slug: `swap-${Date.now()}`, owner_username: null }).eq("id", a.id),
     () => sb.from("tenants").update(identity(a)).eq("id", b.id),
     () => sb.from("tenants").update(identity(b)).eq("id", a.id),
   ];
@@ -54,10 +74,8 @@ export async function fixSwappedShops(): Promise<boolean> {
   }
   clearTenantGateCache();
 
-  // ชื่อบนหน้าเว็บให้ตรงกับร้านของลิงก์ใหม่ — ร้านว่างที่กลายเป็น petflow ใช้ชื่อร้าน petflow เดิม
-  await withTenant(b.id, () =>
-    updateSiteConfig({ business: { ...bConfig.business, name: a.name } })
-  );
+  // ชื่อร้านในหน้า /platform ให้ตรงกับลิงก์ใหม่
+  await sb.from("tenants").update({ name: petflowName }).eq("id", b.id);
 
   for (const [t, now] of [
     [a, b],

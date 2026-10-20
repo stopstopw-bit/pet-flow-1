@@ -3,6 +3,7 @@ import { getSiteConfig, updateSiteConfig, replaceSiteConfig } from "@/lib/config
 import { getSessionFrom } from "@/lib/auth";
 import { withResolvedTenant, withTenant } from "@/lib/tenant-context";
 import { tenantIdForSlug } from "@/lib/tenant-resolve";
+import { fixSwappedShops } from "@/lib/fix-swapped-shops";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,12 @@ export const dynamic = "force-dynamic";
  * (ทั้งอ่านและเขียน) เลยตกไปใช้ร้าน bootstrap เดียวกันหมด นี่คือสาเหตุที่แก้สีร้านหนึ่ง
  * แล้วกระทบร้านอื่นด้วย — bug นี้ร้ายแรงสุดในบรรดาที่เจอ เพราะกระทบ config ทั้งก้อน
  */
+/** ย้ายการตั้งค่า Back Home ออกจากลิงก์ petflow — ตรวจครั้งเดียวต่อเครื่อง ไม่ต้องรอใครเปิด /platform */
+let swapCheck: Promise<unknown> | null = null;
+
 export async function GET(req: NextRequest) {
+  swapCheck ??= fixSwappedShops().catch((e) => console.error("[fixSwappedShops]", e));
+  await swapCheck;
   // หน้าเว็บอยู่ร้านไหน (/s/<slug>/...) ต้องได้โลโก้/ชื่อ/สีของร้านนั้นเสมอ — เดิมเอาร้านใน session
   // มาก่อน พอล็อกอินร้าน A ค้างไว้แล้วเปิดหน้าร้าน B ก็เห็นหน้าตาร้าน A (ดูเหมือนแก้ร้านหนึ่งแล้วร้านอื่นเปลี่ยนตาม)
   const pageShop = req.nextUrl.searchParams.get("shop")?.trim().toLowerCase() || shopFromReferer(req);
