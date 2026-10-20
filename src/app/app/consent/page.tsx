@@ -466,7 +466,7 @@ function ConsentContent() {
                     setFleaTickTreated(e.target.checked);
                     if (e.target.checked) setFleaError(false);
                   }}
-                  className="mt-0.5 h-5 w-5 flex-none accent-[#4A7348]"
+                  className="mt-0.5 h-5 w-5 flex-none accent-latte-deep"
                 />
                 <span>
                   ข้าพเจ้ายืนยันว่าได้หยดยากันเห็บหมัดให้น้องแล้ว ภายในระยะเวลาที่กำหนด
@@ -484,7 +484,7 @@ function ConsentContent() {
                   type="checkbox"
                   checked={checked}
                   onChange={(e) => setChecked(e.target.checked)}
-                  className="mt-0.5 h-5 w-5 flex-none accent-[#4A7348]"
+                  className="mt-0.5 h-5 w-5 flex-none accent-latte-deep"
                 />
                 <span>
                   ข้าพเจ้าขอรับรองว่าข้อมูลทั้งหมดที่กรอกและแนบมาข้างต้น

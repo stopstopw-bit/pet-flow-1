@@ -182,7 +182,7 @@ export default function GroomQueuePage() {
     return (
       <div key={b.id} className="rounded-petflow-sm bg-card p-3 shadow-petflow-sm">
         <div className="flex items-start gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#e8a07a] to-[#c97a5a] text-white">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-latte to-latte-deep text-white">
             <Icon name="paw" size={20} />
           </span>
           <div className="min-w-0 flex-1">

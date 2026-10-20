@@ -298,6 +298,24 @@ const BRANDING_DEFAULT: NonNullable<SiteConfig["branding"]> = {
   text: "#4a2d3a",
 };
 
+// ชุดสีสำเร็จรูป — กดทีเดียวเปลี่ยนสีทั้งหน้า (ไม่แตะโลโก้) แล้วค่อยปรับละเอียดต่อเองได้
+const BRANDING_PRESETS: { label: string; swatch: string; colors: Omit<NonNullable<SiteConfig["branding"]>, "logoUrl"> }[] = [
+  { label: "ชมพูพาสเทล (เริ่มต้น)", swatch: "#f6c6d9", colors: BRANDING_DEFAULT },
+  {
+    // จากโลโก้ Back Home Dog Service — บ้านสีเขียวมิ้นต์ พื้นขาว ตัวหนังสือดำ
+    label: "เขียวมิ้นต์ (Back Home)",
+    swatch: "#77c2ae",
+    colors: {
+      primary: "#2f8a77",
+      accent: "#bfe5da",
+      heading: "#1f4a41",
+      background: "#f2faf7",
+      surface: "#ffffff",
+      text: "#24312e",
+    },
+  },
+];
+
 function ShopTab({
   config,
   saving,
@@ -396,6 +414,22 @@ function ShopTab({
           {extractErr && <span className="text-[10px] font-bold text-wait">{extractErr}</span>}
         </div>
       )}
+      <p className="text-[10px] font-bold text-brown-soft">ชุดสีสำเร็จรูป</p>
+      <div className="flex flex-wrap gap-2">
+        {BRANDING_PRESETS.map((p) => (
+          <button
+            key={p.label}
+            type="button"
+            onClick={() =>
+              setBranding((b) => ({ ...b, ...p.colors, backgroundGradientFrom: "", backgroundGradientTo: "" }))
+            }
+            className="flex items-center gap-1.5 rounded-full border border-petflow-line bg-card px-3 py-1.5 text-[11px] font-bold text-brown"
+          >
+            <span className="h-3.5 w-3.5 rounded-full" style={{ background: p.swatch }} />
+            {p.label}
+          </button>
+        ))}
+      </div>
       <p className="text-[10px] font-bold text-brown-soft">ปุ่ม / จุดเน้น</p>
       <div className="grid grid-cols-3 gap-2">
         <ColorField
