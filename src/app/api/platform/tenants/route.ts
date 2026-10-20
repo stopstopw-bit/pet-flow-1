@@ -6,6 +6,7 @@ import { generateSalt, hashPassword } from "@/lib/auth";
 import { withTenant } from "@/lib/tenant-context";
 import { replaceSiteConfig } from "@/lib/config-store";
 import { getBlankShopConfig } from "@/lib/defaults/site-config";
+import { ensureDueDateColumn, isMissingDueDate } from "@/lib/tenant-billing";
 
 /** สุ่มรหัสผ่านให้อ่านง่าย จำง่าย — ตัวอักษร/ตัวเลขที่ไม่สับสน (ตัด 0/O, 1/I ออก) */
 function generatePassword(): string {
@@ -34,10 +35,27 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const { data, error } = await sb
-    .from("tenants")
-    .select("id, slug, name, status, template, trial_ends_at, created_at, owner_username")
-    .order("created_at", { ascending: false });
+  type Row = {
+    id: string;
+    slug: string;
+    name: string;
+    status: string;
+    template: string | null;
+    trial_ends_at: string | null;
+    due_date?: string | null;
+    created_at: string;
+    owner_username: string | null;
+  };
+  const list = async (cols: string) => {
+    const r = await sb.from("tenants").select(cols).order("created_at", { ascending: false });
+    return { data: r.data as unknown as Row[] | null, error: r.error };
+  };
+  const base = "id, slug, name, status, template, trial_ends_at, created_at, owner_username";
+  let { data, error } = await list(`${base}, due_date`);
+  // ยังไม่มีคอลัมน์วันครบกำหนดจ่าย — สร้างให้แล้วอ่านใหม่ (ไม่ได้ก็อ่านแบบเดิม)
+  if (error && isMissingDueDate(error.message)) {
+    ({ data, error } = (await ensureDueDateColumn()) ? await list(`${base}, due_date`) : await list(base));
+  }
   if (error) {
     const hint = /fetch failed/i.test(error.message) ? await probeSupabase() : "";
     return NextResponse.json({ error: hint ? `${error.message} — ${hint}` : error.message }, { status: 500 });
@@ -53,6 +71,7 @@ export async function GET(req: NextRequest) {
       status: t.status,
       template: t.template,
       trialEndsAt: t.trial_ends_at,
+      dueDate: t.due_date || null,
       createdAt: t.created_at,
       ownerUsername: t.owner_username,
     })),

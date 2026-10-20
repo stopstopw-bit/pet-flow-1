@@ -32,12 +32,12 @@ export function BandDecor() {
     >
       <circle cx="350" cy="30" r="46" fill="#fffdfa" opacity="0.18" />
       <circle cx="30" cy="190" r="38" fill="#fffdfa" opacity="0.14" />
-      <circle cx="250" cy="190" r="5" fill="#5c4033" opacity="0.22" />
+      <circle cx="250" cy="190" r="5" fill="rgb(var(--chocolate-rgb))" opacity="0.22" />
       <circle cx="190" cy="14" r="4" fill="#fffdfa" opacity="0.7" />
       <circle cx="210" cy="176" r="3" fill="#fffdfa" opacity="0.7" />
-      <path d="M232 26 l12 -16 l6 20 z" fill="#a9855f" opacity="0.35" />
+      <path d="M232 26 l12 -16 l6 20 z" fill="rgb(var(--latte-deep-rgb))" opacity="0.35" />
       <path d="M330 120 a10 10 0 0 1 20 0 z" fill="#fffdfa" opacity="0.35" />
-      <path d="M384 168 l8 8 m0 -8 l-8 8" stroke="#5c4033" strokeOpacity="0.25" strokeWidth="2" strokeLinecap="round" />
+      <path d="M384 168 l8 8 m0 -8 l-8 8" stroke="rgb(var(--chocolate-rgb))" strokeOpacity="0.25" strokeWidth="2" strokeLinecap="round" />
       <path
         d="M300 186 q10 -12 20 0 t20 0 t20 0"
         fill="none"

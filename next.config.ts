@@ -21,7 +21,11 @@ const nextConfig: NextConfig = {
   // หน้า SEO เดิมยังเข้าได้ที่ /petflow.html ไม่ได้ถูกลบ
   async rewrites() {
     return {
-      beforeFiles: [{ source: "/", destination: "/petflow.html" }],
+      beforeFiles: [
+        { source: "/", destination: "/petflow.html" },
+        // แบบสอบถามเจ้าของร้านใหม่ (ส่งลิงก์ให้ตอบก่อนตั้งค่าร้าน) — คำตอบเข้า /api/shop-questions
+        { source: "/shop-questions", destination: "/shop-questions.html" },
+      ],
       afterFiles: [],
       fallback: [],
     };

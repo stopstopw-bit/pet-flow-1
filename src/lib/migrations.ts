@@ -575,6 +575,34 @@ where staff_note like '%🎁%';`,
       alter table payroll_employees enable row level security;
     `,
   },
+  {
+    // คำตอบแบบสอบถามเจ้าของร้านใหม่ (/shop-questions) — ระดับแพลตฟอร์ม ยังไม่ผูกกับร้านไหน
+    name: "shop_intake.setup",
+    sql: `
+      create table if not exists shop_intake (id text primary key, shop_name text, answers jsonb not null default '{}'::jsonb, text text, created_at timestamptz not null default now(), updated_at timestamptz not null default now());
+      create index if not exists shop_intake_updated_idx on shop_intake (updated_at desc);
+      alter table shop_intake add column if not exists tenant_id text;
+      alter table shop_intake enable row level security;
+    `,
+  },
+  {
+    // วันครบกำหนดจ่ายค่าบริการรายเดือนของร้าน — ถึงวันนี้แล้วยังไม่จ่าย = ร้านถูกระงับอัตโนมัติ
+    name: "tenants.due_date",
+    sql: "alter table tenants add column if not exists due_date date;",
+  },
+  {
+    // ค่าบริการ PetFlow — ราคา/บัญชีรับเงิน (platform_settings) + สลิปที่ร้านส่งมาให้อนุมัติ (tenant_payments)
+    name: "subscriptions.setup",
+    sql: `
+      alter table tenants add column if not exists due_date date;
+      create table if not exists platform_settings (key text primary key, value jsonb not null default '{}'::jsonb, updated_at timestamptz not null default now());
+      alter table platform_settings enable row level security;
+      create table if not exists tenant_payments (id text primary key, tenant_id text not null, plan text not null, amount numeric not null default 0, slip_url text, note text, status text not null default 'pending', due_before date, due_after date, decided_note text, created_at timestamptz not null default now(), decided_at timestamptz);
+      create index if not exists tenant_payments_status_idx on tenant_payments (status, created_at desc);
+      create index if not exists tenant_payments_tenant_idx on tenant_payments (tenant_id, created_at desc);
+      alter table tenant_payments enable row level security;
+    `,
+  },
 ];
 
 export type MigrateResult = {
