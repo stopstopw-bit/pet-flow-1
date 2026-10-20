@@ -193,7 +193,7 @@ export default function PlatformDashboard() {
 
       <MigrateOldDb explainMissing={!loading && !loadErr && tenants.length === 0} />
 
-      <ShopQuestions />
+      <ShopQuestions tenants={tenants} />
 
       <form
         onSubmit={createTenant}

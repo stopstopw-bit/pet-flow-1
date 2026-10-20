@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { saveShopIntake } from "@/lib/shop-intake-store";
 import { rateLimit, clientKey } from "@/lib/rate-limit";
+import { tenantIdForSlug } from "@/lib/tenant-resolve";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest) {
   if (raw.length > MAX_BYTES) {
     return NextResponse.json({ error: "คำตอบยาวเกินไป" }, { status: 413 });
   }
-  let body: { id?: unknown; shopName?: unknown; text?: unknown; answers?: unknown };
+  let body: { id?: unknown; slug?: unknown; shopName?: unknown; text?: unknown; answers?: unknown };
   try {
     body = JSON.parse(raw);
   } catch {
@@ -33,6 +34,17 @@ export async function POST(req: NextRequest) {
   if (!/^[A-Za-z0-9-]{8,64}$/.test(id)) {
     return NextResponse.json({ error: "ข้อมูลไม่ถูกต้อง" }, { status: 400 });
   }
+  // ตอบผ่านลิงก์ของร้าน → ผูกกับร้านนั้น · อ่าน slug จาก body ไม่ใช่คุกกี้ pf_tenant
+  // เพราะคุกกี้อาจค้างจากร้านอื่นที่เคยเปิดในเครื่องเดียวกัน
+  const slug = typeof body.slug === "string" ? body.slug.trim().toLowerCase() : "";
+  let tenantId = "";
+  if (slug) {
+    tenantId = (await tenantIdForSlug(slug)) || "";
+    if (!tenantId) {
+      return NextResponse.json({ error: "ไม่พบร้านนี้ หรือร้านปิดใช้งานอยู่" }, { status: 404 });
+    }
+  }
+
   const answers =
     body.answers && typeof body.answers === "object" && !Array.isArray(body.answers)
       ? (body.answers as Record<string, unknown>)
@@ -41,6 +53,7 @@ export async function POST(req: NextRequest) {
   try {
     await saveShopIntake({
       id,
+      tenantId,
       shopName: typeof body.shopName === "string" ? body.shopName.trim().slice(0, 200) : "",
       text: typeof body.text === "string" ? body.text : "",
       answers,

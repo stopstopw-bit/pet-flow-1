@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   try {
     const items = await listShopIntakes();
     return NextResponse.json({
-      items: items.map(({ id, shopName, text, createdAt, updatedAt }) => ({ id, shopName, text, createdAt, updatedAt })),
+      items: items.map(({ id, tenantId, shopName, text, createdAt, updatedAt }) => ({ id, tenantId, shopName, text, createdAt, updatedAt })),
     });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "โหลดไม่สำเร็จ" }, { status: 500 });
