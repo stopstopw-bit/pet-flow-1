@@ -33,6 +33,17 @@ export function getBootstrapTenantId(): string | null {
 }
 
 export const SESSION_COOKIE = "petflow_session";
+
+/**
+ * คุกกี้ล็อกอินแยกต่อร้าน — ล็อกอินหลายร้านในเบราว์เซอร์เดียวกันได้โดยไม่ทับกัน
+ * middleware เลือกคุกกี้ของร้านที่กำลังเปิดอยู่ แล้วส่งต่อให้ route ในชื่อ SESSION_COOKIE เดิม
+ */
+export function shopSessionCookie(slug: string) {
+  return `${SESSION_COOKIE}__${slug.toLowerCase()}`;
+}
+
+/** middleware บอก route ว่าคำขอนี้ใช้คุกกี้ล็อกอินชื่อไหน (ใช้ตอนออกจากระบบ) */
+export const SESSION_COOKIE_NAME_HEADER = "x-session-cookie-name";
 const SESSION_DAYS = 7;
 
 /**

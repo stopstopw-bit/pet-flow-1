@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SESSION_COOKIE, verifySession } from "@/lib/auth";
+import {
+  SESSION_COOKIE,
+  SESSION_COOKIE_NAME_HEADER,
+  shopSessionCookie,
+  verifySession,
+} from "@/lib/auth";
 import { PLATFORM_SESSION_COOKIE, verifyPlatformSession } from "@/lib/platform-auth";
 import { TENANT_COOKIE, TENANT_SLUG_HEADER } from "@/lib/tenant-resolve";
 import { rateLimit, clientKey } from "@/lib/rate-limit";
@@ -61,6 +66,20 @@ const SHARED_API = [
   "/api/files",
 ];
 
+/** ร้านของหน้าที่ยิงคำขอนี้ — fetch/การเปลี่ยนหน้าในแอปส่ง Referer เป็นหน้าปัจจุบันเสมอ */
+function refererShop(req: NextRequest): string | null {
+  const ref = req.headers.get("referer");
+  if (!ref) return null;
+  try {
+    const url = new URL(ref);
+    if (url.host !== req.nextUrl.host) return null;
+    const m = url.pathname.match(/^\/s\/([a-z0-9-]+)(?:\/|$)/i);
+    return m ? m[1].toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+
 function matches(path: string, list: string[]) {
   return list.some((p) => path === p || path.startsWith(`${p}/`));
 }
@@ -99,6 +118,29 @@ export async function middleware(req: NextRequest) {
   const requestHeaders = new Headers(req.headers);
   requestHeaders.delete(TENANT_SLUG_HEADER);
   if (tenantSlug) requestHeaders.set(TENANT_SLUG_HEADER, tenantSlug);
+
+  // ── คุกกี้ล็อกอินของร้านที่เปิดอยู่ ─────────────────────────────────────────
+  // แต่ละร้านมีคุกกี้ของตัวเอง (petflow_session__<slug>) ล็อกอินหลายร้านในเครื่องเดียวกันได้
+  // ร้านของคำขอ: path /s/<slug> → หน้าที่เรียก API (Referer) → ร้านที่เปิดล่าสุด (pf_tenant)
+  const pageShop =
+    tenantSlug ||
+    refererShop(req) ||
+    req.cookies.get(TENANT_COOKIE)?.value?.trim().toLowerCase() ||
+    null;
+  const shopCookieName = pageShop ? shopSessionCookie(pageShop) : null;
+  const shopToken = shopCookieName ? req.cookies.get(shopCookieName)?.value : undefined;
+  const sessionCookieName = shopToken && shopCookieName ? shopCookieName : SESSION_COOKIE;
+  const sessionToken = shopToken ?? req.cookies.get(SESSION_COOKIE)?.value;
+  requestHeaders.delete(SESSION_COOKIE_NAME_HEADER);
+  requestHeaders.set(SESSION_COOKIE_NAME_HEADER, sessionCookieName);
+  if (shopToken) {
+    // route อ่านคุกกี้ชื่อ SESSION_COOKIE เดิม — ส่งคุกกี้ของร้านนี้ไปในชื่อนั้นแทนตัวเดิม
+    const others = (req.headers.get("cookie") || "")
+      .split(";")
+      .map((c) => c.trim())
+      .filter((c) => c && !c.startsWith(`${SESSION_COOKIE}=`));
+    requestHeaders.set("cookie", [...others, `${SESSION_COOKIE}=${shopToken}`].join("; "));
+  }
 
   /** ปล่อยผ่าน — ถ้ามาจาก /s/<slug> ต้อง rewrite ไป path จริง + แนบ header/cookie */
   function proceed(): NextResponse {
@@ -176,7 +218,7 @@ export async function middleware(req: NextRequest) {
     }
     if (matches(pathname, SHARED_API)) return proceed();
 
-    const session = await verifySession(req.cookies.get(SESSION_COOKIE)?.value);
+    const session = await verifySession(sessionToken);
     if (!session) {
       return withCookie(
         NextResponse.json(
@@ -188,13 +230,24 @@ export async function middleware(req: NextRequest) {
     return proceed();
   }
 
+  // ลิงก์เมนูหลังบ้านเป็น /admin/... เปล่า ๆ — ถ้ากดมาจากหน้าของร้านหนึ่ง ให้คงอยู่ในลิงก์ร้านนั้น
+  // (ไม่งั้นแท็บของอีกร้านที่เปิดค้างไว้จะสลับไปใช้ร้านที่เปิดล่าสุด)
+  if (!tenantSlug && pathname.startsWith("/admin")) {
+    const fromShop = refererShop(req);
+    if (fromShop) {
+      const url = req.nextUrl.clone();
+      url.pathname = `/s/${fromShop}${pathname}`;
+      return NextResponse.redirect(url);
+    }
+  }
+
   // หน้าหลังบ้าน — ไม่มีคุกกี้ก็เด้งไปหน้าล็อกอิน
   if (pathname.startsWith("/admin") && pathname !== "/admin/login") {
-    const session = await verifySession(req.cookies.get(SESSION_COOKIE)?.value);
+    const session = await verifySession(sessionToken);
     if (!session) {
       const url = req.nextUrl.clone();
-      url.pathname = "/admin/login";
-      url.search = `?next=${encodeURIComponent(pathname)}`;
+      url.pathname = tenantSlug ? `/s/${tenantSlug}/admin/login` : "/admin/login";
+      url.search = `?next=${encodeURIComponent(req.nextUrl.pathname)}`;
       return withCookie(NextResponse.redirect(url));
     }
     // เปิดลิงก์ของร้านหนึ่ง แต่คุกกี้ล็อกอินค้างเป็นของอีกร้าน — ห้ามโชว์หลังบ้านร้านที่ค้างอยู่
