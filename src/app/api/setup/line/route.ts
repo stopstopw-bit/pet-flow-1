@@ -9,6 +9,7 @@ import {
   isLineConfigured,
   isLiffConfigured,
   parseLineChannelToken,
+  parseLiffId,
   testLineChannelToken,
   setLineWebhookEndpoint,
   getLineWebhookEndpoint,
@@ -86,7 +87,7 @@ async function handlePost(req: NextRequest) {
 
   try {
     if (action === "save_liff") {
-      const liffId = String(body.liffId || "").trim();
+      const liffId = parseLiffId(body.liffId);
       if (!liffId || liffId.length < 6) {
         return NextResponse.json(
           { ok: false, message: "กรอก LIFF ID ให้ครบ (จาก LINE Developers → LIFF)" },
@@ -136,7 +137,7 @@ async function handlePost(req: NextRequest) {
 
     const channelToken = parseLineChannelToken(String(body.channelToken || ""));
     const channelSecret = String(body.channelSecret || "").trim();
-    const liffId = String(body.liffId || "").trim();
+    const liffId = parseLiffId(body.liffId);
     const current = await getSecrets();
 
     const test = await testLineChannelToken(channelToken);

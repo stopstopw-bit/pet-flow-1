@@ -19,6 +19,14 @@ export function parseLineChannelToken(raw: string) {
   return token;
 }
 
+/** LIFF ID จากที่ร้านวางมา — รับได้ทั้ง ID เปล่า ๆ และลิงก์เต็ม https://liff.line.me/<id>
+ * (เคยมีร้านวางลิงก์เต็ม แล้ว liff.init ขึ้น "resource is not found") */
+export function parseLiffId(raw: string | undefined | null): string {
+  const value = String(raw || "").trim();
+  const m = value.match(/liff\.line\.me\/([^/?#\s]+)/i);
+  return (m ? m[1] : value).trim();
+}
+
 export async function getLineCredentials(): Promise<LineCredentials | null> {
   const secrets = await getSecrets();
   let line = secrets.line;
@@ -36,13 +44,13 @@ export async function getLineCredentials(): Promise<LineCredentials | null> {
       if (mainLine) line = mainLine;
     }
   }
-  const envLiff = envOwner ? process.env.NEXT_PUBLIC_LIFF_ID?.trim() : undefined;
+  const envLiff = envOwner ? parseLiffId(process.env.NEXT_PUBLIC_LIFF_ID) || undefined : undefined;
 
   if (line?.channelToken) {
     return {
       channelToken: line.channelToken,
       channelSecret: line.channelSecret,
-      liffId: line.liffId || envLiff,
+      liffId: parseLiffId(line.liffId) || envLiff,
       source: "database",
     };
   }
@@ -56,7 +64,7 @@ export async function getLineCredentials(): Promise<LineCredentials | null> {
     };
   }
   if (line?.liffId) {
-    return { channelToken: "", liffId: line.liffId, source: "database" };
+    return { channelToken: "", liffId: parseLiffId(line.liffId), source: "database" };
   }
   if (envLiff) {
     return { channelToken: "", liffId: envLiff, source: "env" };
