@@ -110,6 +110,13 @@ export async function saveLineSecrets(
   return next.line!;
 }
 
+export async function clearLineSecrets() {
+  const current = await getSecrets();
+  const next = { ...current };
+  delete next.line;
+  await persistSecrets(next);
+}
+
 export async function clearGoogleSecrets() {
   const current = await getSecrets();
   const next = { ...current };

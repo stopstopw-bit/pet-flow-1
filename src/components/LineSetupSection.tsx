@@ -304,6 +304,17 @@ export function LineMessagingSetupSection({ adminCode }: { adminCode?: string })
     setSaving(false);
   };
 
+  const clearLine = async () => {
+    if (!window.confirm("ลบค่า LINE (Token, Secret, LIFF ID) ของร้านนี้ทั้งหมด?\nลูกค้าจะต่อ LINE ร้านนี้ไม่ได้จนกว่าจะตั้งใหม่")) return;
+    setSaving(true);
+    setMsg("");
+    const res = await fetch("/api/setup/line", { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    setMsg(data.message || data.error || "");
+    if (data.ok) window.location.reload();
+    setSaving(false);
+  };
+
   const setWebhook = async () => {
     setSaving(true);
     setMsg("");
@@ -411,6 +422,17 @@ export function LineMessagingSetupSection({ adminCode }: { adminCode?: string })
       >
         {saving ? "กำลังบันทึก…" : "บันทึก LINE Token"}
       </button>
+
+      {status?.source === "database" && (
+        <button
+          type="button"
+          disabled={saving}
+          onClick={clearLine}
+          className="w-full rounded-petflow-sm border border-red-200 py-2 text-xs font-bold text-red-600 disabled:opacity-50"
+        >
+          ลบค่า LINE ของร้านนี้ (ถ้าเป็น LINE ของร้านอื่น)
+        </button>
+      )}
 
       <div className="border-t border-petflow-line pt-3">
         <p className="mb-2 text-xs font-bold text-brown">ระดับลูกค้า (อัตโนมัติ)</p>
