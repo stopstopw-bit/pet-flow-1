@@ -19,6 +19,8 @@ import type { PointsHistoryEntry } from "@/lib/points-store";
 import { parseGroomInfo, groomInfoSummary } from "@/lib/groom-info";
 import { BOOKING_STATUS_LABELS, type Booking } from "@/lib/business";
 import type { CustomerServiceLog } from "@/lib/customer-service-log";
+import { pastPriceList } from "@/lib/special-price";
+import { PastPricesList } from "@/components/PastPrices";
 import { shortItemLabel, summarizeInvoiceItems } from "@/lib/invoice-item-label";
 import { bookingGroupKey, groupBookings } from "@/lib/booking-group";
 import { ExportSheetsButton } from "@/components/ExportSheetsButton";
@@ -1034,6 +1036,37 @@ function ServiceHistorySection({
       <p className="mt-2 text-[10px] text-brown-faint">
         ลงข้อมูลผิด? กด ⋯ ที่รายการเพื่อลบ — จะหายจากประวัติที่ลูกค้าเห็นในแอปด้วย
       </p>
+    </section>
+  );
+}
+
+/**
+ * ราคาที่ลูกค้าคนนี้เคยจ่าย — อ่านจากบิลที่จ่ายแล้ว ไม่ต้องกรอกเพิ่ม
+ * ลูกค้าที่ได้ราคาพิเศษ พนักงานคนไหนเปิดดูก็รู้ราคาเดิม (หน้าคิดเงินจะถามให้ใช้ราคาเดิมเองด้วย)
+ */
+function PastPricesSection({ log }: { log?: CustomerServiceLog }) {
+  const [showAll, setShowAll] = useState(false);
+  const prices = pastPriceList(
+    (log?.bills || []).map((b) => ({ createdAt: b.date, items: b.items }))
+  );
+  if (prices.length === 0) return null;
+  return (
+    <section className="mb-4 rounded-petflow bg-card p-4 shadow-petflow-sm">
+      <CardHeader
+        icon="money"
+        title="ราคาที่ลูกค้าคนนี้เคยจ่าย"
+        sub="ราคาต่อครั้งล่าสุดของแต่ละบริการ · ตอนออกบิลระบบจะถามให้ใช้ราคาเดิม"
+      />
+      <PastPricesList prices={prices} limit={showAll ? undefined : 6} />
+      {prices.length > 6 && !showAll && (
+        <button
+          type="button"
+          onClick={() => setShowAll(true)}
+          className="mt-2 min-h-[40px] w-full rounded-petflow-sm bg-paper py-2 text-xs font-extrabold text-latte-deep"
+        >
+          ดูทั้งหมดอีก {prices.length - 6} รายการ
+        </button>
+      )}
     </section>
   );
 }
@@ -3327,6 +3360,8 @@ export default function CustomersPage() {
             ...(selected.history.pastBookings || []),
           ]}
         />
+
+        <PastPricesSection log={selected.serviceLog} />
 
         <ServiceHistorySection
           customerId={c.id}

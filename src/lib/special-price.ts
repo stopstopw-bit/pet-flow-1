@@ -28,14 +28,27 @@ export type PastInvoice = {
  * — ตัดจำนวนท้ายชื่อ (× 3 / × 2 คืน) เพราะเทียบกันที่ราคาต่อหน่วย
  */
 export function priceSignature(label: string): string {
+  return priceLabel(label).toLowerCase();
+}
+
+/** ชื่อรายการแบบที่โชว์ให้พนักงานอ่าน — ตัดเหมือน priceSignature แต่ไม่ลดตัวพิมพ์ */
+export function priceLabel(label: string): string {
   return label
     .replace(/^🐱[^·]*·\s*/u, "")
     .replace(/\s*×\s*\d+(\s*คืน)?\s*$/u, "")
     .normalize("NFC")
     .replace(/[\u200B-\u200D\uFEFF]/g, "")
     .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
+    .trim();
+}
+
+/** ราคาต่อหน่วยที่คิดจริงของรายการในบิล — บิลเก่าบางใบยังไม่มี unitAmount */
+function unitOf(it: NonNullable<PastInvoice["items"]>[number]): number {
+  return typeof it.unitAmount === "number"
+    ? it.unitAmount
+    : it.qty && it.qty > 0
+      ? Math.round(it.amount / it.qty)
+      : it.amount;
 }
 
 export type SpecialPriceHit = {
@@ -63,16 +76,62 @@ export function findLastPrice(
     for (const it of inv.items || []) {
       if (it.kind === "freebie") continue;
       if (priceSignature(it.label) !== signature) continue;
-      // บิลเก่าบางใบยังไม่มี unitAmount — ถอยไปหารเอาจากยอดรวม เมื่อรู้จำนวน
-      const unit =
-        typeof it.unitAmount === "number"
-          ? it.unitAmount
-          : it.qty && it.qty > 0
-            ? Math.round(it.amount / it.qty)
-            : it.amount;
+      const unit = unitOf(it);
       if (!unit || unit <= 0) continue;
       return { unitAmount: unit, when: inv.createdAt };
     }
   }
   return null;
+}
+
+export type PastPrice = {
+  signature: string;
+  label: string;
+  /** ราคาต่อหน่วยครั้งล่าสุด */
+  unitAmount: number;
+  when?: string;
+  /** เคยซื้อรายการนี้กี่ครั้ง */
+  times: number;
+  /** ราคาครั้งก่อนหน้าที่ไม่เท่ากับครั้งล่าสุด (ถ้าเคยเปลี่ยน) — ไว้บอกว่าราคาเคยขยับ */
+  previousAmount?: number;
+};
+
+/**
+ * สรุป "ราคาที่ลูกค้าคนนี้เคยจ่าย" แยกตามบริการ — ใช้โชว์ในหน้าลูกค้าและตอนจองคิว
+ * ไม่นับของแถม/ราคา 0 และไม่นับสินค้าหน้าร้าน (ราคาสินค้าตายตัว ไม่ใช่ราคาที่ตกลงกัน)
+ * เรียงบริการที่ใช้ล่าสุดขึ้นก่อน
+ */
+export function pastPriceList(invoices: PastInvoice[], customerId?: string): PastPrice[] {
+  const mine = invoices
+    .filter((i) => !customerId || i.customerId === customerId)
+    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+
+  const bySig = new Map<string, PastPrice>();
+  for (const inv of mine) {
+    // บ้านหลายตัวอาบรายการเดียวกันในบิลเดียว = มาครั้งเดียว
+    const counted = new Set<string>();
+    for (const it of inv.items || []) {
+      if (it.kind === "freebie" || it.kind === "product") continue;
+      const unit = unitOf(it);
+      if (!unit || unit <= 0) continue;
+      const signature = priceSignature(it.label);
+      if (!signature) continue;
+      const hit = bySig.get(signature);
+      if (!hit) {
+        bySig.set(signature, {
+          signature,
+          label: priceLabel(it.label),
+          unitAmount: unit,
+          when: inv.createdAt,
+          times: 1,
+        });
+        counted.add(signature);
+        continue;
+      }
+      if (!counted.has(signature)) hit.times += 1;
+      counted.add(signature);
+      if (hit.previousAmount === undefined && unit !== hit.unitAmount) hit.previousAmount = unit;
+    }
+  }
+  return Array.from(bySig.values());
 }
