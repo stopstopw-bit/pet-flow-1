@@ -51,6 +51,8 @@ export default function PlatformDashboard() {
   } | null>(null);
   const [copiedLinkFor, setCopiedLinkFor] = useState("");
   const [linksOpenFor, setLinksOpenFor] = useState("");
+  /** ค่า LINE ของแต่ละร้าน (LIFF ID + มี Token ไหม) — ไว้เช็คว่า LINE อยู่ถูกร้าน */
+  const [lineInfo, setLineInfo] = useState<Record<string, { liffId: string; hasToken: boolean }>>({});
 
   const linkFor = (slugValue: string, path: string) =>
     `${typeof window !== "undefined" ? window.location.origin : ""}/s/${slugValue}${path}`;
@@ -106,6 +108,11 @@ export default function PlatformDashboard() {
       const d = await res.json();
       setTenants(d.tenants || []);
       setLoadErr("");
+      const lr = await fetch("/api/platform/line").catch(() => null);
+      if (lr?.ok) {
+        const ld = (await lr.json()) as { shops?: { id: string; liffId: string; hasToken: boolean }[] };
+        setLineInfo(Object.fromEntries((ld.shops || []).map((x) => [x.id, x])));
+      }
     } else {
       // อย่าโชว์ "ยังไม่มีร้าน" ตอนโหลดพลาด — ทำให้เข้าใจผิดว่าข้อมูลหาย
       const d = await res?.json().catch(() => null);
@@ -117,6 +124,27 @@ export default function PlatformDashboard() {
   useEffect(() => {
     load();
   }, [load]);
+
+  /** ย้ายค่า LINE ของร้านนี้ไปร้าน PetFlow / ลบทิ้ง — ร้านแรกเคยถือ LINE PetFlow ไว้ก่อนสลับลิงก์เป็น Back Home */
+  const lineAction = async (t: Tenant, mode: "move" | "clear") => {
+    const petflow = tenants.find((x) => x.slug === "petflow");
+    if (mode === "move" && !petflow) return;
+    const ask =
+      mode === "move"
+        ? `ย้ายค่า LINE ของ "${t.name}" ไปร้าน PetFlow?\nหลังย้าย ${t.name} จะไม่มีค่า LINE (ต้องตั้ง LINE ของตัวเองใหม่)`
+        : `ลบค่า LINE ของ "${t.name}"?`;
+    if (!window.confirm(ask)) return;
+    setBusyId(t.id);
+    const res = await fetch("/api/platform/line", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(mode === "move" ? { fromId: t.id, toId: petflow!.id } : { clearId: t.id }),
+    }).catch(() => null);
+    const d = await res?.json().catch(() => null);
+    setMsg(d?.message || (res?.ok ? "เรียบร้อย" : "ทำไม่สำเร็จ"));
+    setBusyId("");
+    await load();
+  };
 
   const createTenant = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -506,6 +534,38 @@ export default function PlatformDashboard() {
                       </div>
                     </div>
                   ))}
+                  <div className="border-t border-white/10 pt-2">
+                    <p className="mb-1 text-[11px] font-bold text-white/70">💬 LINE ของร้านนี้</p>
+                    {lineInfo[t.id]?.liffId || lineInfo[t.id]?.hasToken ? (
+                      <>
+                        <p className="text-[11px] text-white">
+                          LIFF: {lineInfo[t.id]?.liffId || "—"} · Token: {lineInfo[t.id]?.hasToken ? "มี" : "ไม่มี"}
+                        </p>
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          {t.slug !== "petflow" && tenants.some((x) => x.slug === "petflow") && (
+                            <button
+                              type="button"
+                              disabled={busyId === t.id}
+                              onClick={() => lineAction(t, "move")}
+                              className="rounded-full bg-latte/20 px-3 py-1 text-[11px] font-extrabold text-latte-deep disabled:opacity-50"
+                            >
+                              ➡️ ย้าย LINE นี้ไปร้าน PetFlow
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            disabled={busyId === t.id}
+                            onClick={() => lineAction(t, "clear")}
+                            className="rounded-full bg-white/10 px-3 py-1 text-[11px] font-extrabold text-white disabled:opacity-50"
+                          >
+                            🗑️ ลบ LINE ร้านนี้
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-[11px] text-white/60">ยังไม่ได้ตั้ง</p>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
