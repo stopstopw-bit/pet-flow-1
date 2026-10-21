@@ -740,7 +740,7 @@ export function buildPaymentFlex(data: {
             color: style?.accentColor || "#C4956A",
             margin: "lg",
           },
-          ...(show("bank")
+          ...(show("bank") && data.accountNumber
             ? [
                 {
                   type: "box" as const,
@@ -751,13 +751,9 @@ export function buildPaymentFlex(data: {
                   backgroundColor: "#F4ECE0",
                   cornerRadius: "10px",
                   contents: [
-                    {
-                      type: "text",
-                      text: data.bankName,
-                      weight: "bold",
-                      size: "md",
-                      color: "#5C4033",
-                    },
+                    ...(data.bankName
+                      ? [{ type: "text", text: data.bankName, weight: "bold", size: "md", color: "#5C4033" }]
+                      : []),
                     {
                       type: "text",
                       text: data.accountNumber,
@@ -796,7 +792,7 @@ export function buildPaymentFlex(data: {
         layout: "vertical",
         spacing: "sm",
         contents: [
-          ...(show("bank")
+          ...(show("bank") && data.accountNumber
             ? [
                 {
                   type: "button" as const,
@@ -1092,13 +1088,9 @@ export function buildBillSummaryFlex(data: {
       backgroundColor: "#F4ECE0",
       cornerRadius: "10px",
       contents: [
-        {
-          type: "text",
-          text: data.bankName || "",
-          weight: "bold",
-          size: "md",
-          color: "#5C4033",
-        },
+        ...(data.bankName
+          ? [{ type: "text", text: data.bankName, weight: "bold", size: "md", color: "#5C4033" }]
+          : []),
         {
           type: "text",
           text: data.accountNumber || "",
@@ -1672,7 +1664,9 @@ export function buildDepositRequestFlex(data: {
         : []),
     ],
   });
-  if (show("bank")) {
+  // LINE ไม่รับข้อความว่าง — ร้านที่ยังไม่ตั้งบัญชีจะส่งการ์ดไม่ผ่านทั้งชุด (messages[n] is invalid)
+  const hasBank = show("bank") && !!data.accountNumber;
+  if (hasBank) {
     body.push({
       type: "box",
       layout: "vertical",
@@ -1682,7 +1676,7 @@ export function buildDepositRequestFlex(data: {
       backgroundColor: "#F4ECE0",
       cornerRadius: "10px",
       contents: [
-        { type: "text", text: data.bankName, weight: "bold", size: "md", color: "#5C4033" },
+        ...(data.bankName ? [{ type: "text", text: data.bankName, weight: "bold", size: "md", color: "#5C4033" }] : []),
         { type: "text", text: data.accountNumber, weight: "bold", size: "xl", color: "#4A7348", wrap: true },
         { type: "text", text: `${st.texts?.accountNameLabel || "ชื่อบัญชี:"} ${data.accountName}`, size: "sm", color: "#A2907E", wrap: true },
       ],
@@ -1699,23 +1693,27 @@ export function buildDepositRequestFlex(data: {
       type: "bubble",
       size: "mega",
       body: { type: "box", layout: "vertical", contents: body },
-      footer: {
-        type: "box",
-        layout: "vertical",
-        contents: [
-          {
-            type: "button",
-            style: "primary",
-            color: st.buttonColor || "#4A7348",
-            height: "sm",
-            action: {
-              type: "clipboard",
-              label: st.texts?.copyButton || "📋 คัดลอกเลขบัญชี",
-              clipboardText: data.accountNumber,
+      ...(hasBank
+        ? {
+            footer: {
+              type: "box",
+              layout: "vertical",
+              contents: [
+                {
+                  type: "button",
+                  style: "primary",
+                  color: st.buttonColor || "#4A7348",
+                  height: "sm",
+                  action: {
+                    type: "clipboard",
+                    label: st.texts?.copyButton || "📋 คัดลอกเลขบัญชี",
+                    clipboardText: data.accountNumber,
+                  },
+                },
+              ],
             },
-          },
-        ],
-      },
+          }
+        : {}),
     },
   };
 }
