@@ -467,7 +467,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
   const [discountMode, setDiscountMode] = useState<"baht" | "percent">("baht");
   const [creating, setCreating] = useState(false);
   const [pay, setPay] = useState({ bankName: "", accountNumber: "", accountName: "" });
-  const [shopName, setShopName] = useState("PetFlow");
+  const [shopName, setShopName] = useState("");
   const [billMsg, setBillMsg] = useState({
     summaryBookingTitle: "สรุปการจอง",
     summaryDepositTitle: "แจ้งมัดจำ",

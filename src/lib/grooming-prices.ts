@@ -53,7 +53,7 @@ export const GROOM_PROGRAMS: GroomProgram[] = [
   },
   {
     id: "premium",
-    name: "PetFlow Premium",
+    name: "Premium",
     breeds: [
       { breed: "แมวพันธุ์ขนสั้น", prices: { kitten: 700, m: 900, l: 1100 } },
       { breed: "แมวพันธุ์ขนยาว", prices: { kitten: 800, m: 1000, l: 1250 } },

@@ -15,7 +15,7 @@ export function LoadingScreen({
 }) {
   const { config } = useConfig();
   const src = config.branding?.logoUrl || "/logo.jpg";
-  const name = config.business?.name || "PetFlow";
+  const name = config.business?.name || "";
 
   return (
     <div className="flex flex-col items-center justify-center gap-4 px-6 py-20 text-center">

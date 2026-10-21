@@ -7,8 +7,16 @@ import {
   useEffect,
   useState,
 } from "react";
+import { usePathname } from "next/navigation";
 import type { SiteConfig } from "@/lib/config-types";
 import { getDefaultSiteConfig } from "@/lib/defaults/site-config";
+
+/** ค่าก่อนโหลดเสร็จ — ชื่อร้านว่างไว้ ไม่งั้นจะเห็นชื่อระบบ (PetFlow) แวบขึ้นมาก่อนชื่อร้านจริง */
+function initialConfig(): SiteConfig {
+  const c = getDefaultSiteConfig();
+  c.business.name = "";
+  return c;
+}
 
 type ConfigCtx = {
   config: SiteConfig;
@@ -17,13 +25,14 @@ type ConfigCtx = {
 };
 
 const ConfigContext = createContext<ConfigCtx>({
-  config: getDefaultSiteConfig(),
+  config: initialConfig(),
   loading: true,
   refresh: async () => {},
 });
 
 export function ConfigProvider({ children }: { children: React.ReactNode }) {
-  const [config, setConfig] = useState<SiteConfig>(getDefaultSiteConfig());
+  const [config, setConfig] = useState<SiteConfig>(initialConfig);
+  const pathname = usePathname();
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
@@ -43,6 +52,12 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // ชื่อแท็บ/หัวหน้าต่าง LINE = ชื่อร้าน (ตั้งใหม่ทุกครั้งที่เปลี่ยนหน้า เพราะ Next จะคืนค่าเป็นชื่อเริ่มต้น)
+  const shopName = config.business?.name?.trim();
+  useEffect(() => {
+    if (shopName) document.title = shopName;
+  }, [shopName, pathname]);
 
   return (
     <ConfigContext.Provider value={{ config, loading, refresh }}>

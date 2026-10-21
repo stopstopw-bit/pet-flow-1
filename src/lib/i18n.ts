@@ -13,7 +13,7 @@ const messages = {
     },
     home: {
       greeting: "สวัสดี",
-      subtitle: "ยินดีต้อนรับสู่ PetFlow 🐱",
+      subtitle: "ยินดีต้อนรับค่ะ 🐾",
       services: "บริการของเรา",
       groom: "อาบน้ำ / กรูมมิ่ง",
       room: "ห้องพักแมว",
@@ -135,7 +135,7 @@ const messages = {
     },
     home: {
       greeting: "Hello",
-      subtitle: "Welcome to PetFlow 🐱",
+      subtitle: "Welcome 🐾",
       services: "Our services",
       groom: "Grooming & Spa",
       room: "Cat boarding",

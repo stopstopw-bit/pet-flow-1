@@ -114,7 +114,7 @@ export default function PayPage() {
         className={`mt-5 ${BTN_SECONDARY}`}
       >
         {!config.business.reviewButtonText && <Icon name="star" size={16} />}
-        {config.business.reviewButtonText || "รีวิว PetFlow"}
+        {config.business.reviewButtonText || `รีวิว ${config.business.name}`}
       </a>
 
       <Link

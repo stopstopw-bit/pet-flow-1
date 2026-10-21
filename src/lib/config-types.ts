@@ -42,7 +42,7 @@ export type CrmConfig = {
   inactiveDays: number;
   /** ไม่ส่งตามซ้ำภายในกี่วัน */
   followUpCooldownDays: number;
-  /** ข้อความตามลูกค้า — ใช้ {name} {days} {cats} */
+  /** ข้อความตามลูกค้า — ใช้ {name} {days} {pets} (เดิม {cats} ยังใช้ได้) {shop} */
   followUpMessage: string;
   /** tier ที่ตั้งเองได้ในโปรไฟล์ลูกค้า */
   tierPresets: string[];

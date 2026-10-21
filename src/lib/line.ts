@@ -570,6 +570,7 @@ export function buildPromoFlex(data: {
   promoUrl: string;
   discountLabel?: string;
   buttons?: { label: string; uri: string }[];
+  shopName?: string;
 }, style?: CardStyleConfig) {
   const hero = data.imageUrl
     ? {
@@ -587,7 +588,7 @@ export function buildPromoFlex(data: {
         contents: [
           {
             type: "text" as const,
-            text: style?.texts?.header || "✨ โปรโมชั่น PetFlow",
+            text: style?.texts?.header || `✨ โปรโมชั่น${data.shopName ? ` ${data.shopName}` : ""}`,
             color: style?.headerTextColor || "#FFFFFF",
             weight: "bold" as const,
             size: "md" as const,
@@ -2226,7 +2227,7 @@ export function reviewMessageFor(
       title: t.titleRoom || `ขอบคุณที่ไว้วางใจ${shopName ? ` ${shopName}` : "เรา"} นะคะ 🧡`,
       body:
         t.bodyRoom ||
-        `ตลอดช่วงที่น้องเข้าพัก พวกเราตั้งใจดูแลเหมือนเป็นหนึ่งในครอบครัว\nหวังว่าน้องจะกลับบ้านไปอย่างมีความสุขนะคะ 🐱✨\nหากประทับใจการเข้าพักของน้อง ฝากรีวิวให้${shop} สัก 1 รีวิวนะคะ\nทุกรีวิวมีความหมายกับพวกเรามาก และเป็นกำลังใจให้ตั้งใจดูแลน้อง ๆ ทุกตัวต่อไปค่ะ`,
+        `ตลอดช่วงที่น้องเข้าพัก พวกเราตั้งใจดูแลเหมือนเป็นหนึ่งในครอบครัว\nหวังว่าน้องจะกลับบ้านไปอย่างมีความสุขนะคะ 🐾✨\nหากประทับใจการเข้าพักของน้อง ฝากรีวิวให้${shop} สัก 1 รีวิวนะคะ\nทุกรีวิวมีความหมายกับพวกเรามาก และเป็นกำลังใจให้ตั้งใจดูแลน้อง ๆ ทุกตัวต่อไปค่ะ`,
     };
   }
   // อาบน้ำล้วน (ค่าเริ่มต้นถ้าตรวจไม่พบรายการห้องพัก)
@@ -2712,7 +2713,7 @@ export function buildPointsAwardFlex(data: {
   }
   contents.push({
     type: "text",
-    text: style?.closing || `ขอบคุณที่ไว้ใจ ${data.shopName || "CatCha Hotel"} นะคะ 🧡`,
+    text: style?.closing || `ขอบคุณที่ไว้ใจ${data.shopName ? ` ${data.shopName}` : "เรา"} นะคะ 🧡`,
     size: "xs",
     color: "#A2907E",
     margin: "lg",
@@ -2802,7 +2803,7 @@ export function buildReadyForPickupFlex(data: {
   }
   contents.push({
     type: "text",
-    text: style?.closing || `ขอบคุณที่ไว้ใจ ${data.shopName || "CatCha Hotel"} นะคะ 🧡`,
+    text: style?.closing || `ขอบคุณที่ไว้ใจ${data.shopName ? ` ${data.shopName}` : "เรา"} นะคะ 🧡`,
     size: "xs",
     color: "#A2907E",
     margin: "lg",

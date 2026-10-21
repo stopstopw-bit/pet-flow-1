@@ -3,6 +3,7 @@ import { getBooking } from "@/lib/bookings-store";
 import { buildIcsContent } from "@/lib/calendar";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { withTenant } from "@/lib/tenant-context";
+import { getSiteConfig } from "@/lib/config-store";
 
 export async function GET(
   req: NextRequest,
@@ -18,9 +19,10 @@ async function handleGet(bookingId: string) {
   const b = await getBooking(bookingId);
   if (!b) return NextResponse.json({ error: "not found" }, { status: 404 });
 
+  const shop = (await getSiteConfig()).business.name;
   const ics = await buildIcsContent({
     uid: b.calendarEventId || b.id,
-    summary: `🐱 ${b.catName} (${b.customerName}) — PetFlow`,
+    summary: `🐾 ${b.catName} (${b.customerName})${shop ? ` — ${shop}` : ""}`,
     description: `${b.service === "room" ? "ห้องพัก" : "อาบน้ำ"} · ${b.notes || ""}`,
     start: b.date || b.checkin || "",
     end: b.checkout || b.date || b.checkin || "",
@@ -31,7 +33,7 @@ async function handleGet(bookingId: string) {
   return new NextResponse(ics, {
     headers: {
       "Content-Type": "text/calendar; charset=utf-8",
-      "Content-Disposition": `attachment; filename="petflow-${bookingId}.ics"`,
+      "Content-Disposition": `attachment; filename="booking-${bookingId}.ics"`,
     },
   });
 }

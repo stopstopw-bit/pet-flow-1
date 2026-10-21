@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useLiff } from "@/components/LiffProvider";
+import { useConfig } from "@/components/ConfigProvider";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { BTN_PRIMARY, BTN_SECONDARY, PageHeader } from "@/components/PageHeader";
 import { EmptyState, SectionLabel } from "@/components/ui";
@@ -24,6 +25,7 @@ function daysLeft(iso?: string) {
 
 export default function CouponsPage() {
   const { ready, profile, customer } = useLiff();
+  const { config } = useConfig();
   const [loading, setLoading] = useState(true);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [referralUrl, setReferralUrl] = useState("");
@@ -58,7 +60,7 @@ export default function CouponsPage() {
   }, [profile?.lineUserId, customer?.id]);
 
   const share = async () => {
-    const text = `🐱 มาเลี้ยงน้องแมวที่ PetFlow กันนะ! สมัครผ่านลิงก์นี้ + มาใช้บริการครั้งแรก รับคูปองส่วนลด 100฿ ทั้งคู่เลย 🎁\n${referralUrl}`;
+    const text = `🐾 มาใช้บริการที่ ${config.business.name} กันนะ! สมัครผ่านลิงก์นี้ + มาใช้บริการครั้งแรก รับคูปองส่วนลด 100฿ ทั้งคู่เลย 🎁\n${referralUrl}`;
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);

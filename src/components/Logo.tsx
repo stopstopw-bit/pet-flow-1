@@ -17,7 +17,7 @@ export function Logo({ size = 48 }: { size?: number }) {
     >
       <Image
         src={src}
-        alt={config.business?.name || "PetFlow"}
+        alt={config.business?.name || ""}
         width={size}
         height={size}
         className="h-full w-full object-cover"

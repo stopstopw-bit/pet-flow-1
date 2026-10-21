@@ -958,7 +958,7 @@ function MessagesTab({
       </p>
       <TextAreaField
         label="ข้อความตามลูกค้า"
-        hint="ใช้ได้: {name} {cats} {days}"
+        hint="ใช้ได้: {name} = ชื่อลูกค้า · {pets} = ชื่อน้อง · {days} = จำนวนวัน · {shop} = ชื่อร้าน"
         value={crm?.followUpMessage || ""}
         onChange={(v) => setCrm({ ...crm, followUpMessage: v })}
         rows={3}
@@ -2218,7 +2218,7 @@ function CrmTab({
         }
       />
       <label className="block text-xs font-bold text-brown-soft">
-        ข้อความตามลูกค้า — ใช้ {"{name}"} {"{days}"} {"{cats}"}
+        ข้อความตามลูกค้า — ใช้ {"{name}"} {"{days}"} {"{pets}"} {"{shop}"}
         <textarea
           value={form.followUpMessage}
           onChange={(e) => setForm({ ...form, followUpMessage: e.target.value })}

@@ -42,12 +42,13 @@ export async function getCustomerLastVisitDate(customerId: string): Promise<stri
 
 export function formatFollowUpMessage(
   template: string,
-  data: { name: string; days: number; cats: string }
+  data: { name: string; days: number; cats: string; shop?: string }
 ) {
   return template
     .replace(/\{name\}/g, data.name)
     .replace(/\{days\}/g, String(data.days))
-    .replace(/\{cats\}/g, data.cats);
+    .replace(/\{(cats|pets)\}/g, data.cats)
+    .replace(/\{shop\}/g, data.shop || "");
 }
 
 export function canSendFollowUp(
@@ -122,12 +123,13 @@ export async function sendCustomerFollowUp(
 
   const lastVisitDate = await getCustomerLastVisitDate(customerId);
   const daysSinceVisit = lastVisitDate ? daysBetween(lastVisitDate) : config.crm.inactiveDays;
-  const cats = customer.cats.map((c) => c.name).join(", ") || "น้องแมว";
+  const cats = customer.cats.map((c) => c.name).join(", ");
   const template = options?.message?.trim() || config.crm.followUpMessage;
   const text = formatFollowUpMessage(template, {
     name: politeName(customer.name),
     days: daysSinceVisit,
     cats,
+    shop: config.business.name,
   });
 
   await pushLineMessage(customer.lineUserId, [{ type: "text", text }]);

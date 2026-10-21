@@ -66,7 +66,7 @@ export default function AdminLoginPage() {
         <div className="mb-6 flex flex-col items-center text-center">
           <Logo size={64} />
           <h1 className="mt-4 text-lg font-extrabold text-petflow-chocolate">
-            {config.business?.name || "PetFlow"}
+            {config.business?.name || ""}
           </h1>
           <p className="mt-1 text-xs text-brown-soft">เข้าสู่ระบบเจ้าของ / พนักงาน</p>
           {shop && (

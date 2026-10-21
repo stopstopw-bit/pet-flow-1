@@ -8,6 +8,7 @@ import {
   type GroomFormConfig,
 } from "@/lib/groom-form";
 import { toast } from "@/components/Toast";
+import { useConfig } from "@/components/ConfigProvider";
 import { Icon } from "@/components/Icon";
 import { brandColorsFor } from "@/lib/card-brand";
 
@@ -487,7 +488,7 @@ const CARDS: CardMeta[] = [
     fields: [],
     texts: [],
     styleTexts: [
-      { key: "header", label: "ข้อความบนแถบหัว", placeholder: "✨ โปรโมชั่น PetFlow" },
+      { key: "header", label: "ข้อความบนแถบหัว", placeholder: "✨ โปรโมชั่นของร้าน" },
       { key: "detailButton", label: "คำในปุ่ม (เมื่อไม่ได้กำหนดปุ่มเอง)", placeholder: "ดูรายละเอียด" },
     ],
     closingLabel: "ข้อความปิดท้ายการ์ด (ไม่บังคับ)",
@@ -554,6 +555,11 @@ function Preview({
   texts: Record<string, string>;
 }) {
   const show = (k: string) => st.show?.[k] !== false;
+  // พรีวิวใช้ชื่อ/ที่อยู่/บัญชีของร้านนี้จริง ๆ — ไม่ใช่ชื่อระบบ
+  const { config } = useConfig();
+  const shop = config.business?.name || "ร้านของคุณ";
+  const shopPlace = [shop, config.business?.location?.th].filter(Boolean).join(" · ");
+  const accountName = config.payment?.accountName || shop;
   const c = (role: ColorRole["key"], fb: string) => st[role] || fb;
   /** ข้อความที่เก็บในตัวการ์ดเอง (cards.<key>.texts) — ว่าง = ใช้ค่าเริ่มต้น */
   const t = (k: string, fb: string) => st.texts?.[k] || fb;
@@ -615,7 +621,7 @@ function Preview({
                 <p>⏰ <b>เวลา</b> — 12:30 น.</p>
               </>
             )}
-            {show("location") && <p>📍 <b>สถานที่</b> — PetFlow · เทพารักษ์ บางนา</p>}
+            {show("location") && <p>📍 <b>สถานที่</b> — {shopPlace}</p>}
             {show("notes") && <p>📝 <b>หมายเหตุ</b> — แจ้งในแชทได้เลยนะคะ</p>}
             {!isRoomPreview && show("groomPrep") && (
               <p className="whitespace-pre-line rounded-lg bg-[#FBEEE0] px-2.5 py-2 text-[10px] font-bold text-[#B4553B]">
@@ -651,7 +657,7 @@ function Preview({
           <p className="text-[10px] text-[#A2907E]">Soju · ตาล</p>
           {show("schedule") && <p className="text-[10px] font-bold">🛁 นัดอาบน้ำ: 24 ก.ค. 12:30 น.</p>}
           <hr className="border-[#eee3d2]" />
-          <div className="flex justify-between"><span>PetFlow Premium · แมวไทย M</span><span>900 บาท</span></div>
+          <div className="flex justify-between"><span>อาบน้ำ Premium · ไซซ์ M</span><span>900 บาท</span></div>
           <div className="flex justify-between text-[#C08A2E]"><span>ส่วนลด</span><span>-45 บาท</span></div>
           <hr className="border-[#eee3d2]" />
           <div className="flex items-baseline justify-between">
@@ -665,7 +671,7 @@ function Preview({
             <div className="rounded-lg bg-[#F4ECE0] px-2.5 py-2">
               <p className="font-extrabold">กรุงไทย</p>
               <p className="text-sm font-extrabold text-[#bd3a6a]">664-4-43446-0</p>
-              <p className="text-[10px] text-[#A2907E]">ชื่อบัญชี: PetFlow</p>
+              <p className="text-[10px] text-[#A2907E]">ชื่อบัญชี: {accountName}</p>
             </div>
           )}
           {show("closing") && (
@@ -712,7 +718,7 @@ function Preview({
       <div className={bubble}>
         <div className="px-4 py-3" style={{ background: c("headerColor", "#C4956A") }}>
           <p className={`${titleCls} font-extrabold`} style={{ color: c("headerTextColor", "#FFFFFF") }}>🧾 ใบเสร็จรับเงิน</p>
-          <p className="text-[10px]" style={{ color: c("headerTextColor", "#FFFFFF") }}>PetFlow</p>
+          <p className="text-[10px]" style={{ color: c("headerTextColor", "#FFFFFF") }}>{shop}</p>
         </div>
         <div className="space-y-2 px-4 py-3 text-[11px] text-[#4E3E32]">
           <p>🐱 <b>ลูกค้า</b> — Soju · ตาล</p>
@@ -727,7 +733,7 @@ function Preview({
             </div>
           )}
           {show("closing") && (
-            <p className="whitespace-pre-line text-center text-[10px] text-[#A2907E]">{st.closing || "ขอบคุณที่ไว้วางใจ PetFlow นะคะ 🧡"}</p>
+            <p className="whitespace-pre-line text-center text-[10px] text-[#A2907E]">{st.closing || `ขอบคุณที่ไว้วางใจ ${shop} นะคะ 🧡`}</p>
           )}
           {show("reviewBundle") && (
             <p className="rounded-lg border border-dashed border-[#d9c9a8] px-2 py-1.5 text-center text-[9px] text-[#A2907E]">
@@ -745,13 +751,13 @@ function Preview({
         <div className="px-4 py-4 text-center" style={{ background: c("headerColor", "#FBF4E9") }}>
           {show("stars") && <p className="text-sm" style={{ color: c("accentColor", "#C4956A") }}>⭐ ⭐ ⭐ ⭐ ⭐</p>}
           <p className={`mt-1 ${titleCls} font-extrabold`} style={{ color: c("headerTextColor", "#5C4033") }}>
-            ขอบคุณที่ไว้วางใจ PetFlow นะคะ 🧡
+            ขอบคุณที่ไว้วางใจ {shop} นะคะ 🧡
           </p>
         </div>
         <div className="space-y-1.5 px-4 py-3 text-[11px] text-[#4E3E32]">
           <p className="whitespace-pre-line">
             {(texts.reviewRequest || "ถ้าประทับใจ ฝากรีวิวให้ทีมงานหน่อยนะคะ")
-              .replace("{shop}", "PetFlow").replace("{cat}", "น้อง Soju")}
+              .replace("{shop}", shop).replace("{cat}", "น้อง Soju")}
           </p>
           {st.closing && <p className="whitespace-pre-line text-[10px] text-[#A2907E]">{st.closing}</p>}
         </div>
@@ -791,7 +797,7 @@ function Preview({
         </div>
         <div className="space-y-2 px-4 py-3 text-[11px] text-[#4E3E32]">
           <p className={`${titleCls} font-extrabold`} style={{ color: c("accentColor", "#5C4033") }}>🐱 เรเนล</p>
-          <p className="text-[10px] text-[#A2907E]">PetFlow</p>
+          <p className="text-[10px] text-[#A2907E]">{shop}</p>
           <p>สวัสดีค่ะ 🧡 ใกล้ถึงวันเข้าพักของน้องแล้วนะคะ</p>
           {(show("dates") || show("room")) && (
             <div className="space-y-1.5 rounded-xl bg-[#F4ECE0] px-3 py-2.5">
@@ -909,7 +915,7 @@ function Preview({
           </p>
           <p className="text-[10px] text-[#A2907E]">Soju · ตาล</p>
           {show("items") && (
-            <p className="whitespace-pre-line text-[10px]">PetFlow Premium · แมวไทย M 900 บาท{"\n"}ส่วนลด -45 บาท</p>
+            <p className="whitespace-pre-line text-[10px]">อาบน้ำ Premium · ไซซ์ M 900 บาท{"\n"}ส่วนลด -45 บาท</p>
           )}
           <hr className="border-[#eee3d2]" />
           <p className="text-base font-extrabold" style={{ color: c("accentColor", "#C4956A") }}>รวม 855 บาท</p>
@@ -917,7 +923,7 @@ function Preview({
             <div className="rounded-lg bg-[#F4ECE0] px-2.5 py-2">
               <p className="font-extrabold">กรุงไทย</p>
               <p className="text-sm font-extrabold text-[#bd3a6a]">664-4-43446-0</p>
-              <p className="text-[10px] text-[#A2907E]">ชื่อบัญชี: PetFlow</p>
+              <p className="text-[10px] text-[#A2907E]">ชื่อบัญชี: {accountName}</p>
             </div>
           )}
           {st.closing && <p className="whitespace-pre-line text-[10px] text-[#A2907E]">{st.closing}</p>}
@@ -955,7 +961,7 @@ function Preview({
       <div className={bubble}>
         <div className="px-4 py-5" style={{ background: c("headerColor", "#6e2f48") }}>
           <p className="text-sm font-extrabold" style={{ color: c("headerTextColor", "#FFFFFF") }}>
-            {t("header", "✨ โปรโมชั่น PetFlow")}
+            {t("header", `✨ โปรโมชั่น ${shop}`)}
           </p>
           <p className="text-[9px]" style={{ color: c("headerTextColor", "#FFFFFF") }}>(ถ้าใส่รูปโปร รูปจะแทนแถบนี้)</p>
         </div>
@@ -981,7 +987,7 @@ function Preview({
         {show("date") && <p className="text-[10px] text-[#A2907E]">📅 นัดอาบน้ำ: 24 ก.ค. 12:30</p>}
         <p className="whitespace-pre-line">
           {(texts.groomInfoIntro || "รบกวนแจ้งประวัติน้องสั้นๆ นะคะ 🐾")
-            .replace("{shop}", "PetFlow").replace("{cat}", "น้อง Soju")}
+            .replace("{shop}", shop).replace("{cat}", "น้อง Soju")}
         </p>
         {st.closing && <p className="whitespace-pre-line text-[10px] text-[#A2907E]">{st.closing}</p>}
       </div>

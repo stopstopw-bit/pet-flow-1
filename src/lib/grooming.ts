@@ -67,14 +67,14 @@ export const GROOM_MENUS = {
     id: "advance",
     title: { th: "โปรแกรมดูแลพิเศษ", en: "Special care programs" },
     subtitle: {
-      th: "PetFlow Premium หรือ ยับยั้งเชื้อรา (ราคาเดียวกันทั้ง 2 โปรแกรม)",
-      en: "PetFlow Premium or antifungal (same price for both)",
+      th: "Premium หรือ ยับยั้งเชื้อรา (ราคาเดียวกันทั้ง 2 โปรแกรม)",
+      en: "Premium or antifungal (same price for both)",
     },
     poster: "",
     variants: [
       {
         id: "premium",
-        name: { th: "PetFlow Premium", en: "PetFlow Premium" },
+        name: { th: "Premium", en: "Premium" },
         features: {
           th: ["ขจัดคราบมัน", "ดีท็อกซ์ ทำความสะอาดคราบสะสม", "ทรีตเมนต์ บำรุงเส้นขน"],
           en: ["Degreasing", "Detox deep-clean", "Coat-nourishing treatment"],

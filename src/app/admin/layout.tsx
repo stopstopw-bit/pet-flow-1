@@ -85,7 +85,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
   const [dueDate, setDueDate] = useState<string | null>(null);
   // ชื่อร้านมาจาก config ของแต่ละร้าน (multi-tenant) — ไม่ hardcode
   const { config } = useConfig();
-  const shopName = config.business?.name || "PetFlow";
+  const shopName = config.business?.name || "";
 
   useEffect(() => {
     if (pathname === "/admin/login") {
