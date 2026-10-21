@@ -4,7 +4,7 @@ import { listBookings } from "@/lib/bookings-store";
 import { uploadPrivateDataUrl } from "@/lib/supabase/storage";
 import { getSupabase } from "@/lib/supabase/server";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
-import { withTenant } from "@/lib/tenant-context";
+import { requireTenantId, withTenant } from "@/lib/tenant-context";
 import { privatizeTenantFiles } from "@/lib/privatize-files";
 
 export const runtime = "nodejs";
@@ -59,7 +59,11 @@ async function handlePost() {
           b.consentSignature
         );
         if (url !== b.consentSignature) {
-          await sb.from("bookings").update({ consent_signature: url }).eq("id", b.id);
+          await sb
+            .from("bookings")
+            .update({ consent_signature: url })
+            .eq("id", b.id)
+            .eq("tenant_id", requireTenantId());
           signatures++;
         }
       } catch (e) {

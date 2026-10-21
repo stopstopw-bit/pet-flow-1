@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyStaffLogin } from "@/lib/staff-store";
-import { withTenant } from "@/lib/tenant-context";
-import { tenantIdForSlug } from "@/lib/tenant-resolve";
+import { withTenantEvenIfClosed } from "@/lib/tenant-context";
 import {
   SESSION_COOKIE,
   SESSION_COOKIE_NAME_HEADER,
@@ -15,7 +14,7 @@ import {
 } from "@/lib/auth";
 import { findTenantByLegacyOwnerCode, findTenantByOwnerLogin } from "@/lib/tenant-directory";
 import { getDirectoryDb } from "@/lib/supabase/server";
-import { isOverdue, tenantGateById } from "@/lib/tenant-billing";
+import { isOverdue, tenantGateById, tenantGateBySlug } from "@/lib/tenant-billing";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +40,7 @@ export async function GET(req: NextRequest) {
  * เบราว์เซอร์แก้เองไม่ได้ และ JS อ่านไม่ได้
  *
  * เจ้าของร้านและพนักงานล็อกอินด้วย username+password เหมือนกันหมด (ตั้งแต่ T5b) —
- * username ต้อง unique ทั้งแพลตฟอร์ม (ข้ามร้าน) เพราะยังไม่รู้ว่าเป็นร้านไหนจนกว่าจะเจอ
+ * username ห้ามซ้ำแค่ในร้านเดียวกัน คนละร้านซ้ำได้ ร้านดูจากลิงก์ /s/<slug>/admin/login
  */
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
@@ -63,18 +62,26 @@ export async function POST(req: NextRequest) {
       }
     | null = null;
 
-  // 1) เจ้าของร้าน — username+password ค้นข้ามทุกร้าน
-  const tenant = await findTenantByOwnerLogin(username, password);
+  // ล็อกอินจากลิงก์ร้าน → หาเฉพาะบัญชีของร้านนั้น (คนละร้านใช้ username เดียวกันได้)
+  // ไม่เช็คว่าร้านเปิดอยู่ — ร้านที่เลยกำหนดจ่ายยังต้องล็อกอินเข้าไปหน้าค่าบริการได้
+  const shopId = shop ? (await tenantGateBySlug(shop).catch(() => null))?.id || null : null;
+  if (shop && !shopId) {
+    return NextResponse.json(
+      { error: `ไม่พบร้าน "${shop}"` },
+      { status: 404 }
+    );
+  }
+
+  // 1) เจ้าของร้าน
+  const tenant = await findTenantByOwnerLogin(username, password, shopId || undefined);
   if (tenant) {
     payload = { role: "owner", name: "เจ้าของร้าน", tenantId: tenant.id };
   }
 
-  // 2) พนักงาน — username+password ค้นข้ามทุกร้านเช่นกัน
+  // 2) พนักงาน — ค้นในฐานของร้านนั้น (เผื่อร้านแยกไปฐานของตัวเองแล้ว)
   if (!payload) {
-    // ล็อกอินจากลิงก์ร้าน → ค้นในฐานของร้านนั้น (เผื่อร้านแยกไปฐานของตัวเองแล้ว)
-    const shopId = shop ? await tenantIdForSlug(shop) : null;
     const staff = shopId
-      ? await withTenant(shopId, () => verifyStaffLogin(username, password))
+      ? await withTenantEvenIfClosed(shopId, () => verifyStaffLogin(username, password, shopId))
       : await verifyStaffLogin(username, password);
     if (staff) {
       payload = {
