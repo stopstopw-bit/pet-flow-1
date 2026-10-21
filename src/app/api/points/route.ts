@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { featureOff } from "@/lib/features-server";
 import { getAccount, redeemReward, addPoints, deletePointsHistoryEntry } from "@/lib/points-store";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { pushLineMessage, buildPointsAwardFlex } from "@/lib/line";
@@ -60,6 +61,11 @@ export async function POST(req: NextRequest) {
 }
 
 async function handlePost(req: NextRequest, isAdmin: boolean) {
+  // ลูกค้าแลกแต้มเอง — ร้านปิดแต้มสะสมไว้ก็แลกไม่ได้ (หลังบ้านยังจัดการแต้มเดิมได้)
+  if (!isAdmin) {
+    const blocked = await featureOff("points");
+    if (blocked) return blocked;
+  }
   const body = await req.json().catch(() => ({}));
   const { rewardId, displayName } = body;
   let lineUserId = String(body.lineUserId || "").trim();

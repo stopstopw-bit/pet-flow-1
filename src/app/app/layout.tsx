@@ -4,6 +4,7 @@ import { ConfigProvider } from "@/components/ConfigProvider";
 import { BrandingStyle } from "@/components/BrandingStyle";
 import { CustomerNav } from "@/components/CustomerNav";
 import { LiffStuckBanner } from "@/components/LiffStuckBanner";
+import { AppFeatureGate } from "@/components/AppFeatureGate";
 
 export default function CustomerLayout({
   children,
@@ -17,7 +18,9 @@ export default function CustomerLayout({
         <LiffProvider>
           <div className="bg-petflow-gradient min-h-screen pb-[calc(6rem+env(safe-area-inset-bottom))]">
             <LiffStuckBanner />
-            <div className="mx-auto max-w-lg">{children}</div>
+            <div className="mx-auto max-w-lg">
+              <AppFeatureGate>{children}</AppFeatureGate>
+            </div>
             <CustomerNav />
           </div>
         </LiffProvider>

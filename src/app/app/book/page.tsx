@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLiff } from "@/components/LiffProvider";
 import { useConfig } from "@/components/ConfigProvider";
+import { isFeatureOn } from "@/lib/features";
 import { PageHeader } from "@/components/PageHeader";
 import { SELF_BOOKABLE_ROOM_IDS } from "@/lib/self-bookable-rooms";
 import { resolveGroomPrograms } from "@/lib/grooming-prices";
@@ -89,6 +90,13 @@ function BookPageInner() {
   const [service, setService] = useState<Service>(
     params.get("service") === "room" ? "room" : "groom"
   );
+  // ร้านปิดบริการไหนไว้ในตั้งค่า ก็ไม่ให้เลือกบริการนั้น
+  const groomOn = isFeatureOn(config, "grooming");
+  const hotelOn = isFeatureOn(config, "hotel");
+  useEffect(() => {
+    if (service === "groom" && !groomOn && hotelOn) setService("room");
+    if (service === "room" && !hotelOn && groomOn) setService("groom");
+  }, [service, groomOn, hotelOn]);
   // เลือกน้องได้หลายตัวทั้งอาบน้ำและเข้าพัก — เข้าพักบ้านเดียวกันอยู่ห้องเดียวกัน (เกินจุห้อง = เพิ่มห้อง)
   const [catNames, setCatNames] = useState<string[]>([]);
   const toggleCat = (name: string) => {
@@ -464,6 +472,7 @@ function BookPageInner() {
     <div className="px-4 pb-6 pt-5">
       <PageHeader title="📅 จองคิวเอง" subtitle="เลือกวัน-เวลาที่ว่างได้เลย ไม่ต้องคุยกับพนักงาน" />
 
+      {groomOn && hotelOn && (
       <div className="mb-4 flex overflow-hidden rounded-full border border-petflow-line text-xs font-bold">
         <button
           type="button"
@@ -484,6 +493,7 @@ function BookPageInner() {
           🏠 เข้าพักโรงแรม
         </button>
       </div>
+      )}
 
       {!customer?.cats?.length ? (
         <p className="rounded-petflow-sm bg-wait/10 px-3 py-2.5 text-xs font-bold text-wait">

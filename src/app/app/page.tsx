@@ -18,12 +18,15 @@ import { MyPackagesSection } from "@/components/MyPackagesSection";
 import { MyMemberCreditSection } from "@/components/MyMemberCreditSection";
 import { PackageShopSection } from "@/components/PackageShopSection";
 import { HeaderBand, IconChip } from "@/components/HeaderBand";
+import { isFeatureOn, type FeatureKey } from "@/lib/features";
 
 export default function CustomerHome() {
   const { locale } = useLocale();
   const { profile, ready, customer } = useLiff();
   const { config } = useConfig();
   const m = t(locale).home;
+  // ส่วนของฟีเจอร์ที่ร้านปิดไว้ในตั้งค่า ไม่โชว์ในหน้าแรก
+  const on = (key: FeatureKey) => isFeatureOn(config, key);
   const [nextBooking, setNextBooking] = useState<Booking | null>(null);
   const [hasPromos, setHasPromos] = useState(false);
   const [couponCount, setCouponCount] = useState(0);
@@ -111,6 +114,7 @@ export default function CustomerHome() {
         </Link>
       )}
 
+      {on("selfBooking") && (
       <Link
         href="/app/book"
         className="mb-3 flex items-center gap-3 rounded-petflow bg-gradient-to-r from-latte-deep to-petflow-chocolate p-4 text-card shadow-petflow-sm transition active:scale-[0.98]"
@@ -124,7 +128,9 @@ export default function CustomerHome() {
         </span>
         <span>→</span>
       </Link>
+      )}
 
+      {on("coupons") && (
       <Link
         href="/app/coupons"
         className="mb-4 flex items-center justify-between gap-3 rounded-petflow border-2 border-amber-deep/30 bg-amber p-4 shadow-petflow"
@@ -141,11 +147,12 @@ export default function CustomerHome() {
           {couponCount > 0 ? `${couponCount} ใบ` : "เปิด"} →
         </span>
       </Link>
+      )}
 
       {/* เมนูลัด — ไอคอนกลมแบบหมวดหมู่ */}
       <nav aria-label="menu" className="mb-5 mt-1 grid grid-cols-4 gap-2">
-        <Link href="/app/rooms"><IconChip icon="bed" label={t(locale).nav.rooms} tone="honey" /></Link>
-        <Link href="/app/grooming"><IconChip icon="bath" label={t(locale).nav.grooming} tone="sage" /></Link>
+        {on("hotel") && <Link href="/app/rooms"><IconChip icon="bed" label={t(locale).nav.rooms} tone="honey" /></Link>}
+        {on("grooming") && <Link href="/app/grooming"><IconChip icon="bath" label={t(locale).nav.grooming} tone="sage" /></Link>}
         <Link href="/app/bookings"><IconChip icon="calendar" label={t(locale).nav.bookings} tone="latte" badge={nextBooking ? 1 : undefined} /></Link>
         <Link href="/app/profile"><IconChip icon="edit" label={locale === "th" ? "แก้ข้อมูล" : "Profile"} tone="paper" /></Link>
       </nav>
@@ -167,7 +174,7 @@ export default function CustomerHome() {
 
       {/* แต้มสะสม — โชว์เมื่อไม่มีเครดิต/คอร์ส เพื่อไม่ให้หน้าแรกโล่ง
           (ไม่มีปุ่มประวัติแต้ม เพราะเมนูแต้มด้านล่างพาไปหน้าเดียวกันอยู่แล้ว) */}
-      {showPoints && (
+      {showPoints && on("points") && (
         <section className="mb-4 overflow-hidden rounded-petflow bg-sky p-5 shadow-petflow">
           <p className="text-xs font-bold text-brown-soft">{m.yourPoints}</p>
           <p className="mt-1 text-4xl font-extrabold text-sky-deep">
@@ -184,12 +191,12 @@ export default function CustomerHome() {
       )}
 
       {/* คอร์สที่เปิดขาย — ซื้อ โอน แนบสลิป ได้ในที่เดียว */}
-      <PackageShopSection />
+      {on("packages") && <PackageShopSection />}
 
       {/* โปรพิเศษลูกค้า — โผล่เฉพาะตอนมีโปรจริง (ไม่มี = ซ่อนทั้งช่อง) */}
-      <CustomerExclusivePromos compact onHasPromos={setHasPromos} />
+      {on("promos") && <CustomerExclusivePromos compact onHasPromos={setHasPromos} />}
 
-      {hasPromos && (
+      {hasPromos && on("promos") && (
         <div className="mb-4 text-right">
           <Link href="/app/promos" className="text-[10px] font-bold text-latte-deep">
             {m.promosNow} · {m.seeAll} →

@@ -3,6 +3,8 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { PosPanel } from "@/components/PosPanel";
+import { useConfig } from "@/components/ConfigProvider";
+import { isFeatureOn } from "@/lib/features";
 import type { PosProduct } from "@/lib/pos-store";
 import { SERVICE_PRESETS, type ServicePreset } from "@/lib/service-presets";
 import { CustomerSendButtons } from "@/components/CustomerSendButtons";
@@ -3129,7 +3131,11 @@ function BillingTabs() {
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const tab = params.get("view") === "pos" ? "pos" : "bills";
+  const { config } = useConfig();
+  // ร้านที่ปิด "ขายสินค้าหน้าร้าน" — เหลือแค่บิลบริการ ไม่มีแท็บให้สลับ
+  const posOn = isFeatureOn(config, "pos");
+  const tab = posOn && params.get("view") === "pos" ? "pos" : "bills";
+  if (!posOn) return <BillsView tabs={null} />;
   const tabs = (
     <Segmented
       value={tab}

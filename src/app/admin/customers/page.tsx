@@ -28,6 +28,8 @@ import { BREED_OPTIONS, OTHER_BREED } from "@/lib/cat-breeds";
 import { BirthdayPicker } from "@/components/BirthdayPicker";
 import { StaffNoteTagPicker } from "@/components/StaffNoteTagPicker";
 import { Icon } from "@/components/Icon";
+import { useConfig } from "@/components/ConfigProvider";
+import { isFeatureOn } from "@/lib/features";
 import { GroomProgramPicker, useGroomPrograms } from "@/components/GroomProgramPicker";
 import { groomProgramName } from "@/lib/grooming-prices";
 import { Avatar, EmptyState, MoreMenu, SearchField, Segmented, SectionLabel } from "@/components/ui";
@@ -1381,6 +1383,8 @@ function CustomerSummaryCard({
   const [tier, setTier] = useState<CustomerTier>(customer.tier || "new");
   const [msg, setMsg] = useState("");
   const [followUpBusy, setFollowUpBusy] = useState(false);
+  const { config: siteConfig } = useConfig();
+  const followUpOn = isFeatureOn(siteConfig, "followUp");
   const [addAmt, setAddAmt] = useState("");
   const [addReason, setAddReason] = useState("");
   const [addBusy, setAddBusy] = useState(false);
@@ -2178,7 +2182,7 @@ function CustomerSummaryCard({
         </p>
       </div>
 
-      {(inactive || customer.lineUserId) && (
+      {followUpOn && (inactive || customer.lineUserId) && (
         <div className="mb-3 flex items-center gap-3 rounded-petflow-sm border border-petflow-line bg-card/85 p-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sage/20 text-ok">
             <Icon name="send" size={18} />

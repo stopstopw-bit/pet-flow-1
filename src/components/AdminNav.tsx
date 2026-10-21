@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { ADMIN_TAB_EN, ADMIN_TAB_GROUPS, ADMIN_TAB_ICONS, Icon } from "@/components/Icon";
+import { useConfig } from "@/components/ConfigProvider";
+import { disabledFeatureForAdminPath } from "@/lib/features";
 
 export const ADMIN_TABS = [
   { href: "/admin", label: "แดชบอร์ด", icon: "📊" },
@@ -67,6 +69,15 @@ export function getAllowedMenus(): string[] | null {
 export function isPathAllowed(pathname: string, allowed: string[] | null) {
   if (!allowed) return true;
   return allowed.some((href) => isTabActive(pathname, href));
+}
+
+/** เมนูที่ผู้ใช้เห็น — ตัดตามสิทธิ์พนักงาน และตัดเมนูของฟีเจอร์ที่ร้านปิดไว้ในตั้งค่า */
+function useVisibleTabs() {
+  const { config } = useConfig();
+  const allowed = getAllowedMenus();
+  return TABS.filter(
+    (t) => (!allowed || allowed.includes(t.href)) && !disabledFeatureForAdminPath(config, t.href)
+  );
 }
 
 /** ชื่ออังกฤษของเมนูที่เปิดอยู่ — ใช้เป็นหัวเล็กในแถบหัว */
@@ -157,8 +168,7 @@ export function AdminNav({
 }) {
   const pathname = usePathname();
   // เมนูของพนักงานถูกกรองตามสิทธิ์ที่เจ้าของตั้งไว้ (เมนูเปิดหลัง mount เสมอ อ่าน sessionStorage ได้เลย)
-  const allowed = getAllowedMenus();
-  const visibleTabs = TABS.filter((t) => !allowed || allowed.includes(t.href));
+  const visibleTabs = useVisibleTabs();
 
   useEffect(() => {
     setMenuOpen(false);
@@ -254,8 +264,7 @@ function groupTabs(tabs: readonly Tab[]) {
 /** แถบเมนูซ้ายบนจอใหญ่ — แสดงทุกเมนูที่ผู้ใช้มีสิทธิ์ แบ่งเป็นกลุ่ม */
 export function AdminSidebar() {
   const pathname = usePathname();
-  const allowed = getAllowedMenus();
-  const visibleTabs = TABS.filter((t) => !allowed || allowed.includes(t.href));
+  const visibleTabs = useVisibleTabs();
   const navRef = useRef<HTMLElement | null>(null);
   // เมนูยาวกว่าจอเตี้ยๆ → เลื่อนให้เห็นเมนูหน้าที่เปิดอยู่เสมอ
   // (top-[76px] = ใต้แถบหัวหลังบ้านที่ติดอยู่ด้านบน ไม่ให้เมนูมุดใต้หัว)

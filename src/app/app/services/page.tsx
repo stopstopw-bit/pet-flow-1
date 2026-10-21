@@ -7,14 +7,17 @@ import { useConfig } from "@/components/ConfigProvider";
 import { BookingOnlyNotice, PageHeader } from "@/components/PageHeader";
 import { ListRowContent } from "@/components/HeaderBand";
 import { Icon } from "@/components/Icon";
+import { isFeatureOn } from "@/lib/features";
 
 export default function ServicesPage() {
   const { locale } = useLocale();
   const { config } = useConfig();
   const m = t(locale).home;
 
+  const hotelOn = isFeatureOn(config, "hotel");
+  const groomOn = isFeatureOn(config, "grooming");
   const cards = [
-    {
+    ...(hotelOn ? [{
       href: "/app/rooms",
       icon: "bed",
       title: m.room,
@@ -22,8 +25,8 @@ export default function ServicesPage() {
         locale === "th"
           ? "ห้องพักแมวทุกแบบ + ราคา"
           : "All cat room types + pricing",
-    },
-    {
+    }] : []),
+    ...(groomOn ? [{
       href: "/app/grooming",
       icon: "bath",
       title: m.groom,
@@ -31,9 +34,9 @@ export default function ServicesPage() {
         locale === "th"
           ? "เมนูอาบน้ำ-เป่าขน + รอบเวลา"
           : "Bath & grooming menu + time slots",
-    },
+    }] : []),
     // โผล่ให้เห็นเฉพาะเมื่อร้านใส่เนื้อหาไว้แล้ว — ไม่งั้นเป็นลิงก์ไปหน้าเปล่า
-    ...(config.boardingRules?.length
+    ...(hotelOn && config.boardingRules?.length
       ? [
           {
             href: "/app/boarding-rules",
