@@ -120,6 +120,7 @@ export const TELEGRAM_BOT_COMMANDS = [
   { command: "start", description: "เริ่มใช้ + ดู Chat ID" },
   { command: "today", description: "นัดวันนี้" },
   { command: "tomorrow", description: "เตรียมตัวพรุ่งนี้ (นัด + เช็คอิน/เอาท์)" },
+  { command: "transport", description: "รายการรับ-ส่งน้อง วันนี้ + พรุ่งนี้ (พร้อมลิงก์แผนที่)" },
   { command: "queue", description: "คิวรอยืนยัน" },
   { command: "month", description: "ตารางเดือนนี้" },
   { command: "sales", description: "ยอดขายวันนี้" },

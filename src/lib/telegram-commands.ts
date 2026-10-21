@@ -10,6 +10,7 @@ import {
 } from "@/lib/telegram-actions";
 
 import { parseTelegramCommand } from "@/lib/telegram";
+import { buildTransportSummaryMessage } from "@/lib/transport-summary";
 
 /**
  * สร้างข้อความตารางงานของวันหนึ่ง — อาบน้ำ + เช็คอิน + เช็คเอาท์
@@ -159,6 +160,7 @@ export async function handleTelegramCommand(
         `👇 กดปุ่มเมนูด้านล่างได้เลย\n` +
         `📅 นัดวันนี้ · 🌅 เตรียมตัวพรุ่งนี้\n` +
         `⏳ คิวรอยืนยัน · 🗓️ ตารางเดือน\n` +
+        `🚗 รับ-ส่งน้อง (วันนี้ + พรุ่งนี้ พร้อมลิงก์แผนที่)\n` +
         `💰 ยอดขาย · 📒 การเงิน\n` +
         `➕ เพิ่มนัด · 📋 สรุปลูกค้า · ✅ ส่งยืนยันนัด\n\n` +
         `<b>เพิ่มนัด</b>\n` +
@@ -191,6 +193,22 @@ export async function handleTelegramCommand(
     tomorrow.setDate(tomorrow.getDate() + 1);
     const message = await buildTomorrowPrepMessage(tomorrow.toISOString().slice(0, 10));
     return { message };
+  }
+
+  if (command === "/transport") {
+    const tomorrow = new Date(`${today}T12:00:00`);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const [t1, t2] = await Promise.all([
+      buildTransportSummaryMessage(today, {
+        heading: `🚗 รับ-ส่งวันนี้ (${today})`,
+        emptyText: "วันนี้ไม่มีรับ-ส่งค่ะ",
+      }),
+      buildTransportSummaryMessage(tomorrow.toISOString().slice(0, 10), {
+        heading: `🚗 รับ-ส่งพรุ่งนี้ (${tomorrow.toISOString().slice(0, 10)})`,
+        emptyText: "พรุ่งนี้ไม่มีรับ-ส่งค่ะ",
+      }),
+    ]);
+    return { html: true, message: `${t1}\n\n${t2}` };
   }
 
   if (command === "/month") {
