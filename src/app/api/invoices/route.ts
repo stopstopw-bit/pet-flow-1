@@ -25,6 +25,7 @@ import {
 } from "@/lib/customers-store";
 import { issueCoupon, listCustomerCoupons } from "@/lib/coupons-store";
 import { getPaymentConfig } from "@/lib/payment-config";
+import { shopAppBase } from "@/lib/line-config";
 import { getSiteConfig } from "@/lib/config-store";
 import {
   pushLineMessage,
@@ -391,7 +392,8 @@ async function handlePatch(req: NextRequest) {
   const inv = await getInvoice(id);
   if (!inv) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  const base = process.env.NEXT_PUBLIC_APP_URL || "";
+  // ลิงก์ในการ์ดต้องมีชื่อร้าน (/s/<slug>) — /app เปล่า ๆ คือร้าน PetFlow
+  const base = await shopAppBase();
     const payment = await getPaymentConfig();
 
   // วัน/เวลานัด (จากนัดที่ผูกกับบิล) — แสดงในการ์ดสรุป

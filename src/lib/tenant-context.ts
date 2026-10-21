@@ -1,8 +1,8 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { NextRequest } from "next/server";
 import { getBootstrapTenantId } from "./auth";
-import { MAIN_SHOP_SLUG, resolveTenantId } from "./tenant-resolve";
-import { isTenantOpen, tenantGateById, tenantGateBySlug } from "./tenant-billing";
+import { mainShopTenantId, resolveTenantId } from "./tenant-resolve";
+import { isTenantOpen, tenantGateById } from "./tenant-billing";
 import { setCurrentTenantReader } from "./supabase/server";
 
 /**
@@ -45,16 +45,13 @@ export function isBootstrapTenant(): boolean {
 }
 
 /**
- * ร้านที่เป็นเจ้าของค่าใน env (LINE/Telegram/Google) — ร้าน bootstrap (TENANT_ID) หรือร้าน PetFlow
- * TENANT_ID ใน env อาจไม่ตรงกับ id ของร้าน PetFlow ในฐานข้อมูลปัจจุบัน (เช่นหลังย้ายฐาน)
- * ถ้าเช็คแค่ TENANT_ID ร้าน PetFlow จะไม่ได้ LINE ที่ตั้งไว้ใน env แล้วลูกค้าต่อ LINE ไม่ได้
+ * ร้านที่เป็นเจ้าของค่าใน env (LINE/Telegram/Google/บัญชีธนาคาร) — ร้าน PetFlow ร้านเดียว (ดู mainShopTenantId)
+ * ห้ามรวม TENANT_ID: ตอนนี้ TENANT_ID เป็นร้าน Back Home — ถ้ารวมไว้ Back Home จะได้ LINE/บัญชีของ PetFlow
  */
 export async function isEnvOwnerTenant(): Promise<boolean> {
-  if (isBootstrapTenant()) return true;
   const id = storage.getStore();
   if (!id) return false;
-  const gate = await tenantGateBySlug(MAIN_SHOP_SLUG).catch(() => null);
-  return !!gate && gate.id === id;
+  return id === (await mainShopTenantId());
 }
 
 /**
@@ -80,8 +77,9 @@ export function withTenantEvenIfClosed<T>(tenantId: string, fn: () => Promise<T>
  * ตอนนี้มีร้านเดียว (CatCha) จึงอ่านจาก env TENANT_ID ได้เลย
  * พอมีหลายร้านจริง ต้องเปลี่ยนไป resolve จาก LIFF ID/domain แทน (ดู T5)
  */
-export function withBootstrapTenant<T>(fn: () => Promise<T>): Promise<T> {
-  const tenantId = getBootstrapTenantId();
+export async function withBootstrapTenant<T>(fn: () => Promise<T>): Promise<T> {
+  // หน้าเว็บโฆษณา/บทความเขียนไว้ของ PetFlow — ใช้ร้าน PetFlow ไม่ใช่ TENANT_ID (ซึ่งเป็น Back Home แล้ว)
+  const tenantId = await mainShopTenantId();
   if (!tenantId) {
     throw new Error("ยังไม่ได้ตั้งค่า TENANT_ID — ดูขั้นตอนใน SETUP_NEW_SHOP.md");
   }

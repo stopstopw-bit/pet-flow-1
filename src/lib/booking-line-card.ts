@@ -1,5 +1,5 @@
 import { getSiteConfig } from "./config-store";
-import { bookingConfirmUrl as buildConfirmUrl, bookingTransportUrl } from "./line-config";
+import { bookingConfirmUrl as buildConfirmUrl, bookingTransportUrl, shopAppBase } from "./line-config";
 import { hasTransport, type BookingTransport } from "./transport";
 import { getLineCredentials } from "./line-config";
 import { buildAppointmentConfirmFlex } from "./line";
@@ -7,7 +7,7 @@ import { groomProgram } from "./grooming-prices";
 
 export async function bookingConfirmUrl(bookingId: string) {
   const creds = await getLineCredentials();
-  return buildConfirmUrl(bookingId, creds?.liffId);
+  return buildConfirmUrl(bookingId, creds?.liffId, await shopAppBase());
 }
 
 export async function buildBookingConfirmFlex(
@@ -40,7 +40,7 @@ export async function buildBookingConfirmFlex(
     program: groomProgramId ? groomProgram(groomProgramId)?.name : undefined,
     confirmUrl: await bookingConfirmUrl(booking.id),
     transportUrl: hasTransport(booking.transport)
-      ? bookingTransportUrl(booking.id, creds?.liffId)
+      ? bookingTransportUrl(booking.id, creds?.liffId, await shopAppBase())
       : undefined,
     mapsUrl,
     location: [config.business.name, location].filter(Boolean).join(" · "),

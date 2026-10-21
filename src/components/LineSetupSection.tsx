@@ -109,7 +109,10 @@ export function LiffSetupSection({ adminCode }: { adminCode?: string }) {
 
   const endpointUrl = useMemo(() => {
     if (status?.endpointUrl) return status.endpointUrl;
-    if (typeof window !== "undefined") return `${window.location.origin}/app`;
+    if (typeof window !== "undefined") {
+      const shop = window.location.pathname.match(/^\/s\/[a-z0-9-]+/i)?.[0] || "";
+      return `${window.location.origin}${shop}/app`;
+    }
     return "https://petflow.example.com/app";
   }, [status?.endpointUrl]);
 

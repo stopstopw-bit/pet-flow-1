@@ -1,6 +1,6 @@
 import { getSecrets } from "./secrets-store";
-import { getBootstrapTenantId } from "./auth";
-import { isBootstrapTenant, isEnvOwnerTenant, withTenantEvenIfClosed } from "./tenant-context";
+import { isEnvOwnerTenant, requireTenantId } from "./tenant-context";
+import { getDirectoryDb } from "./supabase/server";
 
 export type LineCredentials = {
   channelToken: string;
@@ -29,21 +29,11 @@ export function parseLiffId(raw: string | undefined | null): string {
 
 export async function getLineCredentials(): Promise<LineCredentials | null> {
   const secrets = await getSecrets();
-  let line = secrets.line;
+  const line = secrets.line;
   const envToken = process.env.LINE_CHANNEL_TOKEN?.trim();
-  // LIFF ใน env เป็นของร้าน bootstrap เท่านั้น — ร้านอื่นที่ยังไม่ตั้งต้องว่าง
+  // LINE ใน env เป็นของร้าน PetFlow เท่านั้น (ดู isEnvOwnerTenant) — ร้านอื่นที่ยังไม่ตั้งต้องว่าง
+  // ห้ามยืม LINE ของร้านอื่นมาใช้ ไม่ว่ากรณีไหน: การ์ด/ลิงก์จะออกจาก LINE ผิดร้าน
   const envOwner = await isEnvOwnerTenant();
-  // ร้าน PetFlow (/s/petflow) กับร้านหลัก (TENANT_ID) เป็นร้านเดียวกันแต่คนละแถว —
-  // ถ้าลิงก์ /s/petflow ยังไม่ได้ตั้ง LINE ให้ใช้ค่า LINE ที่ตั้งไว้ในร้านหลัก
-  if (envOwner && !line?.channelToken && !line?.liffId && !isBootstrapTenant()) {
-    const mainId = getBootstrapTenantId();
-    if (mainId) {
-      const mainLine = await withTenantEvenIfClosed(mainId, async () => (await getSecrets()).line).catch(
-        () => undefined
-      );
-      if (mainLine) line = mainLine;
-    }
-  }
   const envLiff = envOwner ? parseLiffId(process.env.NEXT_PUBLIC_LIFF_ID) || undefined : undefined;
 
   if (line?.channelToken) {
@@ -54,12 +44,12 @@ export async function getLineCredentials(): Promise<LineCredentials | null> {
       source: "database",
     };
   }
-  // LINE OA ใน env เป็นของร้าน bootstrap — ร้านอื่นที่ยังไม่ตั้ง LINE ต้องไม่ส่งข้อความผ่าน OA ร้านนี้
+  // LINE OA ใน env เป็นของร้าน PetFlow — ร้านอื่นที่ยังไม่ตั้ง LINE ต้องไม่ส่งข้อความผ่าน OA ร้านนี้
   if (envToken && envOwner) {
     return {
       channelToken: envToken,
       channelSecret: process.env.LINE_CHANNEL_SECRET?.trim(),
-      liffId: envLiff,
+      liffId: parseLiffId(line?.liffId) || envLiff,
       source: "env",
     };
   }
@@ -108,6 +98,19 @@ export async function testLineChannelToken(token: string) {
   };
 }
 
+/**
+ * ลิงก์หน้าลูกค้าของร้านที่กำลังทำงานอยู่ — https://…/s/<slug> (ไม่มี /app ต่อท้าย)
+ * ทุกลิงก์ที่ส่งให้ลูกค้าต้องมีชื่อร้าน ไม่งั้นลิงก์ /app เปล่า ๆ จะเปิดเป็นร้าน PetFlow
+ */
+export async function shopAppBase(): Promise<string> {
+  const appUrl = getAppUrlFromEnv();
+  const sb = getDirectoryDb();
+  if (!sb) return appUrl;
+  const { data } = await sb.from("tenants").select("slug").eq("id", requireTenantId()).maybeSingle();
+  const slug = (data as { slug?: string } | null)?.slug;
+  return slug ? `${appUrl}/s/${slug}` : appUrl;
+}
+
 /** URL หลักของเว็บ — ใช้ตั้ง LINE webhook/LIFF/ลิงก์การ์ด ต้องเป็นโดเมนถาวรเท่านั้น
  * (ห้าม fallback ไป VERCEL_URL เพราะเปลี่ยนทุกครั้งที่ deploy ใหม่ จะทำให้ webhook หลุด) */
 export function getAppUrlFromEnv() {
@@ -119,10 +122,9 @@ export function getAppUrlFromEnv() {
   );
 }
 
-export function bookingConfirmUrl(bookingId: string, liffId?: string) {
+export function bookingConfirmUrl(bookingId: string, liffId?: string, shopBase?: string) {
   const lid = liffId;
-  const base =
-    getAppUrlFromEnv() || "https://petflow.example.com";
+  const base = shopBase || getAppUrlFromEnv() || "https://petflow.example.com";
   if (lid) {
     return `https://liff.line.me/${lid}?path=bookings&id=${bookingId}`;
   }
@@ -130,11 +132,11 @@ export function bookingConfirmUrl(bookingId: string, liffId?: string) {
 }
 
 /** ลิงก์หน้ากรอกจุดรับ-ส่งน้อง — เปิดผ่าน LIFF ถ้ามี ไม่งั้นเปิดหน้าเว็บตรงๆ */
-export function bookingTransportUrl(bookingId: string, liffId?: string) {
+export function bookingTransportUrl(bookingId: string, liffId?: string, shopBase?: string) {
   const lid = liffId;
   const id = encodeURIComponent(bookingId);
   if (lid) return `https://liff.line.me/${lid}?path=booking-transport&id=${id}`;
-  return `${getAppUrlFromEnv()}/app/booking-transport?id=${id}`;
+  return `${shopBase || getAppUrlFromEnv()}/app/booking-transport?id=${id}`;
 }
 
 /** ดู Webhook URL ปัจจุบันของ LINE (Messaging API) */

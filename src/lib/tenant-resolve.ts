@@ -36,6 +36,17 @@ export async function tenantIdForSlug(slug: string): Promise<string | null> {
 }
 
 /**
+ * ร้าน PetFlow (slug "petflow") — เจ้าของลิงก์ /app เปล่า ๆ และค่าใน env (LINE/Telegram/Google/บัญชี)
+ * ไม่ใช้ TENANT_ID ตรง ๆ: TENANT_ID คือร้านแรกที่ระบบสร้าง ซึ่งหลังสลับลิงก์ (fix-swapped-shops)
+ * กลายเป็นร้าน Back Home — ถ้าใช้ TENANT_ID ลูกค้า LINE PetFlow จะไปโผล่หน้า Back Home
+ * ยังไม่มีร้าน petflow (ระบบร้านเดียว) → ใช้ TENANT_ID
+ */
+export async function mainShopTenantId(): Promise<string | null> {
+  const gate = await tenantGateBySlug(MAIN_SHOP_SLUG).catch(() => null);
+  return gate?.id || getBootstrapTenantId();
+}
+
+/**
  * request → tenant_id ที่ต้องใช้กรอง query
  * ลำดับ: slug (header/cookie) → ร้าน bootstrap (env TENANT_ID) → throw
  *
@@ -49,8 +60,8 @@ export async function resolveTenantId(req: NextRequest): Promise<string> {
     if (id) return id;
     throw new Error(`ไม่พบร้าน "${slug}" หรือร้านนี้ปิดใช้งานอยู่`);
   }
-  const bootstrap = getBootstrapTenantId();
-  if (bootstrap) return bootstrap;
+  const main = await mainShopTenantId();
+  if (main) return main;
   throw new Error(
     "ไม่รู้ว่าเป็นร้านไหน — ไม่มี slug (x-tenant-slug/cookie pf_tenant) และไม่ได้ตั้ง TENANT_ID"
   );

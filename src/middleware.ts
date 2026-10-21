@@ -83,6 +83,18 @@ function refererShop(req: NextRequest): string | null {
   }
 }
 
+/** หน้าที่ยิงคำขอนี้คือแอปลูกค้า (/app หรือ /s/<slug>/app) */
+function refererIsCustomerApp(req: NextRequest): boolean {
+  const ref = req.headers.get("referer");
+  if (!ref) return false;
+  try {
+    const url = new URL(ref);
+    return url.host === req.nextUrl.host && /^(\/s\/[a-z0-9-]+)?\/app(\/|$)/i.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
 /** หน้าที่ยิงคำขอนี้คือแอปลูกค้า /app แบบไม่มีชื่อร้านในลิงก์ */
 function refererIsPlainApp(req: NextRequest): boolean {
   const ref = req.headers.get("referer");
@@ -139,8 +151,7 @@ export async function middleware(req: NextRequest) {
     const fromPage = refererShop(req);
     if (fromPage) requestHeaders.set(TENANT_SLUG_HEADER, fromPage);
   }
-  // หน้าลูกค้า /app เปล่า ๆ (ไม่มีชื่อร้านในลิงก์) = ร้านหลัก (TENANT_ID) เสมอ — LIFF ของ PetFlow ชี้มาที่นี่
-  // และค่า LINE ที่ตั้งไว้อยู่กับร้านหลัก ห้ามชี้ไปร้าน slug "petflow" (คนละแถว ไม่มีค่า LINE — เคยพังมาแล้ว)
+  // หน้าลูกค้า /app เปล่า ๆ (ไม่มีชื่อร้านในลิงก์) = ร้าน PetFlow เสมอ (ดู mainShopTenantId)
   // ห้ามเดาจาก "ร้านที่เปิดล่าสุด" — เคยทำให้ LINE ของ PetFlow เปิดเป็นร้านอื่นแล้วต่อ LINE ไม่ได้
   const fromPlainApp = !tenantSlug && pathname.startsWith("/api/") && refererIsPlainApp(req);
 
@@ -172,6 +183,15 @@ export async function middleware(req: NextRequest) {
       .split(";")
       .map((c) => c.trim())
       .filter((c) => c && !c.startsWith(`${TENANT_COOKIE}=`));
+    requestHeaders.set("cookie", kept.join("; "));
+  }
+  // API ที่หน้าลูกค้าเรียก ห้ามพกคุกกี้ล็อกอินหลังบ้านไปด้วย — route หลายตัวเอาร้านของ session มาก่อน
+  // เจ้าของที่ล็อกอินหลังบ้านร้านหนึ่งค้างไว้ในเบราว์เซอร์ LINE แล้วเปิดแอปลูกค้าอีกร้าน จะเห็นชื่อ/ข้อมูลร้านที่ล็อกอินอยู่
+  if (pathname.startsWith("/api/") && refererIsCustomerApp(req)) {
+    const kept = (requestHeaders.get("cookie") || "")
+      .split(";")
+      .map((c) => c.trim())
+      .filter((c) => c && !c.startsWith(SESSION_COOKIE));
     requestHeaders.set("cookie", kept.join("; "));
   }
 

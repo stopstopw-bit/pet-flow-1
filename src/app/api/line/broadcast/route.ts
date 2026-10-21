@@ -14,7 +14,7 @@ import {
   type BroadcastActionId,
 } from "@/lib/line-broadcast";
 import { buildPromoFlex, multicastLineMessage } from "@/lib/line";
-import { getLineCredentials, getAppUrlFromEnv } from "@/lib/line-config";
+import { getLineCredentials, getAppUrlFromEnv, shopAppBase } from "@/lib/line-config";
 import { TIER_LABELS } from "@/lib/customer-tier";
 import { getSiteConfig } from "@/lib/config-store";
 
@@ -137,11 +137,11 @@ async function handlePost(req: NextRequest) {
   }
 
   const creds = await getLineCredentials();
-  const base = getAppUrlFromEnv() || "";
+  const base = await shopAppBase();
   const promoUrl = `${base}/app/promos`;
   const imageUrl = await resolveLineImageUrl(body);
   const shopConfig = await getSiteConfig();
-  const buttons = buildBroadcastButtons(actions, creds?.liffId, shopConfig.business);
+  const buttons = buildBroadcastButtons(actions, creds?.liffId, shopConfig.business, base);
 
   try {
     const flex = buildPromoFlex({
