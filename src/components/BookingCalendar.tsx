@@ -2279,26 +2279,19 @@ export function BookingCalendar() {
                   <MoreMenu label="จัดการนัดนี้" items={menu} />
                 </div>
 
-                {/* ส่งข้อความ LINE / เอกสาร — พับไว้ กดเปิดเมื่อจะใช้ */}
-                <details className="group mt-3 border-t border-petflow-line pt-1 [&_summary::-webkit-details-marker]:hidden">
-                  <summary className="flex min-h-[40px] cursor-pointer list-none items-center gap-2 text-xs font-bold text-brown-soft">
-                    <Icon name="message" size={16} />
-                    <span className="flex-1">ส่งข้อความ LINE · เอกสาร</span>
-                    <Icon name="chevron" size={16} className="transition group-open:rotate-90" />
-                  </summary>
-                  <div className="pb-1 pt-1">
-                    <CustomerSendButtons
-                      bookingId={b.id}
-                      lineUserId={b.lineUserId}
-                      customerId={b.customerId}
-                      service={b.service}
-                      groomBookingIds={many ? group.map((x) => x.id) : undefined}
-                      initialAutoOff={b.autoOff}
-                      onDone={load}
-                    />
-                    <InvoiceActionButtons bookingId={b.id} onDone={load} />
-                  </div>
-                </details>
+                {/* ปุ่มส่ง LINE / เอกสาร — โชว์บนการ์ดเลย ไม่ต้องกดเปิด */}
+                <div className="mt-3 border-t border-petflow-line pt-2">
+                  <CustomerSendButtons
+                    bookingId={b.id}
+                    lineUserId={b.lineUserId}
+                    customerId={b.customerId}
+                    service={b.service}
+                    groomBookingIds={many ? group.map((x) => x.id) : undefined}
+                    initialAutoOff={b.autoOff}
+                    onDone={load}
+                  />
+                  <InvoiceActionButtons bookingId={b.id} onDone={load} />
+                </div>
               </li>
               );
             })
