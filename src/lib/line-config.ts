@@ -1,5 +1,6 @@
-import { getSecrets } from "./secrets-store";
-import { isEnvOwnerTenant, requireTenantId } from "./tenant-context";
+import { getSecrets, type LineSecrets } from "./secrets-store";
+import { isEnvOwnerTenant, requireTenantId, withTenantEvenIfClosed } from "./tenant-context";
+import { mainShopTenantId } from "./tenant-resolve";
 import { getDirectoryDb } from "./supabase/server";
 
 export type LineCredentials = {
@@ -27,13 +28,31 @@ export function parseLiffId(raw: string | undefined | null): string {
   return (m ? m[1] : value).trim();
 }
 
+/**
+ * ค่า LINE ชุดนี้เป็นของร้าน PetFlow ไหม (LIFF ID หรือ Token ซ้ำกับของ PetFlow / ใน env)
+ * ร้านแรก (TENANT_ID) เคยถูกตั้ง LINE PetFlow ไว้ก่อนสลับลิงก์เป็น Back Home — ค่านั้นยังค้างในร้าน
+ * ร้านอื่นต้องมองไม่เห็นค่าชุดนี้เลย (หน้าตั้งค่าว่าง ส่งการ์ดไม่ได้ จนกว่าร้านจะตั้ง LINE ของตัวเอง)
+ */
+async function isMainShopLine(line: LineSecrets): Promise<boolean> {
+  const liff = parseLiffId(line.liffId);
+  const token = line.channelToken?.trim();
+  const envToken = process.env.LINE_CHANNEL_TOKEN?.trim();
+  const envLiff = parseLiffId(process.env.NEXT_PUBLIC_LIFF_ID);
+  if ((token && token === envToken) || (liff && liff === envLiff)) return true;
+  const mainId = await mainShopTenantId();
+  if (!mainId || mainId === requireTenantId()) return false;
+  const main = (await withTenantEvenIfClosed(mainId, () => getSecrets()).catch(() => ({}) as { line?: LineSecrets })).line;
+  if (!main) return false;
+  return (!!liff && liff === parseLiffId(main.liffId)) || (!!token && token === main.channelToken?.trim());
+}
+
 export async function getLineCredentials(): Promise<LineCredentials | null> {
   const secrets = await getSecrets();
-  const line = secrets.line;
   const envToken = process.env.LINE_CHANNEL_TOKEN?.trim();
   // LINE ใน env เป็นของร้าน PetFlow เท่านั้น (ดู isEnvOwnerTenant) — ร้านอื่นที่ยังไม่ตั้งต้องว่าง
   // ห้ามยืม LINE ของร้านอื่นมาใช้ ไม่ว่ากรณีไหน: การ์ด/ลิงก์จะออกจาก LINE ผิดร้าน
   const envOwner = await isEnvOwnerTenant();
+  const line = secrets.line && !envOwner && (await isMainShopLine(secrets.line)) ? undefined : secrets.line;
   const envLiff = envOwner ? parseLiffId(process.env.NEXT_PUBLIC_LIFF_ID) || undefined : undefined;
 
   if (line?.channelToken) {
