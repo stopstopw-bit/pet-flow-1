@@ -1,8 +1,8 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { NextRequest } from "next/server";
 import { getBootstrapTenantId } from "./auth";
-import { resolveTenantId } from "./tenant-resolve";
-import { isTenantOpen, tenantGateById } from "./tenant-billing";
+import { MAIN_SHOP_SLUG, resolveTenantId } from "./tenant-resolve";
+import { isTenantOpen, tenantGateById, tenantGateBySlug } from "./tenant-billing";
 import { setCurrentTenantReader } from "./supabase/server";
 
 /**
@@ -42,6 +42,19 @@ export function isBootstrapTenant(): boolean {
   const id = storage.getStore();
   const bootstrap = getBootstrapTenantId();
   return !!id && !!bootstrap && id === bootstrap;
+}
+
+/**
+ * ร้านที่เป็นเจ้าของค่าใน env (LINE/Telegram/Google) — ร้าน bootstrap (TENANT_ID) หรือร้าน PetFlow
+ * TENANT_ID ใน env อาจไม่ตรงกับ id ของร้าน PetFlow ในฐานข้อมูลปัจจุบัน (เช่นหลังย้ายฐาน)
+ * ถ้าเช็คแค่ TENANT_ID ร้าน PetFlow จะไม่ได้ LINE ที่ตั้งไว้ใน env แล้วลูกค้าต่อ LINE ไม่ได้
+ */
+export async function isEnvOwnerTenant(): Promise<boolean> {
+  if (isBootstrapTenant()) return true;
+  const id = storage.getStore();
+  if (!id) return false;
+  const gate = await tenantGateBySlug(MAIN_SHOP_SLUG).catch(() => null);
+  return !!gate && gate.id === id;
 }
 
 /**
