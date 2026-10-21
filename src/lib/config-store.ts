@@ -1,7 +1,7 @@
 import { getDefaultSiteConfig } from "./defaults/site-config";
 import type { SiteConfig } from "./config-types";
 import { getSupabase } from "./supabase/server";
-import { isBootstrapTenant, requireTenantId } from "./tenant-context";
+import { isEnvOwnerTenant, requireTenantId } from "./tenant-context";
 import { uploadDataUrlToStorage } from "./supabase/storage";
 import { createHash } from "crypto";
 import { applyBrandCardDefaults, stripBrandCardDefaults } from "./card-brand";
@@ -93,7 +93,7 @@ const OLD_PLACEHOLDERS = new Set([
  * ร้านที่สร้างก่อนแก้ ได้ค่าของร้าน bootstrap/ค่าตัวอย่างติดมาใน config ที่บันทึกไว้
  * (LINE @petflow, เบอร์, บัญชีธนาคารจาก env) — ตัดทิ้งตอนอ่าน ให้เห็นเป็นช่องว่างแทน
  */
-function dropCopiedShopValues(stored: Partial<SiteConfig>): Partial<SiteConfig> {
+function dropCopiedShopValues(stored: Partial<SiteConfig>, envOwner: boolean): Partial<SiteConfig> {
   const out = { ...stored };
   const clean = (v: unknown) => (typeof v === "string" && OLD_PLACEHOLDERS.has(v.trim()) ? "" : v);
   if (stored.business) {
@@ -114,7 +114,7 @@ function dropCopiedShopValues(stored: Partial<SiteConfig>): Partial<SiteConfig> 
   const envAccount = process.env.BANK_ACCOUNT_NUMBER?.trim();
   if (
     stored.payment &&
-    !isBootstrapTenant() &&
+    !envOwner &&
     (stored.payment.accountNumber === "XXX-X-XXXXX-X" ||
       (envAccount && stored.payment.accountNumber === envAccount))
   ) {
@@ -155,7 +155,9 @@ async function getRawSiteConfig(): Promise<SiteConfig> {
   const defaults = getDefaultSiteConfig();
   // บัญชีธนาคาร/พร้อมเพย์ใน env (BANK_*, PROMPTPAY_ID) เป็นของร้าน bootstrap —
   // ร้านอื่นที่ยังไม่ตั้งเองต้องเห็นช่องว่าง ไม่ใช่เลขบัญชีร้านอื่นบนการ์ดโอนเงิน
-  if (!isBootstrapTenant()) {
+  // ร้าน PetFlow (/s/petflow) เป็นเจ้าของค่าใน env เหมือนร้าน bootstrap (ดู isEnvOwnerTenant)
+  const envOwner = await isEnvOwnerTenant();
+  if (!envOwner) {
     defaults.payment = { ...defaults.payment, bankName: "", accountNumber: "", accountName: "", promptpayId: undefined };
   }
   const sb = getSupabase();
@@ -181,7 +183,7 @@ async function getRawSiteConfig(): Promise<SiteConfig> {
       }
       return withShopNameInTexts(
         mergeConfig(defaults, {
-          ...dropCopiedShopValues(stored),
+          ...dropCopiedShopValues(stored, envOwner),
           updatedAt: data.updated_at || defaults.updatedAt,
         })
       );
