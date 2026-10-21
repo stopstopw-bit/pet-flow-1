@@ -50,16 +50,42 @@ export default function PlatformDashboard() {
     password: string;
   } | null>(null);
   const [copiedLinkFor, setCopiedLinkFor] = useState("");
+  const [linksOpenFor, setLinksOpenFor] = useState("");
 
+  const linkFor = (slugValue: string, path: string) =>
+    `${typeof window !== "undefined" ? window.location.origin : ""}/s/${slugValue}${path}`;
   /** ลิงก์ล็อกอินหลังบ้านของร้านนี้ — ต้องมี /s/<slug> นำหน้าเสมอ ไม่งั้นระบบไม่รู้ว่าเป็นร้านไหน */
-  const loginLinkFor = (slugValue: string) =>
-    typeof window !== "undefined"
-      ? `${window.location.origin}/s/${slugValue}/admin/login`
-      : `/s/${slugValue}/admin/login`;
+  const loginLinkFor = (slugValue: string) => linkFor(slugValue, "/admin/login");
+  /** ลิงก์หน้าลูกค้าของร้านนี้ (จองคิว/ดูประวัติ) — เอาไปใส่ LINE OA / Facebook ของร้าน */
+  const customerLinkFor = (slugValue: string) => linkFor(slugValue, "/app");
 
-  const copyLink = (slugValue: string) => {
-    navigator.clipboard.writeText(loginLinkFor(slugValue));
-    setCopiedLinkFor(slugValue);
+  /** คัดลอกให้ได้ทั้งในเบราว์เซอร์ปกติและในเบราว์เซอร์ของ LINE (ที่มักไม่ให้ใช้ navigator.clipboard) */
+  const copyLink = async (text: string, key: string) => {
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(text);
+      ok = true;
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      try {
+        ok = document.execCommand("copy");
+      } catch {
+        ok = false;
+      }
+      document.body.removeChild(ta);
+    }
+    if (!ok) {
+      window.prompt("คัดลอกไม่ได้อัตโนมัติ — กดค้างที่ลิงก์นี้แล้วคัดลอกเอง", text);
+      return;
+    }
+    setCopiedLinkFor(key);
     setTimeout(() => setCopiedLinkFor(""), 1500);
   };
 
@@ -385,10 +411,10 @@ export default function PlatformDashboard() {
                 <div className="flex flex-wrap gap-1.5">
                   <button
                     type="button"
-                    onClick={() => copyLink(t.slug)}
+                    onClick={() => setLinksOpenFor(linksOpenFor === t.id ? "" : t.id)}
                     className="rounded-full bg-latte/20 px-3 py-1.5 text-[11px] font-extrabold text-latte-deep"
                   >
-                    {copiedLinkFor === t.slug ? "✅ ก็อปแล้ว" : "🔗 ก็อปลิงก์"}
+                    🔗 ลิงก์ร้าน
                   </button>
                   <button
                     type="button"
@@ -447,6 +473,41 @@ export default function PlatformDashboard() {
                   )}
                 </div>
               </div>
+              {linksOpenFor === t.id && (
+                <div className="mt-3 space-y-2 rounded-petflow-sm bg-black/25 p-2.5">
+                  {[
+                    { key: `${t.id}:customer`, label: "🛍️ หน้าลูกค้า (จองคิว) — ใส่ใน LINE OA / Facebook ร้าน", url: customerLinkFor(t.slug) },
+                    { key: `${t.id}:admin`, label: "🔐 หน้าล็อกอินหลังบ้าน (เจ้าของร้าน/พนักงาน)", url: loginLinkFor(t.slug) },
+                  ].map((l) => (
+                    <div key={l.key}>
+                      <p className="mb-1 text-[11px] font-bold text-white/70">{l.label}</p>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <input
+                          readOnly
+                          value={l.url}
+                          onFocus={(e) => e.currentTarget.select()}
+                          className="min-w-0 flex-1 rounded border border-white/15 bg-black/30 px-2 py-1 text-[11px] text-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => copyLink(l.url, l.key)}
+                          className="rounded-full bg-latte/20 px-3 py-1 text-[11px] font-extrabold text-latte-deep"
+                        >
+                          {copiedLinkFor === l.key ? "✅ ก็อปแล้ว" : "📋 ก็อป"}
+                        </button>
+                        <a
+                          href={l.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="rounded-full bg-white/10 px-3 py-1 text-[11px] font-extrabold text-white"
+                        >
+                          ↗️ เปิด
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>
