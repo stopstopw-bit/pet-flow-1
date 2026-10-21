@@ -118,6 +118,12 @@ export async function middleware(req: NextRequest) {
   const requestHeaders = new Headers(req.headers);
   requestHeaders.delete(TENANT_SLUG_HEADER);
   if (tenantSlug) requestHeaders.set(TENANT_SLUG_HEADER, tenantSlug);
+  // API ที่หน้าในลิงก์ร้าน (/s/<slug>/...) เรียก — ยึดร้านของหน้านั้น ไม่ใช่ "ร้านที่เปิดล่าสุด" (pf_tenant)
+  // ไม่งั้นเปิดสองร้านไว้คนละแท็บ หน้าลูกค้าร้านหนึ่งจะไปโชว์ชื่อ/ข้อมูลของอีกร้าน
+  else if (pathname.startsWith("/api/")) {
+    const fromPage = refererShop(req);
+    if (fromPage) requestHeaders.set(TENANT_SLUG_HEADER, fromPage);
+  }
 
   // ── คุกกี้ล็อกอินของร้านที่เปิดอยู่ ─────────────────────────────────────────
   // แต่ละร้านมีคุกกี้ของตัวเอง (petflow_session__<slug>) ล็อกอินหลายร้านในเครื่องเดียวกันได้
@@ -254,6 +260,18 @@ export async function middleware(req: NextRequest) {
     }
   }
 
+  // หน้าลูกค้า /app/... เปล่า ๆ (ลิงก์ในแอปเขียนไว้แบบนี้) — ให้อยู่ในลิงก์ร้านเสมอเหมือนหลังบ้าน
+  // กดมาจากหน้าของร้านไหนก็คงอยู่ร้านนั้น, เปิดตรง ๆ ก็ไปลิงก์ของร้านที่เปิดล่าสุด
+  // ไม่มีร้านเลย (ลูกค้าร้าน bootstrap เดิมที่เข้า /app ตรง) → ปล่อยผ่านตามเดิม
+  if (!tenantSlug && (pathname === "/app" || pathname.startsWith("/app/"))) {
+    const shop = refererShop(req) || req.cookies.get(TENANT_COOKIE)?.value?.trim().toLowerCase();
+    if (shop && /^[a-z0-9-]+$/.test(shop)) {
+      const url = req.nextUrl.clone();
+      url.pathname = `/s/${shop}${pathname}`;
+      return NextResponse.redirect(url);
+    }
+  }
+
   // หน้าหลังบ้าน — ไม่มีคุกกี้ก็เด้งไปหน้าล็อกอิน
   if (pathname.startsWith("/admin") && pathname !== "/admin/login") {
     const session = await verifySession(sessionToken);
@@ -276,5 +294,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/api/:path*", "/admin/:path*", "/platform/:path*", "/s/:path*"],
+  matcher: ["/api/:path*", "/admin/:path*", "/platform/:path*", "/s/:path*", "/app", "/app/:path*"],
 };
