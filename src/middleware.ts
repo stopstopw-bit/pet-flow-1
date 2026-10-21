@@ -80,6 +80,18 @@ function refererShop(req: NextRequest): string | null {
   }
 }
 
+/** หน้าที่ยิงคำขอนี้คือแอปลูกค้า /app แบบไม่มีชื่อร้านในลิงก์ */
+function refererIsPlainApp(req: NextRequest): boolean {
+  const ref = req.headers.get("referer");
+  if (!ref) return false;
+  try {
+    const url = new URL(ref);
+    return url.host === req.nextUrl.host && /^\/app(\/|$)/.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
 function matches(path: string, list: string[]) {
   return list.some((p) => path === p || path.startsWith(`${p}/`));
 }
@@ -124,6 +136,9 @@ export async function middleware(req: NextRequest) {
     const fromPage = refererShop(req);
     if (fromPage) requestHeaders.set(TENANT_SLUG_HEADER, fromPage);
   }
+  // หน้าลูกค้า /app เปล่า ๆ (ไม่มีชื่อร้านในลิงก์) = ร้านหลักเสมอ (LIFF ของ PetFlow ชี้มาที่นี่)
+  // ห้ามเดาจาก "ร้านที่เปิดล่าสุด" — เคยทำให้ LINE ของ PetFlow เปิดเป็นร้านอื่นแล้วต่อ LINE ไม่ได้
+  const fromPlainApp = !tenantSlug && pathname.startsWith("/api/") && refererIsPlainApp(req);
 
   // ── คุกกี้ล็อกอินของร้านที่เปิดอยู่ ─────────────────────────────────────────
   // แต่ละร้านมีคุกกี้ของตัวเอง (petflow_session__<slug>) ล็อกอินหลายร้านในเครื่องเดียวกันได้
@@ -146,6 +161,14 @@ export async function middleware(req: NextRequest) {
       .map((c) => c.trim())
       .filter((c) => c && !c.startsWith(`${SESSION_COOKIE}=`));
     requestHeaders.set("cookie", [...others, `${SESSION_COOKIE}=${shopToken}`].join("; "));
+  }
+
+  if (fromPlainApp) {
+    const kept = (requestHeaders.get("cookie") || "")
+      .split(";")
+      .map((c) => c.trim())
+      .filter((c) => c && !c.startsWith(`${TENANT_COOKIE}=`));
+    requestHeaders.set("cookie", kept.join("; "));
   }
 
   /** ปล่อยผ่าน — ถ้ามาจาก /s/<slug> ต้อง rewrite ไป path จริง + แนบ header/cookie */
@@ -260,12 +283,11 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  // หน้าลูกค้า /app/... เปล่า ๆ (ลิงก์ในแอปเขียนไว้แบบนี้) — ให้อยู่ในลิงก์ร้านเสมอเหมือนหลังบ้าน
-  // กดมาจากหน้าของร้านไหนก็คงอยู่ร้านนั้น, เปิดตรง ๆ ก็ไปลิงก์ของร้านที่เปิดล่าสุด
-  // ไม่มีร้านเลย (ลูกค้าร้าน bootstrap เดิมที่เข้า /app ตรง) → ปล่อยผ่านตามเดิม
+  // หน้าลูกค้า /app/... เปล่า ๆ (ลิงก์ในแอปเขียนไว้แบบนี้) — กดมาจากหน้าของร้านไหนก็คงอยู่ในลิงก์ร้านนั้น
+  // เปิดตรง ๆ (เช่น LIFF ของร้านหลัก) = ร้านหลัก ไม่เดาจากร้านที่เปิดล่าสุด
   if (!tenantSlug && (pathname === "/app" || pathname.startsWith("/app/"))) {
-    const shop = refererShop(req) || req.cookies.get(TENANT_COOKIE)?.value?.trim().toLowerCase();
-    if (shop && /^[a-z0-9-]+$/.test(shop)) {
+    const shop = refererShop(req);
+    if (shop) {
       const url = req.nextUrl.clone();
       url.pathname = `/s/${shop}${pathname}`;
       return NextResponse.redirect(url);
