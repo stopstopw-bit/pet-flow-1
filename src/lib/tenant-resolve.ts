@@ -15,6 +15,8 @@ import { getBootstrapTenantId } from "./auth";
 
 export const TENANT_SLUG_HEADER = "x-tenant-slug";
 export const TENANT_COOKIE = "pf_tenant";
+/** ร้าน PetFlow ของเจ้าของระบบเอง — ลิงก์ /app เปล่า ๆ และค่า LINE/Telegram/Google ใน env เป็นของร้านนี้ */
+export const MAIN_SHOP_SLUG = "petflow";
 
 /** อ่าน slug ร้านจาก request — header (middleware ใส่) ก่อน แล้วค่อย cookie */
 export function getTenantSlugFromRequest(req: NextRequest): string | null {

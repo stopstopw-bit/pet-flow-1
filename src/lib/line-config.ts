@@ -1,5 +1,5 @@
 import { getSecrets } from "./secrets-store";
-import { isBootstrapTenant } from "./tenant-context";
+import { isEnvOwnerTenant } from "./tenant-context";
 
 export type LineCredentials = {
   channelToken: string;
@@ -23,7 +23,8 @@ export async function getLineCredentials(): Promise<LineCredentials | null> {
   const line = secrets.line;
   const envToken = process.env.LINE_CHANNEL_TOKEN?.trim();
   // LIFF ใน env เป็นของร้าน bootstrap เท่านั้น — ร้านอื่นที่ยังไม่ตั้งต้องว่าง
-  const envLiff = isBootstrapTenant() ? process.env.NEXT_PUBLIC_LIFF_ID?.trim() : undefined;
+  const envOwner = await isEnvOwnerTenant();
+  const envLiff = envOwner ? process.env.NEXT_PUBLIC_LIFF_ID?.trim() : undefined;
 
   if (line?.channelToken) {
     return {
@@ -34,7 +35,7 @@ export async function getLineCredentials(): Promise<LineCredentials | null> {
     };
   }
   // LINE OA ใน env เป็นของร้าน bootstrap — ร้านอื่นที่ยังไม่ตั้ง LINE ต้องไม่ส่งข้อความผ่าน OA ร้านนี้
-  if (envToken && isBootstrapTenant()) {
+  if (envToken && envOwner) {
     return {
       channelToken: envToken,
       channelSecret: process.env.LINE_CHANNEL_SECRET?.trim(),
