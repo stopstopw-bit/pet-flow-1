@@ -30,6 +30,7 @@ export const TELEGRAM_MENU_BUTTONS = {
   book: "➕ เพิ่มนัด",
   summary: "📋 สรุปลูกค้า",
   confirm: "✅ ส่งยืนยันนัด",
+  transport: "🚗 รับ-ส่งน้อง",
   help: "❓ วิธีใช้",
 } as const;
 
@@ -43,6 +44,7 @@ const MENU_TO_COMMAND: Record<string, string> = {
   [TELEGRAM_MENU_BUTTONS.book]: "/book",
   [TELEGRAM_MENU_BUTTONS.summary]: "/summary",
   [TELEGRAM_MENU_BUTTONS.confirm]: "/confirm",
+  [TELEGRAM_MENU_BUTTONS.transport]: "/transport",
   [TELEGRAM_MENU_BUTTONS.help]: "/help",
 };
 
@@ -66,6 +68,7 @@ export function getTelegramMenuKeyboard() {
         { text: TELEGRAM_MENU_BUTTONS.summary },
       ],
       [
+        { text: TELEGRAM_MENU_BUTTONS.transport },
         { text: TELEGRAM_MENU_BUTTONS.confirm },
         { text: TELEGRAM_MENU_BUTTONS.help },
       ],
@@ -79,6 +82,7 @@ export function getTelegramMenuKeyboard() {
 export function normalizeTelegramInput(text: string) {
   const trimmed = text.trim();
   if (MENU_TO_COMMAND[trimmed]) return MENU_TO_COMMAND[trimmed];
+  if (/รับ-?ส่ง/.test(trimmed)) return "/transport";
   if (/คิว.*ยืนยัน/.test(trimmed)) return "/queue";
   if (/นัดวันนี้/.test(trimmed)) return "/today";
   if (/เตรียมตัวพรุ่งนี้|พรุ่งนี้/.test(trimmed)) return "/tomorrow";

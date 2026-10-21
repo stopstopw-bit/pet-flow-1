@@ -4,6 +4,7 @@ import { buildEndOfDaySummaryMessage } from "@/lib/telegram-commands";
 import { withTenant } from "@/lib/tenant-context";
 import { listActiveTenantIds } from "@/lib/tenant-directory";
 import { verifyCronSecret } from "@/lib/cron-auth";
+import { buildTransportSummaryMessage } from "@/lib/transport-summary";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,5 +38,10 @@ async function runForTenant() {
   const tomorrow = addDays(today, 1);
   const msg = await buildEndOfDaySummaryMessage(today, tomorrow);
   const res = await sendTelegram(msg);
+  // รับ-ส่งพรุ่งนี้ ส่งตั้งแต่คืนก่อน จะได้วางเส้นทาง/ทักลูกค้าที่ยังไม่ส่งพิกัดทัน
+  const transport = await buildTransportSummaryMessage(tomorrow, {
+    heading: `🚗 รับ-ส่งพรุ่งนี้ (${tomorrow})`,
+  });
+  if (transport) await sendTelegram(transport);
   return { ok: res.ok, today };
 }
