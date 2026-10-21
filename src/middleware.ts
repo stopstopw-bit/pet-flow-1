@@ -6,7 +6,7 @@ import {
   verifySession,
 } from "@/lib/auth";
 import { PLATFORM_SESSION_COOKIE, verifyPlatformSession } from "@/lib/platform-auth";
-import { MAIN_SHOP_SLUG, TENANT_COOKIE, TENANT_SLUG_HEADER } from "@/lib/tenant-resolve";
+import { TENANT_COOKIE, TENANT_SLUG_HEADER } from "@/lib/tenant-resolve";
 import { rateLimit, clientKey } from "@/lib/rate-limit";
 
 /**
@@ -136,10 +136,10 @@ export async function middleware(req: NextRequest) {
     const fromPage = refererShop(req);
     if (fromPage) requestHeaders.set(TENANT_SLUG_HEADER, fromPage);
   }
-  // หน้าลูกค้า /app เปล่า ๆ (ไม่มีชื่อร้านในลิงก์) = ร้าน PetFlow เสมอ (LIFF ของ PetFlow ชี้มาที่นี่)
+  // หน้าลูกค้า /app เปล่า ๆ (ไม่มีชื่อร้านในลิงก์) = ร้านหลัก (TENANT_ID) เสมอ — LIFF ของ PetFlow ชี้มาที่นี่
+  // และค่า LINE ที่ตั้งไว้อยู่กับร้านหลัก ห้ามชี้ไปร้าน slug "petflow" (คนละแถว ไม่มีค่า LINE — เคยพังมาแล้ว)
   // ห้ามเดาจาก "ร้านที่เปิดล่าสุด" — เคยทำให้ LINE ของ PetFlow เปิดเป็นร้านอื่นแล้วต่อ LINE ไม่ได้
   const fromPlainApp = !tenantSlug && pathname.startsWith("/api/") && refererIsPlainApp(req);
-  if (fromPlainApp) requestHeaders.set(TENANT_SLUG_HEADER, MAIN_SHOP_SLUG);
 
   // ── คุกกี้ล็อกอินของร้านที่เปิดอยู่ ─────────────────────────────────────────
   // แต่ละร้านมีคุกกี้ของตัวเอง (petflow_session__<slug>) ล็อกอินหลายร้านในเครื่องเดียวกันได้
