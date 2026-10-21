@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPlatformSessionFrom } from "@/lib/platform-auth";
-import { deleteShopIntake, listShopIntakes } from "@/lib/shop-intake-store";
+import { deleteShopIntake, listShopIntakes, setShopIntakeTenant } from "@/lib/shop-intake-store";
+import { tenantGateById } from "@/lib/tenant-billing";
 
 export const dynamic = "force-dynamic";
 
@@ -30,5 +31,23 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "ลบไม่สำเร็จ" }, { status: 500 });
+  }
+}
+
+/** ย้ายคำตอบไปผูกกับร้านอื่น { id, tenantId } */
+export async function PATCH(req: NextRequest) {
+  if (!(await getPlatformSessionFrom(req))) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  const body = await req.json().catch(() => ({}));
+  const id = String(body.id || "");
+  const tenantId = String(body.tenantId || "");
+  if (!id || !tenantId) return NextResponse.json({ error: "ไม่มี id หรือร้าน" }, { status: 400 });
+  try {
+    if (!(await tenantGateById(tenantId))) return NextResponse.json({ error: "ไม่พบร้านนี้" }, { status: 404 });
+    await setShopIntakeTenant(id, tenantId);
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "ย้ายไม่สำเร็จ" }, { status: 500 });
   }
 }

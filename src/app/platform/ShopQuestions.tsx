@@ -69,6 +69,22 @@ export default function ShopQuestions({ tenants }: { tenants: ShopRef[] }) {
     else setMsg("ลบไม่สำเร็จ");
   };
 
+  // ส่งผ่านลิงก์ผิดร้าน — ย้ายคำตอบไปผูกกับร้านที่ถูก
+  const move = async (it: Item, tenantId: string) => {
+    const to = nameOf(tenantId);
+    if (!tenantId || !confirm(`ย้ายคำตอบนี้ไปเป็นของร้าน "${to}"?`)) return;
+    const res = await fetch("/api/platform/shop-questions", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: it.id, tenantId }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) return setMsg(d.error || "ย้ายไม่สำเร็จ");
+    setMsg(`ย้ายคำตอบไปร้าน ${to} แล้ว`);
+    setApplying("");
+    load();
+  };
+
   // คำตอบของร้านที่เลือก ขึ้นก่อน
   const shown = (items || []).slice().sort((a, b) => Number(b.tenantId === pick) - Number(a.tenantId === pick));
 
@@ -143,7 +159,22 @@ export default function ShopQuestions({ tenants }: { tenants: ShopRef[] }) {
                     ส่งล่าสุด {new Date(it.updatedAt).toLocaleString("th-TH", { timeZone: "Asia/Bangkok" })}
                   </span>
                 </button>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
+                  <select
+                    value=""
+                    onChange={(e) => move(it, e.target.value)}
+                    aria-label="ย้ายไปร้าน"
+                    className="rounded-petflow-sm border border-white/20 bg-black/30 px-2 py-1 text-[11px] font-bold"
+                  >
+                    <option value="">ย้ายไปร้าน…</option>
+                    {tenants
+                      .filter((t) => t.id !== it.tenantId)
+                      .map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                  </select>
                   {shop && (
                     <button
                       type="button"
