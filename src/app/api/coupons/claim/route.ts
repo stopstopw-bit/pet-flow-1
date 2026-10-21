@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { featureOff } from "@/lib/features-server";
 import { withResolvedTenant } from "@/lib/tenant-context";
 import { findCustomerByLine } from "@/lib/customers-store";
 import { getOffer, claimOffer } from "@/lib/coupons-store";
@@ -30,6 +31,8 @@ async function postHandler(req: NextRequest) {
   if (!session) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  const blocked = await featureOff("coupons");
+  if (blocked) return blocked;
   const body = await req.json().catch(() => ({}));
   const offerId = String(body.offerId || "").trim();
   if (!offerId) {

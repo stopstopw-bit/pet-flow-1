@@ -3,6 +3,7 @@ import { listBookings } from "@/lib/bookings-store";
 import { autoMuted } from "@/lib/auto-messages";
 import { listInvoices } from "@/lib/invoices-store";
 import { getSiteConfig } from "@/lib/config-store";
+import { isFeatureOn } from "@/lib/features";
 import { buildBookingConfirmFlex } from "@/lib/booking-line-card";
 import {
   pushLineMessage,
@@ -394,7 +395,7 @@ async function runForTenant() {
   let birthdayQueued = 0;
   const mmdd = todayStr.slice(5); // "MM-DD"
   try {
-    if (auto?.birthdayEnabled !== false) {
+    if (auto?.birthdayEnabled !== false && isFeatureOn(cfg, "birthdays")) {
       const allCustomers = await listCustomers();
       for (const c of allCustomers) {
         if (!c.lineUserId || c.marketingConsent === false) continue;

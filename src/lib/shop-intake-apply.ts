@@ -1,6 +1,7 @@
 import type { RoomType } from "./business";
 import type { SiteConfig } from "./config-types";
 import type { GroomProgram, GroomSize } from "./grooming-prices";
+import { featureLabel, isFeatureOn, type FeatureKey } from "./features";
 
 /**
  * แปลงคำตอบแบบสอบถามเจ้าของร้าน (public/shop-questions.html) เป็นการตั้งค่าร้าน (SiteConfig)
@@ -574,6 +575,28 @@ function buildDrafts(ans: IntakeAnswers, cfg: SiteConfig): Draft[] {
       patch: () => ({ automation: next }),
     });
   }
+
+  // ── เปิด/ปิดฟีเจอร์ — จากคำตอบที่บอกชัดว่าร้านใช้/ไม่ใช้ ──
+  const feature = (key: FeatureKey, on: boolean | null) => {
+    if (on === null) return;
+    add({
+      key: `features.${key}`,
+      label: `ฟีเจอร์: ${featureLabel(key)}`,
+      before: show(isFeatureOn(cfg, key)),
+      after: show(on),
+      patch: (c) => ({ features: { ...c.features, [key]: on } }),
+    });
+  };
+  const yesNo = (id: string, no: string) => {
+    const v = r.raw(id);
+    return v ? v !== no : null;
+  };
+  feature("transport", yesNo("pickup", "ไม่มี"));
+  feature("pos", yesNo("products", "ไม่ขาย"));
+  feature("points", yesNo("points", "ไม่มี"));
+  feature("payroll", yesNo("payroll", "ไม่ใช้"));
+  const courses = r.many("courses");
+  if (courses?.length) feature("packages", courses.some((c) => c !== "ยังไม่มี"));
 
   // ── พนักงาน ──
   const care = r.many("care");

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { featureOff } from "@/lib/features-server";
 import { withResolvedTenant } from "@/lib/tenant-context";
 import { claimCustomerPromo } from "@/lib/promos-store";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
@@ -10,6 +11,8 @@ async function postHandler(req: NextRequest) {
   if (!session) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  const blocked = await featureOff("promos");
+  if (blocked) return blocked;
   const body = await req.json().catch(() => ({}));
   const promoId = String(body.promoId || "").trim();
 

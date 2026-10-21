@@ -16,6 +16,7 @@ import {
 } from "@/components/AdminNav";
 import { Toaster } from "@/components/Toast";
 import { Icon } from "@/components/Icon";
+import { disabledFeatureForAdminPath } from "@/lib/features";
 
 function greeting() {
   const h = new Date().getHours();
@@ -84,8 +85,13 @@ function AdminShell({ children }: { children: React.ReactNode }) {
   const [impersonating, setImpersonating] = useState(false);
   const [dueDate, setDueDate] = useState<string | null>(null);
   // ชื่อร้านมาจาก config ของแต่ละร้าน (multi-tenant) — ไม่ hardcode
-  const { config } = useConfig();
+  const { config, loading: configLoading } = useConfig();
   const shopName = config.business?.name || "";
+  // ร้านปิดฟีเจอร์นี้ในตั้งค่า (เปิด/ปิดฟีเจอร์) — เปิดลิงก์ตรงมาก็เด้งกลับหน้าหลัก
+  const featureBlocked = !configLoading && Boolean(disabledFeatureForAdminPath(config, pathname));
+  useEffect(() => {
+    if (featureBlocked) router.replace("/admin");
+  }, [featureBlocked, router]);
 
   useEffect(() => {
     if (pathname === "/admin/login") {
@@ -142,7 +148,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
     };
   }, [pathname, fullPath, router]);
 
-  if (!ok) return null;
+  if (!ok || featureBlocked) return null;
 
   if (pathname === "/admin/login") {
     return <>{children}</>;

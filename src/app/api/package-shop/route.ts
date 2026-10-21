@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { featureOff } from "@/lib/features-server";
 import {
   listPackageOffers,
   createPackageOffer,
@@ -47,10 +48,13 @@ async function handleGet(req: NextRequest, isAdminSession: boolean) {
   if (lineUserId) {
     // ลูกค้า — เห็นเฉพาะที่เปิดขาย และเห็นเฉพาะออร์เดอร์ของตัวเอง
     const customer = await findCustomerByLine(lineUserId);
-    const [offers, payment] = await Promise.all([
+    const [allOffers, payment, off] = await Promise.all([
       listPackageOffers(true),
       getPaymentConfig(),
+      featureOff("packages"),
     ]);
+    // ร้านปิด "ขายคอร์สในแอป" — ไม่โชว์อะไรให้ซื้อ (ออร์เดอร์เดิมของลูกค้ายังเห็น)
+    const offers = off ? [] : allOffers;
     const orders = customer
       ? await listPackageOrders({ customerId: customer.id })
       : [];
@@ -76,6 +80,10 @@ export async function POST(req: NextRequest) {
 }
 
 async function handlePost(req: NextRequest, isAdminSession: boolean) {
+  if (!isAdminSession) {
+    const blocked = await featureOff("packages");
+    if (blocked) return blocked;
+  }
   const body = await req.json().catch(() => ({}));
   const action = String(body.action || "");
 

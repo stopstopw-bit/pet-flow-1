@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { featureOff } from "@/lib/features-server";
 import { withResolvedTenant } from "@/lib/tenant-context";
 import { addBooking, listBookings, type StoredBooking } from "@/lib/bookings-store";
 import { findCustomerByLine } from "@/lib/customers-store";
@@ -27,6 +28,9 @@ async function handlePost(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const lineUserId = session.lineUserId;
+  // ร้านปิด "ลูกค้าจองคิวเอง" หรือปิดบริการนั้นไว้ในตั้งค่า
+  const blocked = await featureOff("selfBooking");
+  if (blocked) return blocked;
   const body = await req.json().catch(() => ({}));
   // จองได้หลายตัวพร้อมกัน (อาบน้ำ) — catNames มาก่อน ถ้าไม่มีใช้ catName เดี่ยวเดิม (เข้ากันได้กับของเก่า)
   const catNames: string[] = Array.isArray(body.catNames)
@@ -41,6 +45,8 @@ async function handlePost(req: NextRequest) {
   if (!catNames.length || !service) {
     return NextResponse.json({ error: "missing fields" }, { status: 400 });
   }
+  const serviceOff = await featureOff(service === "room" ? "hotel" : "grooming");
+  if (serviceOff) return serviceOff;
 
   const customer = await findCustomerByLine(lineUserId);
   if (!customer) return NextResponse.json({ error: "customer_not_found" }, { status: 404 });
