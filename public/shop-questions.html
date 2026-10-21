@@ -70,6 +70,9 @@ textarea.field{min-height:84px;resize:vertical}
 .msg{border-radius:12px;padding:12px 14px;background:var(--pick);margin:0 0 16px}
 .msg.err{background:transparent;border:1.5px solid var(--danger);color:var(--danger)}
 .actions{display:grid;gap:10px;margin:18px 0}
+.import{border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;margin:0 0 20px}
+.import summary{cursor:pointer;font-weight:600}
+.import .field{margin-top:10px}
 .jump{background:none;border:0;color:var(--brand);font:inherit;font-size:13px;cursor:pointer;padding:0;text-decoration:underline}
 @media (prefers-reduced-motion:reduce){.bar i{transition:none}}
 .num.wide .field{max-width:none}
@@ -424,6 +427,110 @@ function summaryText(){
   return out;
 }
 
+// ── วางข้อความที่คัดลอกไว้ (จากปุ่ม "คัดลอกคำตอบ") แล้วเติมคำตอบกลับเข้าแบบฟอร์ม ──
+// ใช้ตอนเจ้าของร้านกดแค่คัดลอกส่งมาทาง LINE แต่ไม่ได้กดส่ง — รูปแบบต้องตรงกับ summaryText()/answerText()
+const stripUnit = (x, u) => (u && x.endsWith(" " + u) ? x.slice(0, -u.length - 1) : x).trim();
+// แยก "ก, ข (ถาม: 1, 2), ค" ตามจุลภาคที่ไม่อยู่ในวงเล็บ
+function splitTop(x){
+  const out = []; let depth = 0, cur = "";
+  for (let i = 0; i < x.length; i++) {
+    const c = x[i];
+    if (c === "(") depth++; else if (c === ")") depth = Math.max(0, depth - 1);
+    if (depth === 0 && x.startsWith(", ", i)) { out.push(cur); cur = ""; i++; continue; }
+    cur += c;
+  }
+  out.push(cur);
+  return out;
+}
+// ตอบ 1 ตัวเลือก — คืน true ถ้าจับคู่ได้
+function importPick(q, part, multi){
+  part = part.trim(); if (!part) return false;
+  const set = v => { if (multi) { const cur = Array.isArray(state.a[q.id]) ? state.a[q.id] : []; if (!cur.includes(v)) state.a[q.id] = cur.concat(v); } else state.a[q.id] = v; };
+  if (part === OTHER || part.startsWith(OTHER + ": ")) { set(OTHER); state.other[q.id] = part.slice(OTHER.length + 2).trim(); return true; }
+  // ตัวเลือกยาวก่อน กัน "คิดเพิ่ม" ไปจับ "คิดเพิ่มเป็นชั่วโมง"
+  const opts = q.o.filter(o => optV(o) !== OTHER).slice().sort((x, y) => T(optV(y)).length - T(optV(x)).length);
+  for (const o of opts) {
+    const v = optV(o), label = T(v);
+    if (part === label) { set(v); return true; }
+    if (o.f && part.startsWith(label + " (") && part.endsWith(")")) {
+      let d = part.slice(label.length + 2, -1);
+      const lead = T(o.f) + ": ";
+      if (d.startsWith(lead)) d = d.slice(lead.length);
+      set(v); state.a[fKey(q.id, v)] = stripUnit(d, o.u); return true;
+    }
+  }
+  return false;
+}
+function importAnswer(q, text){
+  let note = "";
+  const lines = text.split("\n");
+  if (lines.length > 1 && lines[lines.length - 1].startsWith("หมายเหตุ: ")) { note = lines.pop().slice(10).trim(); text = lines.join("\n"); }
+  if (note) { state.note[q.id] = note; state.open[q.id] = true; }
+  if (!text.trim()) return true;
+  if (q.t === "text" || q.t === "long") { state.a[q.id] = text.trim(); return true; }
+  if (q.t === "num") { state.a[q.id] = stripUnit(text.trim(), q.unit); return true; }
+  if (q.t === "one") return importPick(q, text, false) || (state.a[q.id] = OTHER, state.other[q.id] = text.trim(), true);
+  if (q.t === "many") {
+    state.a[q.id] = [];
+    const extra = [];
+    splitTop(text).forEach(p => { if (!importPick(q, p, true)) extra.push(p.trim()); });
+    // ข้อความที่ไม่ตรงตัวเลือกไหน (เช่น "อื่นๆ" ที่มีจุลภาคข้างใน) เก็บไว้ในช่องอื่นๆ ไม่ให้หาย
+    if (extra.length) { if (!state.a[q.id].includes(OTHER)) state.a[q.id].push(OTHER); state.other[q.id] = [state.other[q.id], ...extra].filter(Boolean).join(", "); }
+    return true;
+  }
+  if (q.t === "repeat") {
+    const fields = fieldsOf(q); let n = 0;
+    text.split("\n").forEach(line => {
+      const m = line.trim().match(new RegExp("^" + q.item + " (\\d+): (.*)$")); if (!m) return;
+      const i = +m[1] - 1; n = Math.max(n, i + 1);
+      m[2].split(" · ").forEach(part => {
+        const f = fields.slice().sort((x, y) => T(y.l).length - T(x.l).length).find(f => part.startsWith(T(f.l) + " "));
+        if (f) state.a[`${q.id}.${i}.${f.k}`] = stripUnit(part.slice(T(f.l).length + 1), f.u);
+      });
+    });
+    // จำนวนห้อง/ไซส์/พนักงาน ที่คุมจำนวนชุด ต้องไม่น้อยกว่าที่วางมา
+    const ctl = {rooms:"roomTypes", sizes:"sizeCount", staff:"staffCount"}[q.id];
+    if (ctl && n > countOf(ctl, 99)) { const ctlQ = ALLQ.find(x => x.id === ctl); if (ctlQ.o.includes(String(n))) state.a[ctl] = String(n); else { state.a[ctl] = OTHER; state.other[ctl] = String(n); } }
+    return true;
+  }
+  if (q.t === "grid") {
+    const rows = gridRows(), cols = gridCols();
+    text.split("\n").forEach(line => {
+      line = line.trim();
+      const ri = rows.findIndex(r => line.startsWith(r + ": ")); if (ri < 0) return;
+      line.slice(rows[ri].length + 2).split(" / ").forEach(part => {
+        const ci = cols.findIndex(c => part.startsWith(c + " "));
+        if (ci >= 0) state.a[`prices.${ri}.${ci}`] = part.slice(cols[ci].length + 1).trim();
+      });
+    });
+    return true;
+  }
+  return false;
+}
+function importText(raw){
+  // แยกเป็นข้อ ๆ: "• คำถาม: คำตอบ" หรือ "• คำถาม:" แล้วบรรทัดถัดไปย่อหน้า 2 ช่อง
+  const items = []; let cur = null;
+  raw.replace(/\r/g, "").split("\n").forEach(line => {
+    if (line.startsWith("• ")) { cur = {line: line.slice(2), more: []}; items.push(cur); }
+    else if (cur && /^ {2}/.test(line)) cur.more.push(line.slice(2));
+    else if (cur && !line.trim()) cur = cur.more.length ? null : cur;
+    else if (!/^【|^คำตอบตั้งค่าร้าน/.test(line.trim())) { if (cur && line.trim()) cur.more.push(line.trim()); }
+  });
+  // ต้องรู้ก่อนว่าร้านรับหมาหรือแมว คำถามข้ออื่นถึงจะตรงกับข้อความ ({p})
+  const petsQ = ALLQ.find(q => q.id === "pets");
+  const pets = items.find(it => it.line.startsWith(petsQ.q + ": "));
+  if (pets) importAnswer(petsQ, pets.line.slice(petsQ.q.length + 2));
+  let ok = 0; const miss = [];
+  items.forEach(it => {
+    const q = ALLQ.slice().sort((x, y) => T(y.q).length - T(x.q).length).find(q => it.line === T(q.q) + ":" || it.line.startsWith(T(q.q) + ": "));
+    if (!q) { miss.push(it.line.split(":")[0]); return; }
+    const first = it.line.slice(T(q.q).length + 1).trim();
+    const text = [first, ...it.more].filter(x => x !== "").join("\n");
+    if (importAnswer(q, text)) ok++; else miss.push(T(q.q));
+  });
+  return {ok, miss};
+}
+
 function render(){
   const step = state.step;
   document.getElementById("bar").style.width = Math.round(step / TOTAL * 100) + "%";
@@ -432,7 +539,13 @@ function render(){
   const next = document.getElementById("next");
   if (step < TOTAL) {
     const s = SECTIONS[step];
-    main.innerHTML = (step === 0 ? `<p class="msg">ตอบเท่าที่รู้ ข้ามข้อที่ยังไม่แน่ใจได้เลย ถ้าไม่มีตัวเลือกที่ตรง กด "อื่นๆ" แล้วพิมพ์เองได้ทุกข้อ คำตอบจะจำไว้ในเครื่องนี้ ปิดแล้วกลับมาทำต่อได้</p>` : "")
+    main.innerHTML = (step === 0 ? `<p class="msg">ตอบเท่าที่รู้ ข้ามข้อที่ยังไม่แน่ใจได้เลย ถ้าไม่มีตัวเลือกที่ตรง กด "อื่นๆ" แล้วพิมพ์เองได้ทุกข้อ คำตอบจะจำไว้ในเครื่องนี้ ปิดแล้วกลับมาทำต่อได้</p>
+      <details class="import"><summary>มีคำตอบที่คัดลอกไว้แล้ว? วางที่นี่</summary>
+        <p class="q-hint">วางข้อความทั้งหมดที่ได้จากปุ่ม "คัดลอกคำตอบ" แล้วกด "ใส่คำตอบ" — ระบบจะเติมให้ทุกข้อ แล้วพาไปหน้าสรุปให้กดส่ง</p>
+        <textarea class="field" id="importbox" rows="6"></textarea>
+        <div class="actions"><button class="btn main" id="import" type="button">ใส่คำตอบ</button></div>
+        <div id="importmsg"></div>
+      </details>` : "")
       + `<h1>${esc(T(s.title))}</h1>` + (s.lead ? `<p class="lead">${esc(s.lead)}</p>` : "") + s.qs.map(renderQ).join("");
     next.hidden = false; next.textContent = step === TOTAL - 1 ? "ดูสรุปคำตอบ" : "ถัดไป";
   } else {
@@ -473,6 +586,13 @@ main.addEventListener("click", async e => {
     const id = b.dataset.addnote; state.open[id] = true; save();
     const y = window.scrollY; render(); window.scrollTo(0,y);
     document.getElementById("n-" + id)?.focus({preventScroll:true});
+  } else if (b.id === "import") {
+    const raw = document.getElementById("importbox").value;
+    if (!raw.trim()) return;
+    const {ok, miss} = importText(raw);
+    if (!ok) { document.getElementById("importmsg").innerHTML = `<p class="msg err">ไม่พบคำตอบในข้อความนี้ ลองวางข้อความทั้งหมดที่คัดลอกมาอีกครั้ง</p>`; return; }
+    state.step = TOTAL; save(); render();
+    setStatus(`ใส่คำตอบแล้ว ${ok} ข้อ` + (miss.length ? ` · ข้อที่อ่านไม่ออก: ${esc(miss.join(", "))}` : "") + ` — ตรวจแล้วกด "ส่งคำตอบ"`, miss.length > 0);
   } else if (b.dataset.jump) { state.step = +b.dataset.jump; save(); render(); }
   else if (b.id === "copy") {
     // เบราว์เซอร์ในแอป (LINE/Facebook) มักไม่ให้ใช้ clipboard API หรือบอกว่าสำเร็จแต่ไม่ได้คัดลอกจริง
