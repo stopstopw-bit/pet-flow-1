@@ -1,5 +1,6 @@
 import { getSecrets } from "./secrets-store";
-import { isEnvOwnerTenant } from "./tenant-context";
+import { getBootstrapTenantId } from "./auth";
+import { isBootstrapTenant, isEnvOwnerTenant, withTenantEvenIfClosed } from "./tenant-context";
 
 export type LineCredentials = {
   channelToken: string;
@@ -20,10 +21,21 @@ export function parseLineChannelToken(raw: string) {
 
 export async function getLineCredentials(): Promise<LineCredentials | null> {
   const secrets = await getSecrets();
-  const line = secrets.line;
+  let line = secrets.line;
   const envToken = process.env.LINE_CHANNEL_TOKEN?.trim();
   // LIFF ใน env เป็นของร้าน bootstrap เท่านั้น — ร้านอื่นที่ยังไม่ตั้งต้องว่าง
   const envOwner = await isEnvOwnerTenant();
+  // ร้าน PetFlow (/s/petflow) กับร้านหลัก (TENANT_ID) เป็นร้านเดียวกันแต่คนละแถว —
+  // ถ้าลิงก์ /s/petflow ยังไม่ได้ตั้ง LINE ให้ใช้ค่า LINE ที่ตั้งไว้ในร้านหลัก
+  if (envOwner && !line?.channelToken && !line?.liffId && !isBootstrapTenant()) {
+    const mainId = getBootstrapTenantId();
+    if (mainId) {
+      const mainLine = await withTenantEvenIfClosed(mainId, async () => (await getSecrets()).line).catch(
+        () => undefined
+      );
+      if (mainLine) line = mainLine;
+    }
+  }
   const envLiff = envOwner ? process.env.NEXT_PUBLIC_LIFF_ID?.trim() : undefined;
 
   if (line?.channelToken) {
