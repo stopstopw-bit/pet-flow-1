@@ -73,7 +73,7 @@ const messages = {
       confirmed: "ยืนยันแล้ว",
       cancelled: "ยกเลิกแล้ว",
       confirm: "ยืนยันนัด",
-      checkin: "เลือกเวลาเช็คอิน",
+      checkin: "เลือกเวลามาส่งน้อง (เช็คอิน)",
       groom: "อาบน้ำ",
       room: "ห้องพัก",
     },

@@ -8,8 +8,7 @@ import { LoadingScreen } from "@/components/LoadingScreen";
 import { BTN_PRIMARY, PageHeader } from "@/components/PageHeader";
 import { EmptyState, SectionLabel } from "@/components/ui";
 import { Icon } from "@/components/Icon";
-
-const SLOTS = Array.from({ length: 11 }, (_, i) => `${String(9 + i).padStart(2, "0")}:00`);
+import { TimeSlotPicker } from "@/components/TimeSlotPicker";
 
 type Bk = {
   id: string;
@@ -29,7 +28,6 @@ function BookingTimeContent() {
 
   const [bk, setBk] = useState<Bk | null>(null);
   const [loading, setLoading] = useState(true);
-  const [custom, setCustom] = useState("");
   const [saved, setSaved] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
@@ -139,42 +137,8 @@ function BookingTimeContent() {
 
           <section className="mt-5">
             <SectionLabel>{saved ? "Change time · เปลี่ยนเวลา (ถ้าต้องการ)" : "Time · เลือกเวลา"}</SectionLabel>
-            <div className="rounded-petflow border border-petflow-line bg-card p-3 shadow-petflow-sm">
-              <div className="grid grid-cols-3 gap-2">
-                {SLOTS.map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    disabled={saving}
-                    onClick={() => pick(t)}
-                    className={`min-h-[44px] rounded-xl text-sm font-bold transition disabled:opacity-50 ${
-                      saved === t
-                        ? "bg-latte-deep text-card shadow-petflow-sm"
-                        : "bg-paper text-brown-soft"
-                    }`}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
-
-              <p className="mb-1.5 mt-4 text-xs font-bold text-brown-soft">หรือกรอกเวลาเอง</p>
-              <div className="flex gap-2">
-                <input
-                  type="time"
-                  value={custom}
-                  onChange={(e) => setCustom(e.target.value)}
-                  className="min-h-[44px] min-w-0 flex-1 rounded-xl border border-petflow-line bg-paper px-3 text-sm"
-                />
-                <button
-                  type="button"
-                  disabled={!custom || saving}
-                  onClick={() => pick(custom)}
-                  className="min-h-[44px] shrink-0 rounded-xl bg-honey/50 px-4 text-sm font-extrabold text-petflow-chocolate disabled:opacity-40"
-                >
-                  บันทึก
-                </button>
-              </div>
+            <div className="rounded-petflow border border-petflow-line bg-paper p-3 shadow-petflow-sm">
+              <TimeSlotPicker value={saved} onPick={pick} disabled={saving} />
             </div>
           </section>
 
