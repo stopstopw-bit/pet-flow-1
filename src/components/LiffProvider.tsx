@@ -189,7 +189,7 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
           const res = await fetch("/api/line/liff", { cache: "no-store" });
           const data = await res.json();
           liffId = data.liffId || "";
-          if (!res.ok) liffErr = `${res.status}`;
+          liffErr = res.ok ? `${data.shop || "?"}@${window.location.pathname}` : `${res.status}`;
         } catch {
           /* fallback dev */
         }
