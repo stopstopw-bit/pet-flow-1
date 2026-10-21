@@ -27,7 +27,7 @@ export function CustomerLinkSection({
   const linkUrl = liffId
     ? buildCustomerLinkUrl(liffId, customerId)
     : typeof window !== "undefined"
-      ? `${window.location.origin}/app/link?customerId=${customerId}`
+      ? `${window.location.origin}${window.location.pathname.match(/^\/s\/[a-z0-9-]+/i)?.[0] || ""}/app/link?customerId=${customerId}`
       : "";
 
   const qrUrl = linkUrl

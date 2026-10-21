@@ -16,9 +16,11 @@ type ShopContact = { lineOa?: string; maps?: string };
 export function resolveBroadcastActionUri(
   actionId: BroadcastActionId,
   liffId?: string,
-  shop: ShopContact = {}
+  shop: ShopContact = {},
+  /** ลิงก์ร้าน https://…/s/<slug> (shopAppBase) — ไม่ใส่ = /app เปล่า ซึ่งเป็นร้าน PetFlow */
+  shopBase?: string
 ): string {
-  const appBase = getAppUrlFromEnv() || "https://petflow.example.com";
+  const appBase = shopBase || getAppUrlFromEnv() || "https://petflow.example.com";
   const lid = liffId?.trim();
 
   switch (actionId) {
@@ -50,13 +52,14 @@ export function resolveBroadcastActionUri(
 export function buildBroadcastButtons(
   actionIds: BroadcastActionId[],
   liffId?: string,
-  shop: ShopContact = {}
+  shop: ShopContact = {},
+  shopBase?: string
 ) {
   return actionIds.slice(0, 3).map((id) => {
     const preset = BROADCAST_ACTIONS.find((a) => a.id === id);
     return {
       label: preset?.label || id,
-      uri: resolveBroadcastActionUri(id, liffId, shop),
+      uri: resolveBroadcastActionUri(id, liffId, shop, shopBase),
     };
   });
 }

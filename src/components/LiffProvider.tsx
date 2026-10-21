@@ -258,74 +258,76 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!ready || typeof window === "undefined") return;
 
+    // คงอยู่ในลิงก์ร้านเดิม (/s/<slug>) — ห้ามเด้งไป /app เปล่า ๆ ซึ่งเป็นร้าน PetFlow
+    const shop = window.location.pathname.match(/^\/s\/[a-z0-9-]+/i)?.[0] || "";
     const params = new URLSearchParams(window.location.search);
     const path = params.get("path");
     const bookingId = params.get("id");
 
     if (path === "bookings") {
       router.replace(
-        bookingId ? `/app/bookings?id=${bookingId}` : "/app/bookings"
+        bookingId ? `${shop}/app/bookings?id=${bookingId}` : `${shop}/app/bookings`
       );
       return;
     }
     if (path === "promos") {
-      router.replace("/app/promos");
+      router.replace(`${shop}/app/promos`);
       return;
     }
     if (path === "grooming") {
-      router.replace("/app/grooming");
+      router.replace(`${shop}/app/grooming`);
       return;
     }
     if (path === "rooms") {
-      router.replace("/app/rooms");
+      router.replace(`${shop}/app/rooms`);
       return;
     }
     if (path === "services") {
-      router.replace("/app/services");
+      router.replace(`${shop}/app/services`);
       return;
     }
     if (path === "consent") {
       const bkId = params.get("id");
-      router.replace(bkId ? `/app/consent?id=${encodeURIComponent(bkId)}` : "/app/consent");
+      router.replace(bkId ? `${shop}/app/consent?id=${encodeURIComponent(bkId)}` : `${shop}/app/consent`);
       return;
     }
     if (path === "booking-time") {
       const bkId = params.get("id");
       const type = params.get("type") || "checkin";
       router.replace(
-        `/app/booking-time?id=${bkId || ""}&type=${type}`
+        `${shop}/app/booking-time?id=${bkId || ""}&type=${type}`
       );
       return;
     }
     if (path === "booking-transport") {
       const bkId = params.get("id");
-      router.replace(`/app/booking-transport?id=${encodeURIComponent(bkId || "")}`);
+      router.replace(`${shop}/app/booking-transport?id=${encodeURIComponent(bkId || "")}`);
       return;
     }
     if (path === "profile") {
-      router.replace("/app/profile");
+      router.replace(`${shop}/app/profile`);
       return;
     }
     if (path === "coupons") {
-      router.replace("/app/coupons");
+      router.replace(`${shop}/app/coupons`);
       return;
     }
     if (path === "claim-coupon") {
       const offer = params.get("offer");
-      router.replace(offer ? `/app/claim-coupon?offer=${encodeURIComponent(offer)}` : "/app/coupons");
+      router.replace(offer ? `${shop}/app/claim-coupon?offer=${encodeURIComponent(offer)}` : `${shop}/app/coupons`);
       return;
     }
     if (path === "groom-info") {
       const bkId = params.get("id");
-      router.replace(`/app/groom-info?id=${bkId || ""}`);
+      router.replace(`${shop}/app/groom-info?id=${bkId || ""}`);
       return;
     }
     if (path === "register") {
       if (needsRegistration) {
         const ref = params.get("ref");
-        router.replace(ref ? `/app/register?ref=${encodeURIComponent(ref)}` : "/app/register");
+        router.replace(ref ? `${shop}/app/register?ref=${encodeURIComponent(ref)}` : `${shop}/app/register`);
       } else {
-        router.replace("/app");
+        router.replace(`${shop}/app`);
       }
       return;
     }
@@ -333,8 +335,8 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
       const customerId = params.get("customerId");
       router.replace(
         customerId
-          ? `/app/link?customerId=${encodeURIComponent(customerId)}`
-          : "/app"
+          ? `${shop}/app/link?customerId=${encodeURIComponent(customerId)}`
+          : `${shop}/app`
       );
       return;
     }
@@ -357,7 +359,7 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
       pathname.startsWith("/app/claim-coupon");
 
     if (needsRegistration && !skipRegister) {
-      router.replace("/app/register");
+      router.replace(`${shop}/app/register`);
     }
   }, [ready, needsRegistration, pathname, router]);
 

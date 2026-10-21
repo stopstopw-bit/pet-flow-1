@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withResolvedTenant } from "@/lib/tenant-context";
 import { TENANT_COOKIE, TENANT_SLUG_HEADER } from "@/lib/tenant-resolve";
-import { getAppUrlFromEnv, getLineCredentials, isLiffConfigured } from "@/lib/line-config";
+import { getLineCredentials, isLiffConfigured, shopAppBase } from "@/lib/line-config";
 
 // สำคัญมาก — ทุกลูกค้าที่เปิดแอปเรียก route นี้เพื่อรู้ liffId ก่อน init LIFF
 // ถ้าไม่บังคับ dynamic, Next/Vercel จะ cache ผลตอนยังไม่ตั้ง LIFF ค้างไว้ถาวร แล้วลูกค้า
@@ -14,13 +14,12 @@ export const dynamic = "force-dynamic";
 async function getHandler(shop: string) {
   const creds = await getLineCredentials();
   const liffId = creds?.liffId || "";
-  const appUrl = getAppUrlFromEnv() || "https://petflow.example.com";
 
   return NextResponse.json(
     {
       liffId,
       configured: await isLiffConfigured(),
-      endpointUrl: `${appUrl}/app`,
+      endpointUrl: `${await shopAppBase()}/app`,
       testUrl: liffId ? `https://liff.line.me/${liffId}` : null,
       // ร้านที่ระบบเลือกให้คำขอนี้ — ไว้ไล่ปัญหา "ต่อ LINE ไม่ได้" จากรูปหน้าจอลูกค้า
       shop,
