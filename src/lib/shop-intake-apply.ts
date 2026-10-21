@@ -239,11 +239,11 @@ function buildDrafts(ans: IntakeAnswers, cfg: SiteConfig): Draft[] {
 
   const deposit = r.many("deposit");
   if (deposit?.length) {
-    // มัดจำเป็น % ของยอด ระบบยังตั้งไม่ได้ (ตั้งได้แค่บาท) — ข้ามไว้ให้ตั้งเอง
+    // มัดจำเป็น % หรือ "เต็มจำนวน" ระบบยังตั้งไม่ได้ (ตั้งได้แค่บาท) — ข้ามไว้ให้ตั้งเอง
     const amt = (opt: string) => {
       if (!deposit.includes(opt)) return 0;
       const f = r.fol("deposit", opt);
-      return /%/.test(f) ? null : firstNum(f) || 0;
+      return /%/.test(f) ? null : firstNum(f);
     };
     const room = amt("เก็บมัดจำห้องพัก");
     const groom = amt("เก็บมัดจำคิวอาบน้ำ");
@@ -266,9 +266,11 @@ function buildDrafts(ans: IntakeAnswers, cfg: SiteConfig): Draft[] {
     const f = r.fol("tax", tax);
     const taxId = (f.match(/\d[\d\s-]{11,}\d/)?.[0] || "").replace(/\D/g, "");
     const branch = f.match(/สำนักงานใหญ่|สาขา\s*\d+/)?.[0] || "";
-    const legal = f
-      .replace(/\d[\d\s-]{11,}\d/, "")
-      .replace(/สำนักงานใหญ่|สาขา\s*\d+/, "")
+    // ชื่อตามทะเบียน = ข้อความก่อนเลขผู้เสียภาษี (หลังเลขมักเป็นที่อยู่/เบอร์โทร)
+    const idAt = f.search(/\d[\d\s-]{11,}\d/);
+    const legal = (idAt >= 0 ? f.slice(0, idAt) : f)
+      .replace(/เลข(ประจำตัว)?ผู้เสียภาษี(อากร)?\s*[:：]?/g, "")
+      .replace(/\(?\s*(สำนักงานใหญ่|สาขา\s*\d+)\s*\)?/, "")
       .replace(/\s+/g, " ")
       .trim();
     if (taxId.length === 13)
@@ -623,7 +625,14 @@ export function manualItems(ans: IntakeAnswers): string[] {
   };
   const sizeCount = firstNum(r.one("sizeCount")) || 0;
   if (sizeCount && sizeCount !== 3) items.push(`ราคาอาบน้ำ (ร้านแบ่ง ${sizeCount} ไซส์ ระบบตั้งอัตโนมัติได้แค่ 3 ไซส์)`);
-  if (/%/.test(r.fol("deposit", "เก็บมัดจำห้องพัก") + r.fol("deposit", "เก็บมัดจำคิวอาบน้ำ"))) items.push("มัดจำเป็น % (ระบบตั้งได้เป็นบาท)");
+  const deposits = r.many("deposit") || [];
+  if (["เก็บมัดจำห้องพัก", "เก็บมัดจำคิวอาบน้ำ"].some((o) => deposits.includes(o) && (/%/.test(r.fol("deposit", o)) || firstNum(r.fol("deposit", o)) == null)))
+    items.push("มัดจำ (ระบบตั้งได้เป็นจำนวนบาท)");
+  if (answered("roomTypes") && !(firstNum(r.one("roomTypes")) && r.raw("rooms.0.price"))) items.push("ห้องพักและราคาห้อง");
+  if (answered("services") && !sizeCount) items.push("ราคาอาบน้ำตัดขน");
+  if (answered("courses") && r.raw("courses") !== "ยังไม่มี") items.push("คอร์ส / เติมเงินสมาชิก");
+  if (r.raw("products") === "ขาย") items.push("สินค้าหน้าร้าน");
+  if (r.raw("moveData") === "อยาก") items.push("ย้ายข้อมูลลูกค้าเก่า");
   if (answered("rewards")) items.push("แต้มแลกรางวัล");
   if (answered("staffCount") && r.raw("staffCount") !== "0") items.push("รหัสพนักงาน");
   if (["vaccines", "flea", "notAccept", "food", "bring", "meds", "sick", "vetCost", "rulesExtra"].some(answered))
