@@ -531,6 +531,16 @@ function importText(raw){
   return {ok, miss};
 }
 
+// กล่องวางคำตอบที่คัดลอกไว้ — หน้าแรก (พับไว้) และหน้าสรุป (เปิดไว้ วางเพิ่มทีละส่วนได้ ของเดิมไม่หาย)
+function importBox(open){
+  return `<details class="import"${open ? " open" : ""}><summary>มีคำตอบที่คัดลอกไว้แล้ว? วางที่นี่</summary>
+    <p class="q-hint">วางข้อความที่ได้จากปุ่ม "คัดลอกคำตอบ" แล้วกด "ใส่คำตอบ" — วางทีละส่วนได้ คำตอบที่มีอยู่แล้วจะไม่หาย</p>
+    <textarea class="field" id="importbox" rows="6"></textarea>
+    <div class="actions"><button class="btn" id="import" type="button">ใส่คำตอบ</button></div>
+    <div id="importmsg"></div>
+  </details>`;
+}
+
 function render(){
   const step = state.step;
   document.getElementById("bar").style.width = Math.round(step / TOTAL * 100) + "%";
@@ -540,12 +550,7 @@ function render(){
   if (step < TOTAL) {
     const s = SECTIONS[step];
     main.innerHTML = (step === 0 ? `<p class="msg">ตอบเท่าที่รู้ ข้ามข้อที่ยังไม่แน่ใจได้เลย ถ้าไม่มีตัวเลือกที่ตรง กด "อื่นๆ" แล้วพิมพ์เองได้ทุกข้อ คำตอบจะจำไว้ในเครื่องนี้ ปิดแล้วกลับมาทำต่อได้</p>
-      <details class="import"><summary>มีคำตอบที่คัดลอกไว้แล้ว? วางที่นี่</summary>
-        <p class="q-hint">วางข้อความทั้งหมดที่ได้จากปุ่ม "คัดลอกคำตอบ" แล้วกด "ใส่คำตอบ" — ระบบจะเติมให้ทุกข้อ แล้วพาไปหน้าสรุปให้กดส่ง</p>
-        <textarea class="field" id="importbox" rows="6"></textarea>
-        <div class="actions"><button class="btn main" id="import" type="button">ใส่คำตอบ</button></div>
-        <div id="importmsg"></div>
-      </details>` : "")
+${importBox(false)}` : "")
       + `<h1>${esc(T(s.title))}</h1>` + (s.lead ? `<p class="lead">${esc(s.lead)}</p>` : "") + s.qs.map(renderQ).join("");
     next.hidden = false; next.textContent = step === TOTAL - 1 ? "ดูสรุปคำตอบ" : "ถัดไป";
   } else {
@@ -562,6 +567,7 @@ function render(){
         <button class="btn" id="copy" type="button">คัดลอกคำตอบ</button>
       </div>
       <textarea class="field" id="copybox" rows="8" readonly hidden></textarea>
+      ${importBox(true)}
       <div class="sum">${blocks}</div>`;
   }
   window.scrollTo(0,0);
