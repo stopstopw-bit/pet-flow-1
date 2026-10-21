@@ -157,7 +157,8 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
       async function applyAccount(base: CustomerProfile) {
         const auth = getAuth();
         if (!auth) {
-          setError("เชื่อมต่อ LINE ไม่สำเร็จ — ปิดหน้านี้แล้วเปิดใหม่จาก LINE อีกครั้งนะคะ");
+          // LINE ไม่ส่ง ID token มา — ส่วนใหญ่เพราะ LIFF ไม่ได้เปิดสิทธิ์ openid (ตั้งใน LINE Developers)
+          setError("เชื่อมต่อ LINE ไม่สำเร็จ — ปิดหน้านี้แล้วเปิดใหม่จาก LINE อีกครั้งนะคะ (รหัส L1)");
           setReady(true);
           return;
         }
@@ -180,6 +181,7 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
 
       // ถามเซิร์ฟเวอร์ทุกครั้งว่าร้านนี้ใช้ LIFF ไหน — ห้ามใช้ค่าใน env ตรง ๆ เพราะเป็นของร้านเดียว
       let liffId = "";
+      let liffErr = "";
       {
         try {
           // no-store — LINE's in-app webview can hold onto a stale cached response,
@@ -187,6 +189,7 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
           const res = await fetch("/api/line/liff", { cache: "no-store" });
           const data = await res.json();
           liffId = data.liffId || "";
+          if (!res.ok) liffErr = `${res.status}`;
         } catch {
           /* fallback dev */
         }
@@ -200,7 +203,10 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
         const isLocalDev =
           host === "localhost" || host === "127.0.0.1" || /^(10\.|192\.168\.)/.test(host);
         if (!isLocalDev) {
-          setError("เชื่อมต่อ LINE ไม่สำเร็จ — ปิดหน้านี้แล้วเปิดใหม่จาก LINE อีกครั้งนะคะ");
+          // ร้านนี้หา LIFF ID ไม่เจอ (ยังไม่ตั้ง / หาร้านไม่เจอ) — แนบรหัสไว้ให้ไล่ปัญหาจากรูปหน้าจอได้
+          setError(
+            `เชื่อมต่อ LINE ไม่สำเร็จ — ปิดหน้านี้แล้วเปิดใหม่จาก LINE อีกครั้งนะคะ (รหัส L2${liffErr ? `-${liffErr}` : ""})`
+          );
           setReady(true);
           return;
         }
@@ -232,7 +238,7 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
           })
         )
         .catch((e) => {
-          setError(String(e));
+          setError(`เชื่อมต่อ LINE ไม่สำเร็จ (รหัส L3: ${String(e)})`);
           setReady(true);
         });
     }
