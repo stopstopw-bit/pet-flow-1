@@ -125,3 +125,15 @@ export async function getShopIntake(id: string): Promise<ShopIntake | null> {
   if (error) throw new Error(error.message);
   return data ? rowToIntake(data as IntakeRow) : null;
 }
+
+/** ย้ายคำตอบไปผูกกับร้านอื่น — ใช้ตอนส่งผ่านลิงก์ผิดร้าน */
+export async function setShopIntakeTenant(id: string, tenantId: string): Promise<void> {
+  const sb = getDirectoryDb();
+  if (!sb) {
+    const it = mem.find((x) => x.id === id);
+    if (it) it.tenantId = tenantId;
+    return;
+  }
+  const { error } = await sb.from("shop_intake").update({ tenant_id: tenantId || null }).eq("id", id);
+  if (error) throw new Error(error.message);
+}
