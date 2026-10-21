@@ -14,7 +14,7 @@ import { listBookingOps } from "./booking-ops-store";
 export type ServiceLogBill = {
   id: string;
   date: string;
-  items: Pick<InvoiceItem, "label" | "amount" | "kind" | "qty" | "catName">[];
+  items: Pick<InvoiceItem, "label" | "amount" | "kind" | "qty" | "unitAmount" | "catName">[];
   total: number;
   paymentMethod?: InvoiceRecord["paymentMethod"];
   bookingId?: string;
@@ -56,6 +56,7 @@ export async function customerServiceLog(
         amount: it.amount,
         kind: it.kind,
         qty: it.qty,
+        unitAmount: it.unitAmount,
         catName: it.catName,
       })),
       total: i.total,
