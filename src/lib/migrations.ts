@@ -603,6 +603,35 @@ where staff_note like '%🎁%';`,
       alter table tenant_payments enable row level security;
     `,
   },
+  {
+    // ทุกร้านแยกขาดจากกัน — username พนักงานห้ามซ้ำแค่ "ในร้านเดียวกัน" (เดิมห้ามซ้ำทั้งแพลตฟอร์ม
+    // ร้านหนึ่งตั้ง demo แล้วอีกร้านตั้ง demo ไม่ได้) ล็อกอินหาร้านจากลิงก์ /s/<slug>/admin/login แทน
+    name: "staff_users.username_per_shop",
+    sql: `
+      alter table staff_users drop constraint if exists staff_users_username_key;
+      drop index if exists staff_users_username_key;
+      create unique index if not exists staff_users_tenant_username_key on staff_users (tenant_id, username);
+    `,
+  },
+  {
+    // username เจ้าของร้านก็เหมือนกัน — ห้ามซ้ำในร้านตัวเองเท่านั้น (ร้านละคนอยู่แล้ว) ไม่บังคับข้ามร้าน
+    name: "tenants.owner_username_per_shop",
+    sql: `
+      alter table tenants drop constraint if exists tenants_owner_username_key;
+      drop index if exists tenants_owner_username_key;
+      create index if not exists tenants_owner_username_idx on tenants (owner_username);
+    `,
+  },
+  {
+    // ฐานที่สร้างจาก schema.sql รุ่นแรกยังบังคับ LINE ID ห้ามซ้ำทั้งแพลตฟอร์ม — ลูกค้าคนเดียวกัน
+    // สมัครสองร้านไม่ได้ เปลี่ยนเป็นห้ามซ้ำต่อร้าน
+    name: "customers.line_user_per_shop",
+    sql: `
+      create unique index if not exists customers_tenant_line_user_key on customers (tenant_id, line_user_id);
+      alter table customers drop constraint if exists customers_line_user_id_key;
+      drop index if exists customers_line_user_id_key;
+    `,
+  },
 ];
 
 export type MigrateResult = {

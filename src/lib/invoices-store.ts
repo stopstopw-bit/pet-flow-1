@@ -403,12 +403,14 @@ export async function createInvoice(data: {
           const both = await sb
             .from("invoices")
             .update({ package_id: invoice.packageId, package_units: invoice.packageUnits ?? null })
-            .eq("id", invoice.id);
+            .eq("id", invoice.id)
+            .eq("tenant_id", requireTenantId());
           if (both.error) {
             await sb
               .from("invoices")
               .update({ package_id: invoice.packageId })
-              .eq("id", invoice.id);
+              .eq("id", invoice.id)
+              .eq("tenant_id", requireTenantId());
           }
         } catch {
           /* ยังไม่มีคอลัมน์ — ประวัติการใช้คอร์สจะยังไม่ขึ้นจนกว่าจะอัปเดตฐานข้อมูล */

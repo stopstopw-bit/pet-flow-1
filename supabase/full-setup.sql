@@ -61,7 +61,7 @@ alter table tenants
   add column if not exists trial_ends_at timestamptz,
   add column if not exists created_at timestamptz not null default now();
 create unique index if not exists tenants_slug_key on tenants (slug);
-create unique index if not exists tenants_owner_username_key on tenants (owner_username);
+create index if not exists tenants_owner_username_idx on tenants (owner_username);
 create index if not exists tenants_owner_code_hash_idx on tenants (owner_code_hash);
 create index if not exists tenants_status_idx on tenants (status);
 
@@ -780,7 +780,7 @@ create unique index if not exists articles_tenant_slug_key on articles (tenant_i
 
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 13) พนักงาน — username unique ทั้งแพลตฟอร์ม (login ก่อนรู้ว่าเป็นร้านไหน)
+-- 13) พนักงาน — username ห้ามซ้ำในร้านเดียวกัน (คนละร้านซ้ำได้ ล็อกอินผ่านลิงก์ร้าน)
 -- ─────────────────────────────────────────────────────────────────────────────
 create table if not exists staff_users (
   id text primary key,
@@ -807,7 +807,7 @@ alter table staff_users
   add column if not exists created_at timestamptz not null default now();
 alter table staff_users alter column code drop not null;
 create index if not exists staff_users_tenant_idx on staff_users (tenant_id);
-create unique index if not exists staff_users_username_key on staff_users (username);
+create unique index if not exists staff_users_tenant_username_key on staff_users (tenant_id, username);
 
 
 -- ─────────────────────────────────────────────────────────────────────────────

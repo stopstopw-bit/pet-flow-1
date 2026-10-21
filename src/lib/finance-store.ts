@@ -367,7 +367,8 @@ export async function setFinanceExcluded(id: string, excluded: boolean) {
     const { error } = await sb
       .from("finance_records")
       .update({ excluded })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("tenant_id", requireTenantId());
     if (error) return { ok: false as const, error: "need_sql" };
     return { ok: true as const };
   }
