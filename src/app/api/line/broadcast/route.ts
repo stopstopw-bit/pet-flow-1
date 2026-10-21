@@ -151,7 +151,8 @@ async function handlePost(req: NextRequest) {
       promoUrl,
       discountLabel,
       buttons: buttons.length ? buttons : undefined,
-    }, (await getSiteConfig()).cards?.promo);
+      shopName: shopConfig.business.name,
+    }, shopConfig.cards?.promo);
     const result = await multicastLineMessage(lineIds, [flex]);
     return NextResponse.json({
       ok: true,

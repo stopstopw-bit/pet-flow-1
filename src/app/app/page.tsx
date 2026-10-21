@@ -84,7 +84,7 @@ export default function CustomerHome() {
               {profile ? `, ${profile.displayName}` : ""}
             </p>
             <h1 className="text-xl font-extrabold text-petflow-chocolate">
-              PetFlow <span className="text-card">Hotel</span>
+              {config.business.name}
             </h1>
           </div>
           <LangSwitch />

@@ -22,6 +22,7 @@ import {
 import type { SegmentId } from "@/lib/customer-segments";
 import { BROADCAST_DRAFT_KEY } from "@/components/SalesActions";
 import { Icon } from "@/components/Icon";
+import { useConfig } from "@/components/ConfigProvider";
 import { EmptyState, MoreMenu, SearchField, SectionLabel, Segmented } from "@/components/ui";
 
 /** กลุ่มลูกค้าสำเร็จรูป — ติ๊กได้หลายกลุ่ม ระบบเลือกคนที่ตรงทุกข้อ */
@@ -107,6 +108,7 @@ function resetFormState() {
 type PromoSortKey = "title" | "start" | "end" | "claims" | "status";
 
 export default function PromosAdminPage() {
+  const { config } = useConfig();
   const [promos, setPromos] = useState<Promo[]>([]);
   const [claims, setClaims] = useState<PromoClaim[]>([]);
   const [promoQuery, setPromoQuery] = useState("");
@@ -803,7 +805,7 @@ export default function PromosAdminPage() {
                   />
                 ) : (
                   <div className="px-4 py-5" style={{ backgroundColor: "#5A8F5A" }}>
-                    <span className="text-sm font-bold text-white">✨ โปรโมชั่น PetFlow</span>
+                    <span className="text-sm font-bold text-white">✨ โปรโมชั่น {config.business?.name}</span>
                   </div>
                 )}
                 <div className="px-4 py-3">

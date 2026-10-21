@@ -13,7 +13,7 @@ import { BTN_PRIMARY, PageHeader } from "@/components/PageHeader";
 import { SectionLabel } from "@/components/ui";
 import { Icon } from "@/components/Icon";
 import { MAX_VACCINE_PHOTOS } from "@/lib/vaccine-photos";
-import { ID_CARD_PURPOSE, watermarkIdCard } from "@/lib/id-card-watermark";
+import { idCardPurpose, watermarkIdCard } from "@/lib/id-card-watermark";
 
 type StayBooking = Booking & {
   checkin?: string;
@@ -177,7 +177,7 @@ function ConsentContent() {
     if (!profile?.lineUserId) return;
     setIdCardBusy(true);
     try {
-      const image = await watermarkIdCard(file);
+      const image = await watermarkIdCard(file, undefined, config.business.name);
       const res = await fetch("/api/customers/id-card", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -359,7 +359,7 @@ function ConsentContent() {
                   บัตรประชาชนผู้ปกครอง
                 </label>
                 <p className="mb-1.5 text-[11px] text-brown-faint">
-                  ระบบจะพิมพ์ข้อความขีดทับลงในรูปให้อัตโนมัติก่อนส่ง: &quot;{ID_CARD_PURPOSE}&quot;
+                  ระบบจะพิมพ์ข้อความขีดทับลงในรูปให้อัตโนมัติก่อนส่ง: &quot;{idCardPurpose(config.business.name)}&quot;
                   แนบครั้งเดียวพอ รอบต่อไปไม่ต้องแนบอีก
                 </p>
                 {idCardUrl && (

@@ -38,7 +38,7 @@ export function getDefaultSiteConfig(): SiteConfig {
         inactiveDays: 60,
         followUpCooldownDays: 30,
         followUpMessage:
-          "สวัสดีค่ะ {name} จาก PetFlow 🐱\nคิดถึงน้อง{cats} นะคะ มาไม่ได้นาน {days} วันแล้ว มีโปรพิเศษรออยู่ที่แอปนะคะ 💛",
+          "สวัสดีค่ะ {name} จาก {shop} 🐾\nคิดถึงน้อง{pets} นะคะ มาไม่ได้นาน {days} วันแล้ว มีโปรพิเศษรออยู่ที่แอปนะคะ 💛",
         tierPresets: ["VIP", "Gold", "Silver"],
         tierRules: {
           regularMinVisits: 1,

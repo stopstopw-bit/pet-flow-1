@@ -29,7 +29,7 @@ export default function TaxPage() {
   const nowYear = new Date().getFullYear();
   const [year, setYear] = useState(nowYear);
   const [records, setRecords] = useState<Rec[]>([]);
-  const [shopName, setShopName] = useState("PetFlow");
+  const [shopName, setShopName] = useState("");
   const [shopAddress, setShopAddress] = useState("");
   const [shopTaxId, setShopTaxId] = useState("");
   const [shopPhone, setShopPhone] = useState("");

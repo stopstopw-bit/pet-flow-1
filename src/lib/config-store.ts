@@ -122,6 +122,28 @@ function dropCopiedShopValues(stored: Partial<SiteConfig>): Partial<SiteConfig> 
   return out;
 }
 
+/**
+ * ข้อความตั้งต้นของระบบเคยเขียนชื่อ "PetFlow" ตรง ๆ (ข้อความตามลูกค้า, การ์ด LINE, ชื่อโปรแกรมอาบน้ำ ฯลฯ)
+ * และหลายร้านบันทึกข้อความเหล่านั้นไว้แล้ว — ตอนอ่านเปลี่ยนเป็นชื่อร้านนั้นให้หมด
+ * ลูกค้าต้องเห็นชื่อร้านที่ตัวเองใช้บริการ ไม่ใช่ชื่อระบบ · ข้ามลิงก์/รูป (มี petflow อยู่ใน URL ได้)
+ */
+function withShopNameInTexts(config: SiteConfig): SiteConfig {
+  const name = config.business?.name?.trim();
+  if (!name || /petflow/i.test(name)) return config;
+  const walk = (v: unknown): unknown => {
+    if (typeof v === "string") {
+      if (!v.includes("PetFlow") || /^(https?:|data:|\/)/.test(v.trim())) return v;
+      return v.replace(/PetFlow/g, name);
+    }
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === "object") {
+      return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, walk(x)]));
+    }
+    return v;
+  };
+  return walk(config) as SiteConfig;
+}
+
 export async function getSiteConfig(): Promise<SiteConfig> {
   const defaults = getDefaultSiteConfig();
   // บัญชีธนาคาร/พร้อมเพย์ใน env (BANK_*, PROMPTPAY_ID) เป็นของร้าน bootstrap —
@@ -150,14 +172,16 @@ export async function getSiteConfig(): Promise<SiteConfig> {
           }
         })().catch(() => {});
       }
-      return mergeConfig(defaults, {
-        ...dropCopiedShopValues(stored),
-        updatedAt: data.updated_at || defaults.updatedAt,
-      });
+      return withShopNameInTexts(
+        mergeConfig(defaults, {
+          ...dropCopiedShopValues(stored),
+          updatedAt: data.updated_at || defaults.updatedAt,
+        })
+      );
     }
   }
 
-  if (memConfig) return memConfig;
+  if (memConfig) return withShopNameInTexts(memConfig);
   return defaults;
 }
 

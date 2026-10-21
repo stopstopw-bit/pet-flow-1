@@ -227,7 +227,7 @@ async function writeSheet(
     valueInputOption: "RAW",
     requestBody: {
       values: [
-        [`PetFlow — ส่งออกเมื่อ ${exportedAt}`],
+        [`ส่งออกเมื่อ ${exportedAt}`],
         headers,
         ...rows,
       ],

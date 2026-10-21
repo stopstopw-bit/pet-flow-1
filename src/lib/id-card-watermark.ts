@@ -3,10 +3,14 @@
  * แบบเดียวกับสำเนาบัตรที่เซ็นกำกับ: เส้นคู่ขีดทแยงพาดกลางบัตร + ข้อความวัตถุประสงค์ระหว่างเส้น
  * และข้อความจางๆ ซ้ำทั่วรูป กันเอารูปไปตัดใช้ที่อื่น
  */
-export const ID_CARD_PURPOSE =
-  "ใช้สำหรับลงทะเบียนโรงแรมแมว PetFlow เพื่อพาน้องแมวเข้าพักที่โรงแรมเท่านั้น";
+/** ข้อความขีดทับบัตร — ใส่ชื่อร้านที่ลูกค้าลงทะเบียนด้วย (ไม่ใช่ชื่อระบบ) */
+export function idCardPurpose(shopName?: string) {
+  const shop = shopName?.trim();
+  return `ใช้สำหรับลงทะเบียนเข้าพัก${shop ? `ที่ ${shop}` : "ที่ร้าน"} เพื่อฝากน้องเข้าพักเท่านั้น`;
+}
 
-export async function watermarkIdCard(file: File, maxSize = 1400): Promise<string> {
+export async function watermarkIdCard(file: File, maxSize = 1400, shopName?: string): Promise<string> {
+  const ID_CARD_PURPOSE = idCardPurpose(shopName);
   const objectUrl = URL.createObjectURL(file);
   try {
     const img = await new Promise<HTMLImageElement>((resolve, reject) => {

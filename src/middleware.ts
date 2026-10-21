@@ -169,6 +169,19 @@ export async function middleware(req: NextRequest) {
     });
   }
 
+  // หน้าเว็บโฆษณา (หน้าแรก/ห้องพัก/อาบน้ำ/บทความ) เขียนไว้เฉพาะร้านตัวอย่าง PetFlow —
+  // ร้านอื่นเปิด /s/<slug>/ แล้วต้องไม่เห็นชื่อ/รูป/ราคาของ PetFlow → ส่งไปหน้าแอปของร้านตัวเองแทน
+  if (
+    tenantSlug &&
+    tenantSlug !== "petflow" &&
+    (pathname === "/" || /^\/(cat-bath|cat-hotel|blog)(\/|$)/.test(pathname))
+  ) {
+    const url = req.nextUrl.clone();
+    url.pathname = `/s/${tenantSlug}/app`;
+    url.search = "";
+    return withCookie(NextResponse.redirect(url));
+  }
+
   // ผู้ดูแลระบบ — คนละชั้นสิทธิ์กับ /admin (เจ้าของร้าน/พนักงาน) เลยแยกด่านตรวจ
   if (pathname.startsWith("/api/platform/")) {
     if (pathname === "/api/platform/auth") {
