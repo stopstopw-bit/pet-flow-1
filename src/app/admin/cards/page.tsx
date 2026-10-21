@@ -10,6 +10,7 @@ import {
 import { toast } from "@/components/Toast";
 import { useConfig } from "@/components/ConfigProvider";
 import { Icon } from "@/components/Icon";
+import { brandColorsFor } from "@/lib/card-brand";
 
 /**
  * ปรับแต่งการ์ด LINE — สี ขนาดตัวอักษร ข้อความ เงื่อนไข และส่วนประกอบของการ์ดแต่ละใบ
@@ -524,26 +525,6 @@ const SWATCHES = [
 
 const BRAND_FALLBACK = { primary: "#a9855f", accent: "#ebc583", heading: "#5c4033" };
 
-/**
- * แปลงสีร้าน (branding) เป็นสีของการ์ดใบหนึ่ง — การ์ดที่มีแถบหัว (มี headerTextColor)
- * ใช้สีหลักเป็นพื้นแถบ + ตัวหนังสือขาว, ส่วนการ์ดที่ headerColor คือสีตัวหนังสือหัวข้อตรงๆ
- * (ไม่มีแถบพื้น) ใช้สีหัวข้อของร้านแทน
- */
-function brandCardColors(
-  meta: CardMeta,
-  branding: { primary: string; accent: string; heading: string }
-): Partial<CardStyleConfig> {
-  const hasBar = meta.colors.some((r) => r.key === "headerTextColor");
-  const next: Partial<CardStyleConfig> = {};
-  for (const role of meta.colors) {
-    if (role.key === "headerColor") next.headerColor = hasBar ? branding.primary : branding.heading;
-    if (role.key === "headerTextColor") next.headerTextColor = "#FFFFFF";
-    if (role.key === "accentColor") next.accentColor = branding.accent;
-    if (role.key === "buttonColor") next.buttonColor = branding.primary;
-  }
-  return next;
-}
-
 const TITLE_SIZES: { value: "" | "sm" | "md" | "lg" | "xl"; label: string }[] = [
   { value: "", label: "ค่าเริ่มต้น" },
   { value: "sm", label: "เล็ก" },
@@ -1020,6 +1001,7 @@ export default function CardsStudioPage() {
   const [texts, setTexts] = useState<Record<string, string>>({});
   const [groomForm, setGroomForm] = useState<GroomFormConfig>({});
   const [branding, setBranding] = useState(BRAND_FALLBACK);
+  const [hasBrand, setHasBrand] = useState(false);
   const [activeKey, setActiveKey] = useState(CARDS[0].key);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1033,6 +1015,7 @@ export default function CardsStudioPage() {
         setCards(cfg.cards || {});
         setGroomForm(cfg.groomForm || {});
         setBranding({ ...BRAND_FALLBACK, ...cfg.branding });
+        setHasBrand(Boolean(cfg.branding?.primary));
         setTexts({
           summaryBookingTitle: cfg.billing?.summaryBookingTitle || "",
           summaryDepositTitle: cfg.billing?.summaryDepositTitle || "",
@@ -1064,6 +1047,14 @@ export default function CardsStudioPage() {
 
   const meta = useMemo(() => CARDS.find((c) => c.key === activeKey)!, [activeKey]);
   const st = cards[activeKey] || {};
+  // สีที่ไม่ได้ตั้งเองรายใบ = สีร้าน (ตรงกับตอนส่งการ์ดจริง) — ไม่ใช่น้ำตาล/ชมพูเริ่มต้น
+  const shownSt: CardStyleConfig = hasBrand
+    ? { ...brandColorsFor(meta.colors.map((r) => r.key), branding), ...st }
+    : st;
+  // สีร้านขึ้นก่อนในแถบสีให้เลือก
+  const swatches = hasBrand
+    ? Array.from(new Set([branding.primary, branding.heading, ...SWATCHES]))
+    : SWATCHES;
 
   const patch = (p: Partial<CardStyleConfig>) => {
     setCards((prev) => ({ ...prev, [activeKey]: { ...prev[activeKey], ...p } }));
@@ -1178,7 +1169,7 @@ export default function CardsStudioPage() {
                 const next = { ...prev };
                 for (const c of CARDS) {
                   if (c.colors.length === 0) continue;
-                  next[c.key] = { ...next[c.key], ...brandCardColors(c, branding) };
+                  next[c.key] = { ...next[c.key], ...brandColorsFor(c.colors.map((r) => r.key), branding) };
                 }
                 return next;
               });
@@ -1367,13 +1358,13 @@ export default function CardsStudioPage() {
                     <label className="w-36 shrink-0 text-[11px] font-bold text-brown-soft">{role.label}</label>
                     <input
                       type="color"
-                      value={styleValue(st, role)}
+                      value={styleValue(shownSt, role)}
                       onChange={(e) => patch({ [role.key]: e.target.value })}
                       className="h-9 w-12 cursor-pointer rounded-lg border border-petflow-line bg-paper"
                     />
-                    <span className="font-mono text-[10px] text-brown-faint">{styleValue(st, role)}</span>
+                    <span className="font-mono text-[10px] text-brown-faint">{styleValue(shownSt, role)}</span>
                     <div className="flex gap-1">
-                      {SWATCHES.map((sw) => (
+                      {swatches.map((sw) => (
                         <button
                           key={sw}
                           type="button"
@@ -1584,7 +1575,7 @@ export default function CardsStudioPage() {
             </div>
           ) : (
             <div className="rounded-2xl bg-[#8cabd8] p-4">
-              <Preview meta={meta} st={st} texts={texts} />
+              <Preview meta={meta} st={shownSt} texts={texts} />
             </div>
           )}
         </div>

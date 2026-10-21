@@ -4,6 +4,7 @@ import { getSupabase } from "./supabase/server";
 import { isBootstrapTenant, requireTenantId } from "./tenant-context";
 import { uploadDataUrlToStorage } from "./supabase/storage";
 import { createHash } from "crypto";
+import { applyBrandCardDefaults, stripBrandCardDefaults } from "./card-brand";
 
 /**
  * ย้ายรูปที่ฝังเป็น base64 (data:image/...) ในค่าตั้งค่าออกไป Storage แล้วแทนด้วย URL
@@ -144,7 +145,13 @@ function withShopNameInTexts(config: SiteConfig): SiteConfig {
   return walk(config) as SiteConfig;
 }
 
+/** การ์ด LINE ที่ยังไม่ได้ตั้งสีเอง ใช้สีร้าน — ทุกที่ที่อ่าน config (ส่งการ์ด/หน้าหลังบ้าน) เห็นเหมือนกัน */
 export async function getSiteConfig(): Promise<SiteConfig> {
+  return applyBrandCardDefaults(await getRawSiteConfig());
+}
+
+/** config ตามที่บันทึกจริง (ยังไม่เติมสีการ์ดจากสีร้าน) — ใช้ตอนแก้แล้วบันทึกกลับ */
+async function getRawSiteConfig(): Promise<SiteConfig> {
   const defaults = getDefaultSiteConfig();
   // บัญชีธนาคาร/พร้อมเพย์ใน env (BANK_*, PROMPTPAY_ID) เป็นของร้าน bootstrap —
   // ร้านอื่นที่ยังไม่ตั้งเองต้องเห็นช่องว่าง ไม่ใช่เลขบัญชีร้านอื่นบนการ์ดโอนเงิน
@@ -187,7 +194,7 @@ export async function getSiteConfig(): Promise<SiteConfig> {
 
 export async function replaceSiteConfig(config: SiteConfig) {
   const next = {
-    ...(await offloadDataUrls(config, `config/${requireTenantId()}`)),
+    ...(await offloadDataUrls(stripBrandCardDefaults(config), `config/${requireTenantId()}`)),
     updatedAt: new Date().toISOString(),
     version: (config.version || 0) + 1,
   };
@@ -202,12 +209,14 @@ export async function replaceSiteConfig(config: SiteConfig) {
   } else {
     memConfig = next;
   }
-  return next;
+  return applyBrandCardDefaults(next);
 }
 
 export async function updateSiteConfig(patch: Partial<SiteConfig>) {
-  const current = await getSiteConfig();
-  const next = mergeConfig(current, await offloadDataUrls(patch, `config/${requireTenantId()}`));
+  const current = await getRawSiteConfig();
+  const next = stripBrandCardDefaults(
+    mergeConfig(current, await offloadDataUrls(patch, `config/${requireTenantId()}`))
+  );
   next.updatedAt = new Date().toISOString();
   next.version = (current.version || 0) + 1;
 
@@ -223,7 +232,7 @@ export async function updateSiteConfig(patch: Partial<SiteConfig>) {
     memConfig = next;
   }
 
-  return next;
+  return applyBrandCardDefaults(next);
 }
 
 export function getRoomFromConfig(config: SiteConfig, id: string) {
