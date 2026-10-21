@@ -302,7 +302,11 @@ async function handlePatch(req: NextRequest, admin: boolean) {
   if (action === "confirm") {
     // ต้องเช็คสถานะ "ก่อน" อัปเดต — กันส่งข้อความซ้ำถ้ากดยืนยันซ้ำ/ลูกค้ากดยืนยันหลังร้านยืนยันไปแล้ว
     const wasNotYetConfirmed = b.status !== "confirmed";
-    await updateBooking(id, { status: "confirmed", checkinTime });
+    // เวลาที่เลือกตอนกดยืนยัน = เวลามาส่งน้อง (ที่เดียวกับหน้าเลือกเวลา/หลังบ้าน/แจ้งเตือน)
+    await updateBooking(id, {
+      status: "confirmed",
+      ...(checkinTime ? { checkinTime, arrivalTime: checkinTime } : {}),
+    });
 
     // แจ้งลูกค้าทันทีว่าได้คิวแล้ว — คนละเรื่องกับการ์ดเตือนล่วงหน้าก่อนถึงวันจริง (send_reminder / cron)
     // ส่งเฉพาะตอน "ร้าน" เป็นคนยืนยัน — ลูกค้ากดตอบรับเองในแอปไม่ต้องส่งซ้ำ (เขาเพิ่งกดเองเห็นผลอยู่แล้ว
@@ -363,7 +367,10 @@ async function handlePatch(req: NextRequest, admin: boolean) {
       if (!bk) continue;
       // ยืนยันได้เฉพาะนัดของตัวเอง แม้จะมาในกลุ่มเดียวกัน — กันแอบยัด id ของคนอื่นปนมา
       if (!admin && !(!!lineUserId && bk.lineUserId === lineUserId)) continue;
-      await updateBooking(bk.id, { status: "confirmed", checkinTime });
+      await updateBooking(bk.id, {
+        status: "confirmed",
+        ...(checkinTime ? { checkinTime, arrivalTime: checkinTime } : {}),
+      });
       if (bk.calendarEventId) {
         await updateCalendarEventConfirmed(bk.calendarEventId, {
           summary: `${bk.service === "room" ? "🏠" : "🛁"} ${bk.catName} (${bk.customerName})`,

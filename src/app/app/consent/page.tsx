@@ -174,7 +174,11 @@ function ConsentContent() {
 
   // ขีดทับบนเครื่องลูกค้าก่อน แล้วค่อยส่งขึ้นระบบ — รูปบัตรแบบไม่มีข้อความไม่เคยออกจากมือถือ
   const uploadIdCard = async (file: File) => {
-    if (!profile?.lineUserId) return;
+    // เดิมเงียบไปเฉยๆ ถ้ายังไม่รู้ว่าเป็นใคร — ลูกค้าเลยคิดว่ากดแล้วไม่เกิดอะไร
+    if (!profile?.lineUserId) {
+      alert("ยังเชื่อมบัญชี LINE ไม่เสร็จ — ปิดหน้านี้แล้วเปิดลิงก์จากแชท LINE ใหม่อีกครั้งนะคะ");
+      return;
+    }
     setIdCardBusy(true);
     try {
       const image = await watermarkIdCard(file, undefined, config.business.name);
@@ -184,10 +188,12 @@ function ConsentContent() {
         body: JSON.stringify({ lineUserId: profile.lineUserId, image }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.url) throw new Error();
+      if (!res.ok || !data.url) throw new Error(`upload ${res.status}`);
       setIdCardUrl(data.url);
-    } catch {
-      alert("แนบรูปบัตรไม่สำเร็จ ลองใหม่อีกครั้งนะคะ");
+    } catch (e) {
+      // ข้อความจาก watermarkIdCard (เช่น เปิดไฟล์ไม่ได้) บอกลูกค้าได้ตรงกว่า — ที่เหลือใช้ข้อความกลาง
+      const msg = e instanceof Error && !e.message.startsWith("upload") ? e.message : "";
+      alert(msg || "แนบรูปบัตรไม่สำเร็จ ลองใหม่อีกครั้งนะคะ");
     } finally {
       setIdCardBusy(false);
     }

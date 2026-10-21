@@ -12,11 +12,13 @@ import { Icon } from "@/components/Icon";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { groomProgram } from "@/lib/grooming-prices";
 import { groupBookings, groupCatNames } from "@/lib/booking-group";
-
-const CHECKIN_TIMES = ["10:00", "12:00", "14:00", "16:00", "18:00"];
+import { TimeSlotPicker } from "@/components/TimeSlotPicker";
 
 /** API ส่ง checkin มาด้วยจริง (ใช้จัดกลุ่มบ้านเดียวกัน/นัดเดียวกัน) แต่ type Booking กลางไม่มีฟิลด์นี้ */
-type BookingRow = Booking & { checkin?: string };
+type BookingRow = Booking & { checkin?: string; arrivalTime?: string };
+
+/** เวลามาส่งน้องที่บันทึกไว้ — ที่เดียวกับหน้าเลือกเวลาจากลิงก์ LINE และที่หลังบ้านเห็น */
+const savedArrival = (b: BookingRow) => b.arrivalTime || b.checkinTime || "";
 
 function BookingsContent() {
   const { locale } = useLocale();
@@ -27,7 +29,7 @@ function BookingsContent() {
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [pickId, setPickId] = useState<string | null>(null);
-  const [checkin, setCheckin] = useState("14:00");
+  const [checkin, setCheckin] = useState("");
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const scrolledRef = useRef(false);
 
@@ -58,6 +60,7 @@ function BookingsContent() {
     scrolledRef.current = true;
     if (primary.status === "pending" && primary.service === "room") {
       setPickId(primary.id);
+      setCheckin(savedArrival(primary));
     }
     requestAnimationFrame(() => {
       document.getElementById(`booking-${primary.id}`)?.scrollIntoView({
@@ -196,32 +199,23 @@ function BookingsContent() {
                           <Icon name="clock" size={14} />
                           {m.checkin}
                         </p>
-                        <div className="grid grid-cols-5 gap-1.5">
-                          {CHECKIN_TIMES.map((time) => (
-                            <button
-                              key={time}
-                              type="button"
-                              onClick={() => setCheckin(time)}
-                              className={`min-h-[44px] rounded-xl text-xs font-bold transition ${
-                                checkin === time
-                                  ? "bg-latte-deep text-white shadow-petflow-sm"
-                                  : "bg-card text-brown-soft"
-                              }`}
-                            >
-                              {time}
-                            </button>
-                          ))}
-                        </div>
+                        <TimeSlotPicker value={checkin} onPick={setCheckin} />
                       </div>
                     )}
                     <button
                       type="button"
-                      disabled={confirmingId === primary.id}
-                      onClick={() =>
-                        primary.service === "room" && pickId !== primary.id
-                          ? setPickId(primary.id)
-                          : confirmGroup(combine ? ids : [primary.id], primary)
+                      disabled={
+                        confirmingId === primary.id ||
+                        (primary.service === "room" && pickId === primary.id && !checkin)
                       }
+                      onClick={() => {
+                        if (primary.service === "room" && pickId !== primary.id) {
+                          setPickId(primary.id);
+                          setCheckin(savedArrival(primary));
+                        } else {
+                          confirmGroup(combine ? ids : [primary.id], primary);
+                        }
+                      }}
                       className={BTN_PRIMARY}
                     >
                       {confirmingId === primary.id ? (
@@ -239,12 +233,23 @@ function BookingsContent() {
                     </button>
                   </div>
                 )}
-                {primary.checkinTime && (
-                  <p className="mt-3 flex items-center gap-1.5 pl-[52px] text-xs font-semibold text-ok">
-                    <Icon name="clock" size={14} />
-                    Check-in {primary.checkinTime}
-                  </p>
-                )}
+                {primary.service === "room" &&
+                  primary.status !== "cancelled" &&
+                  pickId !== primary.id &&
+                  savedArrival(primary) && (
+                    <p className="mt-3 flex items-center gap-1.5 pl-[52px] text-xs font-semibold text-ok">
+                      <Icon name="clock" size={14} />
+                      เวลามาส่งน้อง {savedArrival(primary)} น.
+                      {primary.status === "confirmed" && (
+                        <a
+                          href={`/app/booking-time?id=${primary.id}&type=checkin`}
+                          className="ml-auto inline-flex min-h-[44px] items-center px-1 font-bold text-brown-soft underline"
+                        >
+                          เปลี่ยนเวลา
+                        </a>
+                      )}
+                    </p>
+                  )}
               </li>
             );
           })}
