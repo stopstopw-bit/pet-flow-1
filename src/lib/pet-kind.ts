@@ -71,6 +71,22 @@ function defaultBreeds(kind: PetKind): string[] {
   return BREED_OPTIONS;
 }
 
+/**
+ * รายชื่อของร้าน (ไว้บนสุด) + เติมสายพันธุ์เริ่มต้นตามชนิดสัตว์ที่ยังไม่มี
+ * แบบสอบถามถาม "สายพันธุ์ที่มาบ่อย" ร้านตอบมาไม่กี่ตัว (เช่น "ปอม") — ไม่ใช่ให้เหลือแค่นั้น
+ * ตัวที่ชื่อซ้อนกัน (เช่น "ปอม" กับ "ปอมเมอเรเนียน (Pomeranian)") นับเป็นตัวเดียว ไม่เติมซ้ำ
+ */
+export function withDefaultBreeds(shopBreeds: string[], kind: PetKind): string[] {
+  const key = (s: string) => s.toLowerCase().replace(/\s+/g, "");
+  const mine = shopBreeds.map((s) => s.trim()).filter(Boolean);
+  const keys = mine.map(key);
+  const extra = defaultBreeds(kind).filter((d) => {
+    const k = key(d);
+    return !keys.some((m) => k.includes(m) || m.includes(k));
+  });
+  return [...mine, ...extra];
+}
+
 const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 
 /**

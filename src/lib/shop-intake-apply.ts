@@ -2,7 +2,7 @@ import type { RoomType } from "./business";
 import type { SiteConfig } from "./config-types";
 import type { GroomProgram, GroomSize } from "./grooming-prices";
 import { featureLabel, isFeatureOn, type FeatureKey } from "./features";
-import { petKindFromIntake, petKindOf } from "./pet-kind";
+import { petKindFromIntake, petKindOf, withDefaultBreeds } from "./pet-kind";
 
 /**
  * แปลงคำตอบแบบสอบถามเจ้าของร้าน (public/shop-questions.html) เป็นการตั้งค่าร้าน (SiteConfig)
@@ -433,6 +433,8 @@ function buildDrafts(ans: IntakeAnswers, cfg: SiteConfig): Draft[] {
   let breeds = splitList(breedText);
   // พิมพ์มาแบบเว้นวรรคบรรทัดเดียว (เช่น "ปอม ชิวาว่า พุดเดิ้ล") — แยกตามช่องว่าง
   if (breeds.length === 1 && !/[,\n]/.test(breedText.trim())) breeds = breeds[0].split(/\s+/).filter(Boolean);
+  // คำตอบคือ "ที่มาบ่อย" → ไว้บนสุด แล้วเติมรายชื่อมาตรฐานต่อท้าย ไม่ให้ลูกค้าเลือกได้แค่ไม่กี่ตัว
+  if (breeds.length) breeds = withDefaultBreeds(breeds, petKind ?? petKindOf(cfg));
   if (breeds.length)
     add({
       key: "options.catBreeds",
