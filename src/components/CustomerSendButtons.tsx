@@ -22,7 +22,6 @@ type PendingSend = {
  * ① กรอกข้อมูลน้อง → ② สมุดวัคซีน → ③ บัตรประชาชน (เข้าพัก) → ④ กฎ + กดยินยอม (เข้าพัก) → ⑤ แจ้งยอดโอน
  */
 const QUICK_STEP_LABELS: Record<string, string> = {
-  send_groom_info: "กรอกข้อมูลน้อง",
   send_vaccine_request: "ขอสมุดวัคซีน",
   send_idcard_request: "ขอบัตรประชาชน",
   send_consent: "กฎ + กดยินยอม",
@@ -445,11 +444,11 @@ export function CustomerSendButtons({
     {
       // เข้าพักก็กดขอประวัติได้ — เคสพักพร้อมอาบน้ำ / มาเพิ่มอาบน้ำระหว่างเข้าพัก
       k: "send_groom_info",
-      label:
-        groomBookingIds && groomBookingIds.length > 1
-          ? `สอบถามประวัติก่อนอาบน้ำ (${groomBookingIds.length} ตัว)`
-          : "สอบถามประวัติก่อนอาบน้ำ",
-      icon: "bath",
+      // นัดเข้าพักส่งฟอร์มข้อมูลก่อนเข้าพัก (อาหาร/นิสัย/การดูแล) — เซิร์ฟเวอร์เลือกฟอร์มตามบริการ
+      label: `${hasRoomStay ? "สอบถามประวัติน้องก่อนเข้าพัก" : "สอบถามประวัติก่อนอาบน้ำ"}${
+        groomBookingIds && groomBookingIds.length > 1 ? ` (${groomBookingIds.length} ตัว)` : ""
+      }`,
+      icon: hasRoomStay ? "edit" : "bath",
       when: !!bookingId,
       onClick: () => void sendGroomInfoAll(),
     },
@@ -554,7 +553,13 @@ export function CustomerSendButtons({
                 className="flex min-h-[40px] items-center gap-1.5 rounded-full border border-petflow-line bg-card px-3 py-2 text-xs font-bold text-petflow-chocolate active:bg-paper disabled:opacity-40"
               >
                 <Icon name={a.icon} size={15} />
-                {busy === k ? "กำลังโหลด…" : QUICK_STEP_LABELS[k] || a.label}
+                {busy === k
+                  ? "กำลังโหลด…"
+                  : k === "send_groom_info"
+                    ? hasRoomStay
+                      ? "ประวัติก่อนเข้าพัก"
+                      : "ประวัติก่อนอาบน้ำ"
+                    : QUICK_STEP_LABELS[k] || a.label}
               </button>
             );
           })}
