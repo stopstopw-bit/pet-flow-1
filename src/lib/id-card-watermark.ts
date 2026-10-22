@@ -90,7 +90,7 @@ function splitPurpose(text: string): string[] {
 
 /**
  * หาขนาดตัวอักษรใหญ่สุดที่กรอบข้อความ (รวมเส้นขีดคู่) เมื่อเอียง tilt แล้วยังอยู่ในรูปทั้งหมด
- * เว้นขอบ 6% ทุกด้าน
+ * ใช้ราว 2 ใน 3 ของรูป (เจ้าของร้านอยากได้ขนาดกลางๆ ไม่ใหญ่เต็มรูป)
  */
 function fitPurposeText(
   ctx: CanvasRenderingContext2D,
@@ -102,8 +102,8 @@ function fitPurposeText(
 ): { lines: string[]; size: number } {
   const cos = Math.cos(tilt);
   const sin = Math.sin(tilt);
-  const maxW = w * 0.88;
-  const maxH = h * 0.88;
+  const maxW = w * 0.68;
+  const maxH = h * 0.68;
   const start = Math.max(18, Math.round(Math.sqrt(w * w + h * h) / 22));
   let best = { lines: [text], size: 0 };
   for (const lines of [[text], splitPurpose(text)]) {
