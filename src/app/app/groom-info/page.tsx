@@ -6,6 +6,7 @@ import { useLiff } from "@/components/LiffProvider";
 import { useConfig } from "@/components/ConfigProvider";
 import { resolveGroomForm, type GroomField } from "@/lib/groom-form";
 import { resolveStayForm } from "@/lib/stay-form";
+import { petKindOf } from "@/lib/pet-kind";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { BTN_PRIMARY, PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/ui";
@@ -58,7 +59,8 @@ function GroomInfoContent() {
 
   // คำถามทั้งหมด — ก่อนอาบน้ำ: ตามที่ร้านตั้งไว้ในหลังบ้าน · ก่อนเข้าพัก: ชุดการกิน/การดูแล (stay-form)
   const groomFields = useMemo(() => resolveGroomForm(config.groomForm), [config.groomForm]);
-  const stayFields = useMemo(() => resolveStayForm(), []);
+  const petKind = petKindOf(config);
+  const stayFields = useMemo(() => resolveStayForm(undefined, petKind), [petKind]);
 
   const [forms, setForms] = useState<CatForm[]>([]);
   const [loading, setLoading] = useState(true);

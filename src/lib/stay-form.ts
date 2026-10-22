@@ -1,4 +1,5 @@
 import { type GroomField, type GroomFormConfig } from "./groom-form";
+import type { PetKind } from "./pet-kind";
 
 /**
  * โครงคำถามฟอร์ม "ข้อมูลน้องก่อนเข้าพัก" — คนละชุดกับฟอร์มก่อนอาบน้ำ (เน้นการกิน การดูแล นิสัยตอนอยู่ห้อง)
@@ -58,8 +59,8 @@ export const STAY_FORM_DEFAULTS: GroomField[] = [
     required: true,
     enabled: true,
     options: [
-      { key: "ok", label: "😺 เข้ากับตัวอื่นได้" },
-      { key: "alone", label: "🙀 ชอบอยู่ตัวเดียว" },
+      { key: "ok", label: "😊 เข้ากับตัวอื่นได้" },
+      { key: "alone", label: "🙈 ชอบอยู่ตัวเดียว" },
       { key: "unknown", label: "❓ ไม่แน่ใจ" },
     ],
   },
@@ -92,9 +93,16 @@ export const STAY_FORM_DEFAULTS: GroomField[] = [
   },
 ];
 
+/** คำถามเรื่องทรายเป็นของแมว — ร้านหมาถามเรื่องพาเดิน/ขับถ่ายแทน · ร้านรับทั้งสองแบบถามรวม */
+const LITTER_BY_KIND: Partial<Record<PetKind, Pick<GroomField, "label" | "placeholder">>> = {
+  dog: { label: "การขับถ่าย / พาเดินวันละกี่รอบ", placeholder: "เช่น พาเดินเช้า-เย็น ขับถ่ายปกติ" },
+  both: { label: "ทรายที่ใช้ (แมว) / การขับถ่าย-พาเดิน (หมา)", placeholder: "เช่น ทรายเต้าหู้ · หรือ พาเดินเช้า-เย็น" },
+};
+
 /** รวมค่าเริ่มต้นกับที่ร้านแก้เอง (ถ้ามีในอนาคต) — คืนรายการคำถามที่ใช้แสดงจริง */
-export function resolveStayForm(config?: GroomFormConfig): GroomField[] {
-  return STAY_FORM_DEFAULTS.map((def) => {
+export function resolveStayForm(config?: GroomFormConfig, kind?: PetKind): GroomField[] {
+  const byKind = kind ? LITTER_BY_KIND[kind] : undefined;
+  return STAY_FORM_DEFAULTS.map((d) => (d.key === "litter" && byKind ? { ...d, ...byKind } : d)).map((def) => {
     const c = config?.[def.key];
     if (!c) return def;
     return {

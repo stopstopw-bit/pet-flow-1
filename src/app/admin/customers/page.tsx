@@ -33,7 +33,7 @@ import { ExportSheetsButton } from "@/components/ExportSheetsButton";
 import { BookingEditModal, type EditableBooking } from "@/components/BookingEditModal";
 import { RoomPlanSection } from "@/components/RoomPlanSection";
 import { OTHER_BREED } from "@/lib/cat-breeds";
-import { asksSpecies, breedOptionsForSpecies, speciesOf, speciesWords, type PetSpecies } from "@/lib/pet-kind";
+import { asksSpecies, breedOptionsForSpecies, petKindOf, speciesOf, speciesWords, type PetSpecies } from "@/lib/pet-kind";
 import { BirthdayPicker } from "@/components/BirthdayPicker";
 import { StaffNoteTagPicker } from "@/components/StaffNoteTagPicker";
 import { Icon } from "@/components/Icon";
@@ -3340,7 +3340,7 @@ export default function CustomersPage() {
                   {(() => {
                     const si = parseGroomInfo(cat.stayInfo);
                     if (!si) return null;
-                    const s = groomInfoSummary(si, resolveStayForm());
+                    const s = groomInfoSummary(si, resolveStayForm(undefined, petKindOf(config)));
                     return (
                       <div className="rounded-petflow-sm border border-sage/40 bg-sage/10 px-3 py-2.5">
                         <p className="flex items-center gap-1.5 text-[11px] font-extrabold text-ok">

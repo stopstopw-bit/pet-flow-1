@@ -6,6 +6,8 @@ import { useLocale } from "@/components/LocaleProvider";
 import { useConfig } from "@/components/ConfigProvider";
 import { BookingOnlyNotice, LineBookingCta, PageHeader } from "@/components/PageHeader";
 import { ContentBlocks } from "@/components/ContentBlocks";
+import { petKindOf } from "@/lib/pet-kind";
+import { resolveGroomPrograms, resolveGroomSizes } from "@/lib/grooming-prices";
 
 const GROOMING_MENU_POSTER = "/catalog/grooming/grooming-menu.jpg";
 const LEGACY_POSTERS = new Set([
@@ -28,7 +30,10 @@ export default function GroomingPage() {
   const custom = [menus.bath?.poster, menus.advance?.poster].filter(
     (p): p is string => !!p && !LEGACY_POSTERS.has(p)
   );
-  const posters = custom.length ? custom : [GROOMING_MENU_POSTER];
+  // รูปเมนูที่ติดมากับระบบเป็นเมนูร้านแมว — ร้านหมา / หมาและแมวที่ยังไม่อัปรูปเอง โชว์ตารางราคาจากหน้าตั้งค่าแทน
+  const showTable = !custom.length && petKindOf(config) !== "cat";
+  const posters = custom.length ? custom : showTable ? [] : [GROOMING_MENU_POSTER];
+  const sizes = resolveGroomSizes(config.groomSizeLabels);
 
   return (
     <div className="px-4 pb-6 pt-5">
@@ -51,6 +56,41 @@ export default function GroomingPage() {
           </div>
         ))}
       </div>
+
+      {showTable && (
+        <div className="space-y-4">
+          {resolveGroomPrograms(config.groomPricePrograms).map((p) => (
+            <div key={p.id} className="overflow-hidden rounded-petflow border border-petflow-line bg-card shadow-petflow-sm">
+              <p className="bg-honey/25 px-4 py-2.5 text-sm font-extrabold text-petflow-chocolate">{p.name}</p>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-brown-soft">
+                    <th className="px-3 py-2 text-left font-bold" />
+                    {sizes.map((s) => (
+                      <th key={s.id} className="px-2 py-2 text-right font-bold">{s.label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {p.breeds.map((b) => (
+                    <tr key={b.breed} className="border-t border-petflow-line">
+                      <td className="px-3 py-2 font-bold text-brown">{b.breed}</td>
+                      {sizes.map((s) => (
+                        <td key={s.id} className="px-2 py-2 text-right text-brown">
+                          {b.prices[s.id] ? b.prices[s.id].toLocaleString() : "–"}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {!!p.includes?.length && (
+                <p className="border-t border-petflow-line px-4 py-2 text-[11px] text-brown-soft">รวม: {p.includes.join(" · ")}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       <ContentBlocks blocks={config.groomingPageBlocks} />
 

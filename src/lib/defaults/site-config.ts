@@ -1,3 +1,5 @@
+import { applyPetFormat } from "./pet-format";
+import type { PetKind } from "../pet-kind";
 import {
   BUSINESS,
   ROOM_INVENTORY,
@@ -22,11 +24,12 @@ import type { SiteConfig } from "../config-types";
  * ค่าเริ่มต้นของร้านที่เพิ่งสร้าง — ทุกอย่างที่เป็นของแต่ละร้าน (บัญชีธนาคาร, LINE, เบอร์, ลิงก์)
  * ว่างหมด ห้ามดึงค่าจาก env หรือร้านอื่นมาใส่ให้
  */
-export function getBlankShopConfig(name: string): SiteConfig {
+/** config ของร้านใหม่ — ชื่อร้าน + แบบร้าน (แมว/หมา/ทั้งสองแบบ) ตามที่เลือกตอนสร้าง (ดู pet-format.ts) */
+export function getBlankShopConfig(name: string, petKind: PetKind = "cat"): SiteConfig {
   const config = getDefaultSiteConfig();
   config.business.name = name;
   config.payment = { bankName: "", accountNumber: "", accountName: "", promptpayId: undefined };
-  return config;
+  return applyPetFormat(config, petKind);
 }
 
 export function getDefaultSiteConfig(): SiteConfig {

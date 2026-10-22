@@ -1,0 +1,193 @@
+import type { RoomType } from "../business";
+import type { SiteConfig } from "../config-types";
+import type { GroomProgram } from "../grooming-prices";
+import { withDefaultBreeds, type PetKind } from "../pet-kind";
+
+/**
+ * "แบบร้าน" 3 แบบ — ร้านแมว / ร้านหมา / ร้านหมาและแมว
+ * เลือกตอนสร้างร้าน (หน้าแพลตฟอร์ม) แล้วร้านใหม่จะได้ค่าเริ่มต้นที่ตรงกับแบบนั้นทั้งระบบ:
+ * คำในหน้าจอ · สายพันธุ์ · ไซส์/ราคาอาบน้ำ · ห้องพัก · ของแถม · บริการเสริม · ของรางวัลแต้ม · ข้อความการ์ด LINE
+ *
+ * ร้านแมว = ค่าเริ่มต้นเดิมของระบบ (ไม่เปลี่ยนอะไร) · ทุกอย่างแก้ต่อเองได้ในหน้าตั้งค่า
+ * ใช้กับร้านใหม่เท่านั้น — ร้านเดิมที่เปลี่ยนแบบในหน้าตั้งค่าจะเปลี่ยนแค่คำและสายพันธุ์ ไม่ทับห้อง/ราคาที่ร้านตั้งไว้
+ */
+
+const SIZE_LABELS_DOG = { kitten: "S (≤5 กก.)", m: "M (5–15 กก.)", l: "L (15 กก.↑)" };
+
+const DOG_GROOM_ROWS = [
+  { breed: "หมาขนสั้น", prices: { kitten: 300, m: 450, l: 650 } },
+  { breed: "หมาขนยาว", prices: { kitten: 400, m: 550, l: 800 } },
+  { breed: "หมาขนหนาฟู (ปอม/ชิสุ/พุดเดิ้ล/โกลเด้น)", prices: { kitten: 450, m: 650, l: 950 } },
+];
+
+const DOG_GROOM_PROGRAMS: GroomProgram[] = [
+  {
+    id: "bath-dry",
+    name: "อาบน้ำ – เป่าขน",
+    breeds: DOG_GROOM_ROWS,
+    includes: ["ตัดเล็บ", "เช็ดหู", "บีบต่อมก้น"],
+  },
+  {
+    id: "groom-cut",
+    name: "อาบน้ำ + ตัดขน",
+    breeds: [
+      { breed: "ตัดขนสั้นทั้งตัว", prices: { kitten: 600, m: 850, l: 1200 } },
+      { breed: "ตัดแต่งทรง (พุดเดิ้ล/ปอม/ชิสุ)", prices: { kitten: 700, m: 950, l: 1400 } },
+    ],
+    includes: ["ตัดเล็บ", "เช็ดหู", "บีบต่อมก้น", "ไถอุ้งเท้า"],
+  },
+  {
+    id: "flea-tick",
+    name: "อาบน้ำกำจัดเห็บหมัด",
+    breeds: DOG_GROOM_ROWS.map((r) => ({
+      breed: r.breed,
+      prices: { kitten: r.prices.kitten + 150, m: r.prices.m + 200, l: r.prices.l + 250 },
+    })),
+  },
+];
+
+/** ร้านรับทั้งสองแบบ — แมวกับหมาอยู่ในโปรแกรมเดียวกัน แยกแถวราคา ใช้ไซส์ตามน้ำหนักชุดเดียวกัน */
+const BOTH_GROOM_PROGRAMS: GroomProgram[] = [
+  {
+    id: "bath-dry",
+    name: "อาบน้ำ – เป่าขน",
+    breeds: [
+      { breed: "แมวขนสั้น", prices: { kitten: 450, m: 550, l: 700 } },
+      { breed: "แมวขนยาว", prices: { kitten: 550, m: 700, l: 850 } },
+      ...DOG_GROOM_ROWS,
+    ],
+    includes: ["ตัดเล็บ", "เช็ดหู"],
+  },
+  DOG_GROOM_PROGRAMS[1],
+  DOG_GROOM_PROGRAMS[2],
+];
+
+const DOG_AMENITIES = {
+  th: ["พี่เลี้ยงทำความสะอาดห้องทุกวัน", "บริการน้ำ อาหาร ตามเวลาเดิมของน้อง", "พาเดินเล่น/ขับถ่าย วันละ 3 รอบ", "ที่นอนนุ่ม + ผ้าห่ม"],
+  en: ["Daily room cleaning", "Water & meals on your dog's usual schedule", "Walks / potty breaks 3 times a day", "Soft bed & blanket"],
+};
+const CAT_AMENITIES = {
+  th: ["พี่เลี้ยงทำความสะอาดห้องทุกวัน", "บริการถาดน้ำ อาหาร กระบะทราย", "พี่เลี้ยงพาเล่น วันละ 2 รอบ"],
+  en: ["Daily room cleaning", "Water, food & litter service", "Playtime twice daily"],
+};
+
+/**
+ * id ห้องใช้ชุดเดิม (mini-meow / mid-cozy / catflix) เพราะระบบเช็คห้องว่างตอนลูกค้าจองเองผูกกับ id ชุดนี้
+ * (ดู self-bookable-rooms.ts) — ชื่อที่ลูกค้าเห็นเปลี่ยนตามแบบร้าน · ไม่มีรูป = โชว์การ์ดแทนรูป ร้านอัปรูปห้องจริงเองทีหลัง
+ */
+function room(
+  id: "mini-meow" | "mid-cozy" | "catflix",
+  name: string,
+  price: number,
+  count: number,
+  who: { th: string; en: string },
+  amenities: { th: string[]; en: string[] },
+  extraPrice = 100
+): RoomType {
+  return {
+    id,
+    name,
+    size: id === "mini-meow" ? "S" : "M",
+    count,
+    maxCats: 2,
+    includedCats: 1,
+    extraCatPrice: extraPrice,
+    price,
+    cats: who,
+    extra: { th: `ตัวที่ 2 +${extraPrice}`, en: `2nd pet +${extraPrice}` },
+    image: "",
+    amenities: { th: [...amenities.th], en: [...amenities.en] },
+  };
+}
+
+const DOG_ROOMS: RoomType[] = [
+  room("mini-meow", "ห้องหมาเล็ก (Small)", 350, 4, { th: "หมาเล็ก ไม่เกิน 10 กก.", en: "Small dog up to 10 kg" }, DOG_AMENITIES),
+  room("mid-cozy", "ห้องหมากลาง (Medium)", 500, 4, { th: "หมา 10–20 กก.", en: "Dog 10–20 kg" }, DOG_AMENITIES),
+  room("catflix", "ห้องหมาใหญ่ (Large)", 700, 2, { th: "หมา 20 กก. ขึ้นไป", en: "Dog 20 kg+" }, DOG_AMENITIES, 150),
+];
+
+const BOTH_ROOMS: RoomType[] = [
+  room("mini-meow", "ห้องแมว (Cat Room)", 350, 4, { th: "แมว 1–2 ตัว (บ้านเดียวกัน)", en: "1–2 cats (same home)" }, CAT_AMENITIES, 50),
+  room("mid-cozy", "ห้องหมาเล็ก–กลาง", 450, 4, { th: "หมาไม่เกิน 15 กก.", en: "Dog up to 15 kg" }, DOG_AMENITIES),
+  room("catflix", "ห้องหมาใหญ่", 650, 2, { th: "หมา 15 กก. ขึ้นไป", en: "Dog 15 kg+" }, DOG_AMENITIES, 150),
+];
+
+const FORMAT: Record<Exclude<PetKind, "cat">, {
+  tagline: { th: string; en: string };
+  rooms: RoomType[];
+  groomPrograms: GroomProgram[];
+  freebies: string[];
+  presetSwap: { label: string; amount: number };
+  treat: { th: string; en: string };
+  groomPrepNote: string;
+  reviewGroom: string;
+}> = {
+  dog: {
+    tagline: { th: "โรงแรมหมา · อาบน้ำ & ตัดขน", en: "Dog Hotel · Bath & Grooming" },
+    rooms: DOG_ROOMS,
+    groomPrograms: DOG_GROOM_PROGRAMS,
+    freebies: ["กล้องวงจรปิด (CCTV)", "ที่นอน/ผ้าห่ม", "รับ-ส่ง", "ขนม/ทรีท"],
+    presetSwap: { label: "พาเดินเล่นเพิ่ม", amount: 50 },
+    treat: { th: "ขนมหมาพรีเมียม 1 ซอง หรือของเล่นหมา", en: "Premium dog treat or toy" },
+    groomPrepNote:
+      "🍬 พกขนมที่น้องชอบมาด้วยได้นะคะ\n🦮 และใส่สายจูงหรือกระเป๋าทุกครั้งที่มาใช้บริการด้วยค่ะ",
+    reviewGroom:
+      "หวังว่าน้องจะกลับบ้านไปตัวหอม ขนสวย และมีความสุขนะคะ 🐶✨\nถ้าประทับใจบริการของเรา ฝากรีวิวสั้น ๆ ให้ทีมงานหน่อยนะคะ\nรีวิวของคุณคือกำลังใจเล็ก ๆ\nที่ทำให้พวกเราตั้งใจดูแลน้องหมาทุกตัวให้ดีที่สุดเลยค่ะ 💕",
+  },
+  both: {
+    tagline: { th: "รับฝากหมาแมว · อาบน้ำ & ตัดขน", en: "Dog & Cat Hotel · Bath & Grooming" },
+    rooms: BOTH_ROOMS,
+    groomPrograms: BOTH_GROOM_PROGRAMS,
+    freebies: ["กล้องวงจรปิด (CCTV)", "ที่นอน/ผ้าห่ม", "น้ำพุแมว", "ทรายแมว", "รับ-ส่ง", "ขนม/ทรีท"],
+    presetSwap: { label: "พาเดินเล่นเพิ่ม (หมา)", amount: 50 },
+    treat: { th: "ขนมพรีเมียม 1 ซอง หรือของเล่นน้อง", en: "Premium treat or toy" },
+    groomPrepNote:
+      "🍬 พกขนมที่น้องชอบมาด้วยได้นะคะ\n🧺 น้องแมวใส่ตะกร้า/กระเป๋า · น้องหมาใส่สายจูงทุกครั้งที่มาใช้บริการด้วยค่ะ",
+    reviewGroom:
+      "หวังว่าน้องจะกลับบ้านไปตัวหอม ขนสวย และมีความสุขนะคะ 🐾✨\nถ้าประทับใจบริการของเรา ฝากรีวิวสั้น ๆ ให้ทีมงานหน่อยนะคะ\nรีวิวของคุณคือกำลังใจเล็ก ๆ\nที่ทำให้พวกเราตั้งใจดูแลน้อง ๆ ทุกตัวให้ดีที่สุดเลยค่ะ 💕",
+  },
+};
+
+/** จำนวนห้องจริงต่อแบบ (ใช้เช็คห้องว่าง) — ให้ตรงกับ count ของห้องด้านบน */
+function inventoryOf(rooms: RoomType[]): SiteConfig["roomInventory"] {
+  const n = (id: string) => rooms.find((r) => r.id === id)?.count ?? 0;
+  const miniMeow = n("mini-meow");
+  const midCozy = n("mid-cozy");
+  const catflix = n("catflix");
+  return { total: miniMeow + midCozy + catflix, miniMeow, midCozy, catflix };
+}
+
+/** ใส่ค่าเริ่มต้นตามแบบร้านลงใน config ของร้านใหม่ (แก้ตัวที่ส่งมาแล้วคืนตัวเดิม) */
+export function applyPetFormat(config: SiteConfig, kind: PetKind): SiteConfig {
+  config.business.petKind = kind;
+  config.options = { ...config.options, catBreeds: withDefaultBreeds([], kind) };
+  if (kind === "cat") return config;
+
+  const f = FORMAT[kind];
+  const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
+  config.business.tagline = { ...f.tagline };
+  config.rooms = clone(f.rooms);
+  config.roomInventory = inventoryOf(f.rooms);
+  config.groomPricePrograms = clone(f.groomPrograms);
+  config.groomSizeLabels = { ...SIZE_LABELS_DOG };
+  config.options.freebies = [...f.freebies];
+  config.options.servicePresets = (config.options.servicePresets || []).map((p) =>
+    p.label === "น้ำพุแมว" && kind === "dog" ? { ...f.presetSwap } : p
+  );
+  if (kind === "both") config.options.servicePresets.push({ ...f.presetSwap });
+  config.pointsRewards = (config.pointsRewards || []).map((r) =>
+    r.id === "treat" ? { ...r, reward: { ...f.treat } } : r
+  );
+  config.cards = {
+    ...config.cards,
+    bookingConfirm: {
+      ...config.cards?.bookingConfirm,
+      texts: { ...config.cards?.bookingConfirm?.texts, groomPrepNote: f.groomPrepNote },
+    },
+    review: {
+      ...config.cards?.review,
+      texts: { ...config.cards?.review?.texts, bodyGroom: f.reviewGroom },
+    },
+  };
+  return config;
+}
