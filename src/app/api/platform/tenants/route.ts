@@ -72,6 +72,15 @@ export async function GET(req: NextRequest) {
 
   await repairBadSlugs(sb, data || []);
 
+  // แบบร้าน (แมว/หมา/ทั้งสองแบบ) — อ่านจาก config ของแต่ละร้านในคำขอเดียว · อ่านไม่ได้ = ไม่โชว์ ไม่ทำให้รายชื่อพัง
+  const kinds = new Map<string, string>();
+  {
+    const { data: rows } = await sb.from("site_config").select("tenant_id, kind:data->business->>petKind");
+    for (const r of (rows as { tenant_id: string | null; kind: string | null }[] | null) || []) {
+      if (r.tenant_id && r.kind) kinds.set(r.tenant_id, r.kind);
+    }
+  }
+
   return NextResponse.json({
     tenants: (data || []).map((t) => ({
       id: t.id,
@@ -84,6 +93,7 @@ export async function GET(req: NextRequest) {
       customDomain: domains.get(t.id) || null,
       createdAt: t.created_at,
       ownerUsername: t.owner_username,
+      petKind: kinds.get(t.id) || null,
     })),
   });
 }
