@@ -86,6 +86,15 @@ export function buildGroomInfoBody(
   return `${intro}\n\n${GROOM_PHOTO_REQUEST}`;
 }
 
+/** เนื้อความการ์ดขอข้อมูลน้องก่อนเข้าพัก — ฟอร์มเดียวกับก่อนอาบน้ำ แต่ไม่พูดถึงวันอาบน้ำ */
+export function buildStayInfoBody(b: Pick<StoredBooking, "catName">, cfg: SiteConfig): string {
+  return (
+    `เพื่อเตรียมรับ${politeCat(b.catName)}เข้าพักกับ ${cfg.business.name} 🏠🐾\n\n` +
+    `รบกวนแจ้งข้อมูลน้องสั้นๆ (นิสัย สุขภาพ การดูแล — กดเลือกเอา ไม่ต้องพิมพ์เยอะ) ` +
+    `เพื่อให้เราดูแลน้องได้ถูกวิธีตลอดการเข้าพักนะคะ 🧡\n\n${GROOM_PHOTO_REQUEST}`
+  );
+}
+
 /**
  * เนื้อความการ์ด "แก้ไข/เพิ่มเติมประวัติ" — สำหรับตัวที่เคยกรอกประวัติไว้แล้ว
  * คนละโทนกับตอนขอครั้งแรก (buildGroomInfoBody) เพื่อไม่ให้ดูเหมือนร้านลืม/ถามซ้ำ

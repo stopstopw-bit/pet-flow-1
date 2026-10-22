@@ -1612,7 +1612,7 @@ export function buildGroomInfoFlex(data: {
   }
   return {
     type: "flex",
-    altText: `ประวัติน้องก่อนอาบน้ำ 🩺 ${politeCat(data.catName)}`,
+    altText: `${st.texts?.header || "🩺 ประวัติน้องก่อนอาบน้ำ"} — ${politeCat(data.catName)}`,
     contents: bubble,
   };
 }

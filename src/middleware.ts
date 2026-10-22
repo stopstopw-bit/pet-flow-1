@@ -40,6 +40,9 @@ const PUBLIC_API = [
   "/api/bookings/consent",
   // ลูกค้าแนบสมุดวัคซีนจากลิงก์ที่ร้านส่งให้ — route ตรวจคุกกี้เซสชันลูกค้า + เป็นนัดของตัวเองเอง
   "/api/bookings/vaccine",
+  // ลิงก์ที่ร้านส่งจากหน้าข้อมูลลูกค้า (ยังไม่มีนัด) — route ตรวจคุกกี้เซสชันลูกค้าเอง
+  "/api/customers/cat-vaccine",
+  "/api/customers/consent",
   "/api/bookings/groom-info",
   "/api/bookings/time",
   "/api/bookings/transport",

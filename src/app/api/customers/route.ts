@@ -24,7 +24,10 @@ import {
   adoptLineFromBookings,
   unlinkCustomerLine,
   getOrCreateWalkInCustomer,
+  addCatVaccinePhotos,
+  setCatVaccinePhotos,
 } from "@/lib/customers-store";
+import { splitVaccinePhotos } from "@/lib/vaccine-photos";
 import { parseCatInput, type CatInput } from "@/lib/cat-input";
 import type { CustomerTier } from "@/lib/customer-tier";
 import { getAllPointsMap } from "@/lib/points-store";
@@ -203,6 +206,28 @@ async function handlePatch(req: NextRequest) {
     const c = await updateCat(id, body.catId, body.patch);
     if (!c) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json({ ok: true, customer: c });
+  }
+
+  // พนักงานแนบ / ลบรูปสมุดวัคซีนที่ตัวน้องเอง (ไม่ต้องมีนัด)
+  if (action === "add_cat_vaccine") {
+    const photos: string[] = Array.isArray(body.photos) ? body.photos.map((v: unknown) => String(v || "")) : [];
+    const res = await addCatVaccinePhotos(id, String(body.catId || ""), photos);
+    if (!res.ok) {
+      return NextResponse.json(
+        { error: res.error === "no_photo" ? "ไม่พบรูปที่แนบ" : res.error === "not_found" ? "not found" : "บันทึกไม่สำเร็จ" },
+        { status: res.error === "need_sql" ? 500 : 400 }
+      );
+    }
+    return NextResponse.json({ ok: true });
+  }
+  if (action === "remove_cat_vaccine") {
+    const c = await getCustomer(id);
+    const cat = c?.cats.find((x) => x.id === body.catId);
+    if (!c || !cat) return NextResponse.json({ error: "not found" }, { status: 404 });
+    const urls = splitVaccinePhotos(cat.vaccinePhotos).filter((u) => u !== String(body.url || ""));
+    const res = await setCatVaccinePhotos(id, cat.id, urls);
+    if (!res.ok) return NextResponse.json({ error: "บันทึกไม่สำเร็จ" }, { status: 500 });
+    return NextResponse.json({ ok: true });
   }
 
   if (action === "update_cat_private_note") {

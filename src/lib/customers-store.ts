@@ -14,6 +14,7 @@ import { getSiteConfig } from "./config-store";
 import { requireTenantId } from "./tenant-context";
 import { ensureMigration } from "./migrations";
 import { taxInvoiceFromRow, type CustomerTaxInvoice } from "./tax-invoice";
+import { MAX_VACCINE_PHOTOS, joinVaccinePhotos, splitVaccinePhotos } from "./vaccine-photos";
 
 export type { CustomerTier } from "./customer-tier";
 
@@ -42,6 +43,10 @@ export type CatRecord = {
   staffPrivateNote?: string;
   /** ประวัติน้องก่อนอาบน้ำ (JSON) — เก็บถาวรที่แมว ถามครั้งแรกครั้งเดียว */
   groomHealthInfo?: string;
+  /** รูปสมุดวัคซีนที่เก็บไว้ที่ตัวน้อง (ขอได้จากหน้าลูกค้าโดยไม่ต้องมีนัด) — คั่นบรรทัด เหมือน bookings.vaccine_photo_url */
+  vaccinePhotos?: string;
+  /** ข้อมูลน้องก่อนเข้าพัก (JSON ตามคำถามใน stay-form) — อาหาร/ชอบ-ไม่ชอบ/การดูแล เก็บถาวรที่ตัวน้อง */
+  stayInfo?: string;
   /** อัลบั้มรูป/วิดีโออ้างอิงหน้าตา-นิสัยแมว — เก็บหลังบ้านเท่านั้น ลูกค้าไม่เห็น (ต้องรัน migration cats.media ก่อน) */
   media?: CatMediaItem[];
 };
@@ -82,6 +87,14 @@ export type CustomerRecord = {
   taxInvoice?: CustomerTaxInvoice;
   /** รูปบัตรประชาชนผู้ปกครอง (มีข้อความขีดทับ "ใช้ลงทะเบียนที่ร้าน" ฝังในรูปแล้ว) */
   idCardUrl?: string;
+  /** ลูกค้ากดยอมรับข้อตกลงของร้านล่าสุด (ส่งจากหน้าลูกค้า ยังไม่ต้องมีนัด) */
+  consentAcceptedAt?: string;
+  /** ลายเซ็นตอนยอมรับข้อตกลงล่าสุด (ไฟล์ส่วนตัว /api/files) */
+  consentSignature?: string;
+  /** ลูกค้ายืนยันหยดยาเห็บหมัดตอนยอมรับข้อตกลงล่าสุด */
+  consentFleaTick?: boolean;
+  /** "แจ้งการดูแลเพิ่มเติม" ที่ลูกค้ากรอกตอนยอมรับข้อตกลงล่าสุด */
+  consentCareNote?: string;
   /** รหัสชวนเพื่อนของลูกค้าคนนี้ (แชร์ให้เพื่อนสมัคร) */
   referralCode?: string;
   /** ถูกชวนมาโดยลูกค้ารหัสนี้ (กันออกคูปองซ้ำ) */
@@ -157,6 +170,8 @@ type CatRow = {
   staff_note: string | null;
   staff_private_note?: string | null;
   groom_health_info?: string | null;
+  vaccine_photos?: string | null;
+  stay_info?: string | null;
   media?: CatMediaItem[] | null;
 };
 
@@ -176,6 +191,10 @@ type CustomerRow = {
   postal_code?: string | null;
   tax_invoice?: unknown;
   id_card_url?: string | null;
+  consent_accepted_at?: string | null;
+  consent_signature?: string | null;
+  consent_flea_tick?: boolean | null;
+  consent_care_note?: string | null;
   referral_code?: string | null;
   referred_by?: string | null;
   is_member: boolean;
@@ -255,6 +274,10 @@ function mapCustomer(row: CustomerRow): CustomerRecord {
     postalCode: row.postal_code ?? undefined,
     taxInvoice: taxInvoiceFromRow(row.tax_invoice),
     idCardUrl: row.id_card_url ?? undefined,
+    consentAcceptedAt: row.consent_accepted_at ?? undefined,
+    consentSignature: row.consent_signature ?? undefined,
+    consentFleaTick: row.consent_flea_tick ?? undefined,
+    consentCareNote: row.consent_care_note ?? undefined,
     referralCode: row.referral_code ?? undefined,
     referredBy: row.referred_by ?? undefined,
     isMember: row.is_member,
@@ -283,6 +306,8 @@ function mapCustomer(row: CustomerRow): CustomerRecord {
       staffNote: c.staff_note ?? undefined,
       staffPrivateNote: c.staff_private_note ?? undefined,
       groomHealthInfo: c.groom_health_info ?? undefined,
+      vaccinePhotos: c.vaccine_photos ?? undefined,
+      stayInfo: c.stay_info ?? undefined,
       media: Array.isArray(c.media) ? c.media : undefined,
     })),
   };
@@ -2489,5 +2514,108 @@ export async function setCustomerIdCard(customerId: string, url: string) {
   }
   const { error } = await sb.from("customers").update({ id_card_url: url }).eq("id", customerId).eq("tenant_id", requireTenantId());
   if (error) return { ok: false as const, error: "need_sql" as const, message: error.message };
+  return { ok: true as const };
+}
+
+const CUSTOMER_DOCS_MIGRATION = "cats.vaccine_photos+customers.consent";
+
+/**
+ * รูปสมุดวัคซีนที่ตัวน้อง (ไม่ผูกนัด) — ต่อท้ายรูปเดิม เก็บได้สูงสุด MAX_VACCINE_PHOTOS รูป
+ * รูปเข้า bucket ส่วนตัว prefix cat-vaccine/ (เปิดได้แค่หลังบ้าน ไม่ใช่ cats/ ที่ลูกค้าเปิดได้)
+ * ต้องรัน migration cats.vaccine_photos ก่อน ไม่งั้นคืน need_sql
+ */
+export async function addCatVaccinePhotos(customerId: string, catId: string, photos: string[]) {
+  const c = await getCustomer(customerId);
+  const cat = c?.cats.find((x) => x.id === catId);
+  if (!c || !cat) return { ok: false as const, error: "not_found" as const };
+  const added: string[] = [];
+  for (const [i, raw] of photos.slice(0, MAX_VACCINE_PHOTOS).entries()) {
+    const v = raw.trim();
+    if (!v.startsWith("data:image/")) continue;
+    added.push(await uploadPrivateDataUrl(`cat-vaccine/${catId}-${Date.now()}-${i}`, v));
+  }
+  if (added.length === 0) return { ok: false as const, error: "no_photo" as const };
+  const urls = [...splitVaccinePhotos(cat.vaccinePhotos), ...added].slice(-MAX_VACCINE_PHOTOS);
+  const res = await setCatVaccinePhotos(customerId, catId, urls);
+  return res.ok ? { ok: true as const, urls, added: added.length, cat, customer: c } : res;
+}
+
+/** เขียนรายการรูปสมุดวัคซีนของน้องทับทั้งชุด (ใช้ตอนลบรูปทีละรูป) */
+export async function setCatVaccinePhotos(customerId: string, catId: string, urls: string[]) {
+  const value = joinVaccinePhotos(urls);
+  const sb = getSupabase();
+  if (sb) {
+    const write = () =>
+      sb
+        .from("cats")
+        .update({ vaccine_photos: value || null })
+        .eq("id", catId)
+        .eq("customer_id", customerId)
+        .eq("tenant_id", requireTenantId());
+    let { error } = await write();
+    // ยังไม่มีคอลัมน์ → ลองอัปเดตฐานข้อมูลให้เองแล้วเขียนใหม่
+    if (error && (await ensureMigration(CUSTOMER_DOCS_MIGRATION))) ({ error } = await write());
+    if (error) return { ok: false as const, error: "need_sql" as const };
+  } else {
+    const cat = memCustomers.get(customerId)?.cats.find((x) => x.id === catId);
+    if (cat) cat.vaccinePhotos = value || undefined;
+  }
+  await touchCustomer(customerId);
+  return { ok: true as const };
+}
+
+/** ลูกค้ายอมรับข้อตกลงของร้าน (จากลิงก์หน้าลูกค้า ยังไม่ต้องมีนัด) — เก็บครั้งล่าสุดไว้ที่ลูกค้า */
+export async function setCustomerConsent(
+  customerId: string,
+  data: { signature: string; careNote?: string; fleaTick: boolean }
+) {
+  const now = new Date().toISOString();
+  let sig = data.signature.trim();
+  if (sig.startsWith("data:")) {
+    sig = await uploadPrivateDataUrl(`consent-signatures/customer-${customerId}-${Date.now()}`, sig);
+  }
+  const patch = {
+    consent_accepted_at: now,
+    consent_signature: sig || null,
+    consent_flea_tick: data.fleaTick,
+    consent_care_note: data.careNote?.trim() || null,
+  };
+  const sb = getSupabase();
+  if (sb) {
+    const write = () => sb.from("customers").update(patch).eq("id", customerId).eq("tenant_id", requireTenantId());
+    let { error } = await write();
+    if (error && (await ensureMigration(CUSTOMER_DOCS_MIGRATION))) ({ error } = await write());
+    if (error) return { ok: false as const, error: "need_sql" as const };
+  } else {
+    const c = memCustomers.get(customerId);
+    if (c) {
+      c.consentAcceptedAt = now;
+      c.consentSignature = sig || undefined;
+      c.consentFleaTick = data.fleaTick;
+      c.consentCareNote = patch.consent_care_note || undefined;
+    }
+  }
+  return { ok: true as const, acceptedAt: now };
+}
+
+/** บันทึกข้อมูลน้องก่อนเข้าพักไว้ที่ตัวน้อง (ตอบครั้งเดียว รอบหน้าดึงคำตอบเดิมมาให้แก้) */
+export async function setCatStayInfo(customerId: string, catId: string, infoJson: string) {
+  const sb = getSupabase();
+  if (sb) {
+    const write = () =>
+      sb
+        .from("cats")
+        .update({ stay_info: infoJson })
+        .eq("id", catId)
+        .eq("customer_id", customerId)
+        .eq("tenant_id", requireTenantId());
+    let { error } = await write();
+    if (error && (await ensureMigration(CUSTOMER_DOCS_MIGRATION))) ({ error } = await write());
+    if (error) return { ok: false as const, error: "need_sql" as const };
+  } else {
+    const cat = memCustomers.get(customerId)?.cats.find((x) => x.id === catId);
+    if (cat) cat.stayInfo = infoJson;
+  }
+  await touchCustomer(customerId);
   return { ok: true as const };
 }

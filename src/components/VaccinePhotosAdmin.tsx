@@ -7,27 +7,45 @@ import { toJpegDataUrl } from "@/lib/image-convert";
 import { MAX_VACCINE_PHOTOS, splitVaccinePhotos } from "@/lib/vaccine-photos";
 
 /**
- * รูปสมุดวัคซีนของน้องในการ์ดนัด (หลังบ้าน) — ดูรูป · พนักงานแนบเองได้ (เช่น ลูกค้าส่งรูปมาในแชท) · ลบรูปที่แนบผิด
- * รูปเข้า bucket ส่วนตัวผ่าน /api/bookings (เปิดดูได้แค่คนของร้าน)
+ * รูปสมุดวัคซีนของน้องในหลังบ้าน — ดูรูป · พนักงานแนบเองได้ (เช่น ลูกค้าส่งรูปมาในแชท) · ลบรูปที่แนบผิด
+ * ใช้ทั้งในการ์ดนัด (เก็บที่นัด) และหน้าข้อมูลลูกค้า (เก็บที่ตัวน้อง) — ปลายทางส่งมาทาง target
+ * รูปเข้า bucket ส่วนตัวเสมอ (เปิดดูได้แค่คนของร้าน)
  */
 export function VaccinePhotosAdmin({
   bookingId,
+  customerId,
+  catId,
   value,
   onDone,
 }: {
-  bookingId: string;
   value?: string;
   onDone?: () => void;
-}) {
+} & ({ bookingId: string; customerId?: undefined; catId?: undefined } | { bookingId?: undefined; customerId: string; catId: string })) {
   const photos = splitVaccinePhotos(value);
   const [busy, setBusy] = useState(false);
 
-  const patch = async (body: Record<string, unknown>) => {
-    const res = await fetch("/api/bookings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: bookingId, ...body }),
-    });
+  // นัด → /api/bookings · ตัวน้อง → /api/customers
+  const patch = async (op: "add" | "remove", body: Record<string, unknown>) => {
+    const res = bookingId
+      ? await fetch("/api/bookings", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: bookingId,
+            action: op === "add" ? "add_vaccine_photos" : "remove_vaccine_photo",
+            ...body,
+          }),
+        })
+      : await fetch("/api/customers", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: customerId,
+            catId,
+            action: op === "add" ? "add_cat_vaccine" : "remove_cat_vaccine",
+            ...body,
+          }),
+        });
     const d = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(d.error || "บันทึกไม่สำเร็จ");
   };
@@ -45,7 +63,7 @@ export function VaccinePhotosAdmin({
         }
       }
       if (!urls.length) return toast("เปิดรูปไม่ได้ ลองรูปอื่นนะ", "error");
-      await patch({ action: "add_vaccine_photos", photos: urls });
+      await patch("add", { photos: urls });
       toast(`แนบสมุดวัคซีนแล้ว ${urls.length} รูป 💉`, "success");
       onDone?.();
     } catch (e) {
@@ -59,7 +77,7 @@ export function VaccinePhotosAdmin({
     if (!confirm("ลบรูปสมุดวัคซีนรูปนี้?")) return;
     setBusy(true);
     try {
-      await patch({ action: "remove_vaccine_photo", url });
+      await patch("remove", { url });
       toast("ลบรูปแล้ว", "success");
       onDone?.();
     } catch (e) {

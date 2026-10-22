@@ -111,6 +111,8 @@ function SignaturePad({
 function ConsentContent() {
   const params = useSearchParams();
   const bookingIdParam = params.get("id") || "";
+  // ลิงก์จากหน้าข้อมูลลูกค้า (ยังไม่มีนัด) — ยอมรับแล้วเก็บไว้ที่ลูกค้า ไม่ผูกนัด
+  const customerMode = params.get("mode") === "customer";
   const { profile, ready } = useLiff();
   const { config } = useConfig();
   const [booking, setBooking] = useState<StayBooking | null>(null);
@@ -138,6 +140,10 @@ function ConsentContent() {
 
   useEffect(() => {
     if (!profile?.lineUserId) return;
+    if (customerMode) {
+      setLoading(false);
+      return;
+    }
     const q = new URLSearchParams({ lineUserId: profile.lineUserId });
     fetch(`/api/bookings?${q}`)
       .then((r) => r.json())
@@ -156,7 +162,7 @@ function ConsentContent() {
       })
       .catch(() => setBooking(null))
       .finally(() => setLoading(false));
-  }, [profile?.lineUserId, bookingIdParam]);
+  }, [profile?.lineUserId, bookingIdParam, customerMode]);
 
   // บัตรประชาชนผูกกับลูกค้า — เคยแนบไว้แล้วก็โชว์ ไม่ต้องแนบซ้ำทุกรอบ
   useEffect(() => {
@@ -200,7 +206,7 @@ function ConsentContent() {
   };
 
   const submit = async () => {
-    if (!booking || !profile?.lineUserId) return;
+    if ((!booking && !customerMode) || !profile?.lineUserId) return;
     let hasError = false;
     if (!signature) {
       setSignError(true);
@@ -215,11 +221,11 @@ function ConsentContent() {
     setFleaError(false);
     setSaving(true);
     try {
-      const res = await fetch("/api/bookings/consent", {
+      const res = await fetch(customerMode ? "/api/customers/consent" : "/api/bookings/consent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          bookingId: booking.id,
+          bookingId: booking?.id,
           lineUserId: profile.lineUserId,
           careNote: careNote.trim(),
           signature,
@@ -401,6 +407,8 @@ function ConsentContent() {
               </section>
               )}
 
+              {/* ลิงก์จากหน้าข้อมูลลูกค้า: สมุดวัคซีนมีการ์ดขอแยกต่างหาก (เก็บที่ตัวน้อง) ไม่ถามซ้ำตรงนี้ */}
+              {!customerMode && (
               <section className="mt-4 rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm">
                 <label className="flex items-center gap-1.5 text-xs font-bold text-petflow-chocolate">
                   <Icon name="image" size={14} />
@@ -463,6 +471,7 @@ function ConsentContent() {
                   </label>
                 )}
               </section>
+              )}
 
               <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-petflow border border-honey-deep/40 bg-honey/10 p-4 text-xs leading-relaxed text-brown">
                 <input
@@ -500,13 +509,13 @@ function ConsentContent() {
               </label>
               <button
                 type="button"
-                disabled={!checked || saving || !booking}
+                disabled={!checked || saving || (!booking && !customerMode)}
                 onClick={submit}
                 className={`mt-5 ${BTN_PRIMARY}`}
               >
                 {saving ? "กำลังบันทึก…" : "ยอมรับข้อตกลง"}
               </button>
-              {!booking && (
+              {!booking && !customerMode && (
                 <p className="mt-2 text-center text-[11px] text-brown-faint">
                   ยังไม่พบการจองห้องพักของคุณ
                 </p>

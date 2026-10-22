@@ -67,6 +67,7 @@ import {
   getGroomInfoUrl,
   getConsentUrl,
   getPetDocsUrl,
+  buildStayInfoBody,
   bookingScheduleText,
 } from "@/lib/booking-reminders";
 
@@ -464,6 +465,7 @@ function groomInfoCardFor(b: StoredBooking, cfg: Awaited<ReturnType<typeof getSi
   const style = cfg.cards?.groomInfo;
   if (b.service !== "room") {
     return {
+      body: buildGroomInfoBody,
       style,
       dateText: b.date
         ? `${style?.texts?.datePrefix || "📅 นัดอาบน้ำ:"} ${b.date}${b.time ? ` ${b.time}` : ""}`
@@ -471,6 +473,7 @@ function groomInfoCardFor(b: StoredBooking, cfg: Awaited<ReturnType<typeof getSi
     };
   }
   return {
+    body: buildStayInfoBody,
     style: { ...style, texts: { ...style?.texts, header: style?.texts?.header || "🐾 ข้อมูลน้องก่อนเข้าพัก" } },
     dateText: bookingScheduleText(b),
   };
@@ -488,7 +491,7 @@ function groomInfoCardFor(b: StoredBooking, cfg: Awaited<ReturnType<typeof getSi
     const flex = buildGroomInfoFlex({
       catName: String(b.catName),
       dateText: card.dateText,
-      body: buildGroomInfoBody(b, cfg),
+      body: card.body(b, cfg),
       url: url || undefined,
       label: cfg.cards?.groomInfo?.texts?.button || "🩺 แจ้งประวัติน้อง",
     }, card.style);
@@ -522,7 +525,7 @@ function groomInfoCardFor(b: StoredBooking, cfg: Awaited<ReturnType<typeof getSi
     const flex = buildGroomInfoFlex({
       catName: catNames,
       dateText: card.dateText,
-      body: buildGroomInfoBody(
+      body: card.body(
         { catName: bookings.length > 1 ? `น้องๆ ${bookings.length} ตัว` : catNames },
         cfg
       ),
@@ -637,7 +640,7 @@ function groomInfoCardFor(b: StoredBooking, cfg: Awaited<ReturnType<typeof getSi
 
   // ── 📦 ส่งชุดการ์ดที่เลือกเอง — หลายการ์ดใน push เดียว (LINE นับเป็น 1 ข้อความ) ──
   // parts: reminder | prestay | consent | groomInfo | checkin | checkout
-  //        | deposit(+depositAmount) | depositThanks | summary | payment
+  //        | vaccine | idcard | deposit(+depositAmount) | depositThanks | summary | payment
   //        | receipt (เฉพาะบิลที่จ่ายแล้ว) | review
   if (action === "send_bundle") {
     const to = await resolveRecipient(b, lineUserId);
@@ -819,13 +822,12 @@ function groomInfoCardFor(b: StoredBooking, cfg: Awaited<ReturnType<typeof getSi
         if (needInfo.length > 0) {
           const url = await getGroomInfoUrl(needInfo.map((x) => x.id));
           const catNames = needInfo.map((x) => x.catName).join(", ");
+          const card = groomInfoCardFor(b, cfg);
           messages.push(
             buildGroomInfoFlex({
               catName: catNames,
-              dateText: b.date
-                ? `${cfg.cards?.groomInfo?.texts?.datePrefix || "📅 นัดอาบน้ำ:"} ${b.date}${b.time ? ` ${b.time}` : ""}`
-                : undefined,
-              body: buildGroomInfoBody(
+              dateText: card.dateText,
+              body: card.body(
                 { catName: needInfo.length > 1 ? `น้องๆ ${needInfo.length} ตัว` : catNames },
                 cfg
               ),
@@ -834,9 +836,24 @@ function groomInfoCardFor(b: StoredBooking, cfg: Awaited<ReturnType<typeof getSi
                 needInfo.length > 1
                   ? `${cfg.cards?.groomInfo?.texts?.button || "🩺 แจ้งประวัติน้อง"} (${needInfo.length} ตัว)`
                   : cfg.cards?.groomInfo?.texts?.button || "🩺 แจ้งประวัติน้อง",
-            }, cfg.cards?.groomInfo)
+            }, card.style)
           );
         }
+      } else if (part === "vaccine" || part === "idcard") {
+        const groupIds: string[] =
+          part === "vaccine" && Array.isArray(body.ids) && body.ids.length > 0 ? body.ids.map(String) : [b.id];
+        const url = await getPetDocsUrl(groupIds, part);
+        if (url) {
+          messages.push(
+            buildDocRequestFlex({
+              kind: part,
+              businessName: cfg.business.name,
+              catName: String(gb.catName),
+              dateText: bookingScheduleText(gb),
+              url,
+            })
+          );
+        } else skipped.push("ยังไม่ได้ตั้ง LIFF ID — ข้ามการ์ดขอเอกสาร");
       } else if (part === "checkin" || part === "checkout") {
         const url = await getBookingTimeUrl(b.id, part);
         messages.push(

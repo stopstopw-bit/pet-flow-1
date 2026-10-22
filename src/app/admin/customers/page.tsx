@@ -17,9 +17,11 @@ import { PetServiceHistory } from "@/components/PetServiceHistory";
 import type { HistoryBill } from "@/lib/pet-service-history";
 import { toast } from "@/components/Toast";
 import { PreviewSendModal } from "@/components/PreviewSendModal";
+import { CustomerIntakeCards } from "@/components/CustomerIntakeCards";
 import { CustomerLinkSection } from "@/components/CustomerLinkSection";
 import type { PointsHistoryEntry } from "@/lib/points-store";
 import { parseGroomInfo, groomInfoSummary } from "@/lib/groom-info";
+import { resolveStayForm } from "@/lib/stay-form";
 import { BOOKING_STATUS_LABELS, type Booking } from "@/lib/business";
 import type { CustomerServiceLog } from "@/lib/customer-service-log";
 import { pastPriceList } from "@/lib/special-price";
@@ -1934,6 +1936,8 @@ function CustomerSummaryCard({
         </li>
       </ul>
 
+      <CustomerIntakeCards customer={customer} onDone={onSaved} />
+
       {inactive && (
         <p className="mb-3 flex items-center gap-2 rounded-petflow-sm bg-wait/10 px-3 py-2 text-[11px] font-bold text-wait">
           <Icon name="clock" size={14} />
@@ -3197,6 +3201,30 @@ export default function CustomersPage() {
                               <dd className="min-w-0 flex-1 break-words">{v}</dd>
                             </div>
                           ))}
+                        </dl>
+                      </div>
+                    );
+                  })()}
+                  {/* ข้อมูลก่อนเข้าพัก (อาหาร/ชอบ-ไม่ชอบ/การดูแล) — โชว์เมื่อลูกค้ากรอกแล้ว */}
+                  {(() => {
+                    const si = parseGroomInfo(cat.stayInfo);
+                    if (!si) return null;
+                    const s = groomInfoSummary(si, resolveStayForm());
+                    return (
+                      <div className="rounded-petflow-sm border border-sage/40 bg-sage/10 px-3 py-2.5">
+                        <p className="flex items-center gap-1.5 text-[11px] font-extrabold text-ok">
+                          <Icon name="bed" size={14} />
+                          ข้อมูลก่อนเข้าพัก (ลูกค้ากรอกไว้)
+                        </p>
+                        <dl className="mt-1.5 space-y-1 text-[11px] text-brown">
+                          {Object.entries(s)
+                            .filter(([, v]) => v !== "-")
+                            .map(([k, v]) => (
+                              <div key={k} className="flex gap-2">
+                                <dt className="w-24 shrink-0 font-bold text-brown-soft">{k}</dt>
+                                <dd className="min-w-0 flex-1 break-words">{v}</dd>
+                              </div>
+                            ))}
                         </dl>
                       </div>
                     );

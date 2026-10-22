@@ -68,6 +68,8 @@ const SCHEMA_CHECKS: { table: string; column: string; feature: string }[] = [
   { table: "bookings", column: "deposit_status", feature: "มัดจำ + สลิปตอนลูกค้าจองเอง" },
   { table: "booking_ops", column: "care_checks", feature: "บอร์ดคิวอาบน้ำ + เช็คลิสต์ดูแลรายวัน" },
   { table: "payroll_employees", column: "groom_commission_pct", feature: "เงินเดือน + ค่าคอมพนักงาน" },
+  { table: "cats", column: "vaccine_photos", feature: "สมุดวัคซีนที่ตัวน้อง (ขอก่อนมีนัด)" },
+  { table: "customers", column: "consent_accepted_at", feature: "ยอมรับข้อตกลงจากหน้าลูกค้า" },
 ];
 
 export type SchemaCheckRow = {
@@ -649,6 +651,18 @@ where staff_note like '%🎁%';`,
       create unique index if not exists customers_tenant_line_user_key on customers (tenant_id, line_user_id);
       alter table customers drop constraint if exists customers_line_user_id_key;
       drop index if exists customers_line_user_id_key;
+    `,
+  },
+  {
+    // ขอสมุดวัคซีน / ข้อตกลง จากหน้าข้อมูลลูกค้า ก่อนลงนัด — เก็บที่ตัวน้อง/ลูกค้า
+    name: "cats.vaccine_photos+customers.consent",
+    sql: `
+      alter table cats add column if not exists vaccine_photos text, add column if not exists stay_info text;
+      alter table customers
+        add column if not exists consent_accepted_at timestamptz,
+        add column if not exists consent_signature text,
+        add column if not exists consent_flea_tick boolean,
+        add column if not exists consent_care_note text;
     `,
   },
 ];
