@@ -9,7 +9,7 @@ export const STAY_FORM_DEFAULTS: GroomField[] = [
   {
     key: "food",
     type: "text",
-    label: "ปกติน้องกินอาหารอะไรคะ (ยี่ห้อ / เม็ด / เปียก)",
+    label: "ปกติน้องกินอาหารอะไรคะ (ยี่ห้อ / เม็ด / เปียก) — รบกวนเตรียมอาหารมาเองนะคะ",
     placeholder: "เช่น Royal Canin เม็ด + อาหารเปียกมื้อเย็น",
     required: true,
     enabled: true,
@@ -23,17 +23,6 @@ export const STAY_FORM_DEFAULTS: GroomField[] = [
     required: true,
     enabled: true,
     options: [],
-  },
-  {
-    key: "foodBringing",
-    type: "single",
-    label: "จะเตรียมอาหารมาเองไหมคะ",
-    required: true,
-    enabled: true,
-    options: [
-      { key: "own", label: "🎒 เตรียมมาเอง" },
-      { key: "shop", label: "🍽️ ใช้อาหารของร้าน" },
-    ],
   },
   {
     key: "snacks",
