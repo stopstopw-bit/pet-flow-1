@@ -13,12 +13,14 @@ import { uploadPrivateDataUrl } from "./supabase/storage";
 import { getSiteConfig } from "./config-store";
 import { requireTenantId } from "./tenant-context";
 import { ensureMigration } from "./migrations";
+import { normalizeSpecies, type PetSpecies } from "./pet-kind";
 import { taxInvoiceFromRow, type CustomerTaxInvoice } from "./tax-invoice";
 import { MAX_VACCINE_PHOTOS, joinVaccinePhotos, splitVaccinePhotos } from "./vaccine-photos";
 
 export type { CustomerTier } from "./customer-tier";
 
 export type CatGender = "male" | "female";
+export { normalizeSpecies, type PetSpecies } from "./pet-kind";
 
 export type CatRecord = {
   id: string;
@@ -37,6 +39,8 @@ export type CatRecord = {
   color?: string;
   /** น้ำหนักตัว (กก.) — ถามตอนสมัครสมาชิก แก้ได้ทั้งลูกค้าและหลังบ้าน */
   weightKg?: number;
+  /** หมาหรือแมว — ไม่ได้ระบุ = ชนิดที่ร้านรับ (ดู speciesOf ใน pet-kind.ts) */
+  species?: PetSpecies;
   photoDataUrl?: string;
   staffNote?: string;
   /** โน้ตลับของร้าน — ซ่อนจากลูกค้า (ต้องรัน OVERNIGHT_SQL.md ก่อนถึงจะเซฟได้) */
@@ -166,6 +170,7 @@ type CatRow = {
   fur_length?: string | null;
   color?: string | null;
   weight_kg?: number | string | null;
+  species?: string | null;
   photo_data_url: string | null;
   staff_note: string | null;
   staff_private_note?: string | null;
@@ -302,6 +307,7 @@ function mapCustomer(row: CustomerRow): CustomerRecord {
       furLength: (c.fur_length as "short" | "long" | undefined) ?? undefined,
       color: c.color ?? undefined,
       weightKg: c.weight_kg != null && c.weight_kg !== "" ? Number(c.weight_kg) : undefined,
+      species: normalizeSpecies(c.species),
       photoDataUrl: c.photo_data_url ?? undefined,
       staffNote: c.staff_note ?? undefined,
       staffPrivateNote: c.staff_private_note ?? undefined,
@@ -1216,6 +1222,20 @@ export function normalizeWeightKg(v: unknown): number | undefined {
   return Math.round(n * 100) / 100;
 }
 
+/** เขียนชนิดน้อง (หมา/แมว) — คอลัมน์ใหม่ ถ้ายังไม่มีให้อัปเดตฐานข้อมูลแล้วลองอีกครั้ง · พังก็ไม่ทำให้ช่องอื่นเซฟไม่ติด */
+async function writeCatSpecies(catId: string, species: PetSpecies) {
+  const sb = getSupabase();
+  if (!sb) return;
+  const write = () =>
+    sb.from("cats").update({ species }).eq("id", catId).eq("tenant_id", requireTenantId());
+  try {
+    const { error } = await write();
+    if (error && (await ensureMigration("cats.species"))) await write();
+  } catch {
+    /* ข้าม */
+  }
+}
+
 export async function updateCat(
   customerId: string,
   catId: string,
@@ -1233,6 +1253,7 @@ export async function updateCat(
       | "medical"
       | "furLength"
       | "color"
+      | "species"
     >
   > & { weightKg?: number | null }
 ) {
@@ -1293,6 +1314,10 @@ export async function updateCat(
         .eq("tenant_id", requireTenantId());
     } catch {
       /* ยังไม่ได้ migrate คอลัมน์เพิ่ม — ข้าม (ชื่อ/โน้ตยังบันทึกได้) */
+    }
+    if (patch.species) {
+      // คอลัมน์ใหม่ — best-effort เผื่อยังไม่ได้รัน migration
+      await writeCatSpecies(catId, patch.species);
     }
     if (weightChanged) {
       // คอลัมน์ใหม่ — แยกเขียนเผื่อยังไม่ได้รัน migration จะได้ไม่ทำให้ช่องอื่นเซฟไม่ติด
@@ -1422,6 +1447,7 @@ export async function addCat(
     furLength?: "short" | "long";
     color?: string;
     weightKg?: number;
+    species?: PetSpecies;
     staffNote?: string;
   }
 ) {
@@ -1449,6 +1475,7 @@ export async function addCat(
     furLength: data.furLength,
     color: data.color?.trim() || undefined,
     weightKg: normalizeWeightKg(data.weightKg),
+    species: normalizeSpecies(data.species),
     staffNote: data.staffNote?.trim() || undefined,
   };
 
@@ -1484,6 +1511,7 @@ export async function addCat(
           () => {}
         );
     }
+    if (cat.species) await writeCatSpecies(catId, cat.species);
     if (cat.weightKg != null) {
       await sb
         .from("cats")
@@ -2431,6 +2459,7 @@ export async function registerCustomerFromLine(data: {
     furLength?: "short" | "long";
     color?: string;
     weightKg?: number;
+    species?: PetSpecies;
     staffNote?: string;
   }[];
 }) {
@@ -2449,6 +2478,7 @@ export async function registerCustomerFromLine(data: {
       furLength: c.furLength,
       color: c.color?.trim(),
       weightKg: c.weightKg,
+      species: c.species,
       staffNote: c.staffNote?.trim(),
     }))
     .filter((c) => c.name);

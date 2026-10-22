@@ -70,6 +70,7 @@ const SCHEMA_CHECKS: { table: string; column: string; feature: string }[] = [
   { table: "payroll_employees", column: "groom_commission_pct", feature: "เงินเดือน + ค่าคอมพนักงาน" },
   { table: "cats", column: "vaccine_photos", feature: "สมุดวัคซีนที่ตัวน้อง (ขอก่อนมีนัด)" },
   { table: "customers", column: "consent_accepted_at", feature: "ยอมรับข้อตกลงจากหน้าลูกค้า" },
+  { table: "cats", column: "species", feature: "น้องแต่ละตัวเป็นหมาหรือแมว" },
 ];
 
 export type SchemaCheckRow = {
@@ -245,6 +246,11 @@ export const MIGRATIONS: { name: string; sql: string }[] = [
     // น้ำหนักน้อง (กก.) — กรอกตอนสมัครสมาชิก / แก้ในหลังบ้าน
     name: "cats.weight_kg",
     sql: "alter table cats add column if not exists weight_kg numeric;",
+  },
+  {
+    // หมาหรือแมว ของน้องแต่ละตัว — ร้านที่รับทั้งสองแบบ
+    name: "cats.species",
+    sql: "alter table cats add column if not exists species text;",
   },
   {
     // รายชื่อข้อความอัตโนมัติที่ "นัดนี้" ไม่ต้องส่ง (ปิดเป็นรายเคส ไม่ใช่ปิดทั้งร้าน)

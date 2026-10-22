@@ -126,7 +126,7 @@ export default function VoucherPage({ params }: { params: Promise<{ id: string }
           </p>
           {rec.catName && (
             <p>
-              <span className="text-brown-soft">น้องแมว:</span> <span className="font-bold">{rec.catName}</span>
+              <span className="text-brown-soft">น้อง:</span> <span className="font-bold">{rec.catName}</span>
             </p>
           )}
         </div>

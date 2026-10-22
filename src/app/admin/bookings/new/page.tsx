@@ -923,7 +923,7 @@ export default function NewBookingPage() {
             />
             <div>
               <p className="text-xs font-bold text-brown-soft">
-                {groomMode === "together" ? `เวลาเริ่ม (คิดเวลาตามจำนวน${pw.th})` : `รอบเวลา (1 ${pw.th} = 1 คิว)`}
+                {groomMode === "together" ? `เวลาเริ่ม (คิดเวลาตามจำนวนน้อง)` : `รอบเวลา (น้อง 1 ตัว = 1 คิว)`}
               </p>
               <p className="mb-1.5 text-[10px] text-brown-faint">
                 {groomMode === "together"

@@ -126,7 +126,7 @@ function BookPageInner() {
     () =>
       (customer?.cats || []).map((c) => {
         const d = catDetails.find((x) => x.id === c.id);
-        return { id: c.id, name: c.name, breed: d?.breed, photoDataUrl: d?.photoDataUrl };
+        return { id: c.id, name: c.name, breed: d?.breed, species: d?.species, photoDataUrl: d?.photoDataUrl };
       }),
     [customer?.cats, catDetails]
   );

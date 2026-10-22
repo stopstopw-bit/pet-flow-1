@@ -61,7 +61,7 @@ export function RegistrationQrSection({ compact }: { compact?: boolean }) {
         QR ลงทะเบียนลูกค้า
       </h2>
       <p className="mb-3 text-[10px] text-brown-soft">
-        ตั้งที่เคาน์เตอร์ — ลูกค้าสแกนแล้วกรอกชื่อ เบอร์ และน้องแมว
+        ตั้งที่เคาน์เตอร์ — ลูกค้าสแกนแล้วกรอกชื่อ เบอร์ และข้อมูลน้อง
       </p>
       {qrUrl ? (
         <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start">

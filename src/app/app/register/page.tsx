@@ -21,6 +21,8 @@ import {
 type CatGender = "male" | "female";
 type CatInput = {
   name: string;
+  /** หมา/แมว — ถามเฉพาะร้านที่รับทั้งสองแบบ */
+  species: PetSpecies | "";
   gender?: CatGender;
   breed: string;
   breedOther: string;
@@ -41,12 +43,14 @@ type CatInput = {
 
 import { OTHER_BREED } from "@/lib/cat-breeds";
 import { REFERRAL_OPTIONS } from "@/lib/referral-options";
-import { breedOptionsFor, petWords } from "@/lib/pet-kind";
+import { asksSpecies, breedOptionsForSpecies, petWords, speciesWords, type PetSpecies } from "@/lib/pet-kind";
+import { SpeciesPicker } from "@/components/SpeciesPicker";
 import { StaffNoteTagPicker } from "@/components/StaffNoteTagPicker";
 
 function emptyCat(): CatInput {
   return {
     name: "",
+    species: "",
     breed: "",
     breedOther: "",
     furLength: "",
@@ -65,8 +69,8 @@ export default function RegisterPage() {
   const router = useRouter();
   const { profile, ready, customer, refreshCustomer, refreshAccount } = useLiff();
   const { config } = useConfig();
-  const breeds = breedOptionsFor(config);
   const pw = petWords(config);
+  const askSpecies = asksSpecies(config);
   const referrals = config.options?.referralOptions?.length
     ? config.options.referralOptions
     : REFERRAL_OPTIONS;
@@ -130,6 +134,8 @@ export default function RegisterPage() {
 
     // บังคับกรอกให้ครบทุกช่อง (ยกเว้นรูป/วันเกิดน้อง/โรคประจำตัว) — ไม่อยากได้ตัวไหนให้กดลบออก
     const catProblem = (c: CatInput, n: string): string => {
+      if (askSpecies && !c.species) return `เลือกว่าน้อง${n}เป็นหมาหรือแมวด้วยนะคะ`;
+      const pw = speciesWords(c.species || undefined, config);
       if (!c.name.trim()) return `กรอกชื่อน้อง${pw.th}${n}ด้วยนะคะ`;
       if (!c.gender) return `เลือกเพศน้อง${pw.th}${n}ด้วยนะคะ ${pw.emoji}`;
       if (!c.breed || (c.breed === OTHER_BREED && !c.breedOther.trim()))
@@ -196,6 +202,7 @@ export default function RegisterPage() {
             .filter((c) => c.name.trim())
             .map((c) => ({
               name: c.name,
+              species: c.species || undefined,
               gender: c.gender,
               breed:
                 (c.breed === OTHER_BREED ? c.breedOther.trim() : c.breed) ||
@@ -425,11 +432,25 @@ export default function RegisterPage() {
                     }}
                   />
                 </label>
+                <SpeciesPicker
+                  value={cat.species}
+                  onChange={(species) =>
+                    // เปลี่ยนชนิด → สายพันธุ์เดิมที่ไม่ใช่ของชนิดนี้ต้องเลือกใหม่
+                    updateCat(idx, {
+                      species,
+                      breed:
+                        cat.breed === OTHER_BREED ||
+                        breedOptionsForSpecies(config, species).includes(cat.breed)
+                          ? cat.breed
+                          : "",
+                    })
+                  }
+                />
                 <input
                   required
                   value={cat.name}
                   onChange={(e) => updateCat(idx, { name: e.target.value })}
-                  placeholder={`ชื่อน้อง${pw.th}`}
+                  placeholder={`ชื่อน้อง${speciesWords(cat.species || undefined, config).th}`}
                   className={subFieldClass}
                 />
 
@@ -469,7 +490,7 @@ export default function RegisterPage() {
                   }`}
                 >
                   <option value="">เลือกสายพันธุ์…</option>
-                  {breeds.map((b) => (
+                  {breedOptionsForSpecies(config, cat.species || undefined).map((b) => (
                     <option key={b} value={b} className="text-brown">
                       {b}
                     </option>

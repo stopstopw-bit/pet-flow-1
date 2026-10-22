@@ -1010,7 +1010,7 @@ export function BookingCalendar() {
   const addCatToGroup = async (group: CalendarDay[]) => {
     const b = group[0];
     const input = prompt(
-      `เพิ่มน้องแมวเข้านัดของ ${b.customerName}
+      `เพิ่มน้องเข้านัดของ ${b.customerName}
 (ใส่ชื่อ — หลายตัวคั่นด้วย , )`
     );
     const names = (input || "")
@@ -1742,7 +1742,7 @@ export function BookingCalendar() {
                           )}
                           {host && u.closed && (
                             <p className="mt-0.5 truncate text-[9px] font-bold text-red-600">
-                              ห้องปิด ({u.closed.reason}) แต่มีแมวอยู่
+                              ห้องปิด ({u.closed.reason}) แต่มีน้องพักอยู่
                             </p>
                           )}
                           {u.leaving.length > 0 && (
@@ -2066,7 +2066,7 @@ export function BookingCalendar() {
                 ...((b.service === "room" || !!b.checkout) && b.checkout
                   ? [{ label: uniq("ต่อคืน"), icon: "bed", onClick: () => extendStay(group) }]
                   : []),
-                { label: uniq("เพิ่มแมวในนัดนี้"), icon: "plus", onClick: () => addCatToGroup(group) },
+                { label: uniq("เพิ่มน้องในนัดนี้"), icon: "plus", onClick: () => addCatToGroup(group) },
                 ...(b.customerId
                   ? [
                       {
