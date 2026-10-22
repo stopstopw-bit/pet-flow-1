@@ -19,7 +19,15 @@ type Tenant = {
   customDomain: string | null;
   createdAt: string;
   ownerUsername: string | null;
+  /** แบบร้าน — null = ร้านเก่าที่ยังไม่ได้ตั้ง (ระบบถือเป็นร้านแมว) */
+  petKind: "cat" | "dog" | "both" | null;
 };
+
+const PET_KINDS = [
+  ["cat", "🐱 ร้านแมว"],
+  ["dog", "🐶 ร้านหมา"],
+  ["both", "🐾 ร้านหมาและแมว"],
+] as const;
 
 const STATUS_LABEL: Record<Tenant["status"], string> = {
   trial: "ทดลองใช้",
@@ -55,6 +63,9 @@ export default function PlatformDashboard() {
   } | null>(null);
   const [copiedLinkFor, setCopiedLinkFor] = useState("");
   const [linksOpenFor, setLinksOpenFor] = useState("");
+  /** การ์ดร้านที่เปิดแผงเปลี่ยนแบบร้านอยู่ + ติ๊ก "ใส่ห้อง/ราคาตามแบบด้วย" */
+  const [kindOpenFor, setKindOpenFor] = useState("");
+  const [kindWithDefaults, setKindWithDefaults] = useState(false);
   /** ค่า LINE ของแต่ละร้าน (LIFF ID + มี Token ไหม) — ไว้เช็คว่า LINE อยู่ถูกร้าน */
   const [lineInfo, setLineInfo] = useState<Record<string, { liffId: string; hasToken: boolean }>>({});
 
@@ -300,6 +311,59 @@ export default function PlatformDashboard() {
     }
   };
 
+  const changePetKind = async (t: Tenant, petKind: "cat" | "dog" | "both") => {
+    const label = PET_KINDS.find(([k]) => k === petKind)?.[1] || petKind;
+    const what = kindWithDefaults
+      ? `\n\nห้องพัก ราคาอาบน้ำ ของแถม และบริการเสริมของร้านนี้ จะถูกแทนด้วยค่าเริ่มต้นของ${label} (ของที่ร้านตั้งไว้เองจะหาย)`
+      : "\n\nเปลี่ยนแค่คำในหน้าจอและรายชื่อสายพันธุ์ ห้อง/ราคาเดิมของร้านไม่เปลี่ยน";
+    if (!confirm(`เปลี่ยน "${t.name}" เป็น${label}?${what}`)) return;
+    setBusyId(t.id);
+    try {
+      const res = await fetch(`/api/platform/tenants/${t.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set_pet_kind", petKind, withDefaults: kindWithDefaults }),
+      });
+      if (expired(res)) return;
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || "เปลี่ยนไม่สำเร็จ");
+      } else {
+        setKindOpenFor("");
+        setKindWithDefaults(false);
+      }
+      load();
+    } finally {
+      setBusyId("");
+    }
+  };
+
+  /** ลบร้านถาวร — ต้องพิมพ์ slug ให้ตรง (ฝั่ง API ตรวจซ้ำ และลบเฉพาะข้อมูลของร้านนี้) */
+  const deleteTenant = async (t: Tenant) => {
+    const typed = prompt(
+      `ลบร้าน "${t.name}" ถาวร?\nลูกค้า นัด บิล แต้ม รูป และการตั้งค่าทั้งหมดของร้านนี้จะหายและกู้คืนไม่ได้ (ร้านอื่นไม่โดน)\n\nพิมพ์ ${t.slug} เพื่อยืนยัน`
+    );
+    if (typed === null) return;
+    if (typed.trim() !== t.slug) {
+      alert("พิมพ์ไม่ตรง — ยังไม่ได้ลบ");
+      return;
+    }
+    setBusyId(t.id);
+    try {
+      const res = await fetch(`/api/platform/tenants/${t.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmSlug: typed.trim() }),
+      });
+      if (expired(res)) return;
+      const d = await res.json().catch(() => ({}));
+      setMsg(res.ok ? `🗑️ ลบร้าน "${t.name}" แล้ว` : `❌ ${d.error || "ลบไม่สำเร็จ"}`);
+      load();
+    } finally {
+      setBusyId("");
+    }
+  };
+
   const impersonate = async (id: string) => {
     setBusyId(id);
     try {
@@ -462,6 +526,18 @@ export default function PlatformDashboard() {
                     >
                       {STATUS_LABEL[t.status]}
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setKindOpenFor(kindOpenFor === t.id ? "" : t.id);
+                        setKindWithDefaults(false);
+                      }}
+                      className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-white/80"
+                      title="เปลี่ยนแบบร้าน"
+                    >
+                      {PET_KINDS.find(([k]) => k === (t.petKind || "cat"))?.[1]}
+                      {!t.petKind && " (ยังไม่ได้ตั้ง)"} ✏️
+                    </button>
                   </p>
                   <p className="text-[10px] text-white/40">
                     /{t.slug} · {t.ownerUsername ? `username: ${t.ownerUsername}` : "ยังไม่ได้ตั้ง login"} · สร้างเมื่อ{" "}
@@ -569,8 +645,50 @@ export default function PlatformDashboard() {
                       ▶️ เปิดใช้งาน
                     </button>
                   )}
+                  {t.slug !== "petflow" && (
+                    <button
+                      type="button"
+                      disabled={busyId === t.id}
+                      onClick={() => deleteTenant(t)}
+                      className="rounded-full bg-red-500/15 px-3 py-1.5 text-[11px] font-bold text-red-300 disabled:opacity-40"
+                    >
+                      🗑️ ลบร้าน
+                    </button>
+                  )}
                 </div>
               </div>
+              {kindOpenFor === t.id && (
+                <div className="mt-3 space-y-2 rounded-petflow-sm bg-black/25 p-2.5">
+                  <p className="text-[11px] font-bold text-white/70">แบบร้าน</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {PET_KINDS.map(([k, label]) => (
+                      <button
+                        key={k}
+                        type="button"
+                        disabled={busyId === t.id}
+                        aria-pressed={(t.petKind || "cat") === k}
+                        onClick={() => changePetKind(t, k)}
+                        className={`min-h-[40px] rounded-petflow-sm border px-2 text-xs font-extrabold disabled:opacity-40 ${
+                          (t.petKind || "cat") === k
+                            ? "border-latte-deep bg-latte-deep text-white"
+                            : "border-white/10 bg-[#1a1d29] text-white/70"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <label className="flex items-start gap-2 text-[11px] text-white/70">
+                    <input
+                      type="checkbox"
+                      checked={kindWithDefaults}
+                      onChange={(e) => setKindWithDefaults(e.target.checked)}
+                      className="mt-0.5"
+                    />
+                    ใส่ห้องพัก ราคาอาบน้ำ ของแถม ตามแบบร้านด้วย (ทับของเดิม เหมาะกับร้านที่ยังไม่ได้ตั้งเอง)
+                  </label>
+                </div>
+              )}
               {linksOpenFor === t.id && (
                 <div className="mt-3 space-y-2 rounded-petflow-sm bg-black/25 p-2.5">
                   {[
