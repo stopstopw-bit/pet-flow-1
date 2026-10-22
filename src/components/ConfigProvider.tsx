@@ -10,6 +10,7 @@ import {
 import { usePathname } from "next/navigation";
 import type { SiteConfig } from "@/lib/config-types";
 import { getDefaultSiteConfig } from "@/lib/defaults/site-config";
+import { petWords } from "@/lib/pet-kind";
 
 /** ค่าก่อนโหลดเสร็จ — ชื่อร้านว่างไว้ ไม่งั้นจะเห็นชื่อระบบ (PetFlow) แวบขึ้นมาก่อนชื่อร้านจริง */
 function initialConfig(): SiteConfig {
@@ -102,4 +103,9 @@ function shortHash(text: string): string {
 
 export function useConfig() {
   return useContext(ConfigContext);
+}
+
+/** คำเรียกน้องตามชนิดสัตว์ของร้าน (แมว/หมา/หมา·แมว) — ดู lib/pet-kind.ts */
+export function usePetWords() {
+  return petWords(useContext(ConfigContext).config);
 }

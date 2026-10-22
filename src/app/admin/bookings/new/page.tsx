@@ -14,7 +14,8 @@ import { PastPricesHint } from "@/components/PastPrices";
 import { pastPriceList, type PastInvoice, type PastPrice } from "@/lib/special-price";
 import type { BookingTransport } from "@/lib/transport";
 import { Avatar, SearchField, Segmented } from "@/components/ui";
-import { useConfig } from "@/components/ConfigProvider";
+import { useConfig, usePetWords } from "@/components/ConfigProvider";
+import { petWords } from "@/lib/pet-kind";
 import { isFeatureOn } from "@/lib/features";
 import { UNKNOWN_CAT, isUnknownCat } from "@/lib/unknown-cat";
 import {
@@ -86,6 +87,7 @@ function ClientPetPicker({
   onRemoveCat: (name: string) => void;
   onSelectAll: (names: string[]) => void;
 }) {
+  const pw = usePetWords();
   const [q, setQ] = useState("");
   const [results, setResults] = useState<CustomerListItem[]>([]);
   const [recent, setRecent] = useState<CustomerListItem[]>([]);
@@ -172,7 +174,7 @@ function ClientPetPicker({
           </div>
         ) : (
           <>
-            <SearchField value={q} onChange={setQ} placeholder="ค้นหาชื่อ เบอร์ หรือชื่อน้องแมว" />
+            <SearchField value={q} onChange={setQ} placeholder={`ค้นหาชื่อ เบอร์ หรือชื่อน้อง${pw.th}`} />
 
             <p className="mb-1 mt-3 px-1 text-[11px] font-bold text-brown-soft">
               {q.trim() ? (loading ? "กำลังค้นหา…" : `ผลการค้นหา ${results.length} ราย`) : "ลูกค้าล่าสุด"}
@@ -243,7 +245,7 @@ function ClientPetPicker({
       <section>
         <div className="mb-2 flex items-end justify-between gap-2">
           <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">
-            Cats · น้องแมวที่มา *
+            {`${pw.enPlural[0].toUpperCase()}${pw.enPlural.slice(1)} · น้อง${pw.th}ที่มา *`}
           </p>
           {knownCats.length > 1 && (
             <button
@@ -388,6 +390,7 @@ export default function NewBookingPage() {
   const [service, setService] = useState<"groom" | "room">("groom");
   // ร้านที่ปิดอาบน้ำหรือรับฝากไว้ในตั้งค่า — เหลือแค่บริการที่เปิด
   const { config: siteConfig } = useConfig();
+  const pw = petWords(siteConfig);
   const groomOn = isFeatureOn(siteConfig, "grooming");
   const hotelOn = isFeatureOn(siteConfig, "hotel");
   useEffect(() => {
@@ -648,7 +651,7 @@ export default function NewBookingPage() {
     const fd = new FormData(form);
     const cats = catNames.length > 0 ? catNames : catInput.trim() ? [catInput.trim()] : [];
     if (cats.length === 0) {
-      toast("กรอกชื่อน้องแมวอย่างน้อย 1 ชื่อ (หรือกด “ยังไม่ทราบชื่อ”)", "error");
+      toast(`กรอกชื่อน้อง${pw.th}อย่างน้อย 1 ชื่อ (หรือกด “ยังไม่ทราบชื่อ”)`, "error");
       return;
     }
 
@@ -909,7 +912,7 @@ export default function NewBookingPage() {
             />
             <div>
               <p className="text-xs font-bold text-brown-soft">
-                {groomMode === "together" ? "เวลาเริ่ม (คิดเวลาตามจำนวนแมว)" : "รอบเวลา (1 แมว = 1 คิว)"}
+                {groomMode === "together" ? `เวลาเริ่ม (คิดเวลาตามจำนวน${pw.th})` : `รอบเวลา (1 ${pw.th} = 1 คิว)`}
               </p>
               <p className="mb-1.5 text-[10px] text-brown-faint">
                 {groomMode === "together"

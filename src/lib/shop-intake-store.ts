@@ -141,3 +141,19 @@ export async function setShopIntakeTenant(id: string, tenantId: string): Promise
   const { error } = await sb.from("shop_intake").update({ tenant_id: tenantId || null }).eq("id", id);
   if (error) throw new Error(error.message);
 }
+
+/** คำตอบล่าสุดของร้านนี้ (ถ้ามี) — ไว้เดาค่าที่ร้านเคยตอบแล้วแต่ยังไม่ได้กดตั้งค่าในหน้าแพลตฟอร์ม */
+export async function latestShopIntakeAnswers(tenantId: string): Promise<Record<string, unknown> | null> {
+  if (!tenantId) return null;
+  const sb = getDirectoryDb();
+  if (!sb) return mem.find((x) => x.tenantId === tenantId)?.answers || null;
+  const { data, error } = await sb
+    .from("shop_intake")
+    .select("answers")
+    .eq("tenant_id", tenantId)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) return null;
+  return ((data as { answers?: Record<string, unknown> | null } | null)?.answers as Record<string, unknown>) || null;
+}

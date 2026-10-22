@@ -13,6 +13,7 @@ import { isUnknownCat, pickableCatNames } from "@/lib/unknown-cat";
 import { GROOM_PROGRAMS, type GroomProgram } from "@/lib/grooming-prices";
 import { freeUnitsForRange, roomCapacity, compositionOf, type BoardBooking, type RoomClosure } from "@/lib/room-board";
 import { DEPOSIT_STATUS_LABEL, type DepositStatus } from "@/lib/booking-deposit";
+import { usePetWords } from "@/components/ConfigProvider";
 
 export type EditableBooking = Booking & {
   lineUserId?: string;
@@ -222,6 +223,7 @@ export function BookingEditModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const pw = usePetWords();
   const [service, setService] = useState<"groom" | "room">(
     booking.service || (booking.roomType || booking.checkin ? "room" : "groom")
   );
@@ -506,7 +508,7 @@ export function BookingEditModal({
           {!household && (
           <div>
               <label className="block text-xs font-bold text-brown-soft">
-                ชื่อน้องแมว
+                ชื่อน้อง{pw.th}
                 <input
                   name="cat"
                   value={catName}
@@ -522,7 +524,7 @@ export function BookingEditModal({
                   }`}
                 >
                   <p className="mb-2 text-[11px] font-bold text-brown-soft">
-                    {placeholderCat ? "ลูกค้าบันทึกแมวไว้แล้ว · แตะเลือกตัวที่ใช่" : "แมวของลูกค้า · แตะเพื่อเลือก"}
+                    {placeholderCat ? `ลูกค้าบันทึก${pw.th}ไว้แล้ว · แตะเลือกตัวที่ใช่` : `${pw.th}ของลูกค้า · แตะเพื่อเลือก`}
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {catChoices.map((n) => {
@@ -704,7 +706,7 @@ export function BookingEditModal({
           {household ? (
             <div className="space-y-2">
               <p className="text-xs font-extrabold text-petflow-chocolate">
-                🐱 น้องในนัดนี้ ({siblings.length + 1} ตัว)
+                {pw.emoji} น้องในนัดนี้ ({siblings.length + 1} ตัว)
               </p>
               {[{ id: booking.id, catName: booking.catName, notes: booking.notes }, ...siblings].map(
                 (x) => {
@@ -715,7 +717,7 @@ export function BookingEditModal({
                       className="space-y-2 rounded-petflow-sm border border-petflow-line bg-paper/50 p-3"
                     >
                       <EditField
-                        label="ชื่อน้องแมว"
+                        label={`ชื่อน้อง${pw.th}`}
                         name={main ? "cat" : `cat_${x.id}`}
                         defaultValue={x.catName}
                         required

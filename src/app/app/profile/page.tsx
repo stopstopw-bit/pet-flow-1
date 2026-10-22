@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useLiff } from "@/components/LiffProvider";
 import { useConfig } from "@/components/ConfigProvider";
-import { BREED_OPTIONS, OTHER_BREED } from "@/lib/cat-breeds";
+import { OTHER_BREED } from "@/lib/cat-breeds";
+import { breedOptionsFor, petWords } from "@/lib/pet-kind";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { StaffNoteTagPicker } from "@/components/StaffNoteTagPicker";
 import { BTN_PRIMARY, PageHeader } from "@/components/PageHeader";
@@ -39,7 +40,8 @@ type CatForm = {
 export default function ProfilePage() {
   const { ready, profile } = useLiff();
   const { config } = useConfig();
-  const breeds = config.options?.catBreeds?.length ? config.options.catBreeds : BREED_OPTIONS;
+  const breeds = breedOptionsFor(config);
+  const pw = petWords(config);
   const referrals = config.options?.referralOptions?.length
     ? config.options.referralOptions
     : REFERRAL_FALLBACK;
@@ -293,13 +295,13 @@ export default function ProfilePage() {
 
           {/* ── น้องแมว ── */}
           <div className="mt-6 space-y-3">
-            <SectionLabel>My cats · น้องแมวของฉัน</SectionLabel>
+            <SectionLabel>{`My ${pw.enPlural} · น้อง${pw.th}ของฉัน`}</SectionLabel>
             {cats.map((cat, idx) => (
               <div key={cat.id} className="space-y-2.5 rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm">
                 {!cat.id.startsWith("new-") ? (
                   <CatPhoto
                     src={photos[cat.id]}
-                    name={cat.name || "น้องแมว"}
+                    name={cat.name || `น้อง${pw.th}`}
                     size={0}
                     onPick={(f) => uploadPhoto(cat.id, f)}
                     uploading={uploadingId === cat.id}
@@ -389,7 +391,7 @@ export default function ProfilePage() {
                     className="-ml-1 flex min-h-[44px] items-center gap-1.5 px-1 text-xs font-bold text-brown-soft"
                   >
                     <Icon name="trash" size={15} />
-                    ลบน้องแมวตัวนี้
+                    ลบน้อง{pw.th}ตัวนี้
                   </button>
                 )}
               </div>
@@ -410,7 +412,7 @@ export default function ProfilePage() {
                 <Icon name="plus" size={20} strokeWidth={2.4} />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-sm font-extrabold">เพิ่มน้องแมวอีกตัว</span>
+                <span className="block text-sm font-extrabold">เพิ่มน้อง{pw.th}อีกตัว</span>
                 <span className="block text-[11px] text-petflow-chocolate/70">มีหลายตัว เพิ่มได้ทุกตัวเลยค่ะ</span>
               </span>
               <Icon name="paw" size={22} className="text-petflow-chocolate/60" />

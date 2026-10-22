@@ -7,6 +7,7 @@ import {
   type Booking,
 } from "@/lib/business";
 import { useConfig } from "@/components/ConfigProvider";
+import { petWords } from "@/lib/pet-kind";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/components/LocaleProvider";
 import { useLiff } from "@/components/LiffProvider";
@@ -105,8 +106,8 @@ export default function CustomerHome() {
           </p>
           <p className="mt-0.5 text-xs text-brown-soft">
             {locale === "th"
-              ? "กรอกข้อมูลผู้ปกครองและน้องแมวสั้นๆ — รับสิทธิ์สะสมแต้ม โปรโมชัน และให้เราดูแลน้องได้เต็มที่ค่ะ 🧡"
-              : "A quick form about you and your cat — unlock points, promos and better care 🧡"}
+              ? `กรอกข้อมูลผู้ปกครองและน้อง${petWords(config).th}สั้นๆ — รับสิทธิ์สะสมแต้ม โปรโมชัน และให้เราดูแลน้องได้เต็มที่ค่ะ 🧡`
+              : `A quick form about you and your ${petWords(config).en} — unlock points, promos and better care 🧡`}
           </p>
           <span className="mt-2 inline-block rounded-full bg-latte-deep px-3.5 py-1.5 text-xs font-extrabold text-white">
             {locale === "th" ? "กรอกเลย →" : "Register →"}

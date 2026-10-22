@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
+import { usePetWords } from "@/components/ConfigProvider";
 
 export function AddCustomerModal({
   onAdded,
 }: {
   onAdded: (customerId: string) => void;
 }) {
+  const pw = usePetWords();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -115,7 +117,7 @@ export function AddCustomerModal({
                 />
               </label>
               <label className="block text-xs font-bold text-brown-soft">
-                ชื่อน้องแมว *
+                ชื่อน้อง{pw.th} *
                 <input
                   value={catName}
                   onChange={(e) => setCatName(e.target.value)}
@@ -125,7 +127,7 @@ export function AddCustomerModal({
                 />
               </label>
               <label className="block text-xs font-bold text-brown-soft">
-                โน้ตแมว (ถ้ามี)
+                โน้ต{pw.th} (ถ้ามี)
                 <textarea
                   value={catNote}
                   onChange={(e) => setCatNote(e.target.value)}
