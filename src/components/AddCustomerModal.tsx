@@ -8,6 +8,15 @@ import { StaffNoteTagPicker } from "@/components/StaffNoteTagPicker";
 import { OTHER_BREED } from "@/lib/cat-breeds";
 import { breedOptionsFor, petWords } from "@/lib/pet-kind";
 import { REFERRAL_OPTIONS } from "@/lib/referral-options";
+import { AccountTypeFields, TaxInvoiceFields, companyContactProblem } from "@/components/TaxInvoiceFields";
+import {
+  emptyTaxInvoiceForm,
+  formToTaxInvoice,
+  taxInvoiceProblem,
+  type TaxInvoiceForm,
+} from "@/lib/tax-invoice";
+
+const emptyCompany = (): TaxInvoiceForm => ({ ...emptyTaxInvoiceForm("company"), on: true, account: true });
 
 /** รายละเอียดน้องหนึ่งตัว — ช่องเดียวกับฟอร์มสมัครสมาชิกของลูกค้า (app/register) */
 type PetForm = {
@@ -99,6 +108,12 @@ export function AddCustomerModal({
   const [addressMapUrl, setAddressMapUrl] = useState("");
   const [postalCode, setPostalCode] = useState("");
   const [pets, setPets] = useState<PetForm[]>(() => [emptyPet()]);
+  // ลูกค้านิติบุคคล / ขอใบกำกับภาษี (เหมือนหน้าสมัครสมาชิก)
+  const [isCompany, setIsCompany] = useState(false);
+  const [company, setCompany] = useState<TaxInvoiceForm>(emptyCompany);
+  const [sameContact, setSameContact] = useState(true);
+  const [taxInvoice, setTaxInvoice] = useState<TaxInvoiceForm>(() => emptyTaxInvoiceForm("person"));
+  const useCompanyContact = isCompany && sameContact;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -113,6 +128,10 @@ export function AddCustomerModal({
     setAddressMapUrl("");
     setPostalCode("");
     setPets([emptyPet()]);
+    setIsCompany(false);
+    setCompany(emptyCompany());
+    setSameContact(true);
+    setTaxInvoice(emptyTaxInvoiceForm("person"));
     setError("");
   };
 
@@ -123,7 +142,15 @@ export function AddCustomerModal({
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || namedPets.length === 0) return;
+    const billing = formToTaxInvoice(isCompany ? company : taxInvoice);
+    const problem =
+      taxInvoiceProblem(billing) || (isCompany ? companyContactProblem(company, sameContact) : "");
+    if (problem) return setError(problem);
+    // นิติบุคคล + ผู้ติดต่อใช้ข้อมูลเดียวกัน → ชื่อ/เบอร์/ที่อยู่ลูกค้า = ของบริษัท
+    const contact = useCompanyContact
+      ? { name: company.name.trim(), phone: company.phone.trim(), address: company.address.trim() }
+      : { name: name.trim(), phone: phone.trim(), address: address.trim() };
+    if (!contact.name || namedPets.length === 0) return;
     setSaving(true);
     setError("");
 
@@ -131,12 +158,13 @@ export function AddCustomerModal({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        customerName: name.trim(),
-        phone: phone.trim() || undefined,
+        customerName: contact.name,
+        phone: contact.phone || undefined,
         email: email.trim() || undefined,
-        birthday: birthday || undefined,
+        birthday: (!isCompany && birthday) || undefined,
         referralSource: referral || undefined,
-        address: address.trim() || undefined,
+        address: contact.address || undefined,
+        taxInvoice: billing || undefined,
         addressMapUrl: addressMapUrl.trim() || undefined,
         postalCode: postalCode.trim() || undefined,
         cats: namedPets.map((p) => ({
@@ -201,27 +229,40 @@ export function AddCustomerModal({
             </div>
             <form onSubmit={submit} className="space-y-3">
               {/* ── ผู้ปกครอง ── */}
-              <label className={labelCls}>
-                ชื่อลูกค้า *
-                <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="เช่น คุณมาย"
-                  required
-                  autoFocus
-                  className={`${fieldCls} font-bold`}
-                />
-              </label>
-              <label className={labelCls}>
-                เบอร์โทร
-                <input
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  type="tel"
-                  placeholder="08x-xxx-xxxx"
-                  className={fieldCls}
-                />
-              </label>
+              <AccountTypeFields
+                isCompany={isCompany}
+                onIsCompany={setIsCompany}
+                company={company}
+                onCompany={setCompany}
+                sameContact={sameContact}
+                onSameContact={setSameContact}
+                fieldClass={fieldCls}
+              />
+              {!useCompanyContact && (
+                <>
+                  <label className={labelCls}>
+                    {isCompany ? "ชื่อผู้ติดต่อ *" : "ชื่อลูกค้า *"}
+                    <input
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="เช่น คุณมาย"
+                      required
+                      autoFocus
+                      className={`${fieldCls} font-bold`}
+                    />
+                  </label>
+                  <label className={labelCls}>
+                    {isCompany ? "เบอร์ผู้ติดต่อ" : "เบอร์โทร"}
+                    <input
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      type="tel"
+                      placeholder="08x-xxx-xxxx"
+                      className={fieldCls}
+                    />
+                  </label>
+                </>
+              )}
               <label className={labelCls}>
                 อีเมล (ถ้ามี)
                 <input
@@ -232,12 +273,14 @@ export function AddCustomerModal({
                   className={fieldCls}
                 />
               </label>
-              <div className={labelCls}>
-                วันเกิดลูกค้า (ถ้าทราบ)
-                <div className="mt-1">
-                  <BirthdayPicker value={birthday} onChange={setBirthday} yearsBack={90} />
+              {!isCompany && (
+                <div className={labelCls}>
+                  วันเกิดลูกค้า (ถ้าทราบ)
+                  <div className="mt-1">
+                    <BirthdayPicker value={birthday} onChange={setBirthday} yearsBack={90} />
+                  </div>
                 </div>
-              </div>
+              )}
               <label className={labelCls}>
                 รู้จักร้านจากทางไหน (ถ้าทราบ)
                 <select
@@ -403,7 +446,20 @@ export function AddCustomerModal({
                 เพิ่มน้อง{pw.th}อีกตัว
               </button>
 
+              {!isCompany && (
+                <div className="rounded-petflow-sm border border-petflow-line p-3">
+                  <TaxInvoiceFields
+                    value={taxInvoice}
+                    onChange={setTaxInvoice}
+                    fieldClass={fieldCls}
+                    prefill={{ name, phone, address }}
+                    kinds={["person"]}
+                  />
+                </div>
+              )}
+
               {/* ── ที่อยู่ ── */}
+              {!useCompanyContact && (
               <label className={labelCls}>
                 ที่อยู่ (ถ้ามี — ใช้ตอนรับ-ส่งน้อง)
                 <textarea
@@ -414,6 +470,7 @@ export function AddCustomerModal({
                   className={`${fieldCls} py-2.5`}
                 />
               </label>
+              )}
               <label className={labelCls}>
                 รหัสไปรษณีย์ (ถ้ามี)
                 <input
@@ -445,7 +502,7 @@ export function AddCustomerModal({
                 </button>
                 <button
                   type="submit"
-                  disabled={saving || !name.trim() || namedPets.length === 0}
+                  disabled={saving || !(useCompanyContact ? company.name.trim() : name.trim()) || namedPets.length === 0}
                   className="flex min-h-[44px] flex-[2] items-center justify-center gap-1.5 rounded-petflow-sm bg-petflow-chocolate py-3 text-sm font-extrabold text-card shadow-petflow-sm disabled:opacity-50"
                 >
                   {!saving && <Icon name="check" size={16} strokeWidth={2.4} />}
