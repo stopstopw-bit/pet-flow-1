@@ -7,6 +7,7 @@ import {
   normalizeWeightKg,
 } from "@/lib/customers-store";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
+import { parseTaxInvoiceBody, type CustomerTaxInvoice } from "@/lib/tax-invoice";
 import { withResolvedTenant } from "@/lib/tenant-context";
 import { requireCustomerSession } from "@/lib/customer-session";
 
@@ -35,6 +36,7 @@ async function handleGet(req: NextRequest) {
       addressMapUrl: c.addressMapUrl || "",
       postalCode: c.postalCode || "",
       idCardUrl: c.idCardUrl || "",
+      taxInvoice: c.taxInvoice ?? null,
       marketingConsent: c.marketingConsent !== false,
       cats: c.cats.map((x) => ({
         id: x.id,
@@ -76,7 +78,12 @@ async function handlePost(req: NextRequest) {
     addressMapUrl?: string;
     postalCode?: string;
     marketingConsent?: boolean;
+    taxInvoice?: CustomerTaxInvoice | null;
   } = {};
+  // หน้าเก่าที่ยังไม่มีช่องนี้จะไม่ส่ง taxInvoice มา — คงค่าเดิมไว้
+  const taxInvoice = parseTaxInvoiceBody(body.taxInvoice);
+  if (taxInvoice.error) return NextResponse.json({ error: taxInvoice.error }, { status: 400 });
+  if (taxInvoice.value !== undefined) patch.taxInvoice = taxInvoice.value;
   if (typeof body.name === "string" && body.name.trim()) patch.name = body.name.trim();
   if (typeof body.phone === "string") patch.phone = body.phone.trim() || undefined;
   if (typeof body.email === "string") patch.email = body.email.trim() || undefined;

@@ -212,6 +212,11 @@ export const MIGRATIONS: { name: string; sql: string }[] = [
     sql: "alter table customers add column if not exists postal_code text;",
   },
   {
+    // ขอบิล/ใบกำกับภาษีเต็มรูป (นิติบุคคลหรือบุคคลธรรมดา) — ติ๊กตอนสมัคร / แก้ในหลังบ้าน
+    name: "customers.tax_invoice",
+    sql: "alter table customers add column if not exists tax_invoice jsonb;",
+  },
+  {
     name: "articles.table",
     sql: "create table if not exists articles (id text primary key, slug text not null, title text not null, description text, body text, cover_url text, emoji text, published boolean not null default true, date_published date, created_at timestamptz not null default now());",
   },

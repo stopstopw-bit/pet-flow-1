@@ -6,6 +6,7 @@ import {
   normalizeWeightKg,
 } from "@/lib/customers-store";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
+import { parseTaxInvoiceBody } from "@/lib/tax-invoice";
 import { withResolvedTenant } from "@/lib/tenant-context";
 import { requireCustomerSession } from "@/lib/customer-session";
 
@@ -42,6 +43,11 @@ async function handlePost(req: NextRequest) {
   const addressMapUrl = String(body.addressMapUrl || "").trim();
   const postalCode = String(body.postalCode || "").trim();
   const marketingConsent = body.marketingConsent !== false;
+  // ขอใบกำกับภาษี/บิลเต็มรูป — ไม่ติ๊ก = ไม่ส่งมา; ติ๊กแล้วต้องกรอกครบ
+  const taxInvoice = parseTaxInvoiceBody(body.taxInvoice);
+  if (taxInvoice.error) {
+    return NextResponse.json({ error: taxInvoice.error }, { status: 400 });
+  }
   const cats = Array.isArray(body.cats)
     ? body.cats.map((c: CatBody) => ({
         name: String(c.name || ""),
@@ -88,6 +94,7 @@ async function handlePost(req: NextRequest) {
       address: address || undefined,
       addressMapUrl: addressMapUrl || undefined,
       postalCode: postalCode || undefined,
+      taxInvoice: taxInvoice.value || undefined,
       marketingConsent,
       cats,
     });

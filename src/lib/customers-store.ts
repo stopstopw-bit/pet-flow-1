@@ -12,6 +12,8 @@ import { seedEnabled } from "./demo-seed";
 import { uploadPrivateDataUrl } from "./supabase/storage";
 import { getSiteConfig } from "./config-store";
 import { requireTenantId } from "./tenant-context";
+import { ensureMigration } from "./migrations";
+import { taxInvoiceFromRow, type CustomerTaxInvoice } from "./tax-invoice";
 
 export type { CustomerTier } from "./customer-tier";
 
@@ -76,6 +78,8 @@ export type CustomerRecord = {
   addressMapUrl?: string;
   /** รหัสไปรษณีย์ — ไว้ดูว่าลูกค้าส่วนใหญ่อยู่แถวไหนสำหรับทำการตลาด */
   postalCode?: string;
+  /** ขอบิล/ใบกำกับภาษีเต็มรูป (นิติบุคคลหรือบุคคลธรรมดา) — ไม่มี = ออกในชื่อลูกค้าตามปกติ */
+  taxInvoice?: CustomerTaxInvoice;
   /** รูปบัตรประชาชนผู้ปกครอง (มีข้อความขีดทับ "ใช้ลงทะเบียนที่ร้าน" ฝังในรูปแล้ว) */
   idCardUrl?: string;
   /** รหัสชวนเพื่อนของลูกค้าคนนี้ (แชร์ให้เพื่อนสมัคร) */
@@ -170,6 +174,7 @@ type CustomerRow = {
   address?: string | null;
   address_map_url?: string | null;
   postal_code?: string | null;
+  tax_invoice?: unknown;
   id_card_url?: string | null;
   referral_code?: string | null;
   referred_by?: string | null;
@@ -248,6 +253,7 @@ function mapCustomer(row: CustomerRow): CustomerRecord {
     address: row.address ?? undefined,
     addressMapUrl: row.address_map_url ?? undefined,
     postalCode: row.postal_code ?? undefined,
+    taxInvoice: taxInvoiceFromRow(row.tax_invoice),
     idCardUrl: row.id_card_url ?? undefined,
     referralCode: row.referral_code ?? undefined,
     referredBy: row.referred_by ?? undefined,
@@ -1075,12 +1081,13 @@ export async function updateCustomer(
       | "tier"
       | "lastFollowUpAt"
     >
-  >
+  > & { taxInvoice?: CustomerTaxInvoice | null }
 ) {
   const c = await getCustomer(id);
   if (!c) return null;
 
   Object.assign(c, patch);
+  if (patch.taxInvoice === null) c.taxInvoice = undefined;
   if (patch.isMember && !c.memberSince) {
     c.memberSince = new Date().toISOString().slice(0, 10);
   }
@@ -1127,6 +1134,17 @@ export async function updateCustomer(
           () => {},
           () => {}
         );
+    }
+    if (patch.taxInvoice !== undefined) {
+      // คอลัมน์ใหม่ — แยกเขียนเผื่อยังไม่ได้รัน migration จะได้ไม่ทำให้ช่องอื่นเซฟไม่ติด
+      const write = () =>
+        sb
+          .from("customers")
+          .update({ tax_invoice: c.taxInvoice ?? null })
+          .eq("id", id)
+          .eq("tenant_id", requireTenantId());
+      const { error } = await write();
+      if (error && (await ensureMigration("customers.tax_invoice"))) await write();
     }
   } else {
     memCustomers.set(id, c);
@@ -1596,6 +1614,18 @@ export async function mergeCustomers(sourceId: string, targetId: string) {
     } catch {
       /* ยังไม่มีคอลัมน์ line_user_ids */
     }
+    if (!target.taxInvoice && source.taxInvoice) {
+      // ข้อมูลออกบิล — คอลัมน์ใหม่ เขียนแยกเผื่อยังไม่ได้ migrate
+      await sb
+        .from("customers")
+        .update({ tax_invoice: source.taxInvoice })
+        .eq("id", targetId)
+        .eq("tenant_id", tenantId)
+        .then(
+          () => {},
+          () => {}
+        );
+    }
   } else {
     // mem — ย้ายเท่าที่เก็บใน map นี้ได้ (dev)
     const t = memCustomers.get(targetId);
@@ -1611,6 +1641,7 @@ export async function mergeCustomers(sourceId: string, targetId: string) {
       t.address = t.address || s.address;
       t.addressMapUrl = t.addressMapUrl || s.addressMapUrl;
       t.postalCode = t.postalCode || s.postalCode;
+      t.taxInvoice = t.taxInvoice || s.taxInvoice;
       t.referralSource = t.referralSource || s.referralSource;
       t.lineDisplayName = t.lineDisplayName || s.lineDisplayName;
       if (!t.lineUserId && s.lineUserId) t.lineUserId = s.lineUserId;
@@ -2339,6 +2370,7 @@ export async function registerCustomerFromLine(data: {
   address?: string;
   addressMapUrl?: string;
   postalCode?: string;
+  taxInvoice?: CustomerTaxInvoice;
   marketingConsent?: boolean;
   cats: {
     name: string;
@@ -2425,6 +2457,8 @@ export async function registerCustomerFromLine(data: {
     addressMapUrl: data.addressMapUrl?.trim() || undefined,
     postalCode: data.postalCode?.trim() || undefined,
     marketingConsent: data.marketingConsent ?? true,
+    // ไม่ติ๊กตอนสมัคร = ไม่แตะค่าเดิม (เผื่อร้านกรอกไว้ให้ก่อนแล้ว)
+    ...(data.taxInvoice ? { taxInvoice: data.taxInvoice } : {}),
   });
 
   for (const cat of cats) {

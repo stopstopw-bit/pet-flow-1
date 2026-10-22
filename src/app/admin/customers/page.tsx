@@ -1907,6 +1907,16 @@ function CustomerSummaryCard({
             </span>
           </li>
         )}
+        {customer.taxInvoice && (
+          <li className="flex items-start gap-2">
+            <Icon name="receipt" size={14} className="mt-px text-brown-faint" />
+            <span className="min-w-0 flex-1">
+              <b>ออกบิล{customer.taxInvoice.kind === "person" ? "บุคคลธรรมดา" : "นิติบุคคล"}:</b>{" "}
+              {customer.taxInvoice.name}
+              {customer.taxInvoice.branch && ` (${customer.taxInvoice.branch})`} · เลขภาษี {customer.taxInvoice.taxId}
+            </span>
+          </li>
+        )}
         <li className="flex items-center gap-2">
           <Icon name="user" size={14} className="text-brown-faint" />
           {customer.idCardUrl ? (

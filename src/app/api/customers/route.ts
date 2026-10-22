@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { parseTaxInvoiceBody } from "@/lib/tax-invoice";
 import {
   listCustomersWithAppointmentCounts,
   searchCustomers,
@@ -164,7 +165,13 @@ async function handlePatch(req: NextRequest) {
   }
 
   if (action === "update_customer") {
-    const c = await updateCustomer(id, body.patch);
+    const patch = { ...(body.patch || {}) };
+    if ("taxInvoice" in patch) {
+      const t = parseTaxInvoiceBody(patch.taxInvoice);
+      if (t.error) return NextResponse.json({ error: t.error }, { status: 400 });
+      patch.taxInvoice = t.value;
+    }
+    const c = await updateCustomer(id, patch);
     if (!c) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json({ ok: true, customer: c });
   }
