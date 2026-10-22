@@ -640,6 +640,12 @@ main.addEventListener("change", e => {
 document.getElementById("next").addEventListener("click", () => { if (state.step < TOTAL) { state.step++; save(); render(); } });
 document.getElementById("back").addEventListener("click", () => { if (state.step > 0) { state.step--; save(); render(); } });
 render();
+// แบบร้านที่เลือกไว้ตอนสร้างร้าน (หมา/แมว/ทั้งสองแบบ) — เติมข้อ "ร้านรับดูแลน้องอะไรบ้าง" ให้ก่อน ถ้ายังไม่ได้ตอบ (แก้ได้)
+fetch("/api/config").then(r => r.ok ? r.json() : null).then(d => {
+  const k = d && d.config && d.config.business && d.config.business.petKind;
+  const v = k === "dog" ? "หมา" : k === "cat" ? "แมว" : k === "both" ? PETS_BOTH : "";
+  if (v && !A("pets")) { state.a.pets = v; save(); const y = window.scrollY; render(); window.scrollTo(0, y); }
+}).catch(() => {});
 </script>
 
 </body>

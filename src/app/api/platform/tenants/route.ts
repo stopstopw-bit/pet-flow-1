@@ -168,6 +168,10 @@ export async function POST(req: NextRequest) {
   if (!name) {
     return NextResponse.json({ error: "กรอกชื่อร้าน" }, { status: 400 });
   }
+  const petKind = body.petKind;
+  if (petKind !== "cat" && petKind !== "dog" && petKind !== "both") {
+    return NextResponse.json({ error: "เลือกแบบร้าน: ร้านแมว / ร้านหมา / ร้านหมาและแมว" }, { status: 400 });
+  }
   const slug = body.slug ? slugify(String(body.slug)) : slugify(name);
   if (!slug) {
     return NextResponse.json({ error: "ตั้ง slug ไม่ได้ — ลองใส่ชื่อเป็นภาษาอังกฤษ" }, { status: 400 });
@@ -203,7 +207,7 @@ export async function POST(req: NextRequest) {
   // ชื่อร้านที่ตั้งตอนสร้างต้องไปโผล่ทุกที่ในระบบของร้านนั้นทันที (business.name) —
   // ไม่งั้นร้านใหม่จะเห็น "PetFlow" (ค่า default) ทั่วทั้งระบบจนกว่าจะเข้าไปแก้เองในตั้งค่า
   // ช่องที่เป็นของร้าน (บัญชีธนาคาร/LINE/เบอร์/ลิงก์) เริ่มว่าง ไม่เอาของร้านอื่นหรือ env มาใส่
-  await withTenant(data.id, () => replaceSiteConfig(getBlankShopConfig(name)));
+  await withTenant(data.id, () => replaceSiteConfig(getBlankShopConfig(name, petKind)));
 
   await logAudit({
     tenantId: data.id,
@@ -212,7 +216,7 @@ export async function POST(req: NextRequest) {
     action: "create_tenant",
     resourceType: "tenant",
     resourceId: data.id,
-    afterState: { name: data.name, slug: data.slug, status: data.status },
+    afterState: { name: data.name, slug: data.slug, status: data.status, petKind },
   });
 
   return NextResponse.json({

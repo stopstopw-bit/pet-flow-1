@@ -42,6 +42,8 @@ export default function PlatformDashboard() {
   const [loadErr, setLoadErr] = useState("");
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
+  /** แบบร้าน — ต้องเลือกก่อนสร้าง ระบบทั้งร้าน (คำ/สายพันธุ์/ห้อง/ราคาอาบน้ำ) ตั้งตามแบบนี้ */
+  const [petKind, setPetKind] = useState<"" | "cat" | "dog" | "both">("");
   const [creating, setCreating] = useState(false);
   const [msg, setMsg] = useState("");
   const [busyId, setBusyId] = useState("");
@@ -150,14 +152,14 @@ export default function PlatformDashboard() {
 
   const createTenant = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim() || !petKind) return;
     setCreating(true);
     setMsg("");
     try {
       const res = await fetch("/api/platform/tenants", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, slug }),
+        body: JSON.stringify({ name, slug, petKind }),
       });
       if (expired(res)) return;
       const d = await res.json().catch(() => ({}));
@@ -171,6 +173,7 @@ export default function PlatformDashboard() {
         });
         setName("");
         setSlug("");
+        setPetKind("");
         load();
       } else {
         setMsg(`❌ ${d.error || "สร้างไม่สำเร็จ"}`);
@@ -344,9 +347,36 @@ export default function PlatformDashboard() {
             className="rounded-petflow-sm border border-white/10 bg-[#1a1d29] px-3 py-2 text-sm text-white outline-none focus:border-latte-deep"
           />
         </div>
+        <p className="mb-1.5 mt-3 text-xs font-bold text-white/70">แบบร้าน (เลือก 1 อย่าง)</p>
+        <div className="mb-1 grid grid-cols-3 gap-2">
+          {(
+            [
+              ["cat", "🐱 ร้านแมว"],
+              ["dog", "🐶 ร้านหมา"],
+              ["both", "🐾 ร้านหมาและแมว"],
+            ] as const
+          ).map(([k, label]) => (
+            <button
+              key={k}
+              type="button"
+              aria-pressed={petKind === k}
+              onClick={() => setPetKind(k)}
+              className={`min-h-[44px] rounded-petflow-sm border px-2 text-xs font-extrabold transition ${
+                petKind === k
+                  ? "border-latte-deep bg-latte-deep text-white"
+                  : "border-white/10 bg-[#1a1d29] text-white/70"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <p className="mb-3 text-[11px] text-white/50">
+          ระบบของร้านจะตั้งตามแบบนี้: คำในหน้าลูกค้า สายพันธุ์ ห้องพัก ไซส์และราคาอาบน้ำ ของแถม (แก้ต่อเองได้ในหน้าตั้งค่า)
+        </p>
         <button
           type="submit"
-          disabled={creating || !name.trim()}
+          disabled={creating || !name.trim() || !petKind}
           className="w-full rounded-petflow-sm bg-latte-deep py-2.5 text-xs font-extrabold text-white disabled:opacity-40 sm:w-auto sm:px-6"
         >
           {creating ? "กำลังสร้าง…" : "สร้างร้าน"}
