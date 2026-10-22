@@ -1387,7 +1387,8 @@ export async function addCat(
   const hasAge = data.ageValue != null && !isNaN(data.ageValue);
   const today = new Date().toISOString().slice(0, 10);
 
-  const catId = `CAT${Date.now()}`;
+  // ต่อท้ายสุ่ม — เพิ่มหลายตัวติดกันในคำขอเดียว (สมัคร/ร้านเพิ่มลูกค้าเอง) อาจได้ Date.now() เดียวกัน
+  const catId = `CAT${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
   const cat: CatRecord = {
     id: catId,
     name,
