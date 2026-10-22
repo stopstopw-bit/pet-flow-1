@@ -1,7 +1,11 @@
 import type { CustomerRecord } from "./customers-store";
 import { customerSummary, getCustomer, listCustomers, updateCustomer } from "./customers-store";
 import { getSiteConfig } from "./config-store";
-import { pushLineMessage, politeName } from "./line";
+import type { SiteConfig } from "./config-types";
+import { buildMissYouFlex, pushLineMessage, politeName } from "./line";
+import { getLineCredentials, shopAppBase } from "./line-config";
+import { buildBroadcastButtons } from "./line-broadcast";
+import { missYouActions } from "./miss-you-card";
 
 export type InactiveCustomerInfo = {
   customer: CustomerRecord;
@@ -100,6 +104,48 @@ export async function listInactiveCustomers(
   return results.sort((a, b) => (b.daysSinceVisit ?? 0) - (a.daysSinceVisit ?? 0));
 }
 
+/**
+ * การ์ด "คิดถึงน้อง" ที่จะส่งหาลูกค้าคนนี้ — ใช้ทั้งตอนพรีวิวและตอนส่งจริง ให้เห็นตรงกันทุกตัวอักษร
+ * เนื้อความมาจาก crm.followUpMessage · หน้าตา/ปุ่มมาจาก cards.missYou ของร้านนี้
+ */
+async function buildFollowUpMessages(
+  customer: CustomerRecord,
+  config: SiteConfig,
+  message?: string
+) {
+  const lastVisitDate = await getCustomerLastVisitDate(customer.id);
+  const daysSinceVisit = lastVisitDate ? daysBetween(lastVisitDate) : config.crm.inactiveDays;
+  // ตัด "น้อง" หน้าชื่อออก — แม่แบบเขียน "น้อง{pets}" อยู่แล้ว ไม่งั้นได้ "น้องน้องมะลิ"
+  const cats = customer.cats.map((c) => c.name.replace(/^น้อง\s*/, "")).join(", ");
+  const template = message?.trim() || config.crm.followUpMessage;
+  const text = formatFollowUpMessage(template, {
+    name: politeName(customer.name),
+    days: daysSinceVisit,
+    cats,
+    shop: config.business.name,
+  });
+  const style = config.cards?.missYou;
+  const actions = missYouActions(style?.texts);
+  const creds = actions.length ? await getLineCredentials() : null;
+  const buttons = actions.length
+    ? buildBroadcastButtons(actions, creds?.liffId, config.business, await shopAppBase())
+    : [];
+  const flex = buildMissYouFlex({ body: text, shopName: config.business.name, buttons }, style);
+  return { text, messages: [flex] as Record<string, unknown>[] };
+}
+
+/** ดูตัวอย่างการ์ดก่อนส่ง — ไม่ส่ง ไม่บันทึกอะไร */
+export async function previewCustomerFollowUp(
+  customerId: string,
+  options?: { message?: string }
+): Promise<{ ok: true; messages: Record<string, unknown>[] } | { ok: false; error: string }> {
+  const customer = await getCustomer(customerId);
+  if (!customer) return { ok: false, error: "ไม่พบลูกค้า" };
+  const config = await getSiteConfig();
+  const { messages } = await buildFollowUpMessages(customer, config, options?.message);
+  return { ok: true, messages };
+}
+
 export async function sendCustomerFollowUp(
   customerId: string,
   options?: { message?: string; force?: boolean }
@@ -121,18 +167,8 @@ export async function sendCustomerFollowUp(
     };
   }
 
-  const lastVisitDate = await getCustomerLastVisitDate(customerId);
-  const daysSinceVisit = lastVisitDate ? daysBetween(lastVisitDate) : config.crm.inactiveDays;
-  const cats = customer.cats.map((c) => c.name).join(", ");
-  const template = options?.message?.trim() || config.crm.followUpMessage;
-  const text = formatFollowUpMessage(template, {
-    name: politeName(customer.name),
-    days: daysSinceVisit,
-    cats,
-    shop: config.business.name,
-  });
-
-  await pushLineMessage(customer.lineUserId, [{ type: "text", text }]);
+  const { text, messages } = await buildFollowUpMessages(customer, config, options?.message);
+  await pushLineMessage(customer.lineUserId, messages);
 
   const now = new Date().toISOString();
   const updated = await updateCustomer(customerId, { lastFollowUpAt: now });

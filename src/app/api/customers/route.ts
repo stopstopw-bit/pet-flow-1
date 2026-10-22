@@ -31,6 +31,7 @@ import { getAllPointsMap } from "@/lib/points-store";
 import {
   customerActivityInfo,
   listInactiveCustomers,
+  previewCustomerFollowUp,
   sendCustomerFollowUp,
   sendInactiveFollowUps,
 } from "@/lib/customer-crm";
@@ -418,6 +419,14 @@ async function handlePatch(req: NextRequest) {
   }
 
   if (action === "send_follow_up") {
+    // ดูตัวอย่างการ์ดก่อนส่งจริง — ยังไม่ส่ง ไม่นับ cooldown
+    if (body.preview === true) {
+      const preview = await previewCustomerFollowUp(id, {
+        message: body.message ? String(body.message) : undefined,
+      });
+      if (!preview.ok) return NextResponse.json({ error: preview.error }, { status: 400 });
+      return NextResponse.json({ ok: true, preview: preview.messages });
+    }
     const result = await sendCustomerFollowUp(id, {
       message: body.message ? String(body.message) : undefined,
       force: Boolean(body.force),

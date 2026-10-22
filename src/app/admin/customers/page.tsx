@@ -1459,6 +1459,7 @@ function CustomerSummaryCard({
   const [tier, setTier] = useState<CustomerTier>(customer.tier || "new");
   const [msg, setMsg] = useState("");
   const [followUpBusy, setFollowUpBusy] = useState(false);
+  const [followUpPreview, setFollowUpPreview] = useState<Record<string, unknown>[] | null>(null);
   const { config: siteConfig } = useConfig();
   const followUpOn = isFeatureOn(siteConfig, "followUp");
   const [addAmt, setAddAmt] = useState("");
@@ -1809,12 +1810,32 @@ function CustomerSummaryCard({
     }
   };
 
-  const sendFollowUp = async () => {
+  /** กดปุ่ม → ดูตัวอย่างการ์ดที่ลูกค้าจะเห็นก่อน แล้วค่อยยืนยันส่ง */
+  const previewFollowUp = async () => {
     if (!customer.lineUserId) {
       setMsg("❌ ลูกค้ายังไม่ได้ผูก LINE");
       return;
     }
-    if (!confirm(`ส่งข้อความตาม ${customer.name} ทาง LINE?`)) return;
+    setFollowUpBusy(true);
+    try {
+      const res = await fetch("/api/customers", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: customer.id, action: "send_follow_up", preview: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(data.preview)) {
+        setFollowUpPreview(data.preview);
+      } else {
+        setMsg(`❌ ${data.error || "ดูตัวอย่างการ์ดไม่สำเร็จ"}`);
+        setTimeout(() => setMsg(""), 3000);
+      }
+    } finally {
+      setFollowUpBusy(false);
+    }
+  };
+
+  const sendFollowUp = async () => {
     setFollowUpBusy(true);
     const res = await fetch("/api/customers", {
       method: "PATCH",
@@ -1822,13 +1843,15 @@ function CustomerSummaryCard({
       body: JSON.stringify({
         id: customer.id,
         action: "send_follow_up",
+        // ส่งเพราะร้านกดเอง ดูการ์ดแล้ว — ไม่ต้องติดเงื่อนไข "ไม่ส่งซ้ำภายใน X วัน" ของระบบส่งอัตโนมัติ
         force: !canFollowUp,
       }),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     setFollowUpBusy(false);
+    setFollowUpPreview(null);
     if (res.ok) {
-      setMsg("✅ ส่งข้อความตามแล้ว");
+      setMsg("✅ ส่งการ์ดทักลูกค้าแล้ว");
       onSaved();
     } else {
       setMsg(`❌ ${data.error || "ส่งไม่สำเร็จ"}`);
@@ -2008,29 +2031,47 @@ function CustomerSummaryCard({
       </div>
 
       {followUpOn && (inactive || customer.lineUserId) && (
-        <div className="mb-3 flex items-center gap-3 rounded-petflow-sm border border-petflow-line bg-card/85 p-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sage/20 text-ok">
-            <Icon name="send" size={18} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-extrabold text-petflow-chocolate">ตามลูกค้าทาง LINE</p>
-            <p className="truncate text-[10px] text-brown-faint">
-              {customer.lastFollowUpAt
-                ? `ส่งล่าสุด: ${customer.lastFollowUpAt.slice(0, 10)}`
-                : !customer.lineUserId
+        <div className="mb-3 rounded-petflow-sm border border-petflow-line bg-card/85 p-3">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sage/20 text-ok">
+              <Icon name="send" size={18} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-extrabold text-petflow-chocolate">ทักลูกค้าทาง LINE</p>
+              <p className="text-[10px] text-brown-faint">
+                {!customer.lineUserId
                   ? "ต้องผูก LINE ก่อนจึงส่งได้"
-                  : "ยังไม่เคยส่ง"}
-            </p>
+                  : customer.lastFollowUpAt
+                    ? `ส่งการ์ด "คิดถึงน้อง" ล่าสุด ${customer.lastFollowUpAt.slice(0, 10)}`
+                    : `ส่งการ์ด "คิดถึงน้อง" ชวนกลับมาใช้บริการ · ยังไม่เคยส่ง`}
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={followUpBusy || !customer.lineUserId}
+              onClick={previewFollowUp}
+              className="flex min-h-[40px] shrink-0 items-center gap-1 rounded-full bg-sage/25 px-3.5 py-2 text-xs font-bold text-ok disabled:opacity-50"
+            >
+              <Icon name="eye" size={14} />
+              {followUpBusy && !followUpPreview ? "กำลังโหลด…" : customer.lastFollowUpAt ? "ดูการ์ด + ส่งอีกครั้ง" : "ดูการ์ด + ส่ง"}
+            </button>
           </div>
-          <button
-            type="button"
-            disabled={followUpBusy || !customer.lineUserId}
-            onClick={sendFollowUp}
-            className="min-h-[40px] shrink-0 rounded-full bg-sage/25 px-3.5 py-2 text-xs font-bold text-ok disabled:opacity-50"
+          <a
+            href="/admin/cards?card=missYou"
+            className="mt-1.5 block text-right text-[10px] font-bold text-latte-deep underline"
           >
-            {followUpBusy ? "กำลังส่ง…" : canFollowUp ? "ส่งข้อความ" : "ส่งซ้ำ (ข้าม cooldown)"}
-          </button>
+            แก้ข้อความ/หน้าตาการ์ดนี้
+          </a>
         </div>
+      )}
+
+      {followUpPreview && (
+        <PreviewSendModal
+          messages={followUpPreview}
+          sending={followUpBusy}
+          onConfirm={sendFollowUp}
+          onCancel={() => setFollowUpPreview(null)}
+        />
       )}
 
       <div className="mb-3 rounded-petflow-sm border border-petflow-line bg-card/85 p-3">
