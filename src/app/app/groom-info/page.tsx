@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useLiff } from "@/components/LiffProvider";
 import { useConfig } from "@/components/ConfigProvider";
 import { resolveGroomForm, type GroomField } from "@/lib/groom-form";
+import { resolveStayForm } from "@/lib/stay-form";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { BTN_PRIMARY, PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/ui";
@@ -18,6 +19,8 @@ type CatForm = {
   answers: Answers;
   /** ติ๊ก "ไม่ทราบน้ำหนัก" */
   weightUnknown: boolean;
+  /** คำถามที่ข้ามให้ตัวนี้ (เช่น โรคประจำตัวที่ตอบไว้แล้วตอนสมัครสมาชิก) */
+  skip: string[];
 };
 
 function emptyAnswers(fields: GroomField[]): Answers {
@@ -44,18 +47,18 @@ function loadAnswers(fields: GroomField[], info: Record<string, unknown> | null)
 
 function GroomInfoContent() {
   const params = useSearchParams();
-  const ids = (params.get("id") || "")
+  // ลิงก์จากนัด (id = bookingId) หรือจากหน้าข้อมูลลูกค้า (cats = ตัวน้อง ยังไม่ต้องมีนัด)
+  const catMode = !!params.get("cats");
+  const ids = (params.get("cats") || params.get("id") || "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
   const { profile } = useLiff();
   const { config } = useConfig();
 
-  // คำถามทั้งหมด — ตามที่ร้านตั้งไว้ในหลังบ้าน (ไม่ตั้ง = ค่าเริ่มต้นของระบบ)
-  const fields = useMemo(
-    () => resolveGroomForm(config.groomForm),
-    [config.groomForm]
-  );
+  // คำถามทั้งหมด — ก่อนอาบน้ำ: ตามที่ร้านตั้งไว้ในหลังบ้าน · ก่อนเข้าพัก: ชุดการกิน/การดูแล (stay-form)
+  const groomFields = useMemo(() => resolveGroomForm(config.groomForm), [config.groomForm]);
+  const stayFields = useMemo(() => resolveStayForm(), []);
 
   const [forms, setForms] = useState<CatForm[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,8 +66,10 @@ function GroomInfoContent() {
   const [done, setDone] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [attempted, setAttempted] = useState(false);
-  // นัดเข้าพักใช้ฟอร์มเดียวกัน (ข้อมูลน้อง/นิสัย/สุขภาพ) — แค่เปลี่ยนหัวข้อให้ตรงบริการ
-  const [isStay, setIsStay] = useState(false);
+  // นัดเข้าพัก / ลิงก์ kind=stay → ฟอร์มก่อนเข้าพัก (คนละชุดคำถามกับก่อนอาบน้ำ)
+  const kindParam = params.get("kind") || "";
+  const [isStay, setIsStay] = useState(kindParam === "stay");
+  const fields = isStay ? stayFields : groomFields;
 
   useEffect(() => {
     if (ids.length === 0) {
@@ -75,29 +80,35 @@ function GroomInfoContent() {
     if (!profile?.lineUserId) return;
     Promise.all(
       ids.map((id) =>
-        fetch(`/api/bookings/groom-info?id=${id}`)
+        fetch(
+          `/api/bookings/groom-info?${catMode ? "cat" : "id"}=${encodeURIComponent(id)}${kindParam ? `&kind=${kindParam}` : ""}`
+        )
           .then((r) => r.json())
           .catch(() => null)
       )
     )
       .then((results) => {
         const loaded: CatForm[] = [];
+        // เซิร์ฟเวอร์บอกว่าเป็นฟอร์มไหน (นัดเข้าพัก = ก่อนเข้าพัก) — ใช้ชุดคำถามนั้นทั้งหน้า
+        const stay = results.some((d) => d?.kind === "stay");
+        setIsStay(stay);
+        const fs = stay ? stayFields : groomFields;
         results.forEach((d, i) => {
           if (!d?.found) return;
           const info = d.info || null;
-          if (d.booking?.service === "room") setIsStay(true);
           loaded.push({
             id: ids[i],
             catName: d.booking?.catName || "น้อง",
-            answers: loadAnswers(fields, info),
+            answers: loadAnswers(fs, info),
             weightUnknown: info?.weight === "unknown",
+            skip: stay && d.knownMedical ? ["medical"] : [],
           });
         });
         setForms(loaded);
       })
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.toString(), fields, profile?.lineUserId]);
+  }, [params.toString(), groomFields, stayFields, profile?.lineUserId]);
 
   const setAnswer = (idx: number, key: string, value: string | string[]) =>
     setForms((prev) =>
@@ -127,7 +138,7 @@ function GroomInfoContent() {
   const missingKeys = (f: CatForm) =>
     fields
       .filter((fd) => {
-        if (!fd.required) return false;
+        if (!fd.required || f.skip.includes(fd.key)) return false;
         if (fd.key === "weight" && f.weightUnknown) return false;
         const v = f.answers[fd.key];
         return Array.isArray(v) ? v.length === 0 : !String(v || "").trim();
@@ -150,7 +161,8 @@ function GroomInfoContent() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              bookingId: f.id,
+              ...(catMode ? { catId: f.id } : { bookingId: f.id }),
+              kind: isStay ? "stay" : "groom",
               lineUserId: profile?.lineUserId,
               info: {
                 ...f.answers,
@@ -269,7 +281,7 @@ function GroomInfoContent() {
                   </p>
                 )}
 
-                {fields.map((fd) => {
+                {fields.filter((fd) => !f.skip.includes(fd.key)).map((fd) => {
                   const isMissing = attempted && missing.includes(fd.key);
                   const value = f.answers[fd.key];
                   return (

@@ -349,18 +349,17 @@ export function CustomerSendButtons({
   // ครบทุกหัวข้อเท่ากับปุ่มเดี่ยวด้านบน — เลือกผสมได้อิสระ ส่งใน 1 ข้อความ
   // บิลที่มีทั้งอาบน้ำและเข้าพัก (service = "both") ต้องเห็นการ์ดฝั่งเข้าพักด้วย
   const hasRoomStay = service === "room" || service === "both";
+  // ครบทุกการ์ดเท่าที่ส่งได้ (ไม่จำกัดตามบริการ) — นัดอาบน้ำก็ส่งกฎ/เตรียมตัว/เลือกเวลาได้ถ้าร้านต้องการ
+  // ใบที่ต้องมีบิล/จ่ายแล้วยังซ่อนไว้จนกว่าจะมีข้อมูลจริง (กันส่งการ์ดว่าง)
   const BUNDLE_OPTIONS: { key: string; label: string; when: boolean }[] = [
     { key: "reminder", label: "แจ้งเตือนนัด", when: !!bookingId },
-    { key: "prestay", label: "แจ้งเตรียมตัวเข้าพัก", when: hasRoomStay },
-    { key: "consent", label: "เงื่อนไข + ลายเซ็น", when: hasRoomStay },
-    {
-      // เข้าพักก็ขอประวัติได้ — เคสพักพร้อมอาบน้ำ หรือมาเพิ่มอาบน้ำระหว่างเข้าพัก
-      key: "groomInfo",
-      label: "ขอประวัติก่อนอาบน้ำ",
-      when: !!bookingId,
-    },
-    { key: "checkin", label: "เลือกเวลาเช็คอิน", when: hasRoomStay },
-    { key: "checkout", label: "เลือกเวลาเช็คเอาท์", when: hasRoomStay },
+    { key: "groomInfo", label: hasRoomStay ? "ข้อมูลน้องก่อนเข้าพัก" : "ขอประวัติก่อนอาบน้ำ", when: !!bookingId },
+    { key: "vaccine", label: "ขอสมุดวัคซีน", when: !!bookingId },
+    { key: "idcard", label: "ขอบัตรประชาชน", when: !!bookingId },
+    { key: "consent", label: "กฎ + กดยินยอม", when: !!bookingId },
+    { key: "prestay", label: "แจ้งเตรียมตัวเข้าพัก", when: !!bookingId },
+    { key: "checkin", label: "เลือกเวลาเช็คอิน", when: !!bookingId },
+    { key: "checkout", label: "เลือกเวลาเช็คเอาท์", when: !!bookingId },
     { key: "deposit", label: "เรียกเก็บมัดจำ", when: true },
     {
       key: "depositThanks",
@@ -426,7 +425,7 @@ export function CustomerSendButtons({
       k: "send_consent",
       label: "เงื่อนไข + ลายเซ็น",
       icon: "edit",
-      when: !!bookingId && hasRoomStay,
+      when: !!bookingId,
       onClick: () => bookingSend("send_consent", "ส่งการ์ดเงื่อนไข + ลายเซ็นแล้ว 📋"),
     },
     {
@@ -440,7 +439,7 @@ export function CustomerSendButtons({
       k: "send_idcard_request",
       label: "ขอรูปบัตรประชาชน",
       icon: "user",
-      when: !!bookingId && hasRoomStay,
+      when: !!bookingId,
       onClick: () => bookingSend("send_idcard_request", "ส่งการ์ดขอบัตรประชาชนแล้ว 🪪"),
     },
     {

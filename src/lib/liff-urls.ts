@@ -50,3 +50,24 @@ export function buildPetDocsUrl(liffId: string, bookingIds: string | string[], n
   const id = Array.isArray(bookingIds) ? bookingIds.join(",") : bookingIds;
   return buildLiffUrl(liffId, { path: "pet-docs", id, need });
 }
+
+/**
+ * ลิงก์ที่ร้านส่งจากหน้าข้อมูลลูกค้า (ยังไม่ต้องมีนัด) — ชี้ที่ตัวน้อง (catIds) แทนนัด
+ * kind: ฟอร์มข้อมูลน้องฉบับ "ก่อนอาบน้ำ" หรือ "ก่อนเข้าพัก" (คำถามชุดเดียวกัน ต่างแค่หัวข้อ)
+ */
+export function buildCatInfoUrl(liffId: string, catIds: string[], kind: "groom" | "stay") {
+  return buildLiffUrl(liffId, { path: "groom-info", cats: catIds.join(","), kind });
+}
+
+export function buildCatVaccineUrl(liffId: string, catIds: string[]) {
+  return buildLiffUrl(liffId, { path: "pet-docs", cats: catIds.join(","), need: "vaccine" });
+}
+
+export function buildIdCardUrl(liffId: string) {
+  return buildLiffUrl(liffId, { path: "pet-docs", need: "idcard" });
+}
+
+/** หน้าข้อตกลงแบบไม่ผูกนัด — ยอมรับแล้วเก็บไว้ที่ลูกค้า */
+export function buildCustomerConsentUrl(liffId: string) {
+  return buildLiffUrl(liffId, { path: "consent", mode: "customer" });
+}

@@ -36,6 +36,7 @@ async function handleGet(req: NextRequest) {
       addressMapUrl: c.addressMapUrl || "",
       postalCode: c.postalCode || "",
       idCardUrl: c.idCardUrl || "",
+      consentAcceptedAt: c.consentAcceptedAt || "",
       taxInvoice: c.taxInvoice ?? null,
       marketingConsent: c.marketingConsent !== false,
       cats: c.cats.map((x) => ({
@@ -49,6 +50,10 @@ async function handleGet(req: NextRequest) {
         birthday: x.birthday || "",
         medical: x.medical || "",
         note: x.staffNote || "",
+        // หน้าแนบสมุดวัคซีน/ฟอร์มประวัติใช้บอกลูกค้าว่าส่งอะไรไปแล้วบ้าง (ไม่ส่งตัวรูปออกไป)
+        vaccineCount: x.vaccinePhotos ? x.vaccinePhotos.split("\n").filter(Boolean).length : 0,
+        hasPetInfo: Boolean(x.groomHealthInfo),
+        hasStayInfo: Boolean(x.stayInfo),
       })),
     },
   });

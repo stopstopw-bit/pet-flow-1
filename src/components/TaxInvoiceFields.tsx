@@ -19,6 +19,7 @@ function TaxInvoiceDetail({
   kinds,
   prefill,
   phoneRequired,
+  requireAll,
 }: {
   value: TaxInvoiceForm;
   onChange: (next: TaxInvoiceForm) => void;
@@ -27,6 +28,8 @@ function TaxInvoiceDetail({
   kinds: TaxInvoiceKind[];
   prefill?: Prefill;
   phoneRequired?: boolean;
+  /** หน้าสมัครสมาชิก: ต้องกรอกครบทุกช่อง (รวมเบอร์บริษัท) */
+  requireAll?: boolean;
 }) {
   const set = (patch: Partial<TaxInvoiceForm>) => onChange({ ...value, ...patch });
   const pickKind = (kind: TaxInvoiceKind) => {
@@ -58,6 +61,7 @@ function TaxInvoiceDetail({
       <label className="block">
         <span className={label}>{person ? "ชื่อ-นามสกุล" : "ชื่อบริษัท / นิติบุคคล"}</span>
         <input
+          required={requireAll}
           value={value.name}
           onChange={(e) => set({ name: e.target.value })}
           placeholder={person ? "เช่น สมชาย ใจดี" : "เช่น บริษัท ตัวอย่าง จำกัด"}
@@ -71,6 +75,7 @@ function TaxInvoiceDetail({
           <span className={hint}>{person ? "(เลขบัตรประชาชน 13 หลัก)" : "(13 หลัก)"}</span>
         </span>
         <input
+          required={requireAll}
           value={value.taxId}
           inputMode="numeric"
           onChange={(e) => set({ taxId: e.target.value.replace(/\D/g, "").slice(0, 13) })}
@@ -92,6 +97,7 @@ function TaxInvoiceDetail({
           </div>
           {!value.headOffice && (
             <input
+              required={requireAll}
               value={value.branchNo}
               inputMode="numeric"
               onChange={(e) => set({ branchNo: e.target.value.replace(/\D/g, "").slice(0, 5) })}
@@ -105,6 +111,7 @@ function TaxInvoiceDetail({
       <label className="block">
         <span className={label}>{person ? "ที่อยู่" : "ที่อยู่ตามทะเบียน"}</span>
         <textarea
+          required={requireAll}
           value={value.address}
           onChange={(e) => set({ address: e.target.value })}
           rows={3}
@@ -115,9 +122,10 @@ function TaxInvoiceDetail({
 
       <label className="block">
         <span className={label}>
-          เบอร์โทร {!person && !phoneRequired && <span className={hint}>(ไม่บังคับ)</span>}
+          เบอร์โทร {!person && !phoneRequired && !requireAll && <span className={hint}>(ไม่บังคับ)</span>}
         </span>
         <input
+          required={requireAll}
           type="tel"
           value={value.phone}
           onChange={(e) => set({ phone: e.target.value })}
@@ -139,6 +147,7 @@ export function TaxInvoiceFields({
   fieldClass,
   prefill,
   kinds = ["company", "person"],
+  requireAll,
 }: {
   value: TaxInvoiceForm;
   onChange: (next: TaxInvoiceForm) => void;
@@ -146,6 +155,8 @@ export function TaxInvoiceFields({
   /** ข้อมูลผู้ปกครองที่กรอกไว้แล้ว — เติมให้ตอนเลือก "บุคคลธรรมดา" ถ้าช่องยังว่าง */
   prefill?: Prefill;
   kinds?: TaxInvoiceKind[];
+  /** หน้าสมัครสมาชิก: ติ๊กแล้วต้องกรอกครบทุกช่อง */
+  requireAll?: boolean;
 }) {
   const personOnly = kinds.length === 1 && kinds[0] === "person";
   const toggle = (on: boolean) => {
@@ -184,7 +195,7 @@ export function TaxInvoiceFields({
 
       {value.on && (
         <div className="space-y-3 rounded-petflow-sm border border-dashed border-latte bg-paper/60 p-3">
-          <TaxInvoiceDetail value={value} onChange={onChange} fieldClass={fieldClass} kinds={kinds} prefill={prefill} />
+          <TaxInvoiceDetail value={value} onChange={onChange} fieldClass={fieldClass} kinds={kinds} prefill={prefill} requireAll={requireAll} />
         </div>
       )}
     </div>
@@ -204,6 +215,7 @@ export function AccountTypeFields({
   sameContact,
   onSameContact,
   fieldClass,
+  requireAll,
 }: {
   isCompany: boolean;
   onIsCompany: (v: boolean) => void;
@@ -212,6 +224,8 @@ export function AccountTypeFields({
   sameContact: boolean;
   onSameContact: (v: boolean) => void;
   fieldClass: string;
+  /** หน้าสมัครสมาชิก: ข้อมูลบริษัทต้องกรอกครบทุกช่อง (รวมเบอร์) */
+  requireAll?: boolean;
 }) {
   return (
     <div className="space-y-3">
@@ -237,6 +251,7 @@ export function AccountTypeFields({
               fieldClass={fieldClass}
               kinds={["company"]}
               phoneRequired={sameContact}
+              requireAll={requireAll}
             />
           </div>
           <label className="flex min-h-[44px] cursor-pointer items-start gap-2.5">
