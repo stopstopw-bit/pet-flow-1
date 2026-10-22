@@ -1617,6 +1617,77 @@ export function buildGroomInfoFlex(data: {
   };
 }
 
+/**
+ * การ์ดขอเอกสารก่อนเข้าพัก — ขอรูปสมุดวัคซีน หรือ ขอรูปบัตรประชาชนผู้ปกครอง
+ * ปุ่มเปิดหน้าแนบรูปในแอปลูกค้า (/app/pet-docs) ซึ่งแนบได้อย่างเดียว ไม่ต้องเซ็นข้อตกลงซ้ำ
+ */
+export function buildDocRequestFlex(data: {
+  kind: "vaccine" | "idcard";
+  businessName: string;
+  catName: string;
+  dateText?: string;
+  url: string;
+}) {
+  const vaccine = data.kind === "vaccine";
+  const header = vaccine ? "💉 ขอรูปสมุดวัคซีนน้อง" : "🪪 ขอรูปบัตรประชาชนผู้ปกครอง";
+  const bodyText = vaccine
+    ? `รบกวนถ่ายรูปสมุดวัคซีนของ${politeCat(data.catName)}ส่งให้ทางร้านหน่อยนะคะ 📸\nแนบได้หลายหน้า กดปุ่มด้านล่างแล้วเลือกรูปได้เลยค่ะ`
+    : `รบกวนแนบรูปบัตรประชาชนของผู้ปกครองน้อง เพื่อลงทะเบียนเข้าพักนะคะ 🙏\nระบบจะพิมพ์ข้อความขีดทับลงในรูปให้อัตโนมัติก่อนส่ง แนบครั้งเดียวพอ รอบหน้าไม่ต้องแนบอีกค่ะ`;
+  const contents: Record<string, unknown>[] = [
+    {
+      type: "text",
+      text: `🐱 ${politeCat(data.catName)}`,
+      weight: "bold",
+      size: "lg",
+      color: "#5C4033",
+      wrap: true,
+    },
+    {
+      type: "text",
+      text: data.dateText ? `${data.businessName} · ${data.dateText}` : data.businessName,
+      size: "xs",
+      color: "#A2907E",
+      margin: "xs",
+      wrap: true,
+    },
+    { type: "text", text: bodyText, size: "sm", color: "#4E3E32", margin: "md", wrap: true },
+  ];
+  return {
+    type: "flex",
+    altText: `${header} — ${politeCat(data.catName)}`,
+    contents: {
+      type: "bubble",
+      size: "mega",
+      header: {
+        type: "box",
+        layout: "vertical",
+        backgroundColor: BRAND_HEADER,
+        paddingAll: "16px",
+        contents: [{ type: "text", text: header, color: "#FFFFFF", weight: "bold", size: "sm" }],
+      },
+      body: { type: "box", layout: "vertical", paddingAll: "16px", contents },
+      footer: {
+        type: "box",
+        layout: "vertical",
+        paddingAll: "12px",
+        contents: [
+          {
+            type: "button",
+            style: "primary",
+            color: BRAND_ACTION,
+            height: "sm",
+            action: {
+              type: "uri",
+              label: vaccine ? "📸 แนบสมุดวัคซีน" : "🪪 แนบบัตรประชาชน",
+              uri: data.url,
+            },
+          },
+        ],
+      },
+    },
+  };
+}
+
 /** การ์ดเรียกเก็บมัดจำ — ชัดๆ ว่าต้องโอนเท่าไหร่ (ส่งก่อนลูกค้าโอน) */
 export function buildDepositRequestFlex(data: {
   title: string;

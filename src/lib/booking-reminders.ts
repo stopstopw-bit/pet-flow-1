@@ -1,6 +1,6 @@
 import { getLineCredentials } from "./line-config";
 import { politeCat } from "./line";
-import { buildConsentUrl, buildBookingTimeUrl, buildGroomInfoUrl } from "./liff-urls";
+import { buildConsentUrl, buildBookingTimeUrl, buildGroomInfoUrl, buildPetDocsUrl } from "./liff-urls";
 import { renderTemplate, DEFAULT_MESSAGES, DEEMED_CONSENT_NOTICE } from "./messages";
 import { formatThaiDateShort } from "./format-thai-date";
 import type { StoredBooking } from "./bookings-store";
@@ -33,6 +33,12 @@ export function bookingScheduleText(b: {
 export async function getConsentUrl(bookingId?: string): Promise<string> {
   const liffId = (await getLineCredentials())?.liffId;
   return liffId ? buildConsentUrl(liffId, bookingId) : "";
+}
+
+/** ลิงก์หน้าแนบสมุดวัคซีน / บัตรประชาชน ของนัดนั้น (คืน "" ถ้ายังไม่ได้ตั้ง LIFF ID) */
+export async function getPetDocsUrl(bookingIds: string | string[], need: "vaccine" | "idcard"): Promise<string> {
+  const liffId = (await getLineCredentials())?.liffId;
+  return liffId ? buildPetDocsUrl(liffId, bookingIds, need) : "";
 }
 
 /** ลิงก์หน้าเลือกเวลาส่ง/รับน้อง (คืน "" ถ้ายังไม่ได้ตั้ง LIFF ID) */

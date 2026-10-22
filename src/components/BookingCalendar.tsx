@@ -1,6 +1,5 @@
 "use client";
 
-import { splitVaccinePhotos } from "@/lib/vaccine-photos";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -8,6 +7,7 @@ import { Icon } from "@/components/Icon";
 import { Avatar, EmptyState, MoreMenu, Segmented } from "@/components/ui";
 import { BookingEditModal, type EditableBooking } from "@/components/BookingEditModal";
 import { CustomerSendButtons } from "@/components/CustomerSendButtons";
+import { VaccinePhotosAdmin } from "@/components/VaccinePhotosAdmin";
 import { InvoiceActionButtons } from "@/components/InvoiceActionButtons";
 import { bookingOnDate } from "@/lib/booking-customer-match";
 import { toast } from "@/components/Toast";
@@ -2250,45 +2250,24 @@ export function BookingCalendar() {
                       ยังไม่กดยอมรับข้อตกลง
                     </p>
                   ))}
-                {b.service === "room" && b.consentAcceptedAt && (
-                  <div className="mt-1 space-y-1">
-                    {group.map((x) => (
-                      <div key={x.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
-                        <span className="flex items-center gap-1 font-bold text-brown-soft">
-                          <Icon name="paw" size={12} />
-                          {x.catName}
+                {/* สมุดวัคซีนรายตัว — โชว์ทุกนัด พนักงานแนบเองได้ ไม่ต้องรอลูกค้ากดยอมรับข้อตกลงก่อน */}
+                <div className="mt-1 space-y-1">
+                  {group.map((x) => (
+                    <div key={x.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                      <span className="flex items-center gap-1 font-bold text-brown-soft">
+                        <Icon name="paw" size={12} />
+                        {x.catName}
+                      </span>
+                      <VaccinePhotosAdmin bookingId={x.id} value={x.vaccinePhotoUrl} onDone={load} />
+                      {x.fleaTickTreated && (
+                        <span className="flex items-center gap-1 font-bold text-ok">
+                          <Icon name="check" size={12} strokeWidth={2.4} />
+                          หยดยาเห็บหมัดแล้ว
                         </span>
-                        {x.vaccinePhotoUrl ? (
-                          splitVaccinePhotos(x.vaccinePhotoUrl).map((url, vi, all) => (
-                            <a
-                              key={url}
-                              href={url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex min-h-[40px] items-center gap-1.5 font-bold text-ok underline"
-                            >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={url}
-                                alt="สมุดวัคซีน"
-                                className="h-8 w-8 rounded border border-petflow-line object-cover"
-                              />
-                              {vi === 0 && `ดูสมุดวัคซีน${all.length > 1 ? ` (${all.length} รูป)` : ""}`}
-                            </a>
-                          ))
-                        ) : (
-                          <span className="text-brown-faint">ยังไม่ได้แนบสมุดวัคซีน</span>
-                        )}
-                        {x.fleaTickTreated && (
-                          <span className="flex items-center gap-1 font-bold text-ok">
-                            <Icon name="check" size={12} strokeWidth={2.4} />
-                            หยดยาเห็บหมัดแล้ว
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      )}
+                    </div>
+                  ))}
+                </div>
                 {hasTransport(b.transport) && (
                   <div className="mt-1.5 flex items-start gap-2 rounded-petflow-sm bg-honey/15 px-2.5 py-1.5 text-[11px]">
                     <Icon name="car" size={14} className="mt-px shrink-0 text-petflow-chocolate" />
@@ -2390,6 +2369,7 @@ export function BookingCalendar() {
                     groomBookingIds={many ? group.map((x) => x.id) : undefined}
                     initialAutoOff={b.autoOff}
                     onDone={load}
+                    quickSteps
                   />
                   <InvoiceActionButtons bookingId={b.id} onDone={load} />
                 </div>

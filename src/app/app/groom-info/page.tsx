@@ -63,12 +63,16 @@ function GroomInfoContent() {
   const [done, setDone] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [attempted, setAttempted] = useState(false);
+  // นัดเข้าพักใช้ฟอร์มเดียวกัน (ข้อมูลน้อง/นิสัย/สุขภาพ) — แค่เปลี่ยนหัวข้อให้ตรงบริการ
+  const [isStay, setIsStay] = useState(false);
 
   useEffect(() => {
     if (ids.length === 0) {
       setLoading(false);
       return;
     }
+    // รอเชื่อม LINE เสร็จก่อน (ได้คุกกี้เซสชันลูกค้า) — ยิงก่อนจะโดน 401 แล้วขึ้น "ไม่พบข้อมูลการนัด"
+    if (!profile?.lineUserId) return;
     Promise.all(
       ids.map((id) =>
         fetch(`/api/bookings/groom-info?id=${id}`)
@@ -81,6 +85,7 @@ function GroomInfoContent() {
         results.forEach((d, i) => {
           if (!d?.found) return;
           const info = d.info || null;
+          if (d.booking?.service === "room") setIsStay(true);
           loaded.push({
             id: ids[i],
             catName: d.booking?.catName || "น้อง",
@@ -92,7 +97,7 @@ function GroomInfoContent() {
       })
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.toString(), fields]);
+  }, [params.toString(), fields, profile?.lineUserId]);
 
   const setAnswer = (idx: number, key: string, value: string | string[]) =>
     setForms((prev) =>
@@ -223,8 +228,8 @@ function GroomInfoContent() {
   return (
     <div className="px-4 pb-6 pt-5">
       <PageHeader
-        eyebrow="Before grooming"
-        title="ประวัติน้องก่อนอาบน้ำ"
+        eyebrow={isStay ? "Before your stay" : "Before grooming"}
+        title={isStay ? "ข้อมูลน้องก่อนเข้าพัก" : "ประวัติน้องก่อนอาบน้ำ"}
         back="/app"
         backLabel="กลับหน้าแรก"
         showLang={false}

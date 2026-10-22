@@ -18,6 +18,20 @@ type PendingSend = {
 };
 
 /**
+ * ปุ่มลัดบนการ์ดนัด — เรียงตามขั้นตอนรับงานของร้าน:
+ * ① กรอกข้อมูลน้อง → ② สมุดวัคซีน → ③ บัตรประชาชน (เข้าพัก) → ④ กฎ + กดยินยอม (เข้าพัก) → ⑤ แจ้งยอดโอน
+ */
+const QUICK_STEP_LABELS: Record<string, string> = {
+  send_groom_info: "กรอกข้อมูลน้อง",
+  send_vaccine_request: "ขอสมุดวัคซีน",
+  send_idcard_request: "ขอบัตรประชาชน",
+  send_consent: "กฎ + กดยินยอม",
+  "inv:full": "แจ้งยอดโอน",
+  "inv:remaining": "แจ้งยอดที่เหลือ",
+  dep: "แจ้งยอดมัดจำ",
+};
+
+/**
  * ปุ่มส่งหาลูกค้าแบบรวมศูนย์ — ใช้ได้ทุกที่ (การ์ดในปฏิทิน · บิล · ฯลฯ)
  * ปุ่มไหนโผล่ขึ้นกับ context ที่มี (booking / invoice / customer)
  * booking-based → /api/bookings · invoice/มัดจำ → /api/invoices
@@ -39,6 +53,7 @@ export function CustomerSendButtons({
   open,
   onOpenChange,
   hideTrigger,
+  quickSteps,
 }: {
   lineUserId?: string;
   customerId?: string;
@@ -58,6 +73,8 @@ export function CustomerSendButtons({
   onOpenChange?: (open: boolean) => void;
   /** ซ่อนปุ่ม "ส่ง LINE" ของตัวเอง (ใช้คู่กับ open/onOpenChange) */
   hideTrigger?: boolean;
+  /** โชว์ปุ่มลัดตามขั้นตอนรับงาน (ข้อมูลน้อง/สมุดวัคซีน/บัตร/กฎ/ยอดโอน) บนการ์ดนัดเลย ไม่ต้องเปิดแผ่นล่าง */
+  quickSteps?: boolean;
 }) {
   const [busy, setBusy] = useState("");
   const [pending, setPending] = useState<PendingSend | null>(null);
@@ -413,6 +430,20 @@ export function CustomerSendButtons({
       onClick: () => bookingSend("send_consent", "ส่งการ์ดเงื่อนไข + ลายเซ็นแล้ว 📋"),
     },
     {
+      k: "send_vaccine_request",
+      label: "ขอรูปสมุดวัคซีน",
+      icon: "image",
+      when: !!bookingId,
+      onClick: () => bookingSend("send_vaccine_request", "ส่งการ์ดขอสมุดวัคซีนแล้ว 💉"),
+    },
+    {
+      k: "send_idcard_request",
+      label: "ขอรูปบัตรประชาชน",
+      icon: "user",
+      when: !!bookingId && hasRoomStay,
+      onClick: () => bookingSend("send_idcard_request", "ส่งการ์ดขอบัตรประชาชนแล้ว 🪪"),
+    },
+    {
       // เข้าพักก็กดขอประวัติได้ — เคสพักพร้อมอาบน้ำ / มาเพิ่มอาบน้ำระหว่างเข้าพัก
       k: "send_groom_info",
       label:
@@ -501,6 +532,34 @@ export function CustomerSendButtons({
             </span>
           )}
         </button>
+      )}
+
+      {/* ปุ่มลัดตามขั้นตอน — กดแล้วขึ้นตัวอย่างการ์ดก่อนส่งเหมือนปุ่มอื่น */}
+      {quickSteps && bookingId && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {[
+            "send_groom_info",
+            "send_vaccine_request",
+            "send_idcard_request",
+            "send_consent",
+            invId && !billPaid ? (hasRemaining ? "inv:remaining" : "inv:full") : "dep",
+          ].map((k) => {
+            const a = singleActions.find((x) => x.k === k && x.when);
+            if (!a) return null;
+            return (
+              <button
+                key={k}
+                type="button"
+                disabled={noLine || busy !== ""}
+                onClick={a.onClick}
+                className="flex min-h-[40px] items-center gap-1.5 rounded-full border border-petflow-line bg-card px-3 py-2 text-xs font-bold text-petflow-chocolate active:bg-paper disabled:opacity-40"
+              >
+                <Icon name={a.icon} size={15} />
+                {busy === k ? "กำลังโหลด…" : QUICK_STEP_LABELS[k] || a.label}
+              </button>
+            );
+          })}
+        </div>
       )}
 
       {sheetOpen && (
