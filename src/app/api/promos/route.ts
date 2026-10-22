@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFrom } from "@/lib/auth";
+import { requireCustomerSession } from "@/lib/customer-session";
 import { withResolvedTenant, withTenant } from "@/lib/tenant-context";
 import {
   listPromos,
@@ -32,21 +33,28 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  // หลังบ้าน (เช่นหน้าคิดเงินหาโปรอัตโนมัติ) ต้องเป็นร้านที่ล็อกอินอยู่ — ไม่ใช่ร้านที่เดาจากลิงก์/คุกกี้
+  // (หน้าแอปลูกค้าไม่มีคุกกี้หลังบ้านติดมา middleware ตัดทิ้งให้แล้ว)
+  const session = await getSessionFrom(req);
+  if (session) return withTenant(session.tenantId, () => handlePublicGet(req, true));
   // ที่เหลือ — แอปลูกค้าเปิดสาธารณะได้ (ดู PUBLIC_GET ใน middleware) จับร้านจาก slug/cookie
-  return withResolvedTenant(req, () => handlePublicGet(req));
+  return withResolvedTenant(req, () => handlePublicGet(req, false));
 }
 
-async function handlePublicGet(req: NextRequest) {
+async function handlePublicGet(req: NextRequest, admin: boolean) {
   const forCustomer = req.nextUrl.searchParams.get("forCustomer") === "1";
-  const lineUserId = req.nextUrl.searchParams.get("lineUserId") || "";
   const active = req.nextUrl.searchParams.get("active") === "1";
 
-  if (forCustomer && lineUserId) {
-    return NextResponse.json({ promos: await getCustomerPromos(lineUserId) });
+  if (forCustomer) {
+    // หลังบ้านดูแทนลูกค้าได้ · ลูกค้าดูได้เฉพาะของตัวเองจากคุกกี้ LINE (ห้ามเชื่อ lineUserId ใน query)
+    const lineUserId = admin
+      ? req.nextUrl.searchParams.get("lineUserId") || ""
+      : (await requireCustomerSession(req))?.lineUserId || "";
+    if (lineUserId) return NextResponse.json({ promos: await getCustomerPromos(lineUserId) });
   }
 
   const autoFor = req.nextUrl.searchParams.get("autoFor");
-  if (autoFor) {
+  if (autoFor && admin) {
     const subtotal = Number(req.nextUrl.searchParams.get("subtotal")) || 0;
     return NextResponse.json({
       promo: await getBestPromoForCustomer(autoFor, subtotal),
@@ -58,6 +66,8 @@ async function handlePublicGet(req: NextRequest) {
     return NextResponse.json({ promos: await getActivePromos(new Date(), kind || undefined) });
   }
 
+  // ทั้งหมด (รวมโปรที่ปิดแล้ว/รหัสคูปองลับ) — หลังบ้านเท่านั้น คนนอกเห็นแค่ที่เปิดใช้อยู่
+  if (!admin) return NextResponse.json({ promos: await getActivePromos(new Date()) });
   return NextResponse.json({ promos: await listPromos() });
 }
 

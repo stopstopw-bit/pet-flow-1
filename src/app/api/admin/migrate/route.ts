@@ -6,7 +6,6 @@ import {
   EXEC_SQL_BOOTSTRAP,
   MIGRATIONS,
 } from "@/lib/migrations";
-import { fixSwappedShops } from "@/lib/fix-swapped-shops";
 
 export const runtime = "nodejs";
 
@@ -40,6 +39,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const res = await runMigrations();
-  await fixSwappedShops().catch((e) => console.error("[fixSwappedShops]", e));
   return NextResponse.json({ ...res, bootstrapSql: res.bootstrapNeeded ? EXEC_SQL_BOOTSTRAP : undefined });
 }

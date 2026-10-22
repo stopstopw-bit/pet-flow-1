@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
-import { isTenantOpen, tenantGateBySlug } from "./tenant-billing";
-import { getBootstrapTenantId } from "./auth";
+import { isTenantOpen, tenantGateById, tenantGateBySlug } from "./tenant-billing";
+import { getBootstrapTenantId, getSessionFrom } from "./auth";
 
 /**
  * แปลง "request ของลูกค้า" → tenant_id (ร้านไหน) สำหรับ path-based routing
@@ -54,6 +54,17 @@ export async function mainShopTenantId(): Promise<string | null> {
  * ไม่งั้นลูกค้าของร้านที่ถูกระงับจะไปสมัคร/จองลงในร้าน bootstrap แทน
  */
 export async function resolveTenantId(req: NextRequest): Promise<string> {
+  // หน้าหลังบ้านแบบลิงก์ /admin เปล่า ๆ เรียก API ฝั่งลูกค้า (เช่น ลิงก์เชิญ LINE, ช่องว่างคิว) —
+  // ไม่มีชื่อร้านใน header ต้องใช้ร้านที่ล็อกอินอยู่ ห้ามเดาจากคุกกี้ "ร้านที่เปิดล่าสุด"
+  // ไม่งั้นลิงก์เชิญของร้านหนึ่งจะออกเป็น LINE ของอีกร้าน (หน้าแอปลูกค้าไม่มีคุกกี้หลังบ้านติดมา middleware ตัดให้แล้ว)
+  if (!req.headers.get(TENANT_SLUG_HEADER)?.trim()) {
+    const session = await getSessionFrom(req).catch(() => null);
+    if (session?.tenantId) {
+      const gate = await tenantGateById(session.tenantId).catch(() => null);
+      if (!gate || isTenantOpen(gate)) return session.tenantId;
+      throw new Error("ร้านนี้ปิดใช้งานอยู่");
+    }
+  }
   const slug = getTenantSlugFromRequest(req);
   if (slug) {
     const id = await tenantIdForSlug(slug);

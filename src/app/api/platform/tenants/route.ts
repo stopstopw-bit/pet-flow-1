@@ -7,7 +7,6 @@ import { withTenant } from "@/lib/tenant-context";
 import { replaceSiteConfig } from "@/lib/config-store";
 import { getBlankShopConfig } from "@/lib/defaults/site-config";
 import { ensureDueDateColumn, isMissingDueDate } from "@/lib/tenant-billing";
-import { fixSwappedShops } from "@/lib/fix-swapped-shops";
 
 /** สุ่มรหัสผ่านให้อ่านง่าย จำง่าย — ตัวอักษร/ตัวเลขที่ไม่สับสน (ตัด 0/O, 1/I ออก) */
 function generatePassword(): string {
@@ -35,9 +34,6 @@ export async function GET(req: NextRequest) {
       { status: 500 }
     );
   }
-
-  // ย้ายการตั้งค่า Back Home ที่ค้างอยู่ใต้ลิงก์ petflow ไปไว้ใต้ลิงก์ของตัวเอง (ครั้งเดียว)
-  await fixSwappedShops().catch((e) => console.error("[fixSwappedShops]", e));
 
   type Row = {
     id: string;

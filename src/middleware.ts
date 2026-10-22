@@ -107,6 +107,28 @@ function refererIsPlainApp(req: NextRequest): boolean {
   }
 }
 
+/**
+ * API ข้อมูลอ่อนไหวที่พนักงานใช้ได้เฉพาะเมื่อเจ้าของเปิดเมนูนั้นให้ (เจ้าของร้านใช้ได้หมด)
+ * เดิมจำกัดเมนูแค่ซ่อนปุ่มในหน้าเว็บ พนักงานยิง API ตรงก็ดาวน์โหลดข้อมูลลูกค้าทั้งร้าน
+ * ดูบัญชี หรือส่ง LINE หาลูกค้าทุกคนได้
+ */
+const STAFF_API_MENUS: [string, string[]][] = [
+  ["/api/admin/backup", ["/admin/settings"]],
+  ["/api/audit", ["/admin/settings"]],
+  ["/api/export/sheets", ["/admin/customers", "/admin/finance", "/admin/tax"]],
+  ["/api/finance", ["/admin/finance", "/admin/tax"]],
+  ["/api/line/broadcast", ["/admin/promos"]],
+  ["/api/setup", ["/admin/setup"]],
+  ["/api/admin/migrate-photos", ["/admin/setup"]],
+  ["/api/admin/cleanup-broadcast-images", ["/admin/setup"]],
+];
+
+function staffMayCall(pathname: string, menus: string[] | undefined): boolean {
+  const rule = STAFF_API_MENUS.find(([p]) => pathname === p || pathname.startsWith(`${p}/`));
+  if (!rule) return true;
+  return rule[1].some((m) => (menus || []).includes(m));
+}
+
 function matches(path: string, list: string[]) {
   return list.some((p) => path === p || path.startsWith(`${p}/`));
 }
@@ -238,6 +260,16 @@ export async function middleware(req: NextRequest) {
   // ผู้ดูแลระบบ — คนละชั้นสิทธิ์กับ /admin (เจ้าของร้าน/พนักงาน) เลยแยกด่านตรวจ
   if (pathname.startsWith("/api/platform/")) {
     if (pathname === "/api/platform/auth") {
+      // รหัสผู้ดูแลระบบเปิดได้ทุกร้าน — ต้องกันเดารหัสเข้มที่สุด (เดิมไม่มีการจำกัดเลย)
+      if (req.method === "POST") {
+        const hit = rateLimit(`platform-login:${clientKey(req)}`, 5, 60_000);
+        if (!hit.ok) {
+          return NextResponse.json(
+            { error: "rate_limited", message: "ลองรหัสถี่เกินไป รอ 1 นาทีแล้วลองใหม่" },
+            { status: 429, headers: { "Retry-After": String(hit.retryAfter) } }
+          );
+        }
+      }
       return proceed();
     }
     const session = await verifyPlatformSession(
@@ -291,6 +323,12 @@ export async function middleware(req: NextRequest) {
           { error: "unauthorized", message: "ต้องเข้าสู่ระบบหลังบ้านก่อน" },
           { status: 401 }
         )
+      );
+    }
+    if (session.role === "staff" && !staffMayCall(pathname, session.menus)) {
+      return NextResponse.json(
+        { error: "forbidden", message: "บัญชีพนักงานนี้ไม่ได้รับสิทธิ์เมนูนี้ — ให้เจ้าของร้านเปิดสิทธิ์ให้" },
+        { status: 403 }
       );
     }
     return proceed();

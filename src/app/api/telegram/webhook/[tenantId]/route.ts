@@ -18,6 +18,7 @@ import {
   setTelegramBotCommands,
 } from "@/lib/telegram";
 import { requireTenantId, withTenant } from "@/lib/tenant-context";
+import { getSessionFrom } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,6 +33,12 @@ export async function GET(
   { params }: { params: Promise<{ tenantId: string }> }
 ) {
   const { tenantId } = await params;
+  // ดูสถานะ/ลงทะเบียนใหม่/ส่งเมนู — เจ้าของร้านนั้นเท่านั้น (เดิมเปิดให้ทุกคน เห็น chat id เจ้าของ
+  // และสั่งส่งเมนูรัว ๆ ไปหาเจ้าของร้านได้) · Telegram เองใช้แค่ POST
+  const session = await getSessionFrom(req);
+  if (!session || session.role !== "owner" || session.tenantId !== tenantId) {
+    return NextResponse.json({ ok: true, endpoint: "telegram-webhook" });
+  }
   return withTenant(tenantId, () => handleGet(req));
 }
 

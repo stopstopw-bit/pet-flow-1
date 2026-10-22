@@ -13,6 +13,7 @@ import { getSiteConfig } from "@/lib/config-store";
 import { roomPlanOutstanding, createPackagePlan, viewRoomPlan } from "@/lib/room-plans-store";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { withResolvedTenant, withTenant } from "@/lib/tenant-context";
+import { requireCustomerSession } from "@/lib/customer-session";
 
 /** คอร์สของลูกค้า (หลังบ้าน: customerId · แอป: lineUserId) */
 export async function GET(req: NextRequest) {
@@ -46,12 +47,17 @@ async function handleGet(req: NextRequest, isStaff: boolean) {
   if (!lineUserId && !isStaff) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  // ลูกค้า: ใช้ LINE จากคุกกี้ที่ตรวจแล้วเท่านั้น (LINE ID เดียวกันอยู่ได้หลายร้าน ห้ามเชื่อค่าใน query)
+  const me = isStaff ? null : await requireCustomerSession(req);
+  if (!isStaff && !me) return NextResponse.json({ found: false, packages: [] });
   // หลังบ้านขอดูคอร์สทั้งร้าน (ใช้ในหน้าสรุปข้อมูล) — ลูกค้าขอแบบนี้ไม่ได้
   if (isStaff && req.nextUrl.searchParams.get("all") === "1") {
     return NextResponse.json({ found: true, packages: await listAllPackages() });
   }
 
-  const cust = lineUserId
+  const cust = me
+    ? await findCustomerByLine(me.lineUserId)
+    : lineUserId
     ? await findCustomerByLine(lineUserId)
     : customerId
       ? await getCustomer(customerId)
