@@ -1347,6 +1347,22 @@ export async function getCatGroomInfo(lineUserId: string, catName?: string) {
   return r?.cat.groomHealthInfo;
 }
 
+/**
+ * ลูกค้าส่งข้อมูลก่อนรับน้องอะไรมาแล้วบ้าง (ใช้ตัดการ์ดที่ไม่ต้องถามซ้ำตอนส่งอัตโนมัติ)
+ * ไม่เจอลูกค้า/น้อง = ถือว่ายังไม่มีอะไรเลย
+ */
+export async function getIntakeStatus(lineUserId: string, catName?: string) {
+  const c = await findCustomerByLine(lineUserId);
+  const key = catName ? catKey(catName) : "";
+  const cat = c?.cats.find((x) => !key || catKey(x.name) === key);
+  return {
+    stayInfo: Boolean(cat?.stayInfo),
+    groomInfo: Boolean(cat?.groomHealthInfo),
+    vaccine: splitVaccinePhotos(cat?.vaccinePhotos).length > 0,
+    idCard: Boolean(c?.idCardUrl),
+  };
+}
+
 /** ข้อมูลน้องก่อนเข้าพักที่ลูกค้าเคยกรอกไว้ (อาหาร/นิสัย/การดูแล) */
 export async function getCatStayInfo(lineUserId: string, catName?: string) {
   const r = await resolveCatByLine(lineUserId, catName);

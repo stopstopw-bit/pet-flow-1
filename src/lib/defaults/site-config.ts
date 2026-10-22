@@ -63,6 +63,7 @@ export function getDefaultSiteConfig(): SiteConfig {
         reviewRequestEnabled: true,
         reviewRequestDaysAfter: 1,
         groomInfoEnabled: true,
+        intakeAutoEnabled: true,
         freeLitterMinNights: 3,
         birthdayEnabled: true,
         birthdayCouponEnabled: true,
