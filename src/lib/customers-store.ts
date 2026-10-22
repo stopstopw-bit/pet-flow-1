@@ -2127,6 +2127,32 @@ async function listPackageUsage(customerId: string): Promise<PackageUsageRecord[
     .sort((a, b) => b.at.localeCompare(a.at));
 }
 
+/** บิลแบบย่อ (เฉพาะบรรทัดอาบน้ำ/ห้องพัก) — ให้ประวัติรายตัวใช้โปรแกรม/ห้องตามที่ออกบิลจริง */
+export type ServiceBill = {
+  id: string;
+  bookingId?: string;
+  catName: string;
+  date: string;
+  items: { kind?: string; program?: string; label: string; catName?: string; qty?: number }[];
+};
+
+async function listServiceBills(customerId: string): Promise<ServiceBill[]> {
+  const { listInvoices } = await import("./invoices-store");
+  const { isRoomLine } = await import("./stay-line");
+  const invoices = await listInvoices(customerId);
+  return invoices
+    .map((i) => ({
+      id: i.id,
+      bookingId: i.bookingId,
+      catName: i.catName,
+      date: (i.paidAt || i.createdAt || "").slice(0, 10),
+      items: (i.items || [])
+        .filter((it) => it.kind === "grooming" || isRoomLine(it))
+        .map((it) => ({ kind: it.kind, program: it.program, label: it.label, catName: it.catName, qty: it.qty })),
+    }))
+    .filter((b) => b.items.length > 0);
+}
+
 export async function getCustomerHistory(customerId: string) {
   const c = await getCustomer(customerId);
   const allBookings = await listBookings();
@@ -2140,6 +2166,7 @@ export async function getCustomerHistory(customerId: string) {
   const memberTopups = await listMemberTopups(customerId);
   const memberCreditUsage = await listMemberCreditUsage(customerId);
   const packageUsage = await listPackageUsage(customerId);
+  const serviceBills = await listServiceBills(customerId);
   return {
     bookings,
     upcomingBookings,
@@ -2149,6 +2176,7 @@ export async function getCustomerHistory(customerId: string) {
     memberTopups,
     memberCreditUsage,
     packageUsage,
+    serviceBills,
   };
 }
 
