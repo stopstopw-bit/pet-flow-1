@@ -4,6 +4,13 @@ import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { toast } from "@/components/Toast";
 import type { CustomerRecord } from "@/lib/customers-store";
+import { TaxInvoiceFields } from "@/components/TaxInvoiceFields";
+import {
+  formToTaxInvoice,
+  taxInvoiceProblem,
+  taxInvoiceToForm,
+  type TaxInvoiceForm,
+} from "@/lib/tax-invoice";
 
 const inputCls =
   "mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-3 text-sm outline-none transition focus:border-latte-deep focus:bg-card";
@@ -28,6 +35,7 @@ export function EditCustomerSheet({
     postalCode: customer.postalCode || "",
     referralSource: customer.referralSource || "",
   });
+  const [taxInvoice, setTaxInvoice] = useState<TaxInvoiceForm>(() => taxInvoiceToForm(customer.taxInvoice));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -38,6 +46,11 @@ export function EditCustomerSheet({
     const name = form.name.trim();
     if (!name) {
       setError("กรอกชื่อลูกค้า");
+      return;
+    }
+    const taxProblem = taxInvoiceProblem(formToTaxInvoice(taxInvoice));
+    if (taxProblem) {
+      setError(taxProblem);
       return;
     }
     setSaving(true);
@@ -52,6 +65,7 @@ export function EditCustomerSheet({
       addressMapUrl: form.addressMapUrl.trim(),
       postalCode: form.postalCode.trim(),
       referralSource: form.referralSource.trim(),
+      taxInvoice: formToTaxInvoice(taxInvoice),
     };
     const res = await fetch("/api/customers", {
       method: "PATCH",
@@ -59,6 +73,10 @@ export function EditCustomerSheet({
       body: JSON.stringify({ id: customer.id, action: "update_customer", patch }),
     }).catch(() => null);
     setSaving(false);
+    if (res && !res.ok) {
+      const d = await res.json().catch(() => ({}));
+      if (d.error) return setError(String(d.error));
+    }
     if (res?.ok) {
       toast("บันทึกข้อมูลลูกค้าแล้ว", "success");
       onSaved();
@@ -176,6 +194,14 @@ export function EditCustomerSheet({
               className={inputCls}
             />
           </label>
+          <div className="rounded-petflow-sm border border-petflow-line p-3">
+            <TaxInvoiceFields
+              value={taxInvoice}
+              onChange={setTaxInvoice}
+              fieldClass={inputCls}
+              prefill={{ name: form.name, phone: form.phone, address: form.address }}
+            />
+          </div>
           {error && <p className="text-xs font-bold text-wait">{error}</p>}
           <div className="flex gap-2 pt-1">
             <button

@@ -195,9 +195,15 @@ export default function InvoiceDocPage({ params }: { params: Promise<{ id: strin
             </span>
             <span className="block truncate text-[11px] text-brown-soft">
               {doc.buyer
-                ? [doc.buyer.taxId && `เลขผู้เสียภาษี ${doc.buyer.taxId}`, doc.buyer.branch].filter(Boolean).join(" · ") || "แตะเพื่อแก้ไข"
+                ? [
+                    data.buyerFromCustomer && "จากข้อมูลที่ลูกค้ากรอกไว้",
+                    doc.buyer.taxId && `เลขผู้เสียภาษี ${doc.buyer.taxId}`,
+                    doc.buyer.branch,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ") || "แตะเพื่อแก้ไข"
                 : data.suggestedBuyer
-                  ? `ใช้ข้อมูลครั้งก่อนได้: ${data.suggestedBuyer.name}`
+                  ? `ใช้ข้อมูลที่มีได้: ${data.suggestedBuyer.name}`
                   : "ใส่ชื่อบริษัท ที่อยู่ เลขผู้เสียภาษี — ไม่ใส่ = ออกในชื่อลูกค้า"}
             </span>
           </span>

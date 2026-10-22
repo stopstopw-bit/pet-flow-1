@@ -47,6 +47,8 @@ export type Data = {
   invoice: Invoice;
   doc: Doc;
   suggestedBuyer?: Buyer;
+  /** ผู้ซื้อเติมจากข้อมูลออกบิลที่ลูกค้ากรอกไว้ (ยังไม่ได้บันทึกติดบิล) */
+  buyerFromCustomer?: boolean;
   customer: { name: string; phone: string; address: string };
   seller: {
     name: string;

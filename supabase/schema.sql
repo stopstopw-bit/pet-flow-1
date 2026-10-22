@@ -214,6 +214,7 @@ alter table customers add column if not exists marketing_consent boolean not nul
 alter table customers add column if not exists referral_source text;
 alter table customers add column if not exists tier text not null default 'new';
 alter table customers add column if not exists last_follow_up_at timestamptz;
+alter table customers add column if not exists tax_invoice jsonb;
 
 alter table cats add column if not exists gender text;
 alter table cats add column if not exists breed text;

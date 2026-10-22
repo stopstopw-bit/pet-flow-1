@@ -13,6 +13,13 @@ import { EmptyState, SectionLabel } from "@/components/ui";
 import { Icon } from "@/components/Icon";
 import { CatPhoto } from "@/components/CatPhoto";
 import { toJpegDataUrl } from "@/lib/image-convert";
+import { TaxInvoiceFields } from "@/components/TaxInvoiceFields";
+import {
+  formToTaxInvoice,
+  taxInvoiceProblem,
+  taxInvoiceToForm,
+  type TaxInvoiceForm,
+} from "@/lib/tax-invoice";
 
 const REFERRAL_FALLBACK = [
   "Facebook",
@@ -57,6 +64,8 @@ export default function ProfilePage() {
   const [addressMapUrl, setAddressMapUrl] = useState("");
   const [postalCode, setPostalCode] = useState("");
   const [consent, setConsent] = useState(true);
+  const [taxInvoice, setTaxInvoice] = useState<TaxInvoiceForm>(() => taxInvoiceToForm(null));
+  const [saveError, setSaveError] = useState("");
   const [cats, setCats] = useState<CatForm[]>([]);
   // รูปน้องแยกโหลด/อัปทีละตัว (ไม่ผูกกับปุ่มบันทึก) — อัปแล้วขึ้นทันที
   const [photos, setPhotos] = useState<Record<string, string | null>>({});
@@ -83,6 +92,7 @@ export default function ProfilePage() {
         setAddressMapUrl(c.addressMapUrl || "");
         setPostalCode(c.postalCode || "");
         setConsent(c.marketingConsent !== false);
+        setTaxInvoice(taxInvoiceToForm(c.taxInvoice));
         setCats(
           (c.cats || []).map((x: Record<string, unknown>) => {
             const breedVal = String(x.breed || "");
@@ -166,6 +176,9 @@ export default function ProfilePage() {
 
   const save = async () => {
     if (!profile?.lineUserId || !name.trim()) return;
+    const taxProblem = taxInvoiceProblem(formToTaxInvoice(taxInvoice));
+    setSaveError(taxProblem);
+    if (taxProblem) return;
     setSaving(true);
     setSaved(false);
     try {
@@ -182,6 +195,7 @@ export default function ProfilePage() {
           address,
           addressMapUrl,
           postalCode,
+          taxInvoice: formToTaxInvoice(taxInvoice),
           marketingConsent: consent,
           cats: cats.map((c) => ({
             id: c.id,
@@ -198,6 +212,10 @@ export default function ProfilePage() {
           })),
         }),
       });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setSaveError(d.error || "บันทึกไม่สำเร็จ ลองใหม่อีกครั้งนะคะ");
+      }
       if (res.ok) {
         setSaved(true);
         setTimeout(() => setSaved(false), 2500);
@@ -291,6 +309,14 @@ export default function ProfilePage() {
                 className={`${field} mt-1`}
               />
             </label>
+            <div className="border-t border-petflow-line pt-3">
+              <TaxInvoiceFields
+                value={taxInvoice}
+                onChange={setTaxInvoice}
+                fieldClass={field}
+                prefill={{ name, phone, address }}
+              />
+            </div>
           </div>
 
           {/* ── น้องแมว ── */}
@@ -454,6 +480,9 @@ export default function ProfilePage() {
           >
             {saving ? "กำลังบันทึก…" : "บันทึกข้อมูล"}
           </button>
+          {saveError && (
+            <p className="mt-2 text-center text-sm font-bold text-red-700">{saveError}</p>
+          )}
           {saved && (
             <p className="mt-2 flex items-center justify-center gap-1.5 text-sm font-extrabold text-ok">
               <Icon name="check" size={16} strokeWidth={2.4} />

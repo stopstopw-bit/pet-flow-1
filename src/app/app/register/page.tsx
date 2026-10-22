@@ -10,6 +10,13 @@ import { SectionLabel } from "@/components/ui";
 import { Icon } from "@/components/Icon";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { toJpegDataUrl } from "@/lib/image-convert";
+import { TaxInvoiceFields } from "@/components/TaxInvoiceFields";
+import {
+  emptyTaxInvoiceForm,
+  formToTaxInvoice,
+  taxInvoiceProblem,
+  type TaxInvoiceForm,
+} from "@/lib/tax-invoice";
 
 type CatGender = "male" | "female";
 type CatInput = {
@@ -75,6 +82,7 @@ export default function RegisterPage() {
   const [referral, setReferral] = useState("");
   const [postalCode, setPostalCode] = useState("");
   const [consent, setConsent] = useState(true);
+  const [taxInvoice, setTaxInvoice] = useState<TaxInvoiceForm>(emptyTaxInvoiceForm);
   const [cats, setCats] = useState<CatInput[]>([emptyCat()]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -125,6 +133,11 @@ export default function RegisterPage() {
       setError("เลือกช่องทางที่รู้จักเราด้วยนะคะ");
       return;
     }
+    const taxProblem = taxInvoiceProblem(formToTaxInvoice(taxInvoice));
+    if (taxProblem) {
+      setError(taxProblem);
+      return;
+    }
 
     setSaving(true);
     setError("");
@@ -142,6 +155,7 @@ export default function RegisterPage() {
           referralSource: referral,
           referralCode: referralCode || undefined,
           postalCode: postalCode || undefined,
+          taxInvoice: formToTaxInvoice(taxInvoice) || undefined,
           marketingConsent: consent,
           cats: cats
             .filter((c) => c.name.trim())
@@ -300,6 +314,15 @@ export default function RegisterPage() {
             className={fieldClass}
           />
         </label>
+
+        <div className="border-t border-petflow-line pt-3">
+          <TaxInvoiceFields
+            value={taxInvoice}
+            onChange={setTaxInvoice}
+            fieldClass={fieldClass}
+            prefill={{ name, phone }}
+          />
+        </div>
         </div>
         </section>
 

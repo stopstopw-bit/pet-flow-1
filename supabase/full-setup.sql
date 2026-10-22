@@ -87,6 +87,7 @@ create table if not exists customers (
   address text,
   address_map_url text,
   postal_code text,
+  tax_invoice jsonb,
   tier text not null default 'new',              -- new | regular | member | vip
   is_member boolean not null default false,
   member_credit numeric not null default 0,
@@ -115,6 +116,7 @@ alter table customers
   add column if not exists address text,
   add column if not exists address_map_url text,
   add column if not exists postal_code text,
+  add column if not exists tax_invoice jsonb,
   add column if not exists tier text not null default 'new',
   add column if not exists is_member boolean not null default false,
   add column if not exists member_credit numeric not null default 0,
