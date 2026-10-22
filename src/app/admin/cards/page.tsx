@@ -1341,7 +1341,7 @@ function Preview({
   return (
     <div className={bubble}>
       <div className="px-4 py-3" style={{ background: c("headerColor", "#6e2f48") }}>
-        <p className="text-xs font-extrabold" style={{ color: c("headerTextColor", "#FFFFFF") }}>{t("headerTitle", "🩺 ประวัติน้องก่อนอาบน้ำ")}</p>
+        <p className="text-xs font-extrabold" style={{ color: c("headerTextColor", "#FFFFFF") }}>{t("header", "🩺 ประวัติน้องก่อนอาบน้ำ")}</p>
       </div>
       <div className="space-y-2 px-4 py-3 text-[11px] text-[#4E3E32]">
         <p className={`${titleCls} font-extrabold`} style={{ color: c("accentColor", "#5C4033") }}>🐱 Soju</p>
