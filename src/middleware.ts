@@ -38,6 +38,8 @@ const PUBLIC_API = [
   // ตกหล่นไปตอนเพิ่มฟีเจอร์ ลูกค้าเลยโดน 401 แนบไม่ได้ (มีแต่เจ้าของร้านที่ล็อกอินหลังบ้านค้างไว้ที่แนบได้)
   "/api/customers/id-card",
   "/api/bookings/consent",
+  // ลูกค้าแนบสมุดวัคซีนจากลิงก์ที่ร้านส่งให้ — route ตรวจคุกกี้เซสชันลูกค้า + เป็นนัดของตัวเองเอง
+  "/api/bookings/vaccine",
   "/api/bookings/groom-info",
   "/api/bookings/time",
   "/api/bookings/transport",

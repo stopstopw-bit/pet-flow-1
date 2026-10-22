@@ -5,7 +5,7 @@ import { seedEnabled } from "./demo-seed";
 import { requireTenantId } from "./tenant-context";
 import type { BookingTransport } from "./transport";
 import { cleanDepositStatus, type DepositStatus } from "./booking-deposit";
-import { MAX_VACCINE_PHOTOS, joinVaccinePhotos } from "./vaccine-photos";
+import { MAX_VACCINE_PHOTOS, joinVaccinePhotos, splitVaccinePhotos } from "./vaccine-photos";
 
 export type StoredBooking = Booking & {
   lineUserId?: string;
@@ -320,7 +320,10 @@ export async function acceptBookingConsent(
         : v
     );
   }
-  const vaccineUrl = joinVaccinePhotos(vaccineUrls);
+  // เก็บรูปที่มีอยู่แล้วไว้ด้วย (พนักงานแนบให้ / ลูกค้าส่งมาก่อนจากลิงก์ขอสมุดวัคซีน) — ไม่ทับหาย
+  const vaccineUrl = joinVaccinePhotos(
+    [...splitVaccinePhotos(b.vaccinePhotoUrl), ...vaccineUrls].slice(-MAX_VACCINE_PHOTOS)
+  );
   const treated = Boolean(fleaTickTreated);
   const sb = getSupabase();
   if (sb) {
@@ -353,6 +356,44 @@ export async function acceptBookingConsent(
     }
   }
   return { ok: true as const, acceptedAt: now };
+}
+
+/**
+ * แนบรูปสมุดวัคซีนเพิ่มเข้านัด (ต่อท้ายรูปเดิม เก็บได้สูงสุด MAX_VACCINE_PHOTOS รูป — เกินแล้วรูปเก่าสุดหลุด)
+ * ใช้ทั้งตอนพนักงานแนบเองในหลังบ้าน และตอนลูกค้าส่งจากลิงก์ขอสมุดวัคซีน
+ * รูปเข้า bucket ส่วนตัวเสมอ (เปิดผ่าน /api/files ได้แค่คนของร้าน)
+ */
+export async function addBookingVaccinePhotos(id: string, photos: string[]) {
+  const b = await getBooking(id);
+  if (!b) return { ok: false as const, error: "not_found" };
+  const added: string[] = [];
+  for (const [i, raw] of photos.slice(0, MAX_VACCINE_PHOTOS).entries()) {
+    const v = raw.trim();
+    if (!v.startsWith("data:image/")) continue;
+    added.push(await uploadPrivateDataUrl(`consent-vaccine/${id}-${Date.now()}-${i}`, v));
+  }
+  if (added.length === 0) return { ok: false as const, error: "no_photo" };
+  const urls = [...splitVaccinePhotos(b.vaccinePhotoUrl), ...added].slice(-MAX_VACCINE_PHOTOS);
+  const res = await setBookingVaccinePhotos(id, urls);
+  return res.ok ? { ok: true as const, urls, added: added.length } : res;
+}
+
+/** เขียนรายการรูปสมุดวัคซีนของนัดทับทั้งชุด (ใช้ตอนลบรูปออกทีละรูป) */
+export async function setBookingVaccinePhotos(id: string, urls: string[]) {
+  const value = joinVaccinePhotos(urls);
+  const sb = getSupabase();
+  if (sb) {
+    const { error } = await sb
+      .from("bookings")
+      .update({ vaccine_photo_url: value || null })
+      .eq("id", id)
+      .eq("tenant_id", requireTenantId());
+    if (error) return { ok: false as const, error: "need_sql", message: error.message };
+  } else {
+    const idx = mem.findIndex((x) => x.id === id);
+    if (idx >= 0) mem[idx].vaccinePhotoUrl = value || undefined;
+  }
+  return { ok: true as const };
 }
 
 /**

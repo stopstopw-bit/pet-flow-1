@@ -44,3 +44,9 @@ export function buildGroomInfoUrl(liffId: string, bookingIds: string | string[])
 export function buildClaimCouponUrl(liffId: string, offerId: string) {
   return buildLiffUrl(liffId, { path: "claim-coupon", offer: offerId });
 }
+
+/** ลิงก์หน้าแนบเอกสารก่อนเข้าพัก (สมุดวัคซีน / บัตรประชาชน) — จองทั้งบ้านใส่ได้หลายนัด แนบแยกทีละตัวในหน้าเดียว */
+export function buildPetDocsUrl(liffId: string, bookingIds: string | string[], need: "vaccine" | "idcard") {
+  const id = Array.isArray(bookingIds) ? bookingIds.join(",") : bookingIds;
+  return buildLiffUrl(liffId, { path: "pet-docs", id, need });
+}

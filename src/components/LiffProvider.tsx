@@ -317,6 +317,12 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
       router.replace(offer ? `${shop}/app/claim-coupon?offer=${encodeURIComponent(offer)}` : `${shop}/app/coupons`);
       return;
     }
+    if (path === "pet-docs") {
+      const bkId = params.get("id") || "";
+      const need = params.get("need") === "idcard" ? "idcard" : "vaccine";
+      router.replace(`${shop}/app/pet-docs?id=${encodeURIComponent(bkId)}&need=${need}`);
+      return;
+    }
     if (path === "groom-info") {
       const bkId = params.get("id");
       router.replace(`${shop}/app/groom-info?id=${bkId || ""}`);
@@ -355,6 +361,7 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
       pathname.startsWith("/app/booking-transport") ||
       pathname.startsWith("/app/profile") ||
       pathname.startsWith("/app/groom-info") ||
+      pathname.startsWith("/app/pet-docs") ||
       pathname.startsWith("/app/coupons") ||
       pathname.startsWith("/app/claim-coupon");
 

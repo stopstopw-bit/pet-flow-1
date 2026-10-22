@@ -13,8 +13,11 @@ import {
   toBooking,
   updateBooking,
   deleteBooking,
+  addBookingVaccinePhotos,
+  setBookingVaccinePhotos,
   type StoredBooking,
 } from "@/lib/bookings-store";
+import { splitVaccinePhotos } from "@/lib/vaccine-photos";
 import { AUTO_MESSAGE_TOPICS } from "@/lib/auto-messages";
 import { rescheduleGroup, type DatePatch } from "@/lib/stay-sync";
 import { bookingMatchesCustomer } from "@/lib/booking-customer-match";
@@ -37,6 +40,7 @@ import {
   buildReceiptFlex,
   buildReadyForPickupFlex,
   buildDepositThanksFlex,
+  buildDocRequestFlex,
   politeName,
   politeCat,
 } from "@/lib/line";
@@ -62,6 +66,7 @@ import {
   getBookingTimeUrl,
   getGroomInfoUrl,
   getConsentUrl,
+  getPetDocsUrl,
   bookingScheduleText,
 } from "@/lib/booking-reminders";
 
@@ -454,6 +459,23 @@ async function handlePatch(req: NextRequest, admin: boolean) {
     }
   }
 
+/** นัดเข้าพักใช้การ์ดขอประวัติใบเดียวกัน — เปลี่ยนหัวการ์ด/วันที่ให้ตรงบริการ (ร้านตั้งหัวการ์ดเองไว้ก็ใช้ของร้าน) */
+function groomInfoCardFor(b: StoredBooking, cfg: Awaited<ReturnType<typeof getSiteConfig>>) {
+  const style = cfg.cards?.groomInfo;
+  if (b.service !== "room") {
+    return {
+      style,
+      dateText: b.date
+        ? `${style?.texts?.datePrefix || "📅 นัดอาบน้ำ:"} ${b.date}${b.time ? ` ${b.time}` : ""}`
+        : undefined,
+    };
+  }
+  return {
+    style: { ...style, texts: { ...style?.texts, header: style?.texts?.header || "🐾 ข้อมูลน้องก่อนเข้าพัก" } },
+    dateText: bookingScheduleText(b),
+  };
+}
+
   // ── การ์ดสอบถามประวัติน้องก่อนอาบน้ำ (กดเอง) ──
   if (action === "send_groom_info") {
     const to = await resolveRecipient(b, lineUserId);
@@ -462,15 +484,14 @@ async function handlePatch(req: NextRequest, admin: boolean) {
     }
     const cfg = await getSiteConfig();
     const url = await getGroomInfoUrl(b.id);
+    const card = groomInfoCardFor(b, cfg);
     const flex = buildGroomInfoFlex({
       catName: String(b.catName),
-      dateText: b.date
-        ? `${cfg.cards?.groomInfo?.texts?.datePrefix || "📅 นัดอาบน้ำ:"} ${b.date}${b.time ? ` ${b.time}` : ""}`
-        : undefined,
+      dateText: card.dateText,
       body: buildGroomInfoBody(b, cfg),
       url: url || undefined,
       label: cfg.cards?.groomInfo?.texts?.button || "🩺 แจ้งประวัติน้อง",
-    }, cfg.cards?.groomInfo);
+    }, card.style);
     try {
       if (preview) return NextResponse.json({ ok: true, preview: [flex] });
       await pushLineMessage(to, [flex]);
@@ -497,11 +518,10 @@ async function handlePatch(req: NextRequest, admin: boolean) {
     const cfg = await getSiteConfig();
     const url = await getGroomInfoUrl(bookings.map((x) => x.id));
     const catNames = bookings.map((x) => x.catName).join(", ");
+    const card = groomInfoCardFor(b, cfg);
     const flex = buildGroomInfoFlex({
       catName: catNames,
-      dateText: b.date
-        ? `${cfg.cards?.groomInfo?.texts?.datePrefix || "📅 นัดอาบน้ำ:"} ${b.date}${b.time ? ` ${b.time}` : ""}`
-        : undefined,
+      dateText: card.dateText,
       body: buildGroomInfoBody(
         { catName: bookings.length > 1 ? `น้องๆ ${bookings.length} ตัว` : catNames },
         cfg
@@ -511,7 +531,7 @@ async function handlePatch(req: NextRequest, admin: boolean) {
         bookings.length > 1
           ? `${cfg.cards?.groomInfo?.texts?.button || "🩺 แจ้งประวัติน้อง"} (${bookings.length} ตัว)`
           : cfg.cards?.groomInfo?.texts?.button || "🩺 แจ้งประวัติน้อง",
-    }, cfg.cards?.groomInfo);
+    }, card.style);
     try {
       if (preview) return NextResponse.json({ ok: true, preview: [flex] });
       await pushLineMessage(to, [flex]);
@@ -520,6 +540,64 @@ async function handlePatch(req: NextRequest, admin: boolean) {
       const message = e instanceof Error ? e.message : String(e);
       return NextResponse.json({ error: message }, { status: 500 });
     }
+  }
+
+  // ── การ์ดขอสมุดวัคซีน / ขอบัตรประชาชน (กดเองจากการ์ดนัด) — ปุ่มเปิดหน้าแนบรูปของนัดนี้ ──
+  if (action === "send_vaccine_request" || action === "send_idcard_request") {
+    const to = await resolveRecipient(b, lineUserId);
+    if (!to) {
+      return NextResponse.json({ error: NO_LINE_ERROR }, { status: 400 });
+    }
+    const kind = action === "send_vaccine_request" ? "vaccine" : "idcard";
+    // จองทั้งบ้าน — ลิงก์เดียวแนบสมุดวัคซีนได้ครบทุกตัว (บัตรประชาชนผูกกับเจ้าของ ใช้นัดเดียวพอ)
+    const groupIds: string[] =
+      kind === "vaccine" && Array.isArray(body.ids) && body.ids.length > 0 ? body.ids.map(String) : [b.id];
+    const url = await getPetDocsUrl(groupIds, kind);
+    if (!url) {
+      return NextResponse.json(
+        { error: "ยังไม่ได้ตั้ง LIFF ID — ไป Admin → ติดตั้ง เพื่อตั้งค่าก่อน" },
+        { status: 400 }
+      );
+    }
+    const cfg = await getSiteConfig();
+    const gb = await resolveGroupBooking(b, body.ids);
+    const flex = buildDocRequestFlex({
+      kind,
+      businessName: cfg.business.name,
+      catName: String(gb.catName),
+      dateText: bookingScheduleText(gb),
+      url,
+    });
+    try {
+      if (preview) return NextResponse.json({ ok: true, preview: [flex] });
+      await pushLineMessage(to, [flex]);
+      return NextResponse.json({ ok: true });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
+  }
+
+  // ── พนักงานแนบ / ลบรูปสมุดวัคซีนของน้องเองในหลังบ้าน (เฉพาะหลังบ้าน — ลูกค้าโดนกันไว้ด้านบนแล้ว) ──
+  if (action === "add_vaccine_photos") {
+    const photos: string[] = Array.isArray(body.photos)
+      ? body.photos.map((v: unknown) => String(v || ""))
+      : [];
+    const res = await addBookingVaccinePhotos(b.id, photos);
+    if (!res.ok) {
+      return NextResponse.json(
+        { error: res.error === "no_photo" ? "ไม่พบรูปที่แนบ" : "บันทึกไม่สำเร็จ" },
+        { status: res.error === "no_photo" ? 400 : 500 }
+      );
+    }
+    return NextResponse.json({ ok: true, vaccinePhotoUrl: res.urls.join("\n") });
+  }
+  if (action === "remove_vaccine_photo") {
+    const target = String(body.url || "");
+    const urls = splitVaccinePhotos(b.vaccinePhotoUrl).filter((u) => u !== target);
+    const res = await setBookingVaccinePhotos(b.id, urls);
+    if (!res.ok) return NextResponse.json({ error: "บันทึกไม่สำเร็จ" }, { status: 500 });
+    return NextResponse.json({ ok: true });
   }
 
   // ── การ์ดให้ลูกค้าเลือกเวลาส่ง/รับน้อง (กดเอง) ──
