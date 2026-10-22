@@ -3,13 +3,28 @@ import { buildLiffUrl } from "@/lib/liff-urls";
 import {
   BROADCAST_ACTIONS,
   BROADCAST_TEMPLATES,
+  COUPON_ACTION_PREFIX,
+  COUPON_BUTTON_LABEL,
+  broadcastActionLabel,
+  couponActionId,
+  isCouponAction,
+  parseBroadcastActions,
   type BroadcastAction,
   type BroadcastActionId,
   type BroadcastTemplate,
 } from "@/lib/broadcast-constants";
 
 export type { BroadcastAction, BroadcastActionId, BroadcastTemplate };
-export { BROADCAST_ACTIONS, BROADCAST_TEMPLATES };
+export {
+  BROADCAST_ACTIONS,
+  BROADCAST_TEMPLATES,
+  COUPON_ACTION_PREFIX,
+  COUPON_BUTTON_LABEL,
+  broadcastActionLabel,
+  couponActionId,
+  isCouponAction,
+  parseBroadcastActions,
+};
 
 type ShopContact = { lineOa?: string; maps?: string };
 
@@ -22,6 +37,13 @@ export function resolveBroadcastActionUri(
 ): string {
   const appBase = shopBase || getAppUrlFromEnv() || "https://petflow.example.com";
   const lid = liffId?.trim();
+
+  if (isCouponAction(actionId)) {
+    const offerId = actionId.slice(COUPON_ACTION_PREFIX.length);
+    return lid
+      ? buildLiffUrl(lid, { path: "claim-coupon", offer: offerId })
+      : `${appBase}/app/claim-coupon?offer=${encodeURIComponent(offerId)}`;
+  }
 
   switch (actionId) {
     case "promos":
@@ -40,6 +62,10 @@ export function resolveBroadcastActionUri(
       return lid
         ? buildLiffUrl(lid, { path: "bookings" })
         : `${appBase}/app/bookings`;
+    case "coupons":
+      return lid
+        ? buildLiffUrl(lid, { path: "coupons" })
+        : `${appBase}/app/coupons`;
     case "line_chat":
       return shop.lineOa ? `https://line.me/R/ti/p/${shop.lineOa}` : `${appBase}/app`;
     case "maps":
@@ -55,11 +81,8 @@ export function buildBroadcastButtons(
   shop: ShopContact = {},
   shopBase?: string
 ) {
-  return actionIds.slice(0, 3).map((id) => {
-    const preset = BROADCAST_ACTIONS.find((a) => a.id === id);
-    return {
-      label: preset?.label || id,
-      uri: resolveBroadcastActionUri(id, liffId, shop, shopBase),
-    };
-  });
+  return actionIds.slice(0, 3).map((id) => ({
+    label: broadcastActionLabel(id),
+    uri: resolveBroadcastActionUri(id, liffId, shop, shopBase),
+  }));
 }

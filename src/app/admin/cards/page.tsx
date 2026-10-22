@@ -7,6 +7,9 @@ import {
   resolveGroomForm,
   type GroomFormConfig,
 } from "@/lib/groom-form";
+import { FOLLOW_UP_MESSAGES, followUpActions, followUpKey } from "@/lib/sales-insights";
+import { broadcastActionLabel } from "@/lib/broadcast-constants";
+import { BroadcastButtonPicker } from "@/components/BroadcastButtonPicker";
 import { toast } from "@/components/Toast";
 import { useConfig } from "@/components/ConfigProvider";
 import { Icon } from "@/components/Icon";
@@ -495,6 +498,118 @@ const CARDS: CardMeta[] = [
     hasTitleSize: true,
   },
   {
+    key: "readyForPickup",
+    name: "น้องพร้อมกลับบ้าน",
+    desc: "ส่งตอนอาบน้ำเสร็จ / เช็คเอาท์พร้อม ให้ลูกค้ามารับ",
+    colors: [
+      { key: "headerColor", label: "สีหัวข้อ", fallback: "#5C4033" },
+      { key: "accentColor", label: "สีชื่อน้อง", fallback: "#C4956A" },
+    ],
+    fields: [
+      { key: "customerName", label: "ชื่อลูกค้า" },
+      { key: "pickupTime", label: "เวลาที่แจ้งว่าจะมารับ" },
+    ],
+    texts: [],
+    styleTexts: [
+      { key: "title", label: "หัวข้อการ์ด", placeholder: "🎉 น้องพร้อมกลับบ้านแล้วค่ะ" },
+      {
+        key: "groomBody",
+        label: "ข้อความ (อาบน้ำเสร็จ)",
+        placeholder: "อาบน้ำเสร็จเรียบร้อย สวยหล่อพร้อมกลับบ้านแล้วค่ะ",
+        multiline: true,
+      },
+      {
+        key: "roomBody",
+        label: "ข้อความ (เช็คเอาท์ห้องพัก)",
+        placeholder: "เช็คเอาท์เรียบร้อย รอคุณแม่มารับได้เลยค่ะ",
+        multiline: true,
+      },
+      { key: "pickupTimeLabel", label: "ป้าย: เวลามารับ", placeholder: "🚗 เวลาที่แจ้งไว้ว่าจะมารับ" },
+    ],
+    closingLabel: "ข้อความปิดท้าย (ว่าง = ขอบคุณที่ไว้ใจ…)",
+    hasTitleSize: true,
+  },
+  {
+    key: "packageCard",
+    name: "คอร์สของคุณ",
+    desc: "ส่งตอนลูกค้าซื้อ/ได้รับคอร์ส — บอกจำนวนครั้งคงเหลือ",
+    colors: [
+      { key: "headerColor", label: "สีหัวข้อ", fallback: "#5C4033" },
+      { key: "accentColor", label: "สีจำนวนครั้ง", fallback: "#C4956A" },
+    ],
+    fields: [],
+    texts: [],
+    styleTexts: [
+      { key: "title", label: "หัวข้อการ์ด", placeholder: "🎫 คอร์สของคุณ" },
+      { key: "usesLeftLabel", label: "ป้าย: ใช้ได้อีก", placeholder: "ใช้ได้อีก" },
+    ],
+    closingLabel: "ข้อความปิดท้าย (ว่าง = แจ้งร้านได้เลยตอนมาใช้บริการ…)",
+    hasTitleSize: true,
+  },
+  {
+    key: "roomPlan",
+    name: "แพ็กห้อง / คอร์สแบ่งจ่าย",
+    desc: "ส่งตอนรับชำระแต่ละงวด หรือแจ้งคืน/ครั้งคงเหลือ",
+    colors: [
+      { key: "headerColor", label: "สีหัวข้อ", fallback: "#5C4033" },
+      { key: "accentColor", label: "สีจำนวนคงเหลือ", fallback: "#C4956A" },
+    ],
+    fields: [],
+    texts: [],
+    styleTexts: [
+      { key: "paidTitleRoom", label: "หัวข้อ: รับชำระแพ็กห้อง", placeholder: "🧾 รับชำระแพ็กห้องแล้ว" },
+      { key: "paidTitlePackage", label: "หัวข้อ: รับชำระคอร์ส", placeholder: "🧾 รับชำระคอร์สแล้ว" },
+      { key: "titleRoom", label: "หัวข้อ: แจ้งคืนคงเหลือ", placeholder: "🏠 คืนคงเหลือของคุณ" },
+      { key: "titlePackage", label: "หัวข้อ: แจ้งคอร์สคงเหลือ", placeholder: "🎫 คอร์สคงเหลือของคุณ" },
+      { key: "leftLabel", label: "ป้าย: ที่ใช้ได้อีก (ว่าง = คืน/ครั้งที่ใช้ได้อีก)", placeholder: "คืนที่ใช้ได้อีก" },
+      { key: "priceLabel", label: "ป้าย: ยอดแพ็ก", placeholder: "ยอดแพ็ก" },
+      { key: "paidLabel", label: "ป้าย: จ่ายแล้ว", placeholder: "จ่ายแล้ว" },
+      { key: "remainingLabel", label: "ป้าย: คงเหลือ", placeholder: "คงเหลือ" },
+      { key: "installmentsLabel", label: "ป้าย: เหลืออีก (งวด)", placeholder: "เหลืออีก" },
+      {
+        key: "unpaidNote",
+        label: "ข้อความตอนยังจ่ายไม่ครบ",
+        placeholder: "เริ่มใช้คืนได้เมื่อชำระครบทุกงวดนะคะ",
+        multiline: true,
+      },
+      { key: "statusLabel", label: "ป้าย: สถานะ", placeholder: "สถานะ" },
+      { key: "statusPaid", label: "สถานะ: จ่ายครบแล้ว", placeholder: "ชำระครบ ใช้ได้เลย ✅" },
+    ],
+    closingLabel: "ข้อความท้ายการ์ดแพ็กห้อง (ว่าง = พักห้องไหน ระบบหักคืน…)",
+    hasTitleSize: true,
+  },
+  {
+    key: "pointsAward",
+    name: "ได้รับแต้มสะสม",
+    desc: "ส่งตอนร้านเติมแต้ม หรือกดใช้โปรแทนลูกค้า",
+    colors: [
+      { key: "headerColor", label: "สีหัวข้อ", fallback: "#5C4033" },
+      { key: "accentColor", label: "สีจำนวนแต้ม", fallback: "#C4956A" },
+    ],
+    fields: [
+      { key: "customerName", label: "ชื่อลูกค้า" },
+      { key: "reason", label: "เหตุผลที่ได้แต้ม" },
+      { key: "totalPoints", label: "แต้มสะสมรวม" },
+    ],
+    texts: [],
+    styleTexts: [
+      { key: "title", label: "หัวข้อการ์ด", placeholder: "🎁 ได้รับแต้มสะสมแล้ว" },
+      { key: "pointsLabel", label: "ป้าย: แต้มที่ได้รับ", placeholder: "แต้มที่ได้รับ" },
+      { key: "reasonLabel", label: "ป้าย: เหตุผล", placeholder: "เหตุผล" },
+      { key: "totalLabel", label: "ป้าย: แต้มสะสมรวม", placeholder: "แต้มสะสมรวมตอนนี้" },
+    ],
+    closingLabel: "ข้อความปิดท้าย (ว่าง = ขอบคุณที่ไว้ใจ…)",
+    hasTitleSize: true,
+  },
+  {
+    key: "followUp",
+    name: "ข้อความตามลูกค้า (กลุ่มที่ควรทัก)",
+    desc: "ข้อความตั้งต้นของปุ่มส่ง LINE ในหน้าสรุปข้อมูล แยกตามกลุ่มลูกค้า — ส่งเป็นการ์ดโปรโมชั่น",
+    colors: [],
+    fields: [],
+    texts: [],
+  },
+  {
     key: "groomFormFields",
     name: "ฟอร์มถามประวัติน้อง",
     desc: "คำถามที่ลูกค้าเห็นในฟอร์มก่อนอาบน้ำ — เปิด/ปิด แก้คำถาม เพิ่ม-ลบตัวเลือกเองได้",
@@ -505,9 +620,28 @@ const CARDS: CardMeta[] = [
   {
     key: "consent",
     name: "เงื่อนไขเข้าพัก + ลายเซ็น",
-    desc: "หัวข้อและข้อตกลงที่ลูกค้าต้องอ่านและเซ็นยอมรับ — เขียนเองได้ทุกข้อ",
-    colors: [],
+    desc: "การ์ดชวนเซ็นข้อตกลง + หัวข้อและข้อตกลงที่ลูกค้าต้องอ่าน — เขียนเองได้ทุกข้อ",
+    colors: [
+      { key: "headerColor", label: "สีแถบหัว", fallback: "#6e2f48" },
+      { key: "headerTextColor", label: "สีตัวหนังสือหัว", fallback: "#FFFFFF" },
+      { key: "accentColor", label: "สีหัวข้อ", fallback: "#5C4033" },
+      { key: "buttonColor", label: "สีปุ่มเซ็น", fallback: "#bd3a6a" },
+    ],
     fields: [],
+    styleTexts: [
+      { key: "header", label: "ข้อความบนแถบหัว", placeholder: "📋 เงื่อนไขก่อนเข้าพัก" },
+      { key: "stayLabel", label: "ป้าย: เข้าพัก", placeholder: "เข้าพัก" },
+      { key: "stepsTitle", label: "หัวข้อขั้นตอน", placeholder: "⚠️ ก่อนฝากน้อง รบกวนทำ 2 ขั้นตอนนี้ก่อนนะคะ" },
+      {
+        key: "steps",
+        label: "ขั้นตอน (ว่าง = ข้อความเดิม พร้อมจำนวนข้อ)",
+        placeholder: "1. กดปุ่มด้านล่าง เพื่ออ่านข้อตกลง\n2. กดยอมรับ และเซ็นรับทราบในหน้านั้น",
+        multiline: true,
+      },
+      { key: "button", label: "คำในปุ่ม", placeholder: "อ่านเงื่อนไข + เซ็นยินยอม" },
+    ],
+    closingLabel: "ข้อความท้ายการ์ด (ว่าง = แจ้งการดูแลเพิ่มเติม…)",
+    hasTitleSize: true,
     texts: [
       { stateKey: "consentTitle", label: "หัวข้อข้อตกลง" },
       {
@@ -749,7 +883,7 @@ function Preview({
     return (
       <div className={bubble}>
         <div className="px-4 py-4 text-center" style={{ background: c("headerColor", "#FBF4E9") }}>
-          {show("stars") && <p className="text-sm" style={{ color: c("accentColor", "#C4956A") }}>⭐ ⭐ ⭐ ⭐ ⭐</p>}
+          {show("stars") && <p className="text-sm" style={{ color: c("accentColor", "#C4956A") }}>{t("stars", "⭐ ⭐ ⭐ ⭐ ⭐")}</p>}
           <p className={`mt-1 ${titleCls} font-extrabold`} style={{ color: c("headerTextColor", "#5C4033") }}>
             ขอบคุณที่ไว้วางใจ {shop} นะคะ 🧡
           </p>
@@ -761,7 +895,7 @@ function Preview({
           </p>
           {st.closing && <p className="whitespace-pre-line text-[10px] text-[#A2907E]">{st.closing}</p>}
         </div>
-        {btn(c("buttonColor", "#C4956A"), "⭐ รีวิวให้เราหน่อยนะคะ")}
+        {btn(c("buttonColor", "#C4956A"), t("button", "⭐ รีวิวให้เราหน่อยนะคะ"))}
       </div>
     );
   }
@@ -769,10 +903,38 @@ function Preview({
   if (meta.key === "consent") {
     const terms = (texts.consentTerms || "").split("\n").map((t) => t.trim()).filter(Boolean);
     return (
+      <div className="space-y-3">
+      <div className={bubble}>
+        <div className="px-4 py-3" style={{ background: c("headerColor", "#6e2f48") }}>
+          <p className="text-xs font-extrabold" style={{ color: c("headerTextColor", "#FFFFFF") }}>
+            {t("header", "📋 เงื่อนไขก่อนเข้าพัก")}
+          </p>
+        </div>
+        <div className="space-y-2 px-4 py-3 text-[11px] text-[#4E3E32]">
+          <p className={`${titleCls} font-extrabold`} style={{ color: c("accentColor", "#5C4033") }}>
+            {texts.consentTitle || "ข้อตกลงและเงื่อนไขการเข้าพัก"}
+          </p>
+          <p className="text-[10px] text-[#A2907E]">{shop} · 🐱 น้องเรเนล</p>
+          <p className="text-[10px]">🗓️ {t("stayLabel", "เข้าพัก")} 20 ก.ค. → 26 ก.ค.</p>
+          <div className="rounded-xl bg-[#FBF4E9] px-3 py-2.5">
+            <p className="font-extrabold text-[#5C4033]">{t("stepsTitle", "⚠️ ก่อนฝากน้อง รบกวนทำ 2 ขั้นตอนนี้ก่อนนะคะ")}</p>
+            <p className="mt-1 whitespace-pre-line">
+              {t(
+                "steps",
+                `1. กดปุ่มด้านล่าง เพื่ออ่านข้อตกลง ${terms.length} ข้อ\n2. กดยอมรับ และเซ็นรับทราบในหน้านั้น`
+              )}
+            </p>
+          </div>
+          <p className="text-[10px] text-[#A2907E]">
+            {st.closing || "แจ้งการดูแลเพิ่มเติมของน้องในหน้าเดียวกันได้เลยค่ะ 🧡"}
+          </p>
+        </div>
+        {btn(c("buttonColor", "#bd3a6a"), t("button", "อ่านเงื่อนไข + เซ็นยินยอม"))}
+      </div>
+      <p className="text-center text-[10px] font-bold text-brown-soft">หน้าที่ลูกค้าเปิดอ่าน + เซ็น</p>
       <div className={bubble}>
         <div className="space-y-2 px-4 py-3 text-[11px] text-[#4E3E32]">
           <p className="text-sm font-extrabold text-[#5C4033]">📋 {texts.consentTitle || "ข้อตกลงและเงื่อนไขการเข้าพัก"}</p>
-          <p className="text-[10px] text-[#A2907E]">🐱 เรเนล · เข้าพัก 20 → 26 ก.ค.</p>
           <div className="space-y-1">
             {(terms.length ? terms : ["(ยังไม่มีข้อตกลง — พิมพ์ด้านซ้ายได้เลย)"]).slice(0, 5).map((t, i) => (
               <p key={i} className="rounded bg-[#F8F2E4] px-2 py-1 text-[10px]">{i + 1}. {t}</p>
@@ -782,7 +944,7 @@ function Preview({
             )}
           </div>
         </div>
-        {btn("#bd3a6a", "📋 อ่าน + เซ็นยอมรับข้อตกลง")}
+      </div>
       </div>
     );
   }
@@ -976,11 +1138,148 @@ function Preview({
     );
   }
 
+  if (meta.key === "followUp") {
+    return (
+      <div className="space-y-3">
+        {FOLLOW_UP_MESSAGES.map((m) => (
+          <div key={m.id}>
+            <p className="mb-1 text-center text-[10px] font-bold text-white">{m.label}</p>
+            <div className={bubble}>
+              <div className="px-4 py-2.5" style={{ background: "#6e2f48" }}>
+                <p className="text-[11px] font-extrabold text-white">✨ โปรโมชั่น {shop}</p>
+              </div>
+              <div className="space-y-1 px-4 py-3 text-[11px] text-[#4E3E32]">
+                <p className="text-sm font-extrabold text-[#5C4033]">{t(followUpKey(m.id, "Title"), m.title)}</p>
+                <p className="whitespace-pre-line">{t(followUpKey(m.id, "Body"), m.body)}</p>
+              </div>
+              {followUpActions(m.id, st.texts).map((id, i) => (
+                <div key={id} className="px-3 pb-2 last:pb-3">
+                  <div
+                    className="rounded-lg py-1.5 text-center text-[11px] font-bold"
+                    style={i === 0 ? { background: "#bd3a6a", color: "#fff" } : { border: "1px solid #bd3a6a", color: "#bd3a6a" }}
+                  >
+                    {broadcastActionLabel(id)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (meta.key === "readyForPickup") {
+    return (
+      <div className={bubble}>
+        <div className="space-y-1 px-4 py-4 text-[11px] text-[#4E3E32]">
+          <p className={`${titleCls} font-extrabold`} style={{ color: c("headerColor", "#5C4033") }}>
+            {t("title", "🎉 น้องพร้อมกลับบ้านแล้วค่ะ")}
+          </p>
+          {show("customerName") && <p className="pt-1 text-[10px] text-[#A2907E]">คุณตาล</p>}
+          <div className="mt-2 rounded-lg bg-[#F4ECE0] px-3 py-2.5">
+            <p className="font-extrabold" style={{ color: c("accentColor", "#C4956A") }}>น้อง Soju</p>
+            <p className="mt-0.5 whitespace-pre-line">
+              {t("groomBody", "อาบน้ำเสร็จเรียบร้อย สวยหล่อพร้อมกลับบ้านแล้วค่ะ")}
+            </p>
+          </div>
+          {show("pickupTime") && (
+            <p className="pt-1 text-[10px] text-[#A2907E]">{t("pickupTimeLabel", "🚗 เวลาที่แจ้งไว้ว่าจะมารับ")}: 17:00 น.</p>
+          )}
+          <p className="whitespace-pre-line pt-2 text-[10px] text-[#A2907E]">
+            {st.closing || `ขอบคุณที่ไว้ใจ ${shop} นะคะ 🧡`}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (meta.key === "packageCard") {
+    return (
+      <div className={bubble}>
+        <div className="space-y-1 px-4 py-4 text-[11px] text-[#4E3E32]">
+          <p className={`${titleCls} font-extrabold`} style={{ color: c("headerColor", "#5C4033") }}>
+            {t("title", "🎫 คอร์สของคุณ")}
+          </p>
+          <p className="pt-1 text-[10px] text-[#A2907E]">คุณตาล</p>
+          <p className="pt-2 text-xs font-extrabold">อาบน้ำ Premium 5 ครั้ง</p>
+          <div className="mt-2 rounded-xl bg-[#FBF4E9] px-3 py-3 text-center">
+            <p className="text-[10px] text-[#A2907E]">{t("usesLeftLabel", "ใช้ได้อีก")}</p>
+            <p className="text-2xl font-extrabold" style={{ color: c("accentColor", "#C4956A") }}>5 / 5 ครั้ง</p>
+          </div>
+          <p className="whitespace-pre-line pt-2 text-[10px] text-[#A2907E]">
+            {st.closing || "แจ้งร้านได้เลยตอนมาใช้บริการว่าจะหักจากคอร์สนะคะ 🧡"}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (meta.key === "roomPlan") {
+    const row = (label: string, value: string, tone = "") => (
+      <p className="flex justify-between gap-2 text-[11px]">
+        <span className="text-[#A2907E]">{label}</span>
+        <span className={`font-bold ${tone}`}>{value}</span>
+      </p>
+    );
+    return (
+      <div className={bubble}>
+        <div className="space-y-1.5 px-4 py-4 text-[11px] text-[#4E3E32]">
+          <p className={`${titleCls} font-extrabold`} style={{ color: c("headerColor", "#5C4033") }}>
+            {t("paidTitleRoom", "🧾 รับชำระแพ็กห้องแล้ว")}
+          </p>
+          <p className="text-[10px] text-[#A2907E]">คุณตาล</p>
+          <p className="text-xs font-extrabold">แพ็กพักรายเดือน 10 คืน</p>
+          <p className="text-[11px] font-bold text-[#6E8B5E]">รับงวดที่ 1 3,000 บาท เรียบร้อยค่ะ 🧡</p>
+          <div className="rounded-xl bg-[#FBF4E9] px-3 py-3 text-center">
+            <p className="text-[10px] text-[#A2907E]">{t("leftLabel", "คืนที่ใช้ได้อีก")}</p>
+            <p className="text-2xl font-extrabold" style={{ color: c("accentColor", "#C4956A") }}>10 คืน</p>
+          </div>
+          <hr className="border-[#eee3d2]" />
+          {row(t("priceLabel", "ยอดแพ็ก"), "9,000 บาท")}
+          {row(t("paidLabel", "จ่ายแล้ว"), "3,000 บาท", "text-[#6E8B5E]")}
+          {row(t("remainingLabel", "คงเหลือ"), "6,000 บาท", "text-[#C0703A]")}
+          {row(t("installmentsLabel", "เหลืออีก"), "2 งวด (งวดละ ~3,000)")}
+          <p className="whitespace-pre-line text-[10px] text-[#C0703A]">
+            {t("unpaidNote", "เริ่มใช้คืนได้เมื่อชำระครบทุกงวดนะคะ")}
+          </p>
+          <p className="whitespace-pre-line pt-1 text-[10px] text-[#A2907E]">
+            {st.closing || "พักห้องไหน ระบบหักคืนของห้องนั้นให้ตามจริงนะคะ 🐾"}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (meta.key === "pointsAward") {
+    return (
+      <div className={bubble}>
+        <div className="space-y-1 px-4 py-4 text-[11px] text-[#4E3E32]">
+          <p className={`${titleCls} font-extrabold`} style={{ color: c("headerColor", "#5C4033") }}>
+            {t("title", "🎁 ได้รับแต้มสะสมแล้ว")}
+          </p>
+          {show("customerName") && <p className="pt-1 text-[10px] text-[#A2907E]">คุณตาล</p>}
+          <div className="mt-2 flex items-center justify-between rounded-lg bg-[#F4ECE0] px-3 py-2.5">
+            <span className="text-[#5C4033]">{t("pointsLabel", "แต้มที่ได้รับ")}</span>
+            <span className="text-lg font-extrabold" style={{ color: c("accentColor", "#C4956A") }}>+50</span>
+          </div>
+          {show("reason") && <p className="pt-1">{t("reasonLabel", "เหตุผล")}: รีวิวร้านใน Google</p>}
+          {show("totalPoints") && (
+            <p className="text-[10px] text-[#A2907E]">{t("totalLabel", "แต้มสะสมรวมตอนนี้")} 320 แต้ม</p>
+          )}
+          <p className="whitespace-pre-line pt-2 text-[10px] text-[#A2907E]">
+            {st.closing || `ขอบคุณที่ไว้ใจ ${shop} นะคะ 🧡`}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   // groomInfo
   return (
     <div className={bubble}>
       <div className="px-4 py-3" style={{ background: c("headerColor", "#6e2f48") }}>
-        <p className="text-xs font-extrabold" style={{ color: c("headerTextColor", "#FFFFFF") }}>🩺 ประวัติน้องก่อนอาบน้ำ</p>
+        <p className="text-xs font-extrabold" style={{ color: c("headerTextColor", "#FFFFFF") }}>{t("headerTitle", "🩺 ประวัติน้องก่อนอาบน้ำ")}</p>
       </div>
       <div className="space-y-2 px-4 py-3 text-[11px] text-[#4E3E32]">
         <p className={`${titleCls} font-extrabold`} style={{ color: c("accentColor", "#5C4033") }}>🐱 Soju</p>
@@ -991,7 +1290,7 @@ function Preview({
         </p>
         {st.closing && <p className="whitespace-pre-line text-[10px] text-[#A2907E]">{st.closing}</p>}
       </div>
-      {btn(c("buttonColor", "#bd3a6a"), "🩺 แจ้งประวัติน้อง")}
+      {btn(c("buttonColor", "#bd3a6a"), t("button", "🩺 แจ้งประวัติน้อง"))}
     </div>
   );
 }
@@ -1459,6 +1758,78 @@ export default function CardsStudioPage() {
                   </label>
                 ))}
               </div>
+            </div>
+          )}
+
+          {activeKey === "followUp" && (
+            <div className="space-y-3">
+              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Groups · ข้อความ + ปุ่มของแต่ละกลุ่ม</p>
+              {FOLLOW_UP_MESSAGES.map((m) => {
+                const setKey = (key: string, v: string | undefined) => {
+                  const next = { ...st.texts };
+                  if (v === undefined || v === "") delete next[key];
+                  else next[key] = v;
+                  patch({ texts: Object.keys(next).length ? next : undefined });
+                };
+                const buttonsKey = followUpKey(m.id, "Buttons");
+                const actions = followUpActions(m.id, st.texts);
+                return (
+                  <details key={m.id} className="group rounded-petflow-sm border border-petflow-line bg-paper/40 [&_summary::-webkit-details-marker]:hidden">
+                    <summary className="flex min-h-[44px] cursor-pointer list-none items-center gap-2 px-3 py-2">
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-xs font-extrabold text-petflow-chocolate">{m.label}</span>
+                        <span className="block truncate text-[10px] text-brown-soft">
+                          {actions.length ? actions.map(broadcastActionLabel).join(" · ") : "ไม่มีปุ่ม"}
+                        </span>
+                      </span>
+                      <Icon name="chevron" size={14} className="text-brown-faint transition group-open:rotate-90" />
+                    </summary>
+                    <div className="space-y-2.5 border-t border-petflow-line px-3 py-3">
+                      <label className="block text-[11px] font-bold text-brown-soft">
+                        หัวข้อ
+                        <input
+                          value={st.texts?.[followUpKey(m.id, "Title")] || ""}
+                          onChange={(e) => setKey(followUpKey(m.id, "Title"), e.target.value)}
+                          placeholder={m.title}
+                          className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-xs font-normal"
+                        />
+                      </label>
+                      <label className="block text-[11px] font-bold text-brown-soft">
+                        ข้อความ
+                        <textarea
+                          value={st.texts?.[followUpKey(m.id, "Body")] || ""}
+                          onChange={(e) => setKey(followUpKey(m.id, "Body"), e.target.value)}
+                          placeholder={m.body}
+                          rows={3}
+                          className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-xs font-normal"
+                        />
+                      </label>
+                      <div>
+                        <p className="mb-1.5 flex items-center justify-between text-[11px] font-bold text-brown-soft">
+                          ปุ่มในการ์ด (สูงสุด 3)
+                          {st.texts?.[buttonsKey] !== undefined && (
+                            <button
+                              type="button"
+                              onClick={() => setKey(buttonsKey, undefined)}
+                              className="font-bold text-latte-deep underline"
+                            >
+                              ใช้ปุ่มตั้งต้น
+                            </button>
+                          )}
+                        </p>
+                        <BroadcastButtonPicker
+                          value={actions}
+                          // เก็บแม้เป็นค่าว่าง — "ไม่มีปุ่ม" ต่างจาก "ยังไม่ได้ตั้ง"
+                          onChange={(next) => {
+                            const t = { ...st.texts, [buttonsKey]: next.join(",") };
+                            patch({ texts: t });
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </details>
+                );
+              })}
             </div>
           )}
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { CheckBox } from "@/components/ui";
@@ -168,10 +169,18 @@ export function SalesActions(props: {
 }) {
   const router = useRouter();
   const today = bangkokToday();
+  // ข้อความตามลูกค้าที่ร้านแก้เองในหน้าปรับการ์ด (ไม่ตั้ง = ใช้ข้อความตั้งต้น)
+  const [followUpTexts, setFollowUpTexts] = useState<Record<string, string>>({});
+  useEffect(() => {
+    fetch("/api/config")
+      .then((r) => r.json())
+      .then((d) => setFollowUpTexts(d.config?.cards?.followUp?.texts || {}))
+      .catch(() => {});
+  }, []);
   const a = useMemo(
-    () => analyzeSales({ ...props, today }),
+    () => analyzeSales({ ...props, today, followUpTexts }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [props.customers, props.invoices, props.bookings, props.packages, today]
+    [props.customers, props.invoices, props.bookings, props.packages, today, followUpTexts]
   );
 
   const send = (s: ActionSegment, ids: string[]) => {
@@ -183,6 +192,7 @@ export function SalesActions(props: {
           customerIds: ids,
           title: s.message.title,
           body: s.message.body,
+          actions: s.message.actions,
         })
       );
     } catch {
