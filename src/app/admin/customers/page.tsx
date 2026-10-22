@@ -12,6 +12,7 @@ import { CatMediaGallery } from "@/components/CatMediaGallery";
 import { TIER_LABELS, tierBadgeClass } from "@/lib/customer-tier";
 import { RegistrationQrSection } from "@/components/LineSetupSection";
 import { AddCustomerModal } from "@/components/AddCustomerModal";
+import { EditCustomerSheet } from "@/components/EditCustomerSheet";
 import { toast } from "@/components/Toast";
 import { PreviewSendModal } from "@/components/PreviewSendModal";
 import { CustomerLinkSection } from "@/components/CustomerLinkSection";
@@ -1406,13 +1407,6 @@ function CustomerSummaryCard({
   canFollowUp?: boolean;
   onSaved: () => void;
 }) {
-  const [name, setName] = useState(customer.name);
-  const [phone, setPhone] = useState(customer.phone || "");
-  const [email, setEmail] = useState(customer.email || "");
-  const [birthday, setBirthday] = useState(customer.birthday || "");
-  const [address, setAddress] = useState(customer.address || "");
-  const [addressMapUrl, setAddressMapUrl] = useState(customer.addressMapUrl || "");
-  const [postalCode, setPostalCode] = useState(customer.postalCode || "");
   const [tier, setTier] = useState<CustomerTier>(customer.tier || "new");
   const [msg, setMsg] = useState("");
   const [followUpBusy, setFollowUpBusy] = useState(false);
@@ -1687,46 +1681,8 @@ function CustomerSummaryCard({
   const heroCat = customer.cats.find((cat) => cat.photoDataUrl) || customer.cats[0];
 
   useEffect(() => {
-    setName(customer.name);
-    setPhone(customer.phone || "");
-    setAddress(customer.address || "");
-    setAddressMapUrl(customer.addressMapUrl || "");
-    setPostalCode(customer.postalCode || "");
     setTier(customer.tier || "new");
-  }, [
-    customer.id,
-    customer.name,
-    customer.phone,
-    customer.address,
-    customer.addressMapUrl,
-    customer.postalCode,
-    customer.tier,
-  ]);
-
-  const save = async (patch: {
-    name?: string;
-    phone?: string;
-    email?: string;
-    birthday?: string;
-    address?: string;
-    addressMapUrl?: string;
-    postalCode?: string;
-  }) => {
-    const res = await fetch("/api/customers", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: customer.id,
-        action: "update_customer",
-        patch,
-      }),
-    });
-    if (res.ok) {
-      setMsg("✅ บันทึกแล้ว");
-      onSaved();
-      setTimeout(() => setMsg(""), 2000);
-    }
-  };
+  }, [customer.id, customer.tier]);
 
   const removeCustomer = async () => {
     if (
@@ -1745,6 +1701,7 @@ function CustomerSummaryCard({
   };
 
   const [mergeOpen, setMergeOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   const unlinkLine = async () => {
     if (
@@ -1879,6 +1836,14 @@ function CustomerSummaryCard({
             )}
           </div>
         </div>
+        <button
+          type="button"
+          onClick={() => setEditOpen(true)}
+          aria-label="แก้ไขข้อมูลลูกค้า"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-card/80 text-petflow-chocolate ring-1 ring-petflow-line"
+        >
+          <Icon name="edit" size={18} />
+        </button>
         <MoreMenu
           items={[
             ...(customer.lineUserId
@@ -2263,122 +2228,9 @@ function CustomerSummaryCard({
         />
       </div>
 
-      <details className="group rounded-petflow-sm border border-petflow-line bg-card/85 [&_summary::-webkit-details-marker]:hidden">
-        <summary className="flex min-h-[48px] cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-xs font-extrabold text-petflow-chocolate">
-          <Icon name="edit" size={16} className="text-latte-deep" />
-          <span className="flex-1">แก้ไขข้อมูลลูกค้า</span>
-          <Icon name="chevron" size={16} className="text-brown-faint transition group-open:rotate-90" />
-        </summary>
-        <div className="space-y-3 border-t border-petflow-line p-3">
-
-        <label className="block text-xs font-bold text-brown-soft">
-          <span className="mb-1 block">ชื่อที่ใช้ในร้าน (ตั้งเองได้)</span>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onBlur={() => {
-              const trimmed = name.trim();
-              if (trimmed && trimmed !== customer.name) save({ name: trimmed });
-            }}
-            placeholder="เช่น คุณแม่น้องมะลิ"
-            className="w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm font-bold text-brown outline-none transition focus:border-latte-deep focus:bg-card"
-          />
-        </label>
-
-        <label className="block text-xs font-bold text-brown-soft">
-          <span className="mb-1 block">เบอร์โทร</span>
-          <input
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            onBlur={() => {
-              if (phone.trim() !== (customer.phone || "")) save({ phone: phone.trim() || undefined });
-            }}
-            placeholder="08x-xxx-xxxx"
-            className="w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm outline-none transition focus:border-latte-deep focus:bg-card"
-          />
-        </label>
-        <label className="block text-xs font-bold text-brown-soft">
-          <span className="mb-1 block">อีเมล</span>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            onBlur={() => {
-              if (email.trim() !== (customer.email || "")) save({ email: email.trim() || undefined });
-            }}
-            placeholder="เช่น customer@email.com"
-            className="w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm outline-none transition focus:border-latte-deep focus:bg-card"
-          />
-        </label>
-        <label className="block text-xs font-bold text-brown-soft">
-          <span className="mb-1 block">วันเกิดลูกค้า</span>
-          <input
-            type="date"
-            value={birthday}
-            onChange={(e) => setBirthday(e.target.value)}
-            onBlur={() => {
-              if (birthday !== (customer.birthday || "")) save({ birthday: birthday || undefined });
-            }}
-            className="w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm outline-none transition focus:border-latte-deep focus:bg-card"
-          />
-        </label>
-        <label className="block text-xs font-bold text-brown-soft">
-          <span className="mb-1 block">ที่อยู่บ้าน (บริการรับ-ส่ง)</span>
-          <textarea
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-            onBlur={() => {
-              if (address.trim() !== (customer.address || "")) save({ address: address.trim() || undefined });
-            }}
-            placeholder="เช่น บ้านเลขที่ ซอย ถนน แขวง/ตำบล เขต/อำเภอ"
-            rows={2}
-            className="w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm outline-none transition focus:border-latte-deep focus:bg-card"
-          />
-        </label>
-        <label className="block text-xs font-bold text-brown-soft">
-          <span className="mb-1 block">ลิงก์ Google Maps</span>
-          <input
-            value={addressMapUrl}
-            onChange={(e) => setAddressMapUrl(e.target.value)}
-            onBlur={() => {
-              if (addressMapUrl.trim() !== (customer.addressMapUrl || ""))
-                save({ addressMapUrl: addressMapUrl.trim() || undefined });
-            }}
-            placeholder="วางลิงก์ Google Maps ที่ลูกค้าแชร์มา"
-            className="w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm outline-none transition focus:border-latte-deep focus:bg-card"
-          />
-          {addressMapUrl && (
-            <a
-              href={addressMapUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-1 inline-flex min-h-[32px] items-center gap-1 text-[11px] font-bold text-latte-deep"
-            >
-              <Icon name="link" size={13} />
-              เปิดดูแผนที่
-            </a>
-          )}
-        </label>
-        <label className="block text-xs font-bold text-brown-soft">
-          <span className="mb-1 block">รหัสไปรษณีย์</span>
-          <input
-            value={postalCode}
-            onChange={(e) => setPostalCode(e.target.value.replace(/[^0-9]/g, "").slice(0, 5))}
-            onBlur={() => {
-              if (postalCode.trim() !== (customer.postalCode || ""))
-                save({ postalCode: postalCode.trim() || undefined });
-            }}
-            inputMode="numeric"
-            placeholder="เช่น 10260"
-            className="w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm outline-none transition focus:border-latte-deep focus:bg-card"
-          />
-        </label>
-        <p className="flex items-center gap-1.5 text-[10px] text-brown-faint">
-          <Icon name="check" size={12} />
-          พิมพ์แล้วแตะออกจากช่อง ระบบบันทึกให้อัตโนมัติ
-        </p>
-        </div>
-      </details>
+      {editOpen && (
+        <EditCustomerSheet customer={customer} onClose={() => setEditOpen(false)} onSaved={onSaved} />
+      )}
 
       {!customer.lineUserId && (
         <AdoptLineControl customer={customer} onMerged={onSaved} />

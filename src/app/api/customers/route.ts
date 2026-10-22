@@ -127,6 +127,16 @@ async function handlePost(req: NextRequest) {
     phone: body.phone,
     staffNote: body.staffNote,
   });
+  // ข้อมูลเสริมตอนร้านเพิ่มลูกค้าเอง (ที่อยู่/แผนที่/อีเมล) — ใส่เฉพาะช่องที่กรอกมา
+  const extra: Parameters<typeof updateCustomer>[1] = {};
+  for (const k of ["email", "address", "addressMapUrl"] as const) {
+    const v = typeof body[k] === "string" ? body[k].trim() : "";
+    if (v) extra[k] = v;
+  }
+  if (Object.keys(extra).length > 0) {
+    const updated = await updateCustomer(customer.id, extra);
+    return NextResponse.json({ ok: true, customer: updated ?? customer });
+  }
   return NextResponse.json({ ok: true, customer });
 }
 

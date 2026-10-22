@@ -13,6 +13,8 @@ export function AddCustomerModal({
   const [phone, setPhone] = useState("");
   const [catName, setCatName] = useState("");
   const [catNote, setCatNote] = useState("");
+  const [address, setAddress] = useState("");
+  const [addressMapUrl, setAddressMapUrl] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -22,6 +24,8 @@ export function AddCustomerModal({
     setPhone("");
     setCatName("");
     setCatNote("");
+    setAddress("");
+    setAddressMapUrl("");
     setError("");
   };
 
@@ -39,6 +43,8 @@ export function AddCustomerModal({
         catName: catName.trim(),
         phone: phone.trim() || undefined,
         staffNote: catNote.trim() || undefined,
+        address: address.trim() || undefined,
+        addressMapUrl: addressMapUrl.trim() || undefined,
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -126,6 +132,25 @@ export function AddCustomerModal({
                   placeholder="นิสัย / แพ้อาหาร"
                   rows={2}
                   className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm"
+                />
+              </label>
+              <label className="block text-xs font-bold text-brown-soft">
+                ที่อยู่ (ถ้ามี — ใช้ตอนรับ-ส่งน้อง)
+                <textarea
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="บ้านเลขที่ ซอย ถนน เขต"
+                  rows={2}
+                  className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm"
+                />
+              </label>
+              <label className="block text-xs font-bold text-brown-soft">
+                ลิงก์ Google Maps (ถ้ามี)
+                <input
+                  value={addressMapUrl}
+                  onChange={(e) => setAddressMapUrl(e.target.value)}
+                  placeholder="วางลิงก์ที่ลูกค้าแชร์มา"
+                  className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-3 text-sm"
                 />
               </label>
               {error && (
