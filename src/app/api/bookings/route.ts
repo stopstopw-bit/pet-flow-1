@@ -482,6 +482,13 @@ function groomInfoCardFor(b: StoredBooking, cfg: Awaited<ReturnType<typeof getSi
     if (!to) {
       return NextResponse.json({ error: NO_LINE_ERROR }, { status: 400 });
     }
+    // เคยกรอกประวัติแล้ว → ไม่ขอซ้ำเด็ดขาด (ประวัติผูกกับตัวแมว ข้ามนัดก็ยังจำได้)
+    if (await getCatGroomInfo(to, String(b.catName))) {
+      return NextResponse.json(
+        { error: `${b.catName} เคยกรอกประวัติแล้ว ไม่ขอซ้ำค่ะ` },
+        { status: 400 }
+      );
+    }
     const cfg = await getSiteConfig();
     const url = await getGroomInfoUrl(b.id);
     const card = groomInfoCardFor(b, cfg);
@@ -509,11 +516,22 @@ function groomInfoCardFor(b: StoredBooking, cfg: Awaited<ReturnType<typeof getSi
     if (!to) {
       return NextResponse.json({ error: NO_LINE_ERROR }, { status: 400 });
     }
-    const bookings = (
+    const found = (
       await Promise.all(ids.map((x: string) => getBooking(x)))
     ).filter((x): x is StoredBooking => !!x);
-    if (bookings.length === 0) {
+    if (found.length === 0) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
+    }
+    // ตัวที่เคยกรอกประวัติแล้ว → ตัดออก ไม่ขอซ้ำเด็ดขาด
+    const bookings: StoredBooking[] = [];
+    for (const x of found) {
+      if (!(await getCatGroomInfo(to, String(x.catName)))) bookings.push(x);
+    }
+    if (bookings.length === 0) {
+      return NextResponse.json(
+        { error: "ทุกตัวเคยกรอกประวัติแล้ว ไม่ขอซ้ำค่ะ" },
+        { status: 400 }
+      );
     }
     const cfg = await getSiteConfig();
     const url = await getGroomInfoUrl(bookings.map((x) => x.id));
@@ -809,7 +827,6 @@ function groomInfoCardFor(b: StoredBooking, cfg: Awaited<ReturnType<typeof getSi
           )
         ).filter((x): x is StoredBooking => !!x);
         // เคยกรอกประวัติไว้แล้ว → ไม่ถามซ้ำ (ประวัติผูกกับตัวแมว ข้ามนัดก็ยังจำได้)
-        // ถ้าอยากถามใหม่จริง ๆ ให้ใช้ปุ่มส่งเดี่ยว "ขอประวัติ" แทน
         const needInfo: StoredBooking[] = [];
         for (const g of groupBookings) {
           const existing = to ? await getCatGroomInfo(to, String(g.catName)) : undefined;
