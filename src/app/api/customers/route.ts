@@ -126,6 +126,9 @@ async function handlePost(req: NextRequest) {
       { status: 400 }
     );
   }
+  // สมัครในนามนิติบุคคล / ขอใบกำกับภาษี — ตรวจก่อนสร้างลูกค้า จะได้ไม่ค้างครึ่ง ๆ
+  const taxInvoice = parseTaxInvoiceBody(body.taxInvoice ?? undefined);
+  if (taxInvoice.error) return NextResponse.json({ error: taxInvoice.error }, { status: 400 });
   let customer = await upsertCustomerFromBooking({
     customerName,
     catName,
@@ -146,6 +149,7 @@ async function handlePost(req: NextRequest) {
     const v = typeof body[k] === "string" ? body[k].trim() : "";
     if (v) extra[k] = v;
   }
+  if (taxInvoice.value) extra.taxInvoice = taxInvoice.value;
   if (Object.keys(extra).length > 0) {
     customer = (await updateCustomer(customer.id, extra)) ?? customer;
   }
