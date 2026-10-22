@@ -17,6 +17,8 @@ export type CustomerTaxInvoice = {
   /** ที่อยู่ตามทะเบียน / ตามบัตร */
   address: string;
   phone?: string;
+  /** ลูกค้าสมัคร/ถูกเพิ่มในนามนิติบุคคล (ตัวลูกค้าคือบริษัท ไม่ใช่แค่ขอบิลในนามบริษัท) */
+  account?: boolean;
 };
 
 /** ค่าในฟอร์ม (ระหว่างพิมพ์) */
@@ -29,12 +31,14 @@ export type TaxInvoiceForm = {
   branchNo: string;
   address: string;
   phone: string;
+  /** สมัครในนามนิติบุคคล — คงไว้ตอนแก้ข้อมูล */
+  account?: boolean;
 };
 
 export const HEAD_OFFICE = "สำนักงานใหญ่";
 
-export function emptyTaxInvoiceForm(): TaxInvoiceForm {
-  return { on: false, kind: "company", name: "", taxId: "", headOffice: true, branchNo: "", address: "", phone: "" };
+export function emptyTaxInvoiceForm(kind: TaxInvoiceKind = "company"): TaxInvoiceForm {
+  return { on: false, kind, name: "", taxId: "", headOffice: true, branchNo: "", address: "", phone: "" };
 }
 
 export function taxInvoiceToForm(t: CustomerTaxInvoice | null | undefined): TaxInvoiceForm {
@@ -50,6 +54,7 @@ export function taxInvoiceToForm(t: CustomerTaxInvoice | null | undefined): TaxI
     branchNo: head || !m ? "" : m[1],
     address: t.address || "",
     phone: t.phone || "",
+    ...(t.account ? { account: true } : {}),
   };
 }
 
@@ -67,6 +72,7 @@ export function formToTaxInvoice(f: TaxInvoiceForm): CustomerTaxInvoice | null {
   }
   const phone = f.phone.trim();
   if (phone) out.phone = phone;
+  if (f.kind === "company" && f.account) out.account = true;
   return out;
 }
 
@@ -100,6 +106,7 @@ function clean(o: Record<string, unknown>): CustomerTaxInvoice {
   }
   const phone = s("phone", 30);
   if (phone) out.phone = phone;
+  if (kind === "company" && o.account === true) out.account = true;
   return out;
 }
 

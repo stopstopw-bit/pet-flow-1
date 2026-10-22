@@ -2240,6 +2240,9 @@ function CrmTab({
           rows={5}
           className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm"
         />
+        <a href="/admin/cards?card=missYou" className="mt-1 block text-[11px] font-bold text-latte-deep underline">
+          ดูตัวอย่างการ์ด + แก้หัวข้อ สี และปุ่ม
+        </a>
       </label>
       <Field
         label="Tier ที่ตั้งได้ (คั่นด้วย ,)"

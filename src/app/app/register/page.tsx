@@ -10,7 +10,7 @@ import { SectionLabel } from "@/components/ui";
 import { Icon } from "@/components/Icon";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { toJpegDataUrl } from "@/lib/image-convert";
-import { TaxInvoiceFields } from "@/components/TaxInvoiceFields";
+import { AccountTypeFields, TaxInvoiceFields, companyContactProblem } from "@/components/TaxInvoiceFields";
 import {
   emptyTaxInvoiceForm,
   formToTaxInvoice,
@@ -77,7 +77,16 @@ export default function RegisterPage() {
   const [referral, setReferral] = useState("");
   const [postalCode, setPostalCode] = useState("");
   const [consent, setConsent] = useState(true);
-  const [taxInvoice, setTaxInvoice] = useState<TaxInvoiceForm>(emptyTaxInvoiceForm);
+  const [taxInvoice, setTaxInvoice] = useState<TaxInvoiceForm>(() => emptyTaxInvoiceForm("person"));
+  // สมัครในนามนิติบุคคล — ข้อมูลบริษัท + ผู้ติดต่อใช้ข้อมูลเดียวกับบริษัทไหม
+  const [isCompany, setIsCompany] = useState(false);
+  const [company, setCompany] = useState<TaxInvoiceForm>(() => ({
+    ...emptyTaxInvoiceForm("company"),
+    on: true,
+    account: true,
+  }));
+  const [sameContact, setSameContact] = useState(true);
+  const useCompanyContact = isCompany && sameContact;
   const [cats, setCats] = useState<CatInput[]>([emptyCat()]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -147,15 +156,22 @@ export default function RegisterPage() {
       setError("เลือกช่องทางที่รู้จักเราด้วยนะคะ");
       return;
     }
-    const taxProblem = taxInvoiceProblem(formToTaxInvoice(taxInvoice));
+    const billing = formToTaxInvoice(isCompany ? company : taxInvoice);
+    const taxProblem =
+      taxInvoiceProblem(billing) || (isCompany ? companyContactProblem(company, sameContact) : "");
     if (taxProblem) {
       setError(taxProblem);
       return;
     }
-    if (taxInvoice.on && taxInvoice.phone.replace(/\D/g, "").length < 9) {
+    // สมัครสมาชิกต้องกรอกครบทุกช่อง — เบอร์บริษัทก็ต้องมี
+    if (billing && (billing.phone || "").replace(/\D/g, "").length < 9) {
       setError("กรอกเบอร์โทรสำหรับออกบิลด้วยนะคะ");
       return;
     }
+    // นิติบุคคล + ผู้ติดต่อใช้ข้อมูลเดียวกัน → ชื่อ/เบอร์/ที่อยู่ลูกค้า = ของบริษัท
+    const contact = useCompanyContact
+      ? { name: company.name.trim(), phone: company.phone.trim(), address: company.address.trim() }
+      : { name, phone, address: undefined };
 
     setSaving(true);
     setError("");
@@ -166,14 +182,15 @@ export default function RegisterPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           lineUserId: profile.lineUserId,
-          name,
-          phone,
+          name: contact.name,
+          phone: contact.phone,
+          address: contact.address,
           email,
-          birthday,
+          birthday: isCompany ? undefined : birthday,
           referralSource: referral,
           referralCode: referralCode || undefined,
           postalCode: postalCode || undefined,
-          taxInvoice: formToTaxInvoice(taxInvoice) || undefined,
+          taxInvoice: billing || undefined,
           marketingConsent: consent,
           cats: cats
             .filter((c) => c.name.trim())
@@ -264,35 +281,52 @@ export default function RegisterPage() {
         <section>
         <SectionLabel>Owner · ข้อมูลผู้ปกครอง</SectionLabel>
         <div className="space-y-3 rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm">
-        <label className="block">
-          <span className="mb-1 block text-xs font-bold text-brown">
-            ชื่อผู้ปกครอง{" "}
-            <span className="font-normal text-brown-faint">
-              (ชื่อเล่นหรือชื่อจริงก็ได้นะคะ)
-            </span>
-          </span>
-          <input
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="เช่น คุณมาย"
-            className={fieldClass}
-          />
-        </label>
+        <AccountTypeFields
+          isCompany={isCompany}
+          onIsCompany={setIsCompany}
+          company={company}
+          onCompany={setCompany}
+          sameContact={sameContact}
+          onSameContact={setSameContact}
+          fieldClass={fieldClass}
+          requireAll
+        />
 
-        <label className="block">
-          <span className="mb-1 block text-xs font-bold text-brown">เบอร์โทร</span>
-          <input
-            required
-            type="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="08x-xxx-xxxx"
-            className={fieldClass}
-          />
-        </label>
+        {!useCompanyContact && (
+          <>
+            <label className="block">
+              <span className="mb-1 block text-xs font-bold text-brown">
+                {isCompany ? "ชื่อผู้ติดต่อ" : "ชื่อผู้ปกครอง"}{" "}
+                <span className="font-normal text-brown-faint">
+                  (ชื่อเล่นหรือชื่อจริงก็ได้นะคะ)
+                </span>
+              </span>
+              <input
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="เช่น คุณมาย"
+                className={fieldClass}
+              />
+            </label>
 
-        <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="mb-1 block text-xs font-bold text-brown">
+                {isCompany ? "เบอร์ผู้ติดต่อ" : "เบอร์โทร"}
+              </span>
+              <input
+                required
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="08x-xxx-xxxx"
+                className={fieldClass}
+              />
+            </label>
+          </>
+        )}
+
+        <div className={isCompany ? "" : "grid grid-cols-2 gap-3"}>
           <label className="block">
             <span className="mb-1 block text-xs font-bold text-brown">อีเมล</span>
             <input
@@ -304,17 +338,19 @@ export default function RegisterPage() {
               className={fieldClass}
             />
           </label>
-          <label className="block">
-            <span className="mb-1 block text-xs font-bold text-brown">
-              วันเกิดผู้ปกครอง
-            </span>
-            <BirthdayPicker
-              required
-              value={birthday}
-              onChange={setBirthday}
-              yearsBack={90}
-            />
-          </label>
+          {!isCompany && (
+            <label className="block">
+              <span className="mb-1 block text-xs font-bold text-brown">
+                วันเกิดผู้ปกครอง
+              </span>
+              <BirthdayPicker
+                required
+                value={birthday}
+                onChange={setBirthday}
+                yearsBack={90}
+              />
+            </label>
+          )}
         </div>
 
         <label className="block">
@@ -334,15 +370,18 @@ export default function RegisterPage() {
           />
         </label>
 
-        <div className="border-t border-petflow-line pt-3">
-          <TaxInvoiceFields
-            value={taxInvoice}
-            onChange={setTaxInvoice}
-            fieldClass={fieldClass}
-            prefill={{ name, phone }}
-            requireAll
-          />
-        </div>
+        {!isCompany && (
+          <div className="border-t border-petflow-line pt-3">
+            <TaxInvoiceFields
+              value={taxInvoice}
+              onChange={setTaxInvoice}
+              fieldClass={fieldClass}
+              prefill={{ name, phone }}
+              kinds={["person"]}
+              requireAll
+            />
+          </div>
+        )}
         </div>
         </section>
 

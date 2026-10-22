@@ -839,6 +839,11 @@ function groomInfoCardFor(b: StoredBooking, cfg: Awaited<ReturnType<typeof getSi
             }, card.style)
           );
         }
+      } else if (part === "checkin" && b.arrivalTime) {
+        // ลูกค้าเลือกเวลาส่งน้องไว้แล้ว → ไม่ถามซ้ำ (อยากถามใหม่ใช้ปุ่มส่งเดี่ยวแทน)
+        skipped.push(`เลือกเวลาเข้าพักไว้แล้ว (${b.arrivalTime}) ไม่ถามซ้ำ`);
+      } else if (part === "checkout" && b.pickupTime) {
+        skipped.push(`เลือกเวลารับน้องไว้แล้ว (${b.pickupTime}) ไม่ถามซ้ำ`);
       } else if (part === "vaccine" || part === "idcard") {
         const groupIds: string[] =
           part === "vaccine" && Array.isArray(body.ids) && body.ids.length > 0 ? body.ids.map(String) : [b.id];

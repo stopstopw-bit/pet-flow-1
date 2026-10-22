@@ -34,6 +34,7 @@ import { getAllPointsMap } from "@/lib/points-store";
 import {
   customerActivityInfo,
   listInactiveCustomers,
+  previewCustomerFollowUp,
   sendCustomerFollowUp,
   sendInactiveFollowUps,
 } from "@/lib/customer-crm";
@@ -129,6 +130,9 @@ async function handlePost(req: NextRequest) {
       { status: 400 }
     );
   }
+  // สมัครในนามนิติบุคคล / ขอใบกำกับภาษี — ตรวจก่อนสร้างลูกค้า จะได้ไม่ค้างครึ่ง ๆ
+  const taxInvoice = parseTaxInvoiceBody(body.taxInvoice ?? undefined);
+  if (taxInvoice.error) return NextResponse.json({ error: taxInvoice.error }, { status: 400 });
   let customer = await upsertCustomerFromBooking({
     customerName,
     catName,
@@ -149,6 +153,7 @@ async function handlePost(req: NextRequest) {
     const v = typeof body[k] === "string" ? body[k].trim() : "";
     if (v) extra[k] = v;
   }
+  if (taxInvoice.value) extra.taxInvoice = taxInvoice.value;
   if (Object.keys(extra).length > 0) {
     customer = (await updateCustomer(customer.id, extra)) ?? customer;
   }
@@ -443,6 +448,14 @@ async function handlePatch(req: NextRequest) {
   }
 
   if (action === "send_follow_up") {
+    // ดูตัวอย่างการ์ดก่อนส่งจริง — ยังไม่ส่ง ไม่นับ cooldown
+    if (body.preview === true) {
+      const preview = await previewCustomerFollowUp(id, {
+        message: body.message ? String(body.message) : undefined,
+      });
+      if (!preview.ok) return NextResponse.json({ error: preview.error }, { status: 400 });
+      return NextResponse.json({ ok: true, preview: preview.messages });
+    }
     const result = await sendCustomerFollowUp(id, {
       message: body.message ? String(body.message) : undefined,
       force: Boolean(body.force),
