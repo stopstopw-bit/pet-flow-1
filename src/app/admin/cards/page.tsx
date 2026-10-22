@@ -15,6 +15,7 @@ import { toast } from "@/components/Toast";
 import { useConfig } from "@/components/ConfigProvider";
 import { Icon } from "@/components/Icon";
 import { brandColorsFor } from "@/lib/card-brand";
+import { DOC_REQUEST_DEFAULTS, INTAKE_CARD_DEFAULTS } from "@/lib/line-card-defaults";
 
 /**
  * ปรับแต่งการ์ด LINE — สี ขนาดตัวอักษร ข้อความ เงื่อนไข และส่วนประกอบของการ์ดแต่ละใบ
@@ -282,6 +283,55 @@ const CARDS: CardMeta[] = [
       { key: "header", label: "ข้อความบนแถบหัว", placeholder: "🩺 ประวัติน้องก่อนอาบน้ำ" },
       { key: "datePrefix", label: "คำนำหน้าวันนัด", placeholder: "📅 นัดอาบน้ำ:" },
       { key: "button", label: "คำในปุ่ม", placeholder: "🩺 แจ้งประวัติน้อง" },
+    ],
+    closingLabel: "ประโยคเสริมท้ายการ์ด (ไม่บังคับ)",
+    hasTitleSize: true,
+  },
+  {
+    key: "intake",
+    name: "การ์ดรวมขอข้อมูล (ใบเดียวหลายปุ่ม)",
+    desc: "ขอหลายเรื่องในใบเดียว — ประวัติน้อง สมุดวัคซีน บัตรประชาชน กฎ + กดยินยอม มัดจำ · ปุ่มขึ้นเฉพาะเรื่องที่ลูกค้ายังไม่ได้ส่ง",
+    colors: [
+      { key: "headerColor", label: "สีแถบหัว", fallback: "#6e2f48" },
+      { key: "headerTextColor", label: "สีตัวหนังสือหัว", fallback: "#FFFFFF" },
+      { key: "accentColor", label: "สีชื่อน้อง / ยอดมัดจำ", fallback: "#5C4033" },
+      { key: "buttonColor", label: "สีปุ่ม", fallback: "#bd3a6a" },
+    ],
+    fields: [],
+    texts: [],
+    styleTexts: [
+      { key: "headerStay", label: "หัวการ์ด (นัดเข้าพัก)", placeholder: INTAKE_CARD_DEFAULTS.headerStay },
+      { key: "headerGroom", label: "หัวการ์ด (นัดอาบน้ำ)", placeholder: INTAKE_CARD_DEFAULTS.headerGroom },
+      { key: "body", label: "เนื้อความ (ใช้ได้: {cat} {shop})", placeholder: INTAKE_CARD_DEFAULTS.body, multiline: true },
+      { key: "infoButton", label: "ปุ่ม: แจ้งประวัติน้อง", placeholder: INTAKE_CARD_DEFAULTS.infoButton },
+      { key: "vaccineButton", label: "ปุ่ม: แนบสมุดวัคซีน", placeholder: INTAKE_CARD_DEFAULTS.vaccineButton },
+      { key: "idcardButton", label: "ปุ่ม: แนบบัตรประชาชน", placeholder: INTAKE_CARD_DEFAULTS.idcardButton },
+      { key: "consentButton", label: "ปุ่ม: กฎ + กดยินยอม", placeholder: INTAKE_CARD_DEFAULTS.consentButton },
+      { key: "depositLabel", label: "ป้าย: ยอดมัดจำ", placeholder: INTAKE_CARD_DEFAULTS.depositLabel },
+      { key: "copyButton", label: "ปุ่ม: คัดลอกเลขบัญชี", placeholder: INTAKE_CARD_DEFAULTS.copyButton },
+    ],
+    closingLabel: "ประโยคเสริมท้ายการ์ด (ไม่บังคับ)",
+    hasTitleSize: true,
+  },
+  {
+    key: "docRequest",
+    name: "ขอสมุดวัคซีน / บัตรประชาชน",
+    desc: "การ์ดเดี่ยวขอรูปสมุดวัคซีนน้อง หรือบัตรประชาชนผู้ปกครอง",
+    colors: [
+      { key: "headerColor", label: "สีแถบหัว", fallback: "#6e2f48" },
+      { key: "headerTextColor", label: "สีตัวหนังสือหัว", fallback: "#FFFFFF" },
+      { key: "accentColor", label: "สีชื่อน้อง", fallback: "#5C4033" },
+      { key: "buttonColor", label: "สีปุ่ม", fallback: "#bd3a6a" },
+    ],
+    fields: [],
+    texts: [],
+    styleTexts: [
+      { key: "vaccineHeader", label: "สมุดวัคซีน: หัวการ์ด", placeholder: DOC_REQUEST_DEFAULTS.vaccineHeader },
+      { key: "vaccineBody", label: "สมุดวัคซีน: เนื้อความ (ใช้ได้: {cat})", placeholder: DOC_REQUEST_DEFAULTS.vaccineBody, multiline: true },
+      { key: "vaccineButton", label: "สมุดวัคซีน: ปุ่ม", placeholder: DOC_REQUEST_DEFAULTS.vaccineButton },
+      { key: "idcardHeader", label: "บัตรประชาชน: หัวการ์ด", placeholder: DOC_REQUEST_DEFAULTS.idcardHeader },
+      { key: "idcardBody", label: "บัตรประชาชน: เนื้อความ", placeholder: DOC_REQUEST_DEFAULTS.idcardBody, multiline: true },
+      { key: "idcardButton", label: "บัตรประชาชน: ปุ่ม", placeholder: DOC_REQUEST_DEFAULTS.idcardButton },
     ],
     closingLabel: "ประโยคเสริมท้ายการ์ด (ไม่บังคับ)",
     hasTitleSize: true,
@@ -1333,6 +1383,79 @@ function Preview({
             {st.closing || `ขอบคุณที่ไว้ใจ ${shop} นะคะ 🧡`}
           </p>
         </div>
+      </div>
+    );
+  }
+
+  if (meta.key === "intake") {
+    return (
+      <div className={bubble}>
+        <div className="px-4 py-3" style={{ background: c("headerColor", "#6e2f48") }}>
+          <p className="text-xs font-extrabold" style={{ color: c("headerTextColor", "#FFFFFF") }}>
+            {t("headerStay", INTAKE_CARD_DEFAULTS.headerStay)}
+          </p>
+        </div>
+        <div className="space-y-2 px-4 py-3 text-[11px] text-[#4E3E32]">
+          <p className={`${titleCls} font-extrabold`} style={{ color: c("accentColor", "#5C4033") }}>🐾 น้องโรเซ่, Soju</p>
+          <p className="text-[10px] text-[#A2907E]">{shop} · 🏠 เข้าพัก: 24 ต.ค. → 27 ต.ค.</p>
+          <p className="whitespace-pre-line">
+            {t("body", INTAKE_CARD_DEFAULTS.body).replaceAll("{cat}", "น้องโรเซ่, Soju").replaceAll("{shop}", shop)}
+          </p>
+          <div className="flex items-center justify-between rounded-lg bg-[#F4ECE0] px-3 py-2.5">
+            <span className="text-[#5C4033]">{t("depositLabel", INTAKE_CARD_DEFAULTS.depositLabel)}</span>
+            <span className="text-sm font-extrabold" style={{ color: c("accentColor", "#C4956A") }}>500 บาท</span>
+          </div>
+          {st.closing && <p className="whitespace-pre-line text-[10px] text-[#A2907E]">{st.closing}</p>}
+        </div>
+        <div className="space-y-1.5 px-3 pb-3">
+          {[
+            `${t("infoButton", INTAKE_CARD_DEFAULTS.infoButton)} (2 ตัว)`,
+            `${t("vaccineButton", INTAKE_CARD_DEFAULTS.vaccineButton)} (2 ตัว)`,
+            t("idcardButton", INTAKE_CARD_DEFAULTS.idcardButton),
+            t("consentButton", INTAKE_CARD_DEFAULTS.consentButton),
+          ].map((label) => (
+            <div
+              key={label}
+              className="rounded-lg py-2 text-center text-xs font-bold text-white"
+              style={{ background: c("buttonColor", "#bd3a6a") }}
+            >
+              {label}
+            </div>
+          ))}
+          <div className="rounded-lg bg-[#EFEFEF] py-2 text-center text-xs font-bold text-[#555]">
+            {t("copyButton", INTAKE_CARD_DEFAULTS.copyButton)}
+          </div>
+        </div>
+        <p className="px-4 pb-3 text-[10px] text-[#A2907E]">
+          ตัวอย่างนี้โชว์ครบทุกปุ่ม — ส่งจริงจะมีเฉพาะเรื่องที่ลูกค้ายังไม่ได้ส่ง
+        </p>
+      </div>
+    );
+  }
+
+  if (meta.key === "docRequest") {
+    const one = (kind: "vaccine" | "idcard") => (
+      <div className={bubble}>
+        <div className="px-4 py-3" style={{ background: c("headerColor", "#6e2f48") }}>
+          <p className="text-xs font-extrabold" style={{ color: c("headerTextColor", "#FFFFFF") }}>
+            {t(`${kind}Header`, DOC_REQUEST_DEFAULTS[`${kind}Header`])}
+          </p>
+        </div>
+        <div className="space-y-2 px-4 py-3 text-[11px] text-[#4E3E32]">
+          <p className={`${titleCls} font-extrabold`} style={{ color: c("accentColor", "#5C4033") }}>🐾 น้อง Soju</p>
+          <p className="text-[10px] text-[#A2907E]">{shop} · 🏠 เข้าพัก: 24 ต.ค. → 27 ต.ค.</p>
+          <p className="whitespace-pre-line">
+            {t(`${kind}Body`, DOC_REQUEST_DEFAULTS[`${kind}Body`]).replaceAll("{cat}", "น้อง Soju")}
+          </p>
+          {st.closing && <p className="whitespace-pre-line text-[10px] text-[#A2907E]">{st.closing}</p>}
+        </div>
+        {btn(c("buttonColor", "#bd3a6a"), t(`${kind}Button`, DOC_REQUEST_DEFAULTS[`${kind}Button`]))}
+      </div>
+    );
+    return (
+      <div className="space-y-3">
+        {one("vaccine")}
+        {one("idcard")}
       </div>
     );
   }

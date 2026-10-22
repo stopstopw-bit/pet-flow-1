@@ -41,8 +41,10 @@ import {
   buildReadyForPickupFlex,
   buildDepositThanksFlex,
   buildDocRequestFlex,
+  mergeIntakeCards,
   politeName,
   politeCat,
+  type IntakeEntry,
 } from "@/lib/line";
 import { buildBookingConfirmFlex } from "@/lib/booking-line-card";
 import {
@@ -52,6 +54,7 @@ import {
   getCatGroomInfo,
   getCatStayInfo,
   getCustomer,
+  getIntakeStatus,
 } from "@/lib/customers-store";
 import { getSiteConfig } from "@/lib/config-store";
 import { cleanTransport, hasTransport, transportLabel, type BookingTransport } from "@/lib/transport";
@@ -604,7 +607,7 @@ function groomInfoCardFor(
       catName: String(gb.catName),
       dateText: bookingScheduleText(gb),
       url,
-    });
+    }, cfg.cards?.docRequest);
     try {
       if (preview) return NextResponse.json({ ok: true, preview: [flex] });
       await pushLineMessage(to, [flex]);
@@ -676,14 +679,26 @@ function groomInfoCardFor(
   // parts: reminder | prestay | consent | groomInfo | checkin | checkout
   //        | vaccine | idcard | deposit(+depositAmount) | depositThanks | summary | payment
   //        | receipt (เฉพาะบิลที่จ่ายแล้ว) | review
-  if (action === "send_bundle") {
+  // ── 📋 การ์ดรวมขอข้อมูล — ใบเดียวหลายปุ่ม เฉพาะเรื่องที่บ้านนี้ยังขาด (ประวัติ/สมุดวัคซีน/บัตร/กฎ + มัดจำถ้าใส่ยอดมา) ──
+  // ใช้ทางเดียวกับชุดการ์ด แค่เลือกหัวข้อให้เองตามบริการ แล้วบังคับรวมเป็นใบเดียวแม้เหลือเรื่องเดียว
+  const intakeAlways = action === "send_intake";
+  if (intakeAlways) {
+    const room = b.service === "room";
+    body.parts = [
+      room ? "stayInfo" : "groomInfo",
+      "vaccine",
+      ...(room ? ["idcard"] : []),
+      "consent",
+      ...(Number(body.depositAmount) > 0 ? ["deposit"] : []),
+    ];
+  }
+  if (action === "send_bundle" || intakeAlways) {
     const to = await resolveRecipient(b, lineUserId);
     if (!to) {
       return NextResponse.json({ error: NO_LINE_ERROR }, { status: 400 });
     }
-    const parts: string[] = (Array.isArray(body.parts) ? body.parts : [])
-      .map(String)
-      .slice(0, 5); // LINE จำกัด 5 การ์ดต่อ push
+    // เรื่องขอข้อมูลหลายเรื่องรวมเป็นการ์ดใบเดียว จึงเลือกได้เกิน 5 หัวข้อ — นับ 5 ใบที่ตัวการ์ดจริงตอนท้าย
+    const parts: string[] = (Array.isArray(body.parts) ? body.parts : []).map(String).slice(0, 20);
     if (parts.length === 0) {
       return NextResponse.json({ error: "เลือกอย่างน้อย 1 การ์ด" }, { status: 400 });
     }
@@ -694,6 +709,18 @@ function groomInfoCardFor(
     // บ้านเดียวกัน จองพร้อมกันหลายตัว (ปฏิทินส่ง ids ของทั้งกลุ่มมา) — ใช้ booking จำลอง
     // ที่มีชื่อรวมทุกตัว แทน b เดิม ทุกการ์ดในชุดจะได้มีชื่อครบทุกตัวเหมือนกันหมด
     const gb = await resolveGroupBooking(b, body.ids);
+    const householdIds: string[] =
+      Array.isArray(body.ids) && body.ids.length > 0 ? body.ids.map(String) : [b.id];
+    const household = (
+      await Promise.all(householdIds.map((x) => (x === b.id ? Promise.resolve(b) : getBooking(x))))
+    ).filter((x): x is StoredBooking => !!x);
+    /** เรื่องขอข้อมูล (ประวัติ/สมุดวัคซีน/บัตร/กฎ/มัดจำ) — ตั้งแต่ 2 เรื่องรวมเป็นการ์ดใบเดียว แทรกตรงเรื่องแรก */
+    const intake: IntakeEntry[] = [];
+    let intakeAt = -1;
+    const addIntake = (e: IntakeEntry) => {
+      if (intakeAt < 0) intakeAt = messages.length;
+      intake.push(e);
+    };
 
     for (const part of parts) {
       if (part === "reminder") {
@@ -714,10 +741,17 @@ function groomInfoCardFor(
           })
         );
       } else if (part === "consent") {
+        // กดยอมรับนัดนี้ครบทุกตัวแล้ว → ไม่ขอซ้ำ (ทุกนัดใหม่ยังต้องกดใหม่)
+        if (household.every((x) => x.consentAcceptedAt)) {
+          skipped.push("กดยอมรับกฎของนัดนี้แล้ว ไม่ขอซ้ำ");
+          continue;
+        }
         const url = await getConsentUrl(b.id);
         if (url) {
-          messages.push(
-            buildConsentFlex({
+          addIntake({
+            kind: "consent",
+            url,
+            card: buildConsentFlex({
               businessName: cfg.business.name,
               title: cfg.messages.consentTitle || DEFAULT_MESSAGES.consentTitle,
               catName: String(gb.catName),
@@ -728,8 +762,8 @@ function groomInfoCardFor(
                 ? cfg.messages.consentTerms
                 : DEFAULT_MESSAGES.consentTerms,
               url,
-            }, cfg.cards?.consent)
-          );
+            }, cfg.cards?.consent),
+          });
         }
       } else if (part === "prestay") {
         // ไม่แนบลิงก์เซ็น — ถ้าต้องการให้ติ๊ก "เงื่อนไข + ลายเซ็น" เพิ่มเอง
@@ -858,8 +892,11 @@ function groomInfoCardFor(
           const url = await getGroomInfoUrl(needInfo.map((x) => x.id), kind);
           const catNames = needInfo.map((x) => x.catName).join(", ");
           const card = groomInfoCardFor(b, cfg, kind);
-          messages.push(
-            buildGroomInfoFlex({
+          addIntake({
+            kind: "info",
+            url: url || undefined,
+            count: needInfo.length,
+            card: buildGroomInfoFlex({
               catName: catNames,
               dateText: card.dateText,
               body: card.body(
@@ -871,8 +908,8 @@ function groomInfoCardFor(
                 needInfo.length > 1
                   ? `${cfg.cards?.groomInfo?.texts?.button || "🩺 แจ้งประวัติน้อง"} (${needInfo.length} ตัว)`
                   : cfg.cards?.groomInfo?.texts?.button || "🩺 แจ้งประวัติน้อง",
-            }, card.style)
-          );
+            }, card.style),
+          });
         }
       } else if (part === "checkin" && b.arrivalTime) {
         // ลูกค้าเลือกเวลาส่งน้องไว้แล้ว → ไม่ถามซ้ำ (อยากถามใหม่ใช้ปุ่มส่งเดี่ยวแทน)
@@ -880,19 +917,31 @@ function groomInfoCardFor(
       } else if (part === "checkout" && b.pickupTime) {
         skipped.push(`เลือกเวลารับน้องไว้แล้ว (${b.pickupTime}) ไม่ถามซ้ำ`);
       } else if (part === "vaccine" || part === "idcard") {
-        const groupIds: string[] =
-          part === "vaccine" && Array.isArray(body.ids) && body.ids.length > 0 ? body.ids.map(String) : [b.id];
-        const url = await getPetDocsUrl(groupIds, part);
+        // ส่งไปแล้วไม่ขอซ้ำ: สมุดวัคซีนดูทีละตัว (ที่นัดหรือที่ตัวน้อง) · บัตรประชาชนครั้งเดียวต่อลูกค้า
+        const status = await Promise.all(household.map((x) => getIntakeStatus(to, String(x.catName))));
+        let ask = household;
+        if (part === "vaccine") {
+          ask = household.filter((x, i) => !status[i].vaccine && !x.vaccinePhotoUrl);
+          for (const x of household) if (!ask.includes(x)) skipped.push(`${x.catName}: มีสมุดวัคซีนแล้ว ไม่ขอซ้ำ`);
+        } else if (status[0]?.idCard) {
+          ask = [];
+          skipped.push("มีบัตรประชาชนแล้ว ไม่ขอซ้ำ");
+        }
+        if (ask.length === 0) continue;
+        const url = await getPetDocsUrl(part === "vaccine" ? ask.map((x) => x.id) : [b.id], part);
         if (url) {
-          messages.push(
-            buildDocRequestFlex({
+          addIntake({
+            kind: part,
+            url,
+            count: part === "vaccine" ? ask.length : undefined,
+            card: buildDocRequestFlex({
               kind: part,
               businessName: cfg.business.name,
-              catName: String(gb.catName),
+              catName: part === "vaccine" ? ask.map((x) => x.catName).join(", ") : String(gb.catName),
               dateText: bookingScheduleText(gb),
               url,
-            })
-          );
+            }, cfg.cards?.docRequest),
+          });
         } else skipped.push("ยังไม่ได้ตั้ง LIFF ID — ข้ามการ์ดขอเอกสาร");
       } else if (part === "checkin" || part === "checkout") {
         const url = await getBookingTimeUrl(b.id, part);
@@ -928,8 +977,16 @@ function groomInfoCardFor(
             }
           }
           const payment = await getPaymentConfig();
-          messages.push(
-            buildDepositRequestFlex({
+          // ไปกับเรื่องขอข้อมูลอื่นได้ — มีเรื่องอื่นด้วยจะกลายเป็นกล่องยอดมัดจำ + ปุ่มคัดลอกเลขบัญชีในการ์ดรวม
+          addIntake({
+            kind: "deposit",
+            deposit: {
+              amount,
+              bankName: payment.bankName,
+              accountNumber: payment.accountNumber,
+              accountName: payment.accountName,
+            },
+            card: buildDepositRequestFlex({
               title: cfg.messages.depositRequestTitle,
               body: renderTemplate(cfg.messages.depositRequestBody, {
                 name: String(b.customerName),
@@ -941,8 +998,8 @@ function groomInfoCardFor(
               bankName: payment.bankName,
               accountNumber: payment.accountNumber,
               accountName: payment.accountName,
-            }, cfg.cards?.depositRequest)
-          );
+            }, cfg.cards?.depositRequest),
+          });
         }
       } else if (part === "payment") {
         const all = await listInvoices();
@@ -980,6 +1037,35 @@ function groomInfoCardFor(
       }
     }
 
+    if (intake.length > 0) {
+      messages.splice(
+        intakeAt,
+        0,
+        ...mergeIntakeCards(
+          intake,
+          {
+            service: b.service === "room" ? "stay" : "groom",
+            catName: String(gb.catName),
+            businessName: cfg.business.name,
+            dateText: bookingScheduleText(gb),
+            always: intakeAlways,
+          },
+          cfg.cards?.intake
+        )
+      );
+    }
+    if (intakeAlways && intake.length === 0) {
+      return NextResponse.json(
+        { error: "บ้านนี้ส่งข้อมูลครบทุกอย่างแล้ว ไม่มีอะไรต้องขอเพิ่มค่ะ", skipped },
+        { status: 400 }
+      );
+    }
+    if (messages.length > 5) {
+      return NextResponse.json(
+        { error: `รวมแล้วได้ ${messages.length} การ์ด — LINE ส่งได้สูงสุด 5 ใบต่อข้อความ เอาออกบางใบก่อนนะคะ` },
+        { status: 400 }
+      );
+    }
     if (messages.length === 0) {
       return NextResponse.json(
         {

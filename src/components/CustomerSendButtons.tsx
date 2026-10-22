@@ -21,17 +21,18 @@ type PendingSend = {
 };
 
 /**
- * ปุ่มลัดบนการ์ดนัด — เรียงตามขั้นตอนรับงานของร้าน ชื่อ/ลำดับเดียวกับหน้าข้อมูลลูกค้า (INTAKE_CARDS)
- * แล้วตามด้วยปุ่มแจ้งยอดโอน
+ * ปุ่มลัดบนการ์ดนัด — การ์ดรวมขอข้อมูล (ใบเดียว ปุ่มเฉพาะเรื่องที่ยังขาด) + เตรียมตัวเข้าพัก
+ * แล้วตามด้วยปุ่มแจ้งยอดโอน · การ์ดเดี่ยวแต่ละเรื่องยังอยู่ครบในแผ่น "ทีละใบ"
  */
-const QUICK_STEP_KEYS = [
-  "send_stay_info",
-  "send_groom_info",
-  "send_vaccine_request",
-  "send_idcard_request",
-  "send_consent",
-  "send_prestay",
-];
+const QUICK_STEP_KEYS = ["send_intake", "send_prestay"];
+
+/** หัวข้อขอข้อมูลในชุดการ์ด — เลือกหลายหัวข้อรวมเป็นการ์ดใบเดียวหลายปุ่ม (นับ 1 ใบ) */
+const INTAKE_PARTS = new Set(["stayInfo", "groomInfo", "vaccine", "idcard", "consent", "deposit"]);
+/** จำนวนการ์ดจริงที่จะได้จากหัวข้อที่เลือก — หัวข้อขอข้อมูลกี่เรื่องก็รวมเป็นใบเดียว */
+const bundleCardCount = (parts: string[]) => {
+  const intake = parts.filter((p) => INTAKE_PARTS.has(p)).length;
+  return parts.length - intake + (intake > 0 ? 1 : 0);
+};
 
 /**
  * ปุ่มส่งหาลูกค้าแบบรวมศูนย์ — ใช้ได้ทุกที่ (การ์ดในปฏิทิน · บิล · ฯลฯ)
@@ -108,6 +109,8 @@ export function CustomerSendButtons({
   }, [invoiceId, bookingId]);
 
   const invId = invoiceId || foundInvoiceId;
+  // บิลที่มีทั้งอาบน้ำและเข้าพัก (service = "both") ต้องเห็นการ์ดฝั่งเข้าพักด้วย
+  const hasRoomStay = service === "room" || service === "both";
   const depForBill = invoiceId ? invoiceDeposit : foundDeposit;
   const billPaid = (invoiceId ? invoiceStatus : foundStatus) === "paid";
 
@@ -193,6 +196,29 @@ export function CustomerSendButtons({
         ids.length > 1 ? ` (${ids.length} ตัว)` : ""
       } 🩺`,
       kind === "stay" ? "send_stay_info" : "send_groom_info"
+    );
+  };
+
+  // 📋 การ์ดรวมขอข้อมูล — เซิร์ฟเวอร์ดูเองว่าบ้านนี้ยังขาดอะไร (ประวัติ/สมุดวัคซีน/บัตร/กฎ) ปุ่มขึ้นเฉพาะที่ขาด
+  // เข้าพักที่ยังไม่เคยขอมัดจำ → ใส่ยอดมัดจำในการ์ดเดียวกันได้เลย (เว้นว่าง = ไม่ขอ)
+  const sendIntake = () => {
+    let depositAmount = 0;
+    if (hasRoomStay && depForBill <= 0) {
+      const raw = prompt("ขอมัดจำในการ์ดนี้ด้วยไหม? ใส่ยอด (บาท) · เว้นว่าง = ไม่ขอมัดจำ", "");
+      if (raw == null) return;
+      depositAmount = Math.max(0, Math.round(Number(raw) || 0));
+    }
+    void requestPreview(
+      "/api/bookings",
+      {
+        id: bookingId,
+        action: "send_intake",
+        lineUserId,
+        ids: groomBookingIds,
+        depositAmount: depositAmount || undefined,
+      },
+      "ส่งการ์ดรวมขอข้อมูลแล้ว 📋",
+      "send_intake"
     );
   };
 
@@ -312,7 +338,7 @@ export function CustomerSendButtons({
   const toggleBundlePart = (p: string) =>
     setBundleParts((prev) => {
       if (prev.includes(p)) return prev.filter((x) => x !== p);
-      if (prev.length >= BUNDLE_MAX) {
+      if (bundleCardCount([...prev, p]) > BUNDLE_MAX) {
         toast(`เลือกได้สูงสุด ${BUNDLE_MAX} การ์ดต่อ 1 ข้อความ`, "error");
         return prev;
       }
@@ -345,7 +371,7 @@ export function CustomerSendButtons({
         // บ้านเดียวกัน จองพร้อมกันหลายตัว — ให้การ์ด "แจ้งเตือนนัด" ในชุดรวมชื่อทุกตัวด้วย
         ids: groomBookingIds,
       },
-      `ส่งชุดการ์ด ${bundleParts.length} ใบใน 1 ข้อความแล้ว 📦`,
+      `ส่งชุดการ์ด ${bundleCardCount(bundleParts)} ใบใน 1 ข้อความแล้ว 📦`,
       "bundle"
     );
   };
@@ -353,8 +379,6 @@ export function CustomerSendButtons({
   const hasRemaining = depForBill > 0;
 
   // ครบทุกหัวข้อเท่ากับปุ่มเดี่ยวด้านบน — เลือกผสมได้อิสระ ส่งใน 1 ข้อความ
-  // บิลที่มีทั้งอาบน้ำและเข้าพัก (service = "both") ต้องเห็นการ์ดฝั่งเข้าพักด้วย
-  const hasRoomStay = service === "room" || service === "both";
   // ครบทุกการ์ดเท่าที่ส่งได้ (ไม่จำกัดตามบริการ) — นัดอาบน้ำก็ส่งกฎ/เตรียมตัว/เลือกเวลาได้ถ้าร้านต้องการ
   // ใบที่ต้องมีบิล/จ่ายแล้วยังซ่อนไว้จนกว่าจะมีข้อมูลจริง (กันส่งการ์ดว่าง)
   // ชุดถามข้อมูลก่อนรับน้องขึ้นก่อน ชื่อ/ลำดับเดียวกับหน้าข้อมูลลูกค้า
@@ -416,6 +440,14 @@ export function CustomerSendButtons({
       onClick: () => invoiceSummary("booking", "ส่งสรุปการจองแล้ว 🧾"),
     },
     // ── ชุดถามข้อมูลก่อนรับน้อง (ชื่อ/ลำดับเดียวกับหน้าข้อมูลลูกค้า) ──
+    {
+      // ใบเดียวหลายปุ่ม — ระบบดูให้ว่ายังขาดอะไร ครบแล้วไม่ขอซ้ำ
+      k: "send_intake",
+      label: "การ์ดรวมขอข้อมูล (เฉพาะที่ยังขาด)",
+      icon: "send",
+      when: !!bookingId,
+      onClick: sendIntake,
+    },
     {
       k: "send_stay_info",
       label: `${INTAKE_LABEL.stayInfo}${groomBookingIds && groomBookingIds.length > 1 ? ` (${groomBookingIds.length} ตัว)` : ""}`,
@@ -642,8 +674,9 @@ export function CustomerSendButtons({
             {activeTab === "bundle" && bookingId && (
               <div>
                 <p className="mb-2 text-[11px] font-bold text-brown-soft">
-                  เลือกการ์ดที่จะส่งพร้อมกัน ({bundleParts.length}/{BUNDLE_MAX}) — ทั้งหมดรวมเป็น{" "}
-                  <b>1 ข้อความ LINE</b> ตัดโควตาแค่ครั้งเดียว
+                  เลือกการ์ดที่จะส่งพร้อมกัน ({bundleCardCount(bundleParts)}/{BUNDLE_MAX}) — ทั้งหมดรวมเป็น{" "}
+                  <b>1 ข้อความ LINE</b> ตัดโควตาแค่ครั้งเดียว · เรื่องขอข้อมูล (ประวัติ/วัคซีน/บัตร/กฎ/มัดจำ)
+                  เลือกหลายเรื่องจะรวมเป็นการ์ดใบเดียว
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {BUNDLE_OPTIONS.filter((o) => o.when).map((o) => {
@@ -670,7 +703,7 @@ export function CustomerSendButtons({
                   className="mt-3 flex w-full items-center justify-center gap-2 rounded-petflow-sm bg-latte-deep py-3 text-sm font-extrabold text-white disabled:opacity-40"
                 >
                   <Icon name="send" size={16} />
-                  {busy === "bundle" ? "กำลังโหลด…" : `ส่ง ${bundleParts.length} การ์ดใน 1 ข้อความ`}
+                  {busy === "bundle" ? "กำลังโหลด…" : `ส่ง ${bundleCardCount(bundleParts)} การ์ดใน 1 ข้อความ`}
                 </button>
               </div>
             )}

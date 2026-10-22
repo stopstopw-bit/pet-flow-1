@@ -47,6 +47,19 @@ function PetDocsContent() {
   const [bookings, setBookings] = useState<StayBooking[]>([]);
   const [cats, setCats] = useState<SelfCat[]>([]);
   const [loading, setLoading] = useState(true);
+  // กลับมาจากหน้ากรอกประวัติ (ปุ่มย้อนกลับ) → โหลดใหม่ ลิงก์ชวนกรอกจะได้หายไปเมื่อกรอกครบแล้ว
+  const [reloadKey, setReloadKey] = useState(0);
+  useEffect(() => {
+    const again = () => {
+      if (document.visibilityState === "visible") setReloadKey((k) => k + 1);
+    };
+    window.addEventListener("pageshow", again);
+    document.addEventListener("visibilitychange", again);
+    return () => {
+      window.removeEventListener("pageshow", again);
+      document.removeEventListener("visibilitychange", again);
+    };
+  }, []);
 
   useEffect(() => {
     if (!profile?.lineUserId) return;
@@ -67,7 +80,7 @@ function PetDocsContent() {
     ])
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [profile?.lineUserId, idsKey]);
+  }, [profile?.lineUserId, idsKey, reloadKey]);
 
   const stay = bookings[0];
   const targets: VaccineTarget[] = idsKey
@@ -83,10 +96,16 @@ function PetDocsContent() {
 
   // ยังไม่ได้แจ้งประวัติน้อง → ชวนกรอกต่อในหน้าเดียวกันเลย ไม่ต้องรอร้านส่งลิงก์ใหม่
   // นัดอาบน้ำ = ประวัติก่อนอาบน้ำ · นัดเข้าพัก/ลิงก์จากหน้าลูกค้า = ข้อมูลก่อนเข้าพัก
+  // กรอกแล้วไม่ชวนซ้ำ — จับคู่ชื่อแบบไม่สนช่องว่าง/ตัวพิมพ์ (ชื่อในนัดกับในบัญชีอาจพิมพ์ต่างกันนิดหน่อย)
+  // หาน้องในบัญชีไม่เจอ = ไม่รู้ว่ากรอกหรือยัง ไม่ชวน (ฟอร์มก่อนเข้าพักก็บันทึกให้น้องที่ไม่มีในบัญชีไม่ได้อยู่แล้ว)
   const isStayTarget = (t: VaccineTarget) => !t.booking || t.booking.service === "room";
+  const nameKey = (n: string) => n.replace(/\s+/g, "").toLowerCase();
   const noInfo = targets.filter((t) => {
-    const cat = t.catId ? cats.find((c) => c.id === t.catId) : cats.find((c) => c.name === t.catName);
-    return isStayTarget(t) ? !cat?.hasStayInfo : !cat?.hasPetInfo;
+    const cat = t.catId
+      ? cats.find((c) => c.id === t.catId)
+      : cats.find((c) => nameKey(c.name) === nameKey(t.catName));
+    if (!cat) return false;
+    return isStayTarget(t) ? !cat.hasStayInfo : !cat.hasPetInfo;
   });
   const shop =
     typeof window !== "undefined" ? window.location.pathname.match(/^\/s\/[a-z0-9-]+/i)?.[0] || "" : "";
