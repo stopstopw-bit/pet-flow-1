@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyStaffLogin } from "@/lib/staff-store";
 import { withTenantEvenIfClosed } from "@/lib/tenant-context";
+import { TENANT_SLUG_HEADER } from "@/lib/tenant-resolve";
 import {
   SESSION_COOKIE,
   SESSION_COOKIE_NAME_HEADER,
@@ -47,7 +48,13 @@ export async function POST(req: NextRequest) {
   const username = String(body.username || "").trim();
   const password = String(body.password || "");
   // ร้านที่หน้าล็อกอินถูกเปิดมา (/s/<slug>/admin/login) — ว่าง = หน้า /admin/login แบบไม่ระบุร้าน
-  const shop = String(body.shop || "").trim().toLowerCase();
+  // บนโดเมนของร้านเอง (catcha.com/admin/login) ลิงก์ไม่มี /s/<slug> — middleware ใส่ร้านมาใน header ให้แล้ว
+  const fromBody = String(body.shop || "").trim().toLowerCase();
+  const fromHeader = (req.headers.get(TENANT_SLUG_HEADER) || "").trim().toLowerCase();
+  if (fromBody && fromHeader && fromBody !== fromHeader) {
+    return NextResponse.json({ error: "ลิงก์ร้านไม่ตรงกัน — เปิดหน้าล็อกอินของร้านนี้ใหม่" }, { status: 400 });
+  }
+  const shop = fromBody || fromHeader;
   if (!username) {
     return NextResponse.json({ error: "กรอก username" }, { status: 400 });
   }

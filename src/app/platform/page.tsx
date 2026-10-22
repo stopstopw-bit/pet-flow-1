@@ -15,6 +15,8 @@ type Tenant = {
   trialEndsAt: string | null;
   /** วันครบกำหนดจ่ายค่าบริการ — ถึงวันนี้ยังไม่จ่าย ร้านปิดเองอัตโนมัติ */
   dueDate: string | null;
+  /** โดเมนของร้านเอง (เช่น catcha.com) — ว่าง = ใช้ลิงก์ /s/<slug> อย่างเดียว */
+  customDomain: string | null;
   createdAt: string;
   ownerUsername: string | null;
 };
@@ -236,6 +238,33 @@ export default function PlatformDashboard() {
     }
   };
 
+  /** ผูก/เลิกผูกโดเมนของร้านเอง — ต้องเพิ่มโดเมนเดียวกันใน Vercel ด้วย (ดู CUSTOM_DOMAIN.md) */
+  const setDomain = async (t: Tenant) => {
+    const input = prompt(
+      "โดเมนของร้าน (เช่น catcha.com)\nต้องเพิ่มโดเมนนี้ใน Vercel → Settings → Domains ด้วย\nเว้นว่าง = เลิกใช้โดเมน (ลิงก์ /s/ เดิมใช้ได้ตลอด)",
+      t.customDomain || ""
+    );
+    if (input === null) return;
+    const domain = input.trim();
+    if (domain === (t.customDomain || "")) return;
+    setBusyId(t.id);
+    try {
+      const res = await fetch(`/api/platform/tenants/${t.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set_domain", domain }),
+      });
+      if (expired(res)) return;
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || "บันทึกโดเมนไม่สำเร็จ");
+      }
+      load();
+    } finally {
+      setBusyId("");
+    }
+  };
+
   const resetOwnerLogin = async (t: Tenant) => {
     if (
       !confirm(
@@ -408,6 +437,9 @@ export default function PlatformDashboard() {
                     /{t.slug} · {t.ownerUsername ? `username: ${t.ownerUsername}` : "ยังไม่ได้ตั้ง login"} · สร้างเมื่อ{" "}
                     {t.createdAt.slice(0, 10)}
                   </p>
+                  {t.customDomain && (
+                    <p className="text-[10px] font-bold text-honey">🌐 {t.customDomain}</p>
+                  )}
                   <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px]">
                     <label className="flex items-center gap-1 text-white/60">
                       📅 ครบกำหนดจ่าย
@@ -451,6 +483,14 @@ export default function PlatformDashboard() {
                     className="rounded-full bg-latte/20 px-3 py-1.5 text-[11px] font-extrabold text-latte-deep disabled:opacity-40"
                   >
                     ✏️ แก้ชื่อ
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busyId === t.id}
+                    onClick={() => setDomain(t)}
+                    className="rounded-full bg-latte/20 px-3 py-1.5 text-[11px] font-extrabold text-latte-deep disabled:opacity-40"
+                  >
+                    🌐 โดเมนร้าน
                   </button>
                   <button
                     type="button"
@@ -506,6 +546,12 @@ export default function PlatformDashboard() {
                   {[
                     { key: `${t.id}:customer`, label: "🛍️ หน้าลูกค้า (จองคิว) — ใส่ใน LINE OA / Facebook ร้าน", url: customerLinkFor(t.slug) },
                     { key: `${t.id}:admin`, label: "🔐 หน้าล็อกอินหลังบ้าน (เจ้าของร้าน/พนักงาน)", url: loginLinkFor(t.slug) },
+                    ...(t.customDomain
+                      ? [
+                          { key: `${t.id}:dcustomer`, label: "🌐 หน้าลูกค้า ผ่านโดเมนร้าน (ใช้ได้หลังตั้งใน Vercel แล้ว)", url: `https://${t.customDomain}/app` },
+                          { key: `${t.id}:dadmin`, label: "🌐 หน้าล็อกอินหลังบ้าน ผ่านโดเมนร้าน", url: `https://${t.customDomain}/admin/login` },
+                        ]
+                      : []),
                   ].map((l) => (
                     <div key={l.key}>
                       <p className="mb-1 text-[11px] font-bold text-white/70">{l.label}</p>

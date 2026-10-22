@@ -43,6 +43,7 @@ export async function GET(req: NextRequest) {
     template: string | null;
     trial_ends_at: string | null;
     due_date?: string | null;
+    custom_domain?: string | null;
     created_at: string;
     owner_username: string | null;
   };
@@ -55,6 +56,14 @@ export async function GET(req: NextRequest) {
   // ยังไม่มีคอลัมน์วันครบกำหนดจ่าย — สร้างให้แล้วอ่านใหม่ (ไม่ได้ก็อ่านแบบเดิม)
   if (error && isMissingDueDate(error.message)) {
     ({ data, error } = (await ensureDueDateColumn()) ? await list(`${base}, due_date`) : await list(base));
+  }
+  // โดเมนของร้านเอง — อ่านแยก ฐานที่ยังไม่มีคอลัมน์นี้ (ยังไม่เคยตั้งโดเมนให้ร้านไหน) ต้องไม่ทำให้รายชื่อร้านพัง
+  const domains = new Map<string, string>();
+  if (!error) {
+    const { data: rows } = await sb.from("tenants").select("id, custom_domain").not("custom_domain", "is", null);
+    for (const r of (rows as { id: string; custom_domain: string | null }[] | null) || []) {
+      if (r.custom_domain) domains.set(r.id, r.custom_domain);
+    }
   }
   if (error) {
     const hint = /fetch failed/i.test(error.message) ? await probeSupabase() : "";
@@ -72,6 +81,7 @@ export async function GET(req: NextRequest) {
       template: t.template,
       trialEndsAt: t.trial_ends_at,
       dueDate: t.due_date || null,
+      customDomain: domains.get(t.id) || null,
       createdAt: t.created_at,
       ownerUsername: t.owner_username,
     })),
