@@ -240,6 +240,7 @@ export function AdminNav({
               </ul>
             </section>
           ))}
+          <GuideLink onClick={closeMenu} />
         </div>
       </nav>
     </>
@@ -320,7 +321,27 @@ export function AdminSidebar() {
           </ul>
         </div>
       ))}
+      <GuideLink />
     </nav>
+  );
+}
+
+/** ลิงก์ไปคู่มือใช้งาน (/guide) — ไม่ใช่เมนูที่ต้องให้สิทธิ์ ทุกคนในร้านเห็น */
+function GuideLink({ onClick }: { onClick?: () => void }) {
+  return (
+    <Link
+      href="/guide"
+      onClick={onClick}
+      className="mt-2 flex items-center gap-3 rounded-petflow-sm bg-honey/25 px-3 py-2.5 text-sm font-bold text-petflow-chocolate"
+    >
+      <span aria-hidden className="text-lg">
+        📖
+      </span>
+      <span className="min-w-0 flex-1 leading-tight">
+        วิธีใช้งาน
+        <span className="block text-[11px] font-normal text-brown-soft">สอนทีละขั้น พร้อมภาพหน้าจอ</span>
+      </span>
+    </Link>
   );
 }
 
