@@ -15,15 +15,18 @@ import {
   type CustomerTier as StoreCustomerTier,
 } from "@/lib/customer-tier";
 import {
-  BROADCAST_ACTIONS,
   BROADCAST_TEMPLATES,
+  broadcastActionLabel,
+  parseBroadcastActions,
   type BroadcastActionId,
 } from "@/lib/broadcast-constants";
+import { BroadcastButtonPicker } from "@/components/BroadcastButtonPicker";
 import type { SegmentId } from "@/lib/customer-segments";
 import { BROADCAST_DRAFT_KEY } from "@/components/SalesActions";
 import { Icon } from "@/components/Icon";
 import { useConfig } from "@/components/ConfigProvider";
-import { EmptyState, MoreMenu, SearchField, SectionLabel, Segmented } from "@/components/ui";
+import { PreviewSendModal } from "@/components/PreviewSendModal";
+import { CheckBox, EmptyState, MoreMenu, SearchField, SectionLabel, Segmented } from "@/components/ui";
 
 /** กลุ่มลูกค้าสำเร็จรูป — ติ๊กได้หลายกลุ่ม ระบบเลือกคนที่ตรงทุกข้อ */
 const SEGMENT_CHIPS: { id: SegmentId | "inactive90"; label: string }[] = [
@@ -145,6 +148,9 @@ export default function PromosAdminPage() {
   const [broadcastLoading, setBroadcastLoading] = useState(false);
   const [broadcasting, setBroadcasting] = useState(false);
   const [broadcastMsg, setBroadcastMsg] = useState("");
+  // คนที่ติ๊กออกจากรายชื่อ (ค่าเริ่มต้น = ส่งทุกคนในกลุ่ม)
+  const [excluded, setExcluded] = useState<Set<string>>(new Set());
+  const [previewMessages, setPreviewMessages] = useState<Record<string, unknown>[] | null>(null);
   const adminCode =
     typeof window !== "undefined"
       ? sessionStorage.getItem("petflow-admin") || ""
@@ -176,6 +182,7 @@ export default function PromosAdminPage() {
       setTargetGroup({ label: String(d.label || "กลุ่มที่เลือก"), customerIds: d.customerIds.map(String) });
       if (d.title) setBroadcastTitle(String(d.title));
       if (d.body) setBroadcastBody(String(d.body));
+      if (Array.isArray(d.actions)) setBroadcastActions(parseBroadcastActions(d.actions));
       setView("broadcast");
     } catch {
       /* ไม่มีร่าง — เปิดหน้าโปรตามปกติ */
@@ -198,37 +205,44 @@ export default function PromosAdminPage() {
         setBroadcastSkipped(d.skipped || []);
         setBroadcastSkippedTotal(d.skippedNoLine ?? 0);
         setBroadcastNoConsent(d.skippedNoConsent ?? 0);
+        setExcluded(new Set());
       })
       .finally(() => setBroadcastLoading(false));
   }, [broadcastTier, broadcastBreed, broadcastInactive, broadcastSegments, regularMinVisits, targetGroup]);
 
-  const sendBroadcast = async () => {
+  const selectedCount = broadcastRecipients.filter((r) => !excluded.has(r.id)).length;
+
+  const toggleRecipient = (id: string) =>
+    setExcluded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const broadcastPayload = () => ({
+    adminCode,
+    tier: broadcastTier,
+    breed: broadcastBreed || undefined,
+    inactiveDays: broadcastInactive || undefined,
+    segments: broadcastSegments,
+    regularMinVisits,
+    customerIds: targetGroup?.customerIds,
+    excludeIds: [...excluded],
+    title: broadcastTitle,
+    body: broadcastBody,
+    imageData: broadcastImage.startsWith("data:") ? broadcastImage : undefined,
+    actions: broadcastActions,
+  });
+
+  /** ขั้นที่ 1: ขอการ์ดตัวอย่างจากเซิร์ฟเวอร์ — ยังไม่ส่งจริง */
+  const previewBroadcast = async () => {
     if (!broadcastTitle.trim() || !broadcastBody.trim()) {
       setBroadcastMsg("กรอกหัวข้อและข้อความ");
       return;
     }
-    if (!broadcastCount) {
-      setBroadcastMsg("ไม่มีลูกค้าที่จะส่ง — เลือกกลุ่มอื่นหรือให้ลูกค้าผูก LINE ก่อน");
-      return;
-    }
-    const names = broadcastRecipients
-      .slice(0, 5)
-      .map((r) => r.name)
-      .join(", ");
-    const more =
-      broadcastRecipients.length > 5
-        ? ` และอีก ${broadcastRecipients.length - 5} คน`
-        : "";
-    const actionLabels = broadcastActions
-      .map((id) => BROADCAST_ACTIONS.find((a) => a.id === id)?.label || id)
-      .join(", ");
-    if (
-      !confirm(
-        `ส่งโปรให้ ${broadcastCount} คน?\n\n${names}${more}${
-          actionLabels ? `\n\nปุ่ม: ${actionLabels}` : ""
-        }`
-      )
-    ) {
+    if (!selectedCount) {
+      setBroadcastMsg("ยังไม่ได้เลือกผู้รับ — ติ๊กชื่อลูกค้าในรายชื่อก่อน");
       return;
     }
     setBroadcasting(true);
@@ -236,22 +250,26 @@ export default function PromosAdminPage() {
     const res = await fetch("/api/line/broadcast", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        adminCode,
-        tier: broadcastTier,
-        breed: broadcastBreed || undefined,
-        inactiveDays: broadcastInactive || undefined,
-        segments: broadcastSegments,
-        regularMinVisits,
-        customerIds: targetGroup?.customerIds,
-        title: broadcastTitle,
-        body: broadcastBody,
-        imageData: broadcastImage.startsWith("data:") ? broadcastImage : undefined,
-        actions: broadcastActions,
-      }),
+      body: JSON.stringify({ ...broadcastPayload(), preview: true }),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     setBroadcasting(false);
+    if (res.ok && Array.isArray(data.preview)) setPreviewMessages(data.preview);
+    else setBroadcastMsg(data.error || "เปิดตัวอย่างไม่สำเร็จ");
+  };
+
+  /** ขั้นที่ 2: กดยืนยันในพรีวิว → ส่งจริง */
+  const sendBroadcast = async () => {
+    setBroadcasting(true);
+    setBroadcastMsg("");
+    const res = await fetch("/api/line/broadcast", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(broadcastPayload()),
+    });
+    const data = await res.json().catch(() => ({}));
+    setBroadcasting(false);
+    setPreviewMessages(null);
     if (res.ok) {
       setBroadcastMsg(`ส่งแล้ว ${data.sent} คน (${data.tier})`);
     } else {
@@ -271,14 +289,6 @@ export default function PromosAdminPage() {
     const reader = new FileReader();
     reader.onload = () => setBroadcastImage(String(reader.result));
     reader.readAsDataURL(file);
-  };
-
-  const toggleBroadcastAction = (id: BroadcastActionId) => {
-    setBroadcastActions((prev) => {
-      if (prev.includes(id)) return prev.filter((a) => a !== id);
-      if (prev.length >= 3) return prev;
-      return [...prev, id];
-    });
   };
 
   const hasBroadcastImage =
@@ -618,10 +628,13 @@ export default function PromosAdminPage() {
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-extrabold text-petflow-chocolate">
-                  จะส่งหา {broadcastLoading ? "…" : (broadcastCount ?? 0)} คน
+                  จะส่งหา {broadcastLoading ? "…" : selectedCount} คน
+                  {!broadcastLoading && excluded.size > 0 && (
+                    <span className="font-bold text-brown-soft"> จาก {broadcastCount ?? 0}</span>
+                  )}
                 </span>
                 <span className="block truncate text-[11px] text-brown-soft">
-                  {broadcastSkippedTotal > 0 ? `ข้าม ${broadcastSkippedTotal} คน (ยังไม่ผูก LINE)` : "แตะเพื่อดูรายชื่อ"}
+                  {broadcastSkippedTotal > 0 ? `ข้าม ${broadcastSkippedTotal} คน (ยังไม่ผูก LINE)` : "แตะเพื่อดู/เลือกรายชื่อ"}
                   {broadcastNoConsent > 0 ? ` · ไม่ยินยอม ${broadcastNoConsent} คน` : ""}
                 </span>
               </span>
@@ -639,24 +652,48 @@ export default function PromosAdminPage() {
               ) : broadcastRecipients.length === 0 ? (
                 <EmptyState icon="users" title="ไม่มีลูกค้าในกลุ่มนี้ที่ผูก LINE แล้ว" />
               ) : (
-                <ul className="max-h-60 divide-y divide-petflow-line overflow-y-auto">
-                  {broadcastRecipients.map((r) => (
-                    <li key={r.id} className="flex items-center gap-2 px-4 py-2.5 text-xs">
-                      <Icon name={r.cats !== "—" ? "paw" : "user"} size={14} className="text-brown-soft" />
-                      <span className="min-w-0 flex-1 truncate font-bold text-brown">
-                        {r.cats !== "—" ? `${r.cats} · ` : ""}
-                        {r.name}
-                        {r.lineDisplayName && r.lineDisplayName !== r.name && (
-                          <span className="font-normal text-brown-soft"> ({r.lineDisplayName})</span>
-                        )}
-                      </span>
-                      <span className="flex shrink-0 items-center gap-0.5 text-[11px] font-bold text-ok">
-                        <Icon name="check" size={12} strokeWidth={2.4} />
-                        LINE
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  <div className="flex items-center justify-between px-4 py-2 text-[11px]">
+                    <span className="font-bold text-brown-soft">
+                      เลือกแล้ว {selectedCount}/{broadcastRecipients.length} คน
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExcluded(excluded.size ? new Set() : new Set(broadcastRecipients.map((r) => r.id)))
+                      }
+                      className="font-bold text-latte-deep underline"
+                    >
+                      {excluded.size ? "เลือกทั้งหมด" : "ไม่เลือกเลย"}
+                    </button>
+                  </div>
+                  <ul className="max-h-72 divide-y divide-petflow-line overflow-y-auto border-t border-petflow-line">
+                    {broadcastRecipients.map((r) => {
+                      const on = !excluded.has(r.id);
+                      return (
+                        <li key={r.id}>
+                          <button
+                            type="button"
+                            role="checkbox"
+                            aria-checked={on}
+                            onClick={() => toggleRecipient(r.id)}
+                            className="flex min-h-[44px] w-full items-center gap-2.5 px-4 py-2 text-left text-xs"
+                          >
+                            <CheckBox on={on} />
+                            <span className={`min-w-0 flex-1 truncate font-bold ${on ? "text-brown" : "text-brown-faint line-through"}`}>
+                              {r.cats !== "—" ? `${r.cats} · ` : ""}
+                              {r.name}
+                              {r.lineDisplayName && r.lineDisplayName !== r.name && (
+                                <span className="font-normal text-brown-soft"> ({r.lineDisplayName})</span>
+                              )}
+                            </span>
+                            <span className="shrink-0 text-[11px] font-bold text-ok">LINE</span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </>
               )}
               {broadcastSkippedTotal > 0 && (
                 <div className="border-t border-petflow-line bg-paper/50 px-4 py-2.5">
@@ -754,32 +791,8 @@ export default function PromosAdminPage() {
           <section>
             <SectionLabel>Buttons · ปุ่มในการ์ด (สูงสุด 3)</SectionLabel>
             <div className="rounded-petflow bg-card p-4 shadow-petflow-sm">
-              <p className="mb-3 text-[11px] text-brown-soft">ลูกค้ากดแล้วเปิดแอป / แชท LINE / แผนที่ได้ทันที</p>
-              <div className="flex flex-wrap gap-2">
-                {BROADCAST_ACTIONS.map((action) => {
-                  const selected = broadcastActions.includes(action.id);
-                  const disabled = !selected && broadcastActions.length >= 3;
-                  return (
-                    <button
-                      key={action.id}
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => toggleBroadcastAction(action.id)}
-                      title={action.description}
-                      className={`flex h-9 items-center gap-1 rounded-full px-3.5 text-xs font-bold ${
-                        selected
-                          ? "bg-petflow-chocolate text-card"
-                          : disabled
-                            ? "bg-paper text-brown-faint opacity-50"
-                            : "bg-paper text-brown"
-                      }`}
-                    >
-                      {selected && <Icon name="check" size={14} strokeWidth={2.4} />}
-                      {action.label}
-                    </button>
-                  );
-                })}
-              </div>
+              <p className="mb-3 text-[11px] text-brown-soft">ลูกค้ากดแล้วเปิดแอป / แชท LINE / แผนที่ / รับคูปองได้ทันที</p>
+              <BroadcastButtonPicker value={broadcastActions} onChange={setBroadcastActions} />
             </div>
           </section>
 
@@ -818,7 +831,7 @@ export default function PromosAdminPage() {
                 </div>
                 <div className="flex flex-col gap-2 px-4 pb-4">
                   {(broadcastActions.length
-                    ? broadcastActions.map((id) => BROADCAST_ACTIONS.find((a) => a.id === id)?.label || id)
+                    ? broadcastActions.map(broadcastActionLabel)
                     : ["ดูรายละเอียด"]
                   ).map((label, i) => (
                     <div
@@ -840,15 +853,25 @@ export default function PromosAdminPage() {
 
           <button
             type="button"
-            disabled={broadcasting}
-            onClick={sendBroadcast}
+            disabled={broadcasting || broadcastLoading}
+            onClick={previewBroadcast}
             className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-petflow-chocolate text-sm font-extrabold text-card shadow-petflow-sm disabled:opacity-60"
           >
-            <Icon name="send" size={18} />
-            {broadcasting ? "กำลังส่ง…" : `ส่งให้ลูกค้า (${broadcastCount ?? "…"} คน)`}
+            <Icon name="eye" size={18} />
+            {broadcasting && !previewMessages ? "กำลังเตรียมตัวอย่าง…" : `ดูตัวอย่างก่อนส่ง (${selectedCount} คน)`}
           </button>
           {broadcastMsg && <p className="text-center text-xs font-bold text-brown">{broadcastMsg}</p>}
         </div>
+      )}
+
+      {previewMessages && (
+        <PreviewSendModal
+          messages={previewMessages}
+          recipients={broadcastRecipients.filter((r) => !excluded.has(r.id)).map((r) => r.name)}
+          sending={broadcasting}
+          onConfirm={sendBroadcast}
+          onCancel={() => setPreviewMessages(null)}
+        />
       )}
 
       {open && (

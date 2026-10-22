@@ -107,6 +107,7 @@ async function handlePost(req: NextRequest) {
     if (!notify || !cust.lineUserId) return NextResponse.json({ ok: true, preview: [] });
     const n = Math.min(12, Math.max(1, Math.round(Number(body.installments) || 1)));
     if (n > 1 && !isLegacy) {
+      const planStyle = (await getSiteConfig()).cards?.roomPlan;
       const first = Math.min(price, Math.max(0, Math.round(Number(body.firstPayment) || 0)));
       const remaining = price - first;
       const left = remaining > 0 ? Math.max(1, n - (first > 0 ? 1 : 0)) : 0;
@@ -125,7 +126,7 @@ async function handlePost(req: NextRequest) {
             nextInstallment: left ? Math.ceil(remaining / left) : 0,
             thisPayment: first || undefined,
             installmentNo: first ? 1 : undefined,
-          }),
+          }, planStyle),
         ],
       });
     }
@@ -196,7 +197,7 @@ async function handlePost(req: NextRequest) {
             nextInstallment: view.nextInstallment,
             thisPayment: res.payment?.ok ? res.payment.amount : undefined,
             installmentNo: res.payment?.ok ? 1 : undefined,
-          }),
+          }, (await getSiteConfig()).cards?.roomPlan),
         ]);
       } catch (e) {
         notifyError = e instanceof Error ? e.message : String(e);

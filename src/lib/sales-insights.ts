@@ -4,6 +4,8 @@
  * ฟังก์ชันล้วน (ไม่เรียก API) ใช้ได้ทั้งฝั่งหน้าเว็บและทดสอบ
  */
 
+import { parseBroadcastActions, type BroadcastActionId } from "@/lib/broadcast-constants";
+
 export type InsightCustomer = {
   id: string;
   name: string;
@@ -50,7 +52,7 @@ export type ActionSegment = {
   people: SegmentPerson[];
   /** ยอดที่น่าจะได้กลับมา ถ้ามีคนตอบรับตามอัตราที่คาด */
   potential: number;
-  message: { title: string; body: string };
+  message: { title: string; body: string; actions: BroadcastActionId[] };
 };
 
 const DAY = 86400000;
@@ -83,12 +85,103 @@ type Profile = {
   activePackage: boolean;
 };
 
+/**
+ * ข้อความตั้งต้นที่ส่งตามลูกค้าแต่ละกลุ่ม (ปุ่มในการ์ด "กลุ่มลูกค้าที่ควรทัก")
+ * ร้านแก้เองได้ในหน้าปรับการ์ด → config.cards.followUp.texts.<id>Title / <id>Body
+ */
+export const FOLLOW_UP_MESSAGES: {
+  id: string;
+  label: string;
+  title: string;
+  body: string;
+  /** ปุ่มตั้งต้นในการ์ด (id จาก BROADCAST_ACTIONS) */
+  actions: BroadcastActionId[];
+}[] = [
+  {
+    id: "due-groom",
+    label: "ถึงรอบอาบน้ำแล้ว ยังไม่ได้จอง",
+    title: "ถึงรอบอาบน้ำน้องแล้วนะคะ 🛁",
+    body: "น้องอาบน้ำครั้งล่าสุดเมื่อเดือนที่แล้ว จองคิวรอบถัดไปได้เลยค่ะ คิวสุดสัปดาห์เต็มไว จองล่วงหน้าได้ที่ปุ่มด้านล่าง",
+    actions: ["grooming", "line_chat"],
+  },
+  {
+    id: "at-risk",
+    label: "ลูกค้าประจำที่เริ่มหาย",
+    title: "คิดถึงน้องจังเลยค่ะ 🧡",
+    body: "ไม่ได้เจอน้องนานแล้ว ร้านมีส่วนลดพิเศษสำหรับลูกค้าประจำ ใช้ได้ทั้งอาบน้ำและฝากพักภายในเดือนนี้ค่ะ",
+    actions: ["grooming", "rooms", "line_chat"],
+  },
+  {
+    id: "lost",
+    label: "ลูกค้าที่หายไปนาน (เกิน 4 เดือน)",
+    title: "ของขวัญสำหรับน้องที่เราคิดถึง 🎁",
+    body: "กลับมาใช้บริการภายใน 30 วัน รับส่วนลดพิเศษสำหรับลูกค้าเก่าทันทีค่ะ",
+    actions: ["grooming", "rooms", "line_chat"],
+  },
+  {
+    id: "never-came",
+    label: "สมัครแล้ว แต่ยังไม่เคยมาใช้บริการ",
+    title: "ลองครั้งแรก ลดพิเศษ ✨",
+    body: "ขอบคุณที่สมัครสมาชิกนะคะ ครั้งแรกที่มาใช้บริการรับส่วนลดพิเศษ จองคิวได้เลยที่ปุ่มด้านล่างค่ะ",
+    actions: ["grooming", "rooms", "line_chat"],
+  },
+  {
+    id: "groom-only",
+    label: "อาบน้ำอย่างเดียว ยังไม่เคยฝากพัก",
+    title: "ไปเที่ยววันหยุดยาว ฝากน้องกับเราได้นะคะ 🏨",
+    body: "ห้องพักแอร์ มีกล้องดูน้องได้ทั้งวัน พี่เลี้ยงคนเดิมที่น้องคุ้นเคย จองล่วงหน้าได้เลยค่ะ",
+    actions: ["rooms", "line_chat"],
+  },
+  {
+    id: "stay-only",
+    label: "ฝากพักอย่างเดียว ยังไม่เคยอาบน้ำ",
+    title: "รับน้องกลับบ้านแบบตัวหอม 🫧",
+    body: "ครั้งหน้าที่ฝากพัก เพิ่มอาบน้ำก่อนวันรับกลับได้ในราคาพิเศษค่ะ",
+    actions: ["grooming", "line_chat"],
+  },
+  {
+    id: "vip-course",
+    label: "ลูกค้า VIP ที่ยังไม่มีคอร์ส",
+    title: "คอร์สสุดคุ้มสำหรับลูกค้าคนพิเศษ 💎",
+    body: "ซื้อคอร์สอาบน้ำล่วงหน้า คุ้มกว่าจ่ายทีละครั้ง และได้คิวก่อนใครค่ะ",
+    actions: ["line_chat"],
+  },
+  {
+    id: "birthday",
+    label: "น้องเกิดเดือนนี้",
+    title: "สุขสันต์วันเกิดน้องนะคะ 🎂",
+    body: "เดือนเกิดน้อง รับของขวัญพิเศษจากร้านเมื่อมาใช้บริการภายในเดือนนี้ค่ะ",
+    actions: ["grooming", "line_chat"],
+  },
+];
+
+/** key ใน config.cards.followUp.texts ของแต่ละกลุ่ม */
+export const followUpKey = (id: string, part: "Title" | "Body" | "Buttons") => `${id}${part}`;
+
+/** ปุ่มของกลุ่มนั้น — ร้านตั้งไว้ (รวมตั้งเป็น "ไม่มีปุ่ม" ได้) หรือค่าตั้งต้น */
+export function followUpActions(id: string, texts?: Record<string, string>): BroadcastActionId[] {
+  const raw = texts?.[followUpKey(id, "Buttons")];
+  if (raw === undefined) return FOLLOW_UP_MESSAGES.find((m) => m.id === id)?.actions || [];
+  return parseBroadcastActions(raw);
+}
+
+function followUpMessage(id: string, texts?: Record<string, string>) {
+  const d = FOLLOW_UP_MESSAGES.find((m) => m.id === id)!;
+  return {
+    title: texts?.[followUpKey(id, "Title")]?.trim() || d.title,
+    body: texts?.[followUpKey(id, "Body")]?.trim() || d.body,
+    actions: followUpActions(id, texts),
+  };
+}
+
 export function analyzeSales(input: {
   customers: InsightCustomer[];
   invoices: InsightInvoice[];
   bookings: InsightBooking[];
   packages: InsightPackage[];
   today: string;
+  /** ข้อความที่ร้านแก้เองในหน้าปรับการ์ด (config.cards.followUp.texts) */
+  followUpTexts?: Record<string, string>;
 }) {
   const { customers, bookings, packages, today } = input;
   const invoices = input.invoices.filter((i) => i.status === "paid" && !i.deletedAt);
@@ -235,10 +328,7 @@ export function analyzeSales(input: {
     action: "ส่งข้อความเตือนจองรอบถัดไป",
     people: dueGroom.map((p) => person(p, `อาบล่าสุด ${daysBetween(p.lastGroom!, today)} วันก่อน`)),
     potential: potential(dueGroom.length, 0.4),
-    message: {
-      title: "ถึงรอบอาบน้ำน้องแล้วนะคะ 🛁",
-      body: "น้องอาบน้ำครั้งล่าสุดเมื่อเดือนที่แล้ว จองคิวรอบถัดไปได้เลยค่ะ คิวสุดสัปดาห์เต็มไว จองล่วงหน้าได้ที่ปุ่มด้านล่าง",
-    },
+    message: followUpMessage("due-groom", input.followUpTexts),
   });
 
   const atRisk = all.filter((p) => p.visitDays.size >= 2 && p.lastVisit && daysBetween(p.lastVisit, today) > 45 && daysBetween(p.lastVisit, today) <= 120);
@@ -249,10 +339,7 @@ export function analyzeSales(input: {
     action: "ส่งคูปองชวนกลับมา",
     people: atRisk.map((p) => person(p, ago(p.lastVisit))),
     potential: potential(atRisk.length, 0.25),
-    message: {
-      title: "คิดถึงน้องจังเลยค่ะ 🧡",
-      body: "ไม่ได้เจอน้องนานแล้ว ร้านมีส่วนลดพิเศษสำหรับลูกค้าประจำ ใช้ได้ทั้งอาบน้ำและฝากพักภายในเดือนนี้ค่ะ",
-    },
+    message: followUpMessage("at-risk", input.followUpTexts),
   });
 
   const lost = all.filter((p) => p.lastVisit && daysBetween(p.lastVisit, today) > 120);
@@ -263,10 +350,7 @@ export function analyzeSales(input: {
     action: "ส่งโปรแรง ๆ ครั้งเดียว",
     people: lost.map((p) => person(p, ago(p.lastVisit))),
     potential: potential(lost.length, 0.1),
-    message: {
-      title: "ของขวัญสำหรับน้องที่เราคิดถึง 🎁",
-      body: "กลับมาใช้บริการภายใน 30 วัน รับส่วนลดพิเศษสำหรับลูกค้าเก่าทันทีค่ะ",
-    },
+    message: followUpMessage("lost", input.followUpTexts),
   });
 
   const neverCame = all.filter((p) => p.visitDays.size === 0 && p.bills === 0 && (!p.c.createdAt || daysBetween(p.c.createdAt, today) >= 3));
@@ -277,10 +361,7 @@ export function analyzeSales(input: {
     action: "ส่งโปรลูกค้าใหม่",
     people: neverCame.map((p) => person(p, p.c.createdAt ? `สมัคร ${daysBetween(p.c.createdAt, today)} วันก่อน` : "ยังไม่เคยมา")),
     potential: potential(neverCame.length, 0.2),
-    message: {
-      title: "ลองครั้งแรก ลดพิเศษ ✨",
-      body: "ขอบคุณที่สมัครสมาชิกนะคะ ครั้งแรกที่มาใช้บริการรับส่วนลดพิเศษ จองคิวได้เลยที่ปุ่มด้านล่างค่ะ",
-    },
+    message: followUpMessage("never-came", input.followUpTexts),
   });
 
   const groomOnly = all.filter((p) => p.groom && !p.stay);
@@ -291,10 +372,7 @@ export function analyzeSales(input: {
     action: "แนะนำห้องพัก",
     people: groomOnly.map((p) => person(p, `อาบน้ำมาแล้ว ${p.visitDays.size} ครั้ง`)),
     potential: potential(groomOnly.length, 0.1, avgBill * 2),
-    message: {
-      title: "ไปเที่ยววันหยุดยาว ฝากน้องกับเราได้นะคะ 🏨",
-      body: "ห้องพักแอร์ มีกล้องดูน้องได้ทั้งวัน พี่เลี้ยงคนเดิมที่น้องคุ้นเคย จองล่วงหน้าได้เลยค่ะ",
-    },
+    message: followUpMessage("groom-only", input.followUpTexts),
   });
 
   const stayOnly = all.filter((p) => p.stay && !p.groom);
@@ -305,10 +383,7 @@ export function analyzeSales(input: {
     action: "แนะนำอาบน้ำก่อนรับกลับ",
     people: stayOnly.map((p) => person(p, `ฝากพักมาแล้ว ${p.visitDays.size} ครั้ง`)),
     potential: potential(stayOnly.length, 0.2),
-    message: {
-      title: "รับน้องกลับบ้านแบบตัวหอม 🫧",
-      body: "ครั้งหน้าที่ฝากพัก เพิ่มอาบน้ำก่อนวันรับกลับได้ในราคาพิเศษค่ะ",
-    },
+    message: followUpMessage("stay-only", input.followUpTexts),
   });
 
   const spendCut = sortedSpend[topN - 1] ?? Infinity;
@@ -320,10 +395,7 @@ export function analyzeSales(input: {
     action: "เสนอคอร์ส/สมาชิก",
     people: vipNoPkg.map((p) => person(p, `ยอดรวม ${Math.round(p.spend).toLocaleString()} ฿ · ${p.visitDays.size} ครั้ง`)),
     potential: potential(vipNoPkg.length, 0.3, avgBill * 5),
-    message: {
-      title: "คอร์สสุดคุ้มสำหรับลูกค้าคนพิเศษ 💎",
-      body: "ซื้อคอร์สอาบน้ำล่วงหน้า คุ้มกว่าจ่ายทีละครั้ง และได้คิวก่อนใครค่ะ",
-    },
+    message: followUpMessage("vip-course", input.followUpTexts),
   });
 
   const mm = today.slice(5, 7);
@@ -343,10 +415,7 @@ export function analyzeSales(input: {
       )
     ),
     potential: potential(bday.length, 0.3),
-    message: {
-      title: "สุขสันต์วันเกิดน้องนะคะ 🎂",
-      body: "เดือนเกิดน้อง รับของขวัญพิเศษจากร้านเมื่อมาใช้บริการภายในเดือนนี้ค่ะ",
-    },
+    message: followUpMessage("birthday", input.followUpTexts),
   });
 
   // ── คำแนะนำอัตโนมัติ เรียงตามยอดที่น่าจะได้ ──

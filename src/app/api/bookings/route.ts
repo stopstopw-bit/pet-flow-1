@@ -613,7 +613,7 @@ async function handlePatch(req: NextRequest, admin: boolean) {
                 ? cfg.messages.consentTerms
                 : DEFAULT_MESSAGES.consentTerms,
               url,
-            })
+            }, cfg.cards?.consent)
           );
         }
       } else if (part === "prestay") {
@@ -899,7 +899,7 @@ async function handlePatch(req: NextRequest, admin: boolean) {
           ? cfg.messages.consentTerms
           : DEFAULT_MESSAGES.consentTerms,
         url,
-      });
+      }, cfg.cards?.consent);
       try {
         if (preview) return NextResponse.json({ ok: true, preview: [flex] });
         await pushLineMessage(to, [flex]);

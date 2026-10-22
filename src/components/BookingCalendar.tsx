@@ -1731,6 +1731,7 @@ export function BookingCalendar() {
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs text-brown-soft">แตะวันที่เพื่อดูรายการของวันนั้น</p>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="text-[11px] font-extrabold text-petflow-chocolate">เข้าพัก:</span>
             {rooms
               .filter((r) => (r.count || 0) > 0 || r.composedOf?.length)
               .map((r) => (
@@ -1788,7 +1789,7 @@ export function BookingCalendar() {
                 onClick={() => pickDate(key)}
                 aria-label={`${day} · พัก ${stays} · อาบน้ำ ${appts}`}
                 style={tint && !isSelected && !keyClosed ? { background: `${tint}33` } : undefined}
-                className={`flex min-h-[64px] flex-col items-stretch gap-1 rounded-xl p-1.5 text-left transition sm:min-h-[104px] sm:p-2 lg:min-h-[128px] ${
+                className={`flex min-h-[64px] flex-col items-stretch gap-1 rounded-xl p-1 text-left transition sm:min-h-[104px] sm:p-2 lg:min-h-[128px] ${
                   isSelected
                     ? "bg-latte/40 text-petflow-chocolate ring-2 ring-latte-deep"
                     : isToday
@@ -1806,12 +1807,21 @@ export function BookingCalendar() {
                     </span>
                   )}
                 </span>
-                {/* มือถือ: จุดสีห้อง + จำนวน */}
-                <span className="flex flex-wrap items-center gap-0.5 sm:hidden">
-                  {[...byRoom.keys()].map((r) => (
-                    <span key={r} className="h-1.5 w-1.5 rounded-full" style={{ background: roomColors[r] || "#9ca3af" }} />
-                  ))}
-                  {appts > 0 && <span className="text-[9px] font-bold text-latte-deep">{appts}นัด</span>}
+                {/* มือถือ: เขียนเป็นคำว่า พัก / อาบน้ำ + จำนวนน้อง (จุดอย่างเดียวอ่านไม่ออก) */}
+                <span className="flex min-w-0 flex-col gap-0.5 sm:hidden">
+                  {stays > 0 && (
+                    <span
+                      className="rounded px-0.5 text-[9px] font-extrabold leading-tight text-petflow-chocolate"
+                      style={{ background: `${tint || "#9ca3af"}66`, borderLeft: `2px solid ${tint || "#9ca3af"}` }}
+                    >
+                      พัก {stays}
+                    </span>
+                  )}
+                  {appts > 0 && (
+                    <span className="rounded bg-latte-deep px-0.5 text-[9px] font-extrabold leading-tight text-white">
+                      อาบน้ำ {appts}
+                    </span>
+                  )}
                 </span>
                 {/* จอใหญ่: ชื่อน้องในแต่ละวัน */}
                 <span className="hidden min-w-0 flex-col gap-0.5 sm:flex">
@@ -1819,17 +1829,25 @@ export function BookingCalendar() {
                     const b = g[0];
                     const names = g.map((x) => x.catName).join(", ");
                     const color = b.service === "room" ? roomColors[b.room || ""] || "#9ca3af" : undefined;
+                    const isStay = b.service === "room";
+                    const roomName = isStay ? rooms.find((r) => r.id === b.room)?.name || "" : "";
                     return (
                       <span
                         key={b.id}
-                        title={`${names} · ${b.customerName}`}
-                        className={`block truncate rounded-md px-1.5 py-0.5 text-[10px] font-bold leading-tight lg:text-[11px] ${
+                        title={`${isStay ? `เข้าพัก${roomName ? ` ${roomName}` : ""}` : "อาบน้ำ"} · ${names} · ${b.customerName}`}
+                        className={`flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-bold leading-tight lg:text-[11px] ${
                           color ? "text-petflow-chocolate" : "bg-card/80 text-latte-deep"
                         }`}
                         style={color ? { background: `${color}66`, borderLeft: `3px solid ${color}` } : undefined}
                       >
-                        {b.service === "room" ? "" : b.time ? `${b.time} ` : "🛁 "}
-                        {names}
+                        <span
+                          className={`shrink-0 whitespace-nowrap rounded px-1 text-[9px] font-extrabold lg:text-[10px] ${
+                            isStay ? "bg-card/80 text-petflow-chocolate" : "bg-latte-deep text-white"
+                          }`}
+                        >
+                          {isStay ? "เข้าพัก" : `อาบน้ำ${b.time ? ` ${b.time}` : ""}`}
+                        </span>
+                        <span className="min-w-0 max-w-full truncate">{names}</span>
                       </span>
                     );
                   })}
