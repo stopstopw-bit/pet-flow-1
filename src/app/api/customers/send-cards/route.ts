@@ -66,21 +66,27 @@ async function handlePost(req: NextRequest) {
   const cfg = await getSiteConfig();
   const catIds = cats.map((x) => x.id);
   const catNames = cats.map((x) => x.name).join(", ") || c.name;
-  const manyLabel = cats.length > 1 ? `น้องๆ ${cats.length} ตัว` : catNames;
 
   const messages: object[] = [];
+  const skipped: string[] = [];
   for (const part of parts) {
     if (part === "groomInfo" || part === "stayInfo") {
       const stay = part === "stayInfo";
+      // ตัวที่เคยกรอกฟอร์มนี้แล้ว → ไม่ขอซ้ำเด็ดขาด (ข้อมูลผูกกับตัวน้อง)
+      const ask = cats.filter((x) => !(stay ? x.stayInfo : x.groomHealthInfo));
+      for (const x of cats) if (!ask.includes(x)) skipped.push(`${x.name}: เคยกรอกแล้ว ไม่ขอซ้ำ`);
+      if (ask.length === 0) continue;
+      const askNames = ask.map((x) => x.name).join(", ");
+      const askLabel = ask.length > 1 ? `น้องๆ ${ask.length} ตัว` : askNames;
       const style = cfg.cards?.groomInfo;
       const button = style?.texts?.button || "🩺 แจ้งประวัติน้อง";
       messages.push(
         buildGroomInfoFlex(
           {
-            catName: catNames,
-            body: (stay ? buildStayInfoBody : buildGroomInfoBody)({ catName: manyLabel }, cfg),
-            url: buildCatInfoUrl(liffId, catIds, stay ? "stay" : "groom"),
-            label: cats.length > 1 ? `${button} (${cats.length} ตัว)` : button,
+            catName: askNames,
+            body: (stay ? buildStayInfoBody : buildGroomInfoBody)({ catName: askLabel }, cfg),
+            url: buildCatInfoUrl(liffId, ask.map((x) => x.id), stay ? "stay" : "groom"),
+            label: ask.length > 1 ? `${button} (${ask.length} ตัว)` : button,
           },
           stay
             ? { ...style, texts: { ...style?.texts, header: "🐾 ข้อมูลน้องก่อนเข้าพัก" } }
@@ -124,10 +130,16 @@ async function handlePost(req: NextRequest) {
     }
   }
 
+  if (messages.length === 0) {
+    return NextResponse.json(
+      { error: `ไม่มีการ์ดให้ส่ง — ${skipped.join(", ")}`, skipped },
+      { status: 400 }
+    );
+  }
   try {
-    if (preview) return NextResponse.json({ ok: true, preview: messages });
+    if (preview) return NextResponse.json({ ok: true, preview: messages, skipped });
     await pushLineMessage(c.lineUserId, messages);
-    return NextResponse.json({ ok: true, sent: messages.length });
+    return NextResponse.json({ ok: true, sent: messages.length, skipped });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: message }, { status: 500 });

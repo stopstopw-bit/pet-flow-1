@@ -470,7 +470,7 @@ const pickInfoKind = (raw: unknown, b: StoredBooking): InfoKind =>
 const infoAlreadyFilled = (to: string, catName: string, kind: InfoKind) =>
   kind === "stay" ? getCatStayInfo(to, catName) : getCatGroomInfo(to, catName);
 
-/** นัดเข้าพักใช้การ์ดขอประวัติใบเดียวกัน — เปลี่ยนหัวการ์ด/วันที่ให้ตรงบริการ (ร้านตั้งหัวการ์ดเองไว้ก็ใช้ของร้าน) */
+/** นัดเข้าพักใช้การ์ดขอประวัติใบเดียวกัน — เปลี่ยนหัวการ์ด/วันที่ให้ตรงบริการ (หัวที่ร้านตั้งเองเป็นของการ์ดก่อนอาบน้ำ — นัดเข้าพักใช้หัวเข้าพักเสมอ) */
 function groomInfoCardFor(
   b: StoredBooking,
   cfg: Awaited<ReturnType<typeof getSiteConfig>>,
@@ -488,7 +488,7 @@ function groomInfoCardFor(
   }
   return {
     body: buildStayInfoBody,
-    style: { ...style, texts: { ...style?.texts, header: style?.texts?.header || "🐾 ข้อมูลน้องก่อนเข้าพัก" } },
+    style: { ...style, texts: { ...style?.texts, header: "🐾 ข้อมูลน้องก่อนเข้าพัก" } },
     dateText: bookingScheduleText(b),
   };
 }
