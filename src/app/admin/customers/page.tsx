@@ -14,6 +14,7 @@ import { RegistrationQrSection } from "@/components/LineSetupSection";
 import { AddCustomerModal } from "@/components/AddCustomerModal";
 import { EditCustomerSheet } from "@/components/EditCustomerSheet";
 import { PetServiceHistory } from "@/components/PetServiceHistory";
+import type { HistoryBill } from "@/lib/pet-service-history";
 import { toast } from "@/components/Toast";
 import { PreviewSendModal } from "@/components/PreviewSendModal";
 import { CustomerLinkSection } from "@/components/CustomerLinkSection";
@@ -64,6 +65,7 @@ type Summary = {
     memberTopups: MemberTopupRecord[];
     memberCreditUsage: MemberCreditUsageRecord[];
     packageUsage: PackageUsageRecord[];
+    serviceBills?: HistoryBill[];
   };
 };
 
@@ -3177,6 +3179,7 @@ export default function CustomersPage() {
 
         <PetServiceHistory
           cats={c.cats}
+          bills={selected.history.serviceBills}
           bookings={[
             ...(selected.history.upcomingBookings || []),
             ...(selected.history.pastBookings || []),
