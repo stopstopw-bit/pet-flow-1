@@ -5,6 +5,7 @@ import { DateRangePicker } from "@/components/DateRangePicker";
 import { Icon } from "@/components/Icon";
 import { resolveRange, inRange, type RangeId } from "@/lib/date-range";
 import { SalesActions } from "@/components/SalesActions";
+import { MonthlyPetCounts } from "@/components/MonthlyPetCounts";
 import type { InsightBooking } from "@/lib/sales-insights";
 
 type Cat = { name?: string; breed?: string; birthday?: string };
@@ -229,6 +230,8 @@ export default function InsightsPage() {
         <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Insights</p>
         <h1 className="text-xl font-extrabold text-petflow-chocolate">สรุปข้อมูลร้าน</h1>
       </div>
+
+      <MonthlyPetCounts bookings={bookings} />
 
       <SalesActions customers={customers} invoices={invoices} bookings={bookings} packages={packages} />
 
