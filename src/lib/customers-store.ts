@@ -1347,6 +1347,12 @@ export async function getCatGroomInfo(lineUserId: string, catName?: string) {
   return r?.cat.groomHealthInfo;
 }
 
+/** ข้อมูลน้องก่อนเข้าพักที่ลูกค้าเคยกรอกไว้ (อาหาร/นิสัย/การดูแล) */
+export async function getCatStayInfo(lineUserId: string, catName?: string) {
+  const r = await resolveCatByLine(lineUserId, catName);
+  return r?.cat.stayInfo;
+}
+
 /**
  * โน้ตที่ช่างควรรู้ก่อนจับน้อง — นิสัยที่ลูกค้าบอก + โน้ตลับร้าน (เช่น "กัด ระวังตอนอาบ")
  * ใช้เติมในบรีฟก่อนอาบน้ำทาง Telegram ซึ่งเห็นเฉพาะพนักงาน ลูกค้าไม่เห็น
