@@ -51,18 +51,37 @@ export async function getBookingTimeUrl(
   return liffId ? buildBookingTimeUrl(liffId, bookingId, type) : "";
 }
 
+/**
+ * ข้อความที่ร้านเขียนไว้ว่า "พรุ่งนี้" แต่การ์ดถูกส่งก่อนหลายวัน (เช่น แนบไปกับชุดก่อนเข้าพัก 3 วัน)
+ * → เปลี่ยนเป็นจำนวนวันจริง ณ ตอนส่ง ("อีก 3 วัน" / "วันนี้") ให้ลูกค้าไม่สับสน
+ * ส่งก่อน 1 วันพอดี = ไม่แตะข้อความเลย
+ */
+export function fixTomorrowWord(text: string, date: string, now = new Date()): string {
+  if (!date || !text.includes("พรุ่งนี้")) return text;
+  const todayTh = new Date(now.getTime() + 7 * 3600_000).toISOString().slice(0, 10);
+  const days = Math.round(
+    (Date.parse(`${date}T00:00:00Z`) - Date.parse(`${todayTh}T00:00:00Z`)) / 86400_000
+  );
+  if (!Number.isFinite(days) || days === 1 || days < 0) return text;
+  return text.replaceAll("พรุ่งนี้", days === 0 ? "วันนี้" : `อีก ${days} วัน`);
+}
+
 /** เนื้อความการ์ดเลือกเวลาเข้าพัก (เช็คอิน) */
 export function buildCheckinBodyText(
   b: Pick<StoredBooking, "catName" | "checkin" | "date" | "room">,
   cfg: SiteConfig
 ): string {
-  return renderTemplate(cfg.messages.checkinReminder, {
-    shop: cfg.business.name,
-    cat: politeCat(b.catName),
-    checkin: b.checkin || b.date || "",
-    room: b.room ? `🏠 ห้อง: ${b.room}` : "",
-    litterNote: "",
-  });
+  const checkin = b.checkin || b.date || "";
+  return fixTomorrowWord(
+    renderTemplate(cfg.messages.checkinReminder, {
+      shop: cfg.business.name,
+      cat: politeCat(b.catName),
+      checkin,
+      room: b.room ? `🏠 ห้อง: ${b.room}` : "",
+      litterNote: "",
+    }),
+    checkin
+  );
 }
 
 /** วันที่ (YYYY-MM-DD) บวก/ลบ n วัน */
@@ -147,11 +166,14 @@ export function buildCheckoutBodyText(
   b: Pick<StoredBooking, "catName" | "checkout">,
   cfg: SiteConfig
 ): string {
-  return renderTemplate(cfg.messages.checkoutReminder, {
-    shop: cfg.business.name,
-    cat: politeCat(b.catName),
-    checkout: b.checkout || "",
-  });
+  return fixTomorrowWord(
+    renderTemplate(cfg.messages.checkoutReminder, {
+      shop: cfg.business.name,
+      cat: politeCat(b.catName),
+      checkout: b.checkout || "",
+    }),
+    b.checkout || ""
+  );
 }
 
 /** ข้อความเตือนยอดคงเหลือ/มัดจำ — คืน null ถ้าไม่มียอดต้องโอน */
