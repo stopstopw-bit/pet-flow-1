@@ -33,6 +33,7 @@ import { GroomClashNote, confirmClashes, useGroomClashes } from "@/components/Gr
 import { addDaysIso, nightsBetweenIso } from "@/lib/stay-line";
 import { formatThaiDateShort } from "@/lib/format-thai-date";
 import { roomColorMap } from "@/lib/room-colors";
+import { DAY_MOVE_LABELS, dayEntries, dayMoves, firstMoveTime, type DayMove } from "@/lib/day-moves";
 
 type CalendarDay = EditableBooking & {
   customerId?: string;
@@ -193,16 +194,27 @@ function CatTags({ group }: { group: CalendarDay[] }) {
   );
 }
 
-function MiniEntry({ group, onClick }: { group: CalendarDay[]; onClick: () => void }) {
+function MiniEntry({
+  group,
+  move,
+  onClick,
+}: {
+  group: CalendarDay[];
+  /** มาส่ง/มารับ/อาบน้ำ ของวันนี้ — ไม่ส่งมา = แสดงแบบเดิม */
+  move?: DayMove;
+  onClick: () => void;
+}) {
   const b = group[0];
   const isRoom = b.service === "room";
   const confirmed = group.every((x) => x.status === "confirmed");
   const names = group.map((x) => x.catName).join(", ");
+  const moveWord = move && move.kind !== "stay" && move.kind !== "groom" ? DAY_MOVE_LABELS[move.kind] : "";
+  const time = move ? move.time : b.time || "";
   return (
     <button
       type="button"
       onClick={onClick}
-      title={`${names} · ${b.customerName}`}
+      title={`${moveWord ? `${moveWord} ` : ""}${names} · ${b.customerName}`}
       className={`block w-full truncate rounded-lg border-l-[3px] px-1.5 py-1 text-left text-[10px] font-bold leading-tight ${
         isRoom
           ? "border-ok bg-sage/20 text-brown"
@@ -211,15 +223,23 @@ function MiniEntry({ group, onClick }: { group: CalendarDay[]; onClick: () => vo
             : "border-honey-deep bg-honey/25 text-petflow-chocolate"
       }`}
     >
-      {isRoom ? (
-        <Icon name="bed" size={11} className="mr-0.5 inline align-[-2px]" />
-      ) : b.time ? (
-        `${b.time} `
+      {time ? (
+        `${time} `
       ) : (
-        <Icon name="bath" size={11} className="mr-0.5 inline align-[-2px]" />
+        <Icon name={isRoom ? "bed" : "bath"} size={11} className="mr-0.5 inline align-[-2px]" />
+      )}
+      {moveWord && (
+        <span
+          className={`mr-1 rounded px-1 text-[9px] font-extrabold ${
+            move!.kind === "in" ? "bg-ok text-white" : "bg-latte-deep text-white"
+          }`}
+        >
+          {moveWord}
+        </span>
       )}
       {names}
       <span className="font-normal text-brown-faint"> · {b.customerName}</span>
+      {moveWord && !time && <span className="font-normal text-wait"> · ยังไม่แจ้งเวลา</span>}
     </button>
   );
 }
@@ -1085,7 +1105,10 @@ export function BookingCalendar() {
   })();
 
   // มุมมองรายวัน — แถวละชั่วโมง ครอบคลุมช่วงที่มีนัดจริง (อย่างน้อย 9:00–18:00)
-  const dayGroups = groupBookings(dayBookings);
+  // เรียงตามเวลาที่ต้องเจอลูกค้าวันนี้ (มาส่ง/อาบน้ำ/มารับ) — ไม่มีเวลาไว้ท้าย
+  const dayGroups = groupBookings(dayBookings).sort((a, b) =>
+    (firstMoveTime(a[0], activeDate) || "99").localeCompare(firstMoveTime(b[0], activeDate) || "99")
+  );
 
   // นับตามสถานะจาก "การ์ด" (บ้านละใบ) ไม่ใช่รายตัว — ให้ตรงกับที่ตาเห็นในลิสต์
   const statusChips = (
@@ -1111,9 +1134,11 @@ export function BookingCalendar() {
     statusFilter === "all"
       ? dayGroups
       : dayGroups.filter((g) => g[0].status === statusFilter);
-  const timedGroups = dayGroups.filter((g) => g[0].time);
-  const allDayGroups = dayGroups.filter((g) => !g[0].time);
-  const hourNums = timedGroups.map((g) => Number(g[0].time!.slice(0, 2)));
+  // มาส่ง/มารับ/อาบน้ำ ที่มีเวลา ลงช่องชั่วโมง — ที่เหลือ (พักต่อ, ยังไม่แจ้งเวลา) อยู่กล่องทั้งวัน
+  const dayEntryList = dayEntries(dayGroups, activeDate);
+  const timedEntries = dayEntryList.filter((e) => e.move.time);
+  const allDayEntries = dayEntryList.filter((e) => !e.move.time);
+  const hourNums = timedEntries.map((e) => Number(e.move.time.slice(0, 2)));
   const startHour = Math.min(9, ...hourNums);
   const endHour = Math.max(18, ...hourNums);
   const hours = Array.from({ length: endHour - startHour + 1 }, (_, i) => startHour + i);
@@ -1461,8 +1486,13 @@ export function BookingCalendar() {
                     {items.length === 0 ? (
                       <p className="px-1 pb-1 text-[9px] text-brown-faint sm:text-center">—</p>
                     ) : (
-                      items.map((g) => (
-                        <MiniEntry key={g[0].id} group={g} onClick={() => pickDate(key)} />
+                      dayEntries(items, key).map(({ group: g, move }) => (
+                        <MiniEntry
+                          key={`${g[0].id}-${move.kind}`}
+                          group={g}
+                          move={move}
+                          onClick={() => pickDate(key)}
+                        />
                       ))
                     )}
                   </div>
@@ -1474,22 +1504,27 @@ export function BookingCalendar() {
 
         {view === "day" && (
           <div>
-            {allDayGroups.length > 0 && (
+            {allDayEntries.length > 0 && (
               <div className="mb-2 rounded-xl bg-sage/15 p-2">
                 <p className="mb-1 flex items-center gap-1 text-[10px] font-bold text-brown-faint">
                   <Icon name="bed" size={12} />
                   ทั้งวัน / เข้าพัก
                 </p>
                 <div className="space-y-1">
-                  {allDayGroups.map((g) => (
-                    <MiniEntry key={g[0].id} group={g} onClick={() => openEdit(g[0], g)} />
+                  {allDayEntries.map(({ group: g, move }) => (
+                    <MiniEntry
+                      key={`${g[0].id}-${move.kind}`}
+                      group={g}
+                      move={move}
+                      onClick={() => openEdit(g[0], g)}
+                    />
                   ))}
                 </div>
               </div>
             )}
             <div className="divide-y divide-petflow-line">
               {hours.map((h) => {
-                const slot = timedGroups.filter((g) => Number(g[0].time!.slice(0, 2)) === h);
+                const slot = timedEntries.filter((e) => Number(e.move.time.slice(0, 2)) === h);
                 return (
                   <div key={h} className="flex gap-2 py-1.5">
                     <span className="w-11 shrink-0 pt-0.5 text-[10px] font-bold text-brown-faint">
@@ -1499,8 +1534,13 @@ export function BookingCalendar() {
                       {slot.length === 0 ? (
                         <div className="h-4 rounded bg-paper/40" />
                       ) : (
-                        slot.map((g) => (
-                          <MiniEntry key={g[0].id} group={g} onClick={() => openEdit(g[0], g)} />
+                        slot.map(({ group: g, move }) => (
+                          <MiniEntry
+                            key={`${g[0].id}-${move.kind}`}
+                            group={g}
+                            move={move}
+                            onClick={() => openEdit(g[0], g)}
+                          />
                         ))
                       )}
                     </div>
@@ -1774,14 +1814,11 @@ export function BookingCalendar() {
             for (const b of stayItems) byRoom.set(b.room || "", (byRoom.get(b.room || "") || 0) + 1);
             const topRoom = [...byRoom.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
             const tint = topRoom ? roomColors[topRoom] : undefined;
-            const groups = groupBookings(dayItems).sort((a, b) =>
-              a[0].service === b[0].service
-                ? (a[0].time || "").localeCompare(b[0].time || "")
-                : a[0].service === "room"
-                  ? -1
-                  : 1
-            );
-            const shown = groups.slice(0, 3);
+            // เรียงตามเวลา: มาส่ง/อาบน้ำ/มารับ ที่ลูกค้าแจ้งเวลาแล้วขึ้นก่อน น้องที่พักต่อไว้ท้าย
+            const entries = dayEntries(groupBookings(dayItems), key);
+            const shown = entries.slice(0, 3);
+            const dropIns = stayItems.filter((b) => dayMoves(b, key).some((x) => x.kind === "in")).length;
+            const pickUps = stayItems.filter((b) => dayMoves(b, key).some((x) => x.kind === "out")).length;
             return (
               <button
                 key={key}
@@ -1817,6 +1854,16 @@ export function BookingCalendar() {
                       พัก {stays}
                     </span>
                   )}
+                  {dropIns > 0 && (
+                    <span className="rounded bg-ok px-0.5 text-[9px] font-extrabold leading-tight text-white">
+                      มาส่ง {dropIns}
+                    </span>
+                  )}
+                  {pickUps > 0 && (
+                    <span className="rounded bg-card px-0.5 text-[9px] font-extrabold leading-tight text-latte-deep ring-1 ring-latte-deep/40">
+                      มารับ {pickUps}
+                    </span>
+                  )}
                   {appts > 0 && (
                     <span className="rounded bg-latte-deep px-0.5 text-[9px] font-extrabold leading-tight text-white">
                       อาบน้ำ {appts}
@@ -1825,16 +1872,17 @@ export function BookingCalendar() {
                 </span>
                 {/* จอใหญ่: ชื่อน้องในแต่ละวัน */}
                 <span className="hidden min-w-0 flex-col gap-0.5 sm:flex">
-                  {shown.map((g) => {
+                  {shown.map(({ group: g, move }) => {
                     const b = g[0];
                     const names = g.map((x) => x.catName).join(", ");
                     const color = b.service === "room" ? roomColors[b.room || ""] || "#9ca3af" : undefined;
                     const isStay = b.service === "room";
                     const roomName = isStay ? rooms.find((r) => r.id === b.room)?.name || "" : "";
+                    const tag = `${DAY_MOVE_LABELS[move.kind]}${move.time ? ` ${move.time}` : ""}`;
                     return (
                       <span
-                        key={b.id}
-                        title={`${isStay ? `เข้าพัก${roomName ? ` ${roomName}` : ""}` : "อาบน้ำ"} · ${names} · ${b.customerName}`}
+                        key={`${b.id}-${move.kind}`}
+                        title={`${tag}${roomName ? ` ${roomName}` : ""} · ${names} · ${b.customerName}`}
                         className={`flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-bold leading-tight lg:text-[11px] ${
                           color ? "text-petflow-chocolate" : "bg-card/80 text-latte-deep"
                         }`}
@@ -1842,18 +1890,24 @@ export function BookingCalendar() {
                       >
                         <span
                           className={`shrink-0 whitespace-nowrap rounded px-1 text-[9px] font-extrabold lg:text-[10px] ${
-                            isStay ? "bg-card/80 text-petflow-chocolate" : "bg-latte-deep text-white"
+                            move.kind === "in"
+                              ? "bg-ok text-white"
+                              : move.kind === "stay"
+                                ? "bg-card/80 text-petflow-chocolate"
+                                : move.kind === "out"
+                                  ? "bg-card text-latte-deep ring-1 ring-latte-deep/40"
+                                  : "bg-latte-deep text-white"
                           }`}
                         >
-                          {isStay ? "เข้าพัก" : `อาบน้ำ${b.time ? ` ${b.time}` : ""}`}
+                          {tag}
                         </span>
                         <span className="min-w-0 max-w-full truncate">{names}</span>
                       </span>
                     );
                   })}
-                  {groups.length > shown.length && (
+                  {entries.length > shown.length && (
                     <span className="px-1 text-[10px] font-bold text-brown-faint">
-                      +{groups.length - shown.length} รายการ
+                      +{entries.length - shown.length} รายการ
                     </span>
                   )}
                 </span>
@@ -1977,6 +2031,10 @@ export function BookingCalendar() {
               const catNames = group.map((x) => x.catName).join(", ");
               const caseDone = paidCases[b.id] === true;
               const many = group.length > 1;
+              // ลูกค้ามาส่ง/มารับวันนี้กี่โมง — ป้ายเด่นบนการ์ด
+              const moves = dayMoves(b, activeDate).filter((x) => x.kind === "in" || x.kind === "out");
+              const movedIn = moves.some((x) => x.kind === "in");
+              const movedOut = moves.some((x) => x.kind === "out");
 
               // ปุ่มหลักของการ์ด — ขั้นถัดไปของงาน (ยืนยัน → พร้อมรับกลับ → ปิดงาน) มีได้ทีละปุ่มเดียว
               const primary =
@@ -2116,6 +2174,27 @@ export function BookingCalendar() {
                         · {bookingWhen(b)}
                       </span>
                     </p>
+                    {moves.length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {moves.map((x) => (
+                          <span
+                            key={x.kind}
+                            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-extrabold ${
+                              !x.time
+                                ? "bg-wait/10 text-wait"
+                                : x.kind === "in"
+                                  ? "bg-ok text-white"
+                                  : "bg-latte-deep text-white"
+                            }`}
+                          >
+                            <Icon name="clock" size={12} strokeWidth={2.2} />
+                            {x.time ? `${x.time} น. ` : ""}
+                            {DAY_MOVE_LABELS[x.kind]}
+                            {!x.time && " · ยังไม่แจ้งเวลา"}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <CatTags group={group} />
@@ -2244,13 +2323,17 @@ export function BookingCalendar() {
                     )}
                   </div>
                 )}
-                {(b.arrivalTime || b.pickupTime) && (
+                {/* เวลาของอีกวัน (เช่น วันนี้มาส่ง → บอกเวลามารับไว้ด้วย) — ของวันนี้อยู่ในป้ายด้านบนแล้ว */}
+                {((b.arrivalTime && !movedIn) || (b.pickupTime && !movedOut)) && (
                   <p className="mt-1.5 flex items-start gap-1 text-[11px] font-bold text-latte-deep">
                     <Icon name="clock" size={13} className="mt-px" />
                     <span className="min-w-0">
-                      {b.arrivalTime && `ลูกค้าแจ้งเวลาส่งน้อง: ${b.arrivalTime}`}
-                      {b.arrivalTime && b.pickupTime && " · "}
-                      {b.pickupTime && `ลูกค้าแจ้งเวลารับน้อง: ${b.pickupTime}`}
+                      {[
+                        b.arrivalTime && !movedIn && `ลูกค้าแจ้งเวลาส่งน้อง: ${b.arrivalTime}`,
+                        b.pickupTime && !movedOut && `ลูกค้าแจ้งเวลารับน้อง: ${b.pickupTime}`,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </span>
                   </p>
                 )}
