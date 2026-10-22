@@ -26,6 +26,7 @@ import {
   getOrCreateWalkInCustomer,
   addCatVaccinePhotos,
   setCatVaccinePhotos,
+  normalizeSpecies,
 } from "@/lib/customers-store";
 import { splitVaccinePhotos } from "@/lib/vaccine-photos";
 import { parseCatInput, type CatInput } from "@/lib/cat-input";
@@ -208,7 +209,13 @@ async function handlePatch(req: NextRequest) {
   }
 
   if (action === "update_cat") {
-    const c = await updateCat(id, body.catId, body.patch);
+    const catPatch = { ...(body.patch || {}) };
+    if ("species" in catPatch) {
+      const sp = normalizeSpecies(catPatch.species);
+      if (sp) catPatch.species = sp;
+      else delete catPatch.species;
+    }
+    const c = await updateCat(id, body.catId, catPatch);
     if (!c) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json({ ok: true, customer: c });
   }
@@ -264,14 +271,15 @@ async function handlePatch(req: NextRequest) {
       const c = await addCat(id, {
         name: String(body.name || ""),
         staffNote: body.staffNote ? String(body.staffNote) : undefined,
+        species: normalizeSpecies(body.species),
       });
       if (!c) {
-        return NextResponse.json({ error: "กรอกชื่อน้องแมว" }, { status: 400 });
+        return NextResponse.json({ error: "กรอกชื่อน้อง" }, { status: 400 });
       }
       return NextResponse.json({ ok: true, customer: c });
     } catch (e) {
       return NextResponse.json(
-        { error: e instanceof Error ? e.message : "เพิ่มแมวไม่สำเร็จ" },
+        { error: e instanceof Error ? e.message : "เพิ่มน้องไม่สำเร็จ" },
         { status: 500 }
       );
     }

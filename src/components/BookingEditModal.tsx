@@ -524,7 +524,7 @@ export function BookingEditModal({
                   }`}
                 >
                   <p className="mb-2 text-[11px] font-bold text-brown-soft">
-                    {placeholderCat ? `ลูกค้าบันทึก${pw.th}ไว้แล้ว · แตะเลือกตัวที่ใช่` : `${pw.th}ของลูกค้า · แตะเพื่อเลือก`}
+                    {placeholderCat ? `ลูกค้าบันทึกน้องไว้แล้ว · แตะเลือกตัวที่ใช่` : `น้อง${pw.th}ของลูกค้า · แตะเพื่อเลือก`}
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {catChoices.map((n) => {

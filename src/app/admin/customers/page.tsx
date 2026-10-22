@@ -33,7 +33,7 @@ import { ExportSheetsButton } from "@/components/ExportSheetsButton";
 import { BookingEditModal, type EditableBooking } from "@/components/BookingEditModal";
 import { RoomPlanSection } from "@/components/RoomPlanSection";
 import { OTHER_BREED } from "@/lib/cat-breeds";
-import { breedOptionsFor } from "@/lib/pet-kind";
+import { asksSpecies, breedOptionsForSpecies, speciesOf, speciesWords, type PetSpecies } from "@/lib/pet-kind";
 import { BirthdayPicker } from "@/components/BirthdayPicker";
 import { StaffNoteTagPicker } from "@/components/StaffNoteTagPicker";
 import { Icon } from "@/components/Icon";
@@ -93,13 +93,13 @@ const SORT_OPTIONS: { key: SortKey; label: string; defaultDir: "asc" | "desc" }[
   { key: "recent", label: "สมัครล่าสุด", defaultDir: "desc" },
   { key: "updated", label: "เคลื่อนไหวล่าสุด (แก้ไข/มาใช้บริการ)", defaultDir: "desc" },
   { key: "name", label: "ชื่อลูกค้า ก–ฮ", defaultDir: "asc" },
-  { key: "catName", label: "ชื่อแมว ก–ฮ", defaultDir: "asc" },
-  { key: "cats", label: "จำนวนแมว", defaultDir: "desc" },
+  { key: "catName", label: "ชื่อน้อง ก–ฮ", defaultDir: "asc" },
+  { key: "cats", label: "จำนวนน้อง", defaultDir: "desc" },
   { key: "upcoming", label: "จำนวนนัดที่จะมาถึง", defaultDir: "desc" },
   { key: "points", label: "แต้มสะสม", defaultDir: "desc" },
   { key: "credit", label: "เครดิต Member", defaultDir: "desc" },
   { key: "tier", label: "กลุ่มลูกค้า", defaultDir: "asc" },
-  { key: "birthdaySoon", label: "วันเกิดใกล้ถึง (เจ้าของ/แมว)", defaultDir: "asc" },
+  { key: "birthdaySoon", label: "วันเกิดใกล้ถึง (เจ้าของ/น้อง)", defaultDir: "asc" },
   { key: "birthday", label: "ปีเกิดเจ้าของ", defaultDir: "asc" },
   { key: "line", label: "ผูก LINE แล้ว/ยังไม่ผูก", defaultDir: "desc" },
   { key: "phone", label: "เบอร์โทร", defaultDir: "asc" },
@@ -1737,7 +1737,7 @@ function CustomerSummaryCard({
   const removeCustomer = async () => {
     if (
       !confirm(
-        `ลบลูกค้า "${customer.name}" และประวัติทั้งหมด (แมว/นัด/แต้ม)?\nลบแล้วกู้คืนไม่ได้`
+        `ลบลูกค้า "${customer.name}" และประวัติทั้งหมด (น้อง/นัด/แต้ม)?\nลบแล้วกู้คืนไม่ได้`
       )
     )
       return;
@@ -1758,7 +1758,7 @@ function CustomerSummaryCard({
       !confirm(
         `ปลดผูก LINE ของ "${customer.name}"?\n\n` +
           `หลังปลด: ส่งลิงก์เชิญให้ลูกค้ากดผูกใหม่ได้เลย (ไม่ติด "ผูกไปแล้ว")\n` +
-          `แต้ม · คูปอง · บิล · แมว ยังอยู่ครบ ไม่หายไปไหน\n\n` +
+          `แต้ม · คูปอง · บิล · น้อง ยังอยู่ครบ ไม่หายไปไหน\n\n` +
           `⚠️ ระหว่างที่ยังไม่ผูกใหม่ ลูกค้าจะไม่ได้รับข้อความจากร้าน`
       )
     )
@@ -2415,7 +2415,7 @@ function AdoptLineControl({
     if (
       !confirm(
         `ดึง LINE ของ "${source.lineDisplayName || source.name}" มาผูกกับ "${customer.name}"?\n\n` +
-          `แต้ม · คูปอง · เครดิต · บิล · แมว จะย้ายมาที่ "${customer.name}" ทั้งหมด\n` +
+          `แต้ม · คูปอง · เครดิต · บิล · น้อง จะย้ายมาที่ "${customer.name}" ทั้งหมด\n` +
           `แล้วบัญชีซ้ำ "${source.name}" จะถูกลบ (กู้ได้จากถังขยะ)\n\n` +
           `ลูกค้าไม่ต้องทำอะไรเลย`
       )
@@ -2594,7 +2594,7 @@ function MergeCustomerControl({
     if (
       !confirm(
         `รวม "${customer.name}" เข้ากับ "${target.name}"?\n\n` +
-          `แต้ม · คูปอง · เครดิต · บิล · แมว · LINE ID จะย้ายไปที่ "${target.name}" ` +
+          `แต้ม · คูปอง · เครดิต · บิล · น้อง · LINE ID จะย้ายไปที่ "${target.name}" ` +
           `แล้วลบ "${customer.name}" ทิ้ง\n\n⚠️ ทำแล้วกู้คืนไม่ได้`
       )
     )
@@ -2693,13 +2693,16 @@ function MergeCustomerControl({
  */
 function CatBreedField({
   breed,
+  species,
   onSave,
 }: {
   breed?: string;
+  /** ร้านที่รับทั้งหมาและแมว — โชว์เฉพาะสายพันธุ์ของชนิดนี้ */
+  species?: PetSpecies;
   onSave: (breed: string) => void;
 }) {
   const { config } = useConfig();
-  const breedList = breedOptionsFor(config);
+  const breedList = breedOptionsForSpecies(config, species);
   const isCustom = !!breed && !breedList.includes(breed);
   const [otherMode, setOtherMode] = useState(isCustom);
   const [otherText, setOtherText] = useState(isCustom ? breed || "" : "");
@@ -2751,8 +2754,10 @@ function CatBreedField({
 
 function AddCatForm({ customerId, onAdded }: { customerId: string; onAdded: () => void }) {
   const pw = usePetWords();
+  const { config } = useConfig();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
+  const [species, setSpecies] = useState<PetSpecies | "">("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -2761,6 +2766,7 @@ function AddCatForm({ customerId, onAdded }: { customerId: string; onAdded: () =
     setOpen(false);
     setName("");
     setNote("");
+    setSpecies("");
     setError("");
   };
 
@@ -2776,6 +2782,7 @@ function AddCatForm({ customerId, onAdded }: { customerId: string; onAdded: () =
         id: customerId,
         action: "add_cat",
         name: name.trim(),
+        species: species || undefined,
         staffNote: note.trim() || undefined,
       }),
     });
@@ -2825,8 +2832,18 @@ function AddCatForm({ customerId, onAdded }: { customerId: string; onAdded: () =
               </button>
             </div>
             <form onSubmit={submit} className="space-y-3">
+              {asksSpecies(config) && (
+                <Segmented
+                  value={species}
+                  onChange={(v) => v && setSpecies(v)}
+                  options={[
+                    { id: "dog", label: "🐶 หมา" },
+                    { id: "cat", label: "🐱 แมว" },
+                  ]}
+                />
+              )}
               <label className="block text-xs font-bold text-brown-soft">
-                ชื่อน้อง{pw.th} *
+                ชื่อน้อง{speciesWords(species || undefined, config).th} *
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -2874,6 +2891,7 @@ function AddCatForm({ customerId, onAdded }: { customerId: string; onAdded: () =
 
 export default function CustomersPage() {
   const pw = usePetWords();
+  const { config } = useConfig();
   const searchParams = useSearchParams();
   const [q, setQ] = useState("");
   const [list, setList] = useState<CustomerListItem[]>([]);
@@ -3009,6 +3027,7 @@ export default function CustomersPage() {
       weightKg?: number | null;
       birthday?: string;
       medical?: string;
+      species?: PetSpecies;
     }
   ) => {
     if (!selected) return;
@@ -3022,7 +3041,7 @@ export default function CustomersPage() {
         patch,
       }),
     });
-    if (res.ok) toast(`✅ บันทึกข้อมูล${pw.th}แล้ว`, "success");
+    if (res.ok) toast(`✅ บันทึกข้อมูลน้องแล้ว`, "success");
     open(selected.customer.id);
   };
 
@@ -3125,7 +3144,7 @@ export default function CustomersPage() {
                 {/* แตะรูปเพื่อดูเต็มจอ · ปุ่มกล้องเพื่อเปลี่ยนรูป (ลูกค้าเห็นในแอปด้วย) */}
                 <CatPhoto src={cat.photoDataUrl} name={cat.name} size={72} onPick={(f) => onPhoto(cat, f)} />
                 <label className="block min-w-0 flex-1 text-[11px] font-bold text-brown-soft">
-                  <span className="mb-1 block">ชื่อน้อง{pw.th}</span>
+                  <span className="mb-1 block">ชื่อน้อง{speciesWords(speciesOf(cat, config), config).th}</span>
                   <input
                     defaultValue={cat.name}
                     onBlur={(e) => {
@@ -3144,6 +3163,18 @@ export default function CustomersPage() {
               <p className="-mt-1 px-4 pb-2 text-[10px] text-brown-faint">แตะรูปเพื่อดูเต็มจอ · ปุ่มกล้องเพื่อเปลี่ยนรูป (ลูกค้าเห็นในแอปด้วย)</p>
 
               <div className="space-y-3 border-t border-petflow-line p-4">
+                {asksSpecies(config) && (
+                  <Segmented
+                    value={speciesOf(cat, config) ?? ""}
+                    onChange={(v) => {
+                      if (v) saveCat(cat.id, { species: v });
+                    }}
+                    options={[
+                      { id: "dog", label: "🐶 หมา" },
+                      { id: "cat", label: "🐱 แมว" },
+                    ]}
+                  />
+                )}
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <Segmented
                     value={(cat.gender ?? "") as "" | "male" | "female"}
@@ -3170,6 +3201,7 @@ export default function CustomersPage() {
                   <span className="mb-1 block">พันธุ์</span>
                   <CatBreedField
                     breed={cat.breed}
+                    species={speciesOf(cat, config)}
                     onSave={(breed) => saveCat(cat.id, { breed })}
                   />
                 </label>
@@ -3481,7 +3513,7 @@ export default function CustomersPage() {
       <SearchField
         value={q}
         onChange={setQ}
-        placeholder={`ค้นหาชื่อลูกค้า / ${pw.th} / เบอร์`}
+        placeholder={`ค้นหาชื่อลูกค้า / น้อง${pw.th} / เบอร์`}
         className="mb-3"
       />
 
@@ -3574,7 +3606,7 @@ export default function CustomersPage() {
               <thead>
                 <tr className="border-b border-petflow-line bg-paper/60 text-[10px] font-extrabold uppercase tracking-wide text-brown-soft">
                   <SortableTh label="ลูกค้า" sortKey="name" active={sortKey} dir={sortDir} onSort={toggleSort} />
-                  <SortableTh label={pw.th} sortKey="catName" active={sortKey} dir={sortDir} onSort={toggleSort} />
+                  <SortableTh label={pw.noun} sortKey="catName" active={sortKey} dir={sortDir} onSort={toggleSort} />
                   <SortableTh label="LINE" sortKey="line" active={sortKey} dir={sortDir} onSort={toggleSort} />
                   <SortableTh label="เบอร์โทร" sortKey="phone" active={sortKey} dir={sortDir} onSort={toggleSort} />
                   <SortableTh label="วันเกิด" sortKey="birthday" active={sortKey} dir={sortDir} onSort={toggleSort} />

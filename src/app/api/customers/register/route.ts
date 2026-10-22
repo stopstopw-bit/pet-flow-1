@@ -79,12 +79,16 @@ async function handlePost(req: NextRequest) {
 
   // ── แจ้งเตือนลูกค้าสมัครใหม่ ──
   try {
-    const catNames = customer.cats.map((c) => c.name).filter(Boolean).join(", ") || "-";
+    const catNames =
+      customer.cats
+        .filter((c) => c.name)
+        .map((c) => (c.species ? `${c.name} (${c.species === "dog" ? "หมา" : "แมว"})` : c.name))
+        .join(", ") || "-";
     await sendTelegram(
       formatBookingTelegram("🆕 ลูกค้าสมัครสมาชิกใหม่", {
         ชื่อ: customer.name,
         เบอร์: customer.phone || "-",
-        น้องแมว: catNames,
+        น้อง: catNames,
         ช่องทาง: referralSource || "-",
       })
     );

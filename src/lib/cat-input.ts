@@ -1,4 +1,4 @@
-import { normalizeWeightKg, type CatGender } from "./customers-store";
+import { normalizeSpecies, normalizeWeightKg, type CatGender, type PetSpecies } from "./customers-store";
 
 /** รายละเอียดน้องที่รับจากฟอร์ม (สมัครสมาชิก / ร้านเพิ่มลูกค้าเอง) — ตรวจและแปลงชนิดให้เรียบร้อยก่อนบันทึก */
 export type CatInput = {
@@ -12,6 +12,7 @@ export type CatInput = {
   furLength?: "short" | "long";
   color?: string;
   weightKg?: number;
+  species?: PetSpecies;
   staffNote?: string;
 };
 
@@ -29,6 +30,7 @@ export function parseCatInput(c: Record<string, unknown> | null | undefined): Ca
     furLength: c?.furLength === "short" || c?.furLength === "long" ? c.furLength : undefined,
     color: str(c?.color),
     weightKg: normalizeWeightKg(c?.weightKg),
+    species: normalizeSpecies(c?.species),
     staffNote: str(c?.staffNote),
   };
 }

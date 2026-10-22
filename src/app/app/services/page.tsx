@@ -23,8 +23,8 @@ export default function ServicesPage() {
       title: m.room,
       desc:
         locale === "th"
-          ? "ห้องพักแมวทุกแบบ + ราคา"
-          : "All cat room types + pricing",
+          ? "ห้องพักน้องทุกแบบ + ราคา"
+          : "All room types + pricing",
     }] : []),
     ...(groomOn ? [{
       href: "/app/grooming",

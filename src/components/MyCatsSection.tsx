@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import { useLiff } from "@/components/LiffProvider";
 import { useConfig } from "@/components/ConfigProvider";
-import { petWords } from "@/lib/pet-kind";
+import { petWords, speciesOf, speciesWords } from "@/lib/pet-kind";
 import { toJpegDataUrl } from "@/lib/image-convert";
 
 type MyCat = {
@@ -12,6 +12,7 @@ type MyCat = {
   name: string;
   photoDataUrl?: string | null;
   breed?: string | null;
+  species?: string | null;
 };
 
 const CHEERS = [
@@ -23,7 +24,8 @@ const CHEERS = [
 
 export function MyCatsSection() {
   const { profile } = useLiff();
-  const pw = petWords(useConfig().config);
+  const { config } = useConfig();
+  const pw = petWords(config);
   const [cats, setCats] = useState<MyCat[]>([]);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [cheer, setCheer] = useState("");
@@ -77,7 +79,7 @@ export function MyCatsSection() {
     <section className="mb-5">
       <div className="mb-2 flex items-center justify-between">
         <h2 className="text-sm font-extrabold text-petflow-chocolate">
-          🐾 {pw.th}ของฉัน
+          🐾 {pw.noun}ของฉัน
         </h2>
         <span className="text-[10px] font-bold text-brown-faint">
           แตะรูปเพื่อเปลี่ยน 📸
@@ -108,7 +110,7 @@ export function MyCatsSection() {
                 />
               ) : (
                 <div className="flex h-full w-full flex-col items-center justify-center text-brown-faint">
-                  <span className="text-3xl">{pw.emoji}</span>
+                  <span className="text-3xl">{speciesWords(speciesOf(cat, config), config).emoji}</span>
                   <span className="text-[9px] font-bold">แตะเพิ่มรูป</span>
                 </div>
               )}

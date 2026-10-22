@@ -4,7 +4,7 @@ import {
   updateCustomer,
   updateCat,
   addCat,
-  normalizeWeightKg,
+  normalizeSpecies, normalizeWeightKg,
 } from "@/lib/customers-store";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { parseTaxInvoiceBody, type CustomerTaxInvoice } from "@/lib/tax-invoice";
@@ -42,6 +42,7 @@ async function handleGet(req: NextRequest) {
       cats: c.cats.map((x) => ({
         id: x.id,
         name: x.name,
+        species: x.species || "",
         gender: x.gender || "",
         breed: x.breed || "",
         ageValue: x.ageValue ?? "",
@@ -59,7 +60,7 @@ async function handleGet(req: NextRequest) {
   });
 }
 
-/** ลูกค้าแก้ไขข้อมูลตัวเอง — ผู้ปกครอง + น้องแมว (ยืนยันตัวจาก lineUserId ของ LIFF) */
+/** ลูกค้าแก้ไขข้อมูลตัวเอง — ผู้ปกครอง + น้อง (ยืนยันตัวจาก lineUserId ของ LIFF) */
 export async function POST(req: NextRequest) {
   return withResolvedTenant(req, () => handlePost(req));
 }
@@ -120,6 +121,8 @@ async function handlePost(req: NextRequest) {
         birthday: cat.birthday ? String(cat.birthday) : undefined,
         medical: cat.medical ? String(cat.medical).trim() : undefined,
         staffNote: cat.note ? String(cat.note).trim() : undefined,
+        // ไม่ส่งมา = คงค่าเดิม
+        species: normalizeSpecies(cat.species),
       };
       // id ที่ขึ้นต้นด้วย "new-" มาจากการกด "เพิ่มน้องแมว" ในหน้านี้ — ยังไม่มีตัวจริงในระบบ
       const weightKg = normalizeWeightKg(cat.weightKg);

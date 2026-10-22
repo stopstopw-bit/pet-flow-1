@@ -1057,10 +1057,10 @@ function MessagesTab({
         อวยพรวันเกิดอัตโนมัติ
       </p>
       <p className="text-[10px] text-brown-soft">
-        ส่งอัตโนมัติเที่ยงวันที่ตรงกับวันเกิด (เฉพาะลูกค้าที่ยินยอมรับข่าวสาร) — วันเกิดน้องแมวกับวันเกิดเจ้าของใช้คนละข้อความ ถ้าตรงกันวันเดียวจะส่งแค่ใบของเจ้าของใบเดียว
+        ส่งอัตโนมัติเที่ยงวันที่ตรงกับวันเกิด (เฉพาะลูกค้าที่ยินยอมรับข่าวสาร) — วันเกิดน้องกับวันเกิดเจ้าของใช้คนละข้อความ ถ้าตรงกันวันเดียวจะส่งแค่ใบของเจ้าของใบเดียว
       </p>
       <TextAreaField
-        label="ข้อความอวยพร — วันเกิดน้องแมว"
+        label="ข้อความอวยพร — วันเกิดน้อง"
         hint="ใช้ได้: {shop} {name} {cat}"
         value={msgs?.birthdayGreeting || ""}
         onChange={(v) => setMsgs({ ...msgs, birthdayGreeting: v })}
@@ -1069,7 +1069,7 @@ function MessagesTab({
 
       <TextAreaField
         label="ข้อความอวยพร — วันเกิดเจ้าของ"
-        hint="ใช้ได้: {shop} {name} · ไม่มี {cat} เพราะอวยพรคน ไม่ใช่แมว"
+        hint="ใช้ได้: {shop} {name} · ไม่มี {cat} เพราะอวยพรคน ไม่ใช่น้อง"
         value={msgs?.birthdayGreetingOwner || ""}
         onChange={(v) => setMsgs({ ...msgs, birthdayGreetingOwner: v })}
         rows={5}
@@ -1080,12 +1080,12 @@ function MessagesTab({
   );
 }
 
-/** ข้อความค่าแมวตัวเกินที่ลูกค้าเห็น ให้ตรงกับตัวเลขที่ตั้งไว้ */
+/** ข้อความค่าน้องตัวเกินที่ลูกค้าเห็น ให้ตรงกับตัวเลขที่ตั้งไว้ */
 function extraCatText(includedCats: number, price: number) {
   if (!price) return { th: "", en: "" };
   const n = includedCats + 1;
   const suf = n === 2 ? "nd" : n === 3 ? "rd" : "th";
-  return { th: `แมวที่ ${n} +${price}`, en: `${n}${suf} cat +${price}` };
+  return { th: `ตัวที่ ${n} +${price}`, en: `${n}${suf} pet +${price}` };
 }
 
 function RoomsTab({
@@ -1237,14 +1237,14 @@ function RoomsTab({
                 onChange={(v) => updateRoom(idx, { count: Math.max(0, Number(v) || 0) })}
               />
               <Field
-                label="จุแมวได้กี่ตัว/ห้อง"
+                label="จุน้องได้กี่ตัว/ห้อง"
                 type="number"
                 value={String(room.maxCats ?? 1)}
                 onChange={(v) => updateRoom(idx, { maxCats: Math.max(1, Number(v) || 1) })}
               />
             </div>
             <p className="mt-1 text-[10px] text-brown-faint">
-              แมวของบ้านเดียวกันช่วงวันเดียวกันเท่านั้นที่นอนรวมห้องได้ · คนละบ้านไม่รวมกันเสมอ
+              น้องของบ้านเดียวกันช่วงวันเดียวกันเท่านั้นที่นอนรวมห้องได้ · คนละบ้านไม่รวมกันเสมอ
             </p>
             <label className="mt-2 flex items-center gap-2 text-[11px] font-bold text-brown-soft">
               สีในปฏิทิน
@@ -1267,7 +1267,7 @@ function RoomsTab({
             {(room.maxCats ?? 1) > 1 && (
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 <Field
-                  label="ราคาห้องรวมแมวกี่ตัว"
+                  label="ราคาห้องรวมน้องกี่ตัว"
                   type="number"
                   value={String(roomPricing(room).base)}
                   onChange={(v) => {
@@ -1881,11 +1881,11 @@ function GroomingTab({
       <div className="rounded-petflow-sm bg-paper/70 p-3">
         <label className="flex items-center gap-2 text-xs font-extrabold text-petflow-chocolate">
           <input type="checkbox" checked={durationOn} onChange={(e) => setDurationOn(e.target.checked)} />
-          ⏱ คิดเวลาอาบน้ำตามจำนวนแมว (บ้านเดียวกันมาพร้อมกัน)
+          ⏱ คิดเวลาอาบน้ำตามจำนวนน้อง (บ้านเดียวกันมาพร้อมกัน)
         </label>
         <p className="mt-1 text-[10px] text-brown-faint">
           เปิดแล้ว น้องทั้งบ้านเริ่มเวลาเดียวกัน ระบบคิดเวลารวมแล้วกันทุกรอบที่อยู่ในช่วงนั้น · ตัวเลข “คิว/รอบ” ด้านบน
-          = รับพร้อมกันได้กี่บ้าน · ปิดไว้ = 1 แมว = 1 คิว แบบเดิม
+          = รับพร้อมกันได้กี่บ้าน · ปิดไว้ = น้อง 1 ตัว = 1 คิว แบบเดิม
         </p>
         {durationOn && (
           <div className="mt-2 space-y-1.5 text-[11px] font-bold text-brown-soft">
@@ -1925,7 +1925,7 @@ function GroomingTab({
       <div>
         <p className="mb-1 text-xs font-extrabold text-petflow-chocolate">วันที่ร้านปิด</p>
         <p className="mb-2 text-[10px] text-brown-faint">
-          มีผลกับ “จองคิวเอง” ทั้งอาบน้ำและห้องพัก — ลูกค้าจองวันนี้ไม่ได้ (แมวที่เข้าพักอยู่แล้วไม่กระทบ)
+          มีผลกับ “จองคิวเอง” ทั้งอาบน้ำและห้องพัก — ลูกค้าจองวันนี้ไม่ได้ (น้องที่เข้าพักอยู่แล้วไม่กระทบ)
         </p>
         <div className="mb-3 flex flex-wrap gap-1.5">
           {WEEKDAY_LABELS.map((label, idx) => {
@@ -2311,7 +2311,7 @@ function BackupTab() {
         ดาวน์โหลดสำรองข้อมูลทั้งหมด (.json)
       </a>
       <p className="text-[10px] text-brown-faint">
-        ไฟล์เดียวครบทุกอย่าง ลูกค้า แมว นัด บิล บัญชี แต้ม โปร คูปอง คอร์ส
+        ไฟล์เดียวครบทุกอย่าง ลูกค้า น้อง นัด บิล บัญชี แต้ม โปร คูปอง คอร์ส
         บทความ พนักงาน ประวัติเติมเครดิต ประวัติใช้บริการ และการตั้งค่า —
         มีข้อมูลส่วนตัวลูกค้า เก็บในที่ปลอดภัย
       </p>
@@ -2798,7 +2798,7 @@ function AutomationTab({
 
       <div className="rounded-petflow-sm border border-petflow-line p-3">
         <Toggle
-          label="แจกคูปองวันเกิดตอนกดส่ง (แมว/เจ้าของ)"
+          label="แจกคูปองวันเกิดตอนกดส่ง (น้อง/เจ้าของ)"
           checked={form.birthdayCouponEnabled}
           onChange={(v) => set({ birthdayCouponEnabled: v })}
         />
@@ -2899,6 +2899,8 @@ function ListsTab({
       </div>
       <p className="text-[10px] text-brown-soft">
         ใช้เปลี่ยนคำในแอปลูกค้าและหลังบ้าน (น้องแมว / น้องหมา) และรายชื่อสายพันธุ์ด้านล่าง
+        {petKind === "both" &&
+          " · รับทั้งสองแบบ: ตอนสมัคร/เพิ่มน้อง จะมีปุ่มให้เลือกว่าน้องแต่ละตัวเป็นหมาหรือแมว แล้วรายชื่อสายพันธุ์จะโชว์เฉพาะของชนิดนั้น"}
       </p>
 
       <hr className="border-petflow-line" />

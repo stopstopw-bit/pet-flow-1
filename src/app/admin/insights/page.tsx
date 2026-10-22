@@ -254,7 +254,7 @@ export default function InsightsPage() {
             <Icon name="users" size={18} />
           </span>
           <p className="mt-2 text-xl font-extrabold text-petflow-chocolate">{stats.totalCustomers}</p>
-          <p className="text-[11px] font-bold text-brown-soft">ลูกค้า · {stats.totalCats} แมว</p>
+          <p className="text-[11px] font-bold text-brown-soft">ลูกค้า · น้อง {stats.totalCats} ตัว</p>
         </div>
         <div className="rounded-petflow-sm bg-card p-4 shadow-petflow-sm">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-sage/30 text-petflow-chocolate">
@@ -269,7 +269,7 @@ export default function InsightsPage() {
         </div>
       </div>
 
-      <Card icon="paw" title="พันธุ์แมวยอดฮิต (ใช้ตัดสินใจทำสินค้า)">
+      <Card icon="paw" title="สายพันธุ์ยอดฮิต (ใช้ตัดสินใจทำสินค้า)">
         {stats.breeds.length ? (
           <div className="space-y-2">
             {stats.breeds.map(([b, n]) => (

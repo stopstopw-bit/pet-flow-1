@@ -800,7 +800,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
   const remaining = Math.max(0, total - depositAmount);
 
   const buildSummary = (mode: "booking" | "deposit" | "full") => {
-    const catName = selected?.cats[0]?.name || "น้องแมว";
+    const catName = selected?.cats[0]?.name || "น้อง";
     const L: string[] = [];
     L.push(`🐾 ${shopName}`);
     L.push(
@@ -836,7 +836,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
   };
 
   const buildSummaryPayload = (mode: "booking" | "deposit" | "full") => {
-    const catName = selected?.cats[0]?.name || "น้องแมว";
+    const catName = selected?.cats[0]?.name || "น้อง";
     const title =
       mode === "deposit"
         ? billMsg.summaryDepositTitle
@@ -1136,7 +1136,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
       new Set(items.flatMap((it) => parseCatNames(it.catName)))
     );
     const cat =
-      billedCatNames.join(CAT_SEP) || cust?.cats[0]?.name || "น้องแมว";
+      billedCatNames.join(CAT_SEP) || cust?.cats[0]?.name || "น้อง";
     // เก็บของแถม (ฟรี) ด้วย — label มี แต่ยอด 0
     // โปรแกรมอาบน้ำติดไปกับรายการ — ให้เซิร์ฟเวอร์เช็คคอร์สที่ผูกโปรแกรมได้
     const payloadItems = items
@@ -1814,7 +1814,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
                   setSearch(v);
                   setShowList(true);
                 }}
-                placeholder="ค้นหาชื่อ เบอร์ หรือชื่อน้องแมว"
+                placeholder="ค้นหาชื่อ เบอร์ หรือชื่อน้อง"
               />
               <p className="mb-1 mt-3 px-1 text-[11px] font-bold text-brown-soft">
                 {search.trim() ? `ผลการค้นหา ${filtered.length} ราย` : "ลูกค้าล่าสุด"}
@@ -1822,7 +1822,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
               <ul className="max-h-80 divide-y divide-petflow-line overflow-y-auto rounded-petflow-sm border border-petflow-line bg-card">
                 {filtered.length === 0 ? (
                   <li>
-                    <EmptyState icon="users" title="ไม่พบลูกค้า" sub="ลองค้นด้วยเบอร์ หรือชื่อน้องแมว" />
+                    <EmptyState icon="users" title="ไม่พบลูกค้า" sub="ลองค้นด้วยเบอร์ หรือชื่อน้อง" />
                   </li>
                 ) : (
                   filtered.map((c) => (

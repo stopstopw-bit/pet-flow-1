@@ -31,7 +31,7 @@ import { CheckBox, EmptyState, MoreMenu, SearchField, SectionLabel, Segmented } 
 /** กลุ่มลูกค้าสำเร็จรูป — ติ๊กได้หลายกลุ่ม ระบบเลือกคนที่ตรงทุกข้อ */
 const SEGMENT_CHIPS: { id: SegmentId | "inactive90"; label: string }[] = [
   { id: "regular", label: "ขาประจำ" },
-  { id: "longhair", label: "แมวขนยาว" },
+  { id: "longhair", label: "น้องขนยาว" },
   { id: "inactive90", label: "ไม่ได้มา 3 เดือน" },
   { id: "bath", label: "เคยอาบน้ำ" },
   { id: "stay", label: "เคยฝากพัก" },

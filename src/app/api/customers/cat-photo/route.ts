@@ -23,6 +23,7 @@ async function handleGet(req: NextRequest) {
       name: c.name,
       photoDataUrl: c.photoDataUrl || null,
       breed: c.breed || null,
+      species: c.species || null,
     })),
   });
 }

@@ -6,7 +6,7 @@ import { useConfig } from "@/components/ConfigProvider";
 import { BirthdayPicker } from "@/components/BirthdayPicker";
 import { StaffNoteTagPicker } from "@/components/StaffNoteTagPicker";
 import { OTHER_BREED } from "@/lib/cat-breeds";
-import { breedOptionsFor, petWords } from "@/lib/pet-kind";
+import { asksSpecies, breedOptionsForSpecies, petWords, speciesWords, type PetSpecies } from "@/lib/pet-kind";
 import { REFERRAL_OPTIONS } from "@/lib/referral-options";
 import { AccountTypeFields, TaxInvoiceFields, companyContactProblem } from "@/components/TaxInvoiceFields";
 import {
@@ -22,6 +22,8 @@ const emptyCompany = (): TaxInvoiceForm => ({ ...emptyTaxInvoiceForm("company"),
 type PetForm = {
   key: number;
   name: string;
+  /** หมา/แมว — ถามเฉพาะร้านที่รับทั้งสองแบบ */
+  species: PetSpecies | "";
   gender: "" | "male" | "female";
   breed: string;
   breedOther: string;
@@ -40,6 +42,7 @@ function emptyPet(): PetForm {
   return {
     key: nextKey++,
     name: "",
+    species: "",
     gender: "",
     breed: "",
     breedOther: "",
@@ -93,7 +96,7 @@ export function AddCustomerModal({
 }) {
   const { config } = useConfig();
   const pw = petWords(config);
-  const breeds = breedOptionsFor(config);
+  const askSpecies = asksSpecies(config);
   const referrals = config.options?.referralOptions?.length
     ? config.options.referralOptions
     : REFERRAL_OPTIONS;
@@ -169,6 +172,7 @@ export function AddCustomerModal({
         postalCode: postalCode.trim() || undefined,
         cats: namedPets.map((p) => ({
           name: p.name,
+          species: p.species || undefined,
           gender: p.gender || undefined,
           breed: (p.breed === OTHER_BREED ? p.breedOther.trim() : p.breed) || undefined,
           furLength: p.furLength || undefined,
@@ -304,11 +308,30 @@ export function AddCustomerModal({
                   className="space-y-2.5 rounded-petflow-sm border border-petflow-line p-3"
                 >
                   <legend className="px-1 text-xs font-extrabold text-petflow-chocolate">
-                    {pw.emoji} น้อง{pw.th}
+                    {speciesWords(pet.species || undefined, config).emoji} น้อง{speciesWords(pet.species || undefined, config).th}
                     {pets.length > 1 ? ` ตัวที่ ${idx + 1}` : ""}
                   </legend>
+                  {askSpecies && (
+                    <Toggle
+                      value={pet.species}
+                      onChange={(species) =>
+                        updatePet(idx, {
+                          species,
+                          // สายพันธุ์เดิมที่ไม่ใช่ของชนิดนี้ต้องเลือกใหม่
+                          breed:
+                            pet.breed === OTHER_BREED || breedOptionsForSpecies(config, species).includes(pet.breed)
+                              ? pet.breed
+                              : "",
+                        })
+                      }
+                      options={[
+                        ["dog", "🐶 หมา"],
+                        ["cat", "🐱 แมว"],
+                      ]}
+                    />
+                  )}
                   <label className={labelCls}>
-                    ชื่อน้อง{pw.th} {idx === 0 && "*"}
+                    ชื่อน้อง{speciesWords(pet.species || undefined, config).th} {idx === 0 && "*"}
                     <input
                       value={pet.name}
                       onChange={(e) => updatePet(idx, { name: e.target.value })}
@@ -333,7 +356,7 @@ export function AddCustomerModal({
                       className={fieldCls}
                     >
                       <option value="">เลือกสายพันธุ์…</option>
-                      {breeds.map((b) => (
+                      {breedOptionsForSpecies(config, pet.species || undefined).map((b) => (
                         <option key={b} value={b}>
                           {b}
                         </option>

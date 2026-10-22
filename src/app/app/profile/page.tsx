@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useLiff } from "@/components/LiffProvider";
 import { useConfig } from "@/components/ConfigProvider";
 import { OTHER_BREED } from "@/lib/cat-breeds";
-import { breedOptionsFor, petWords } from "@/lib/pet-kind";
+import { asksSpecies, breedOptionsFor, breedOptionsForSpecies, petWords, speciesOf, speciesWords, type PetSpecies } from "@/lib/pet-kind";
+import { SpeciesPicker } from "@/components/SpeciesPicker";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { StaffNoteTagPicker } from "@/components/StaffNoteTagPicker";
 import { BTN_PRIMARY, PageHeader } from "@/components/PageHeader";
@@ -33,6 +34,8 @@ const REFERRAL_FALLBACK = [
 type CatForm = {
   id: string;
   name: string;
+  /** หมา/แมว — ถามเฉพาะร้านที่รับทั้งสองแบบ */
+  species: PetSpecies | "";
   gender: "" | "male" | "female";
   breed: string;
   breedOther: string;
@@ -100,6 +103,7 @@ export default function ProfilePage() {
             return {
               id: String(x.id),
               name: String(x.name || ""),
+              species: speciesOf({ species: x.species as string, breed: breedVal }, config) || "",
               gender: (x.gender as CatForm["gender"]) || "",
               breed: breedVal ? (known ? breedVal : OTHER_BREED) : "",
               breedOther: breedVal && !known ? breedVal : "",
@@ -159,6 +163,7 @@ export default function ProfilePage() {
       {
         id: `new-${Date.now()}`,
         name: "",
+        species: "",
         gender: "",
         breed: "",
         breedOther: "",
@@ -176,6 +181,10 @@ export default function ProfilePage() {
 
   const save = async () => {
     if (!profile?.lineUserId || !name.trim()) return;
+    if (asksSpecies(config) && cats.some((c) => c.name.trim() && !c.species)) {
+      setSaveError("เลือกว่าน้องแต่ละตัวเป็นหมาหรือแมวด้วยนะคะ");
+      return;
+    }
     const taxProblem = taxInvoiceProblem(formToTaxInvoice(taxInvoice));
     setSaveError(taxProblem);
     if (taxProblem) return;
@@ -200,6 +209,7 @@ export default function ProfilePage() {
           cats: cats.map((c) => ({
             id: c.id,
             name: c.name,
+            species: c.species || undefined,
             gender: c.gender || undefined,
             breed:
               (c.breed === OTHER_BREED ? c.breedOther.trim() : c.breed) || undefined,
@@ -327,7 +337,7 @@ export default function ProfilePage() {
                 {!cat.id.startsWith("new-") ? (
                   <CatPhoto
                     src={photos[cat.id]}
-                    name={cat.name || `น้อง${pw.th}`}
+                    name={cat.name || `น้อง${speciesWords(cat.species || undefined, config).th}`}
                     size={0}
                     onPick={(f) => uploadPhoto(cat.id, f)}
                     uploading={uploadingId === cat.id}
@@ -338,6 +348,19 @@ export default function ProfilePage() {
                     กดบันทึกก่อน แล้วจะเพิ่มรูปน้องตัวนี้ได้
                   </p>
                 )}
+                <SpeciesPicker
+                  value={cat.species}
+                  onChange={(species) =>
+                    updateCat(idx, {
+                      species,
+                      // สายพันธุ์เดิมที่ไม่ใช่ของชนิดนี้ต้องเลือกใหม่
+                      breed:
+                        cat.breed === OTHER_BREED || breedOptionsForSpecies(config, species).includes(cat.breed)
+                          ? cat.breed
+                          : "",
+                    })
+                  }
+                />
                 <label className="block text-xs font-bold text-brown-soft">
                   ชื่อน้อง
                   <input value={cat.name} onChange={(e) => updateCat(idx, { name: e.target.value })} className={`${sub} mt-1 font-bold text-brown`} />
@@ -361,7 +384,7 @@ export default function ProfilePage() {
                   className={`${sub} ${cat.breed ? "text-brown" : "text-brown-faint"}`}
                 >
                   <option value="">เลือกสายพันธุ์…</option>
-                  {breeds.map((b) => (
+                  {breedOptionsForSpecies(config, cat.species || undefined).map((b) => (
                     <option key={b} value={b} className="text-brown">{b}</option>
                   ))}
                   <option value={OTHER_BREED} className="text-brown">{OTHER_BREED}</option>

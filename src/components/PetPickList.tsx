@@ -3,12 +3,14 @@
 import { useState } from "react";
 import Image from "next/image";
 import { useConfig } from "@/components/ConfigProvider";
-import { petKindOf, petWords } from "@/lib/pet-kind";
+import { speciesOf, speciesWords } from "@/lib/pet-kind";
 
 export type PetPickItem = {
   id: string;
   name: string;
   breed?: string | null;
+  /** หมา/แมว ของตัวนี้ — ร้านที่รับทั้งสองแบบใช้เลือกรูปการ์ตูน/คำให้ตรงตัว */
+  species?: string | null;
   photoDataUrl?: string | null;
 };
 
@@ -18,7 +20,7 @@ function shortBreed(breed?: string | null) {
   return breed.replace(/\s*\([^)]*\)\s*$/, "").trim();
 }
 
-/** รูปการ์ตูนน้องน่ารักๆ แทนตอนยังไม่มีรูปจริง (แมวหูตั้ง / หมาหูตก ตามร้าน) — ใช้สีธีมร้าน (honey / chocolate) */
+/** รูปการ์ตูนน้องน่ารักๆ แทนตอนยังไม่มีรูปจริง (แมวหูตั้ง / หมาหูตก ตามชนิดของน้อง) — ใช้สีธีมร้าน (honey / chocolate) */
 function CutePetPlaceholder({ dog }: { dog?: boolean }) {
   return (
     <svg viewBox="0 0 64 64" className="h-full w-full" aria-hidden="true">
@@ -68,8 +70,6 @@ export function PetPickList({
   onToggle: (name: string) => void;
 }) {
   const { config } = useConfig();
-  const pw = petWords(config);
-  const dog = petKindOf(config) === "dog";
   // รูปเสีย/ลิงก์หมดอายุ → กลับไปใช้รูปการ์ตูนแทน ไม่โชว์ไอคอนรูปแตก
   const [brokenIds, setBrokenIds] = useState<string[]>([]);
   return (
@@ -84,6 +84,8 @@ export function PetPickList({
         {pets.map((pet, i) => {
           const active = selected.includes(pet.name);
           const breed = shortBreed(pet.breed);
+          const species = speciesOf(pet, config);
+          const pw = speciesWords(species, config);
           return (
             <button
               key={pet.id}
@@ -114,7 +116,7 @@ export function PetPickList({
                   />
                 ) : (
                   <div className="h-full w-full p-1.5">
-                    <CutePetPlaceholder dog={dog} />
+                    <CutePetPlaceholder dog={species === "dog"} />
                   </div>
                 )}
               </div>
