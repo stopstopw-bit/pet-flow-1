@@ -30,6 +30,7 @@ type CatForm = {
   breedOther: string;
   ageValue: string;
   ageUnit: "year" | "month";
+  weightKg: string;
   birthday: string;
   medical: string;
   note: string;
@@ -92,6 +93,7 @@ export default function ProfilePage() {
               breedOther: breedVal && !known ? breedVal : "",
               ageValue: x.ageValue != null ? String(x.ageValue) : "",
               ageUnit: (x.ageUnit as "year" | "month") || "year",
+              weightKg: x.weightKg != null ? String(x.weightKg) : "",
               birthday: String(x.birthday || ""),
               medical: String(x.medical || ""),
               note: String(x.note || ""),
@@ -150,6 +152,7 @@ export default function ProfilePage() {
         breedOther: "",
         ageValue: "",
         ageUnit: "year",
+        weightKg: "",
         birthday: "",
         medical: "",
         note: "",
@@ -186,6 +189,7 @@ export default function ProfilePage() {
               (c.breed === OTHER_BREED ? c.breedOther.trim() : c.breed) || undefined,
             ageValue: c.ageValue,
             ageUnit: c.ageUnit,
+            weightKg: c.weightKg,
             birthday: c.birthday || undefined,
             medical: c.medical || undefined,
             note: c.note || undefined,
@@ -356,6 +360,19 @@ export default function ProfilePage() {
                     <option value="month">เดือน</option>
                   </select>
                 </div>
+                <label className="block text-[11px] font-bold text-brown-soft">
+                  น้ำหนัก <span className="font-normal text-brown-faint">(กก. · ไม่บังคับ)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    inputMode="decimal"
+                    value={cat.weightKg}
+                    onChange={(e) => updateCat(idx, { weightKg: e.target.value })}
+                    placeholder="เช่น 4.5"
+                    className={`${sub} mt-0.5`}
+                  />
+                </label>
                 <label className="block text-[11px] font-bold text-brown-soft">
                   วันเกิดน้อง <span className="font-normal text-brown-faint">(ถ้าทราบ)</span>
                   <input type="date" value={cat.birthday} onChange={(e) => updateCat(idx, { birthday: e.target.value })} className={`${sub} mt-0.5`} />

@@ -3,6 +3,7 @@ import {
   registerCustomerFromLine,
   findCustomerByReferralCode,
   setReferredBy,
+  normalizeWeightKg,
 } from "@/lib/customers-store";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { withResolvedTenant } from "@/lib/tenant-context";
@@ -18,6 +19,7 @@ type CatBody = {
   medical?: string;
   furLength?: string;
   color?: string;
+  weightKg?: number | string;
   staffNote?: string;
 };
 
@@ -56,6 +58,7 @@ async function handlePost(req: NextRequest) {
         furLength:
           c.furLength === "short" || c.furLength === "long" ? c.furLength : undefined,
         color: c.color ? String(c.color) : undefined,
+        weightKg: normalizeWeightKg(c.weightKg),
         staffNote: c.staffNote ? String(c.staffNote) : undefined,
       }))
     : [];
