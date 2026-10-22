@@ -37,7 +37,8 @@ export async function POST(req: NextRequest) {
 
   // เรียกจากสคริปต์ภายนอกด้วย Bearer หรือจากหลังบ้านที่ล็อกอินแล้ว
   // ต้อง fail closed — ถ้ายังไม่ตั้ง secret เลย ห้ามปล่อยผ่านเฉยๆ (เท่ากับเปิดโล่งให้ทุกคน)
-  const hasSession = Boolean(await getSessionFrom(req));
+  // สร้าง/ซ่อมตารางกระทบฐานข้อมูลที่ทุกร้านใช้ร่วมกัน — เจ้าของร้านเท่านั้น ไม่ใช่พนักงาน
+  const hasSession = (await getSessionFrom(req))?.role === "owner";
   if (!hasSession && (!secret || auth !== `Bearer ${secret}`)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }

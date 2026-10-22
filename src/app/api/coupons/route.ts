@@ -14,6 +14,7 @@ import { buildLiffUrl } from "@/lib/liff-urls";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { withResolvedTenant, withTenant } from "@/lib/tenant-context";
+import { requireCustomerSession } from "@/lib/customer-session";
 
 async function getAdminSession(req: NextRequest) {
   return verifySession(req.cookies.get(SESSION_COOKIE)?.value);
@@ -22,13 +23,16 @@ async function getAdminSession(req: NextRequest) {
 /** กระเป๋าคูปองของลูกค้า + รหัสชวนเพื่อน (เรียกจากแอปด้วย lineUserId, หรือหลังบ้านด้วย customerId) */
 export async function GET(req: NextRequest) {
   const session = await getAdminSession(req);
-  if (session) return withTenant(session.tenantId, () => handleGet(req));
-  return withResolvedTenant(req, () => handleGet(req));
+  if (session) return withTenant(session.tenantId, () => handleGet(req, true));
+  return withResolvedTenant(req, () => handleGet(req, false));
 }
 
-async function handleGet(req: NextRequest) {
-  const lineUserId = req.nextUrl.searchParams.get("lineUserId")?.trim();
-  const customerId = req.nextUrl.searchParams.get("customerId")?.trim();
+async function handleGet(req: NextRequest, isAdmin: boolean) {
+  // ลูกค้า: ดูได้เฉพาะของตัวเองจากคุกกี้ที่ตรวจกับ LINE แล้ว — ห้ามเชื่อ lineUserId/customerId ใน query
+  const lineUserId = isAdmin
+    ? req.nextUrl.searchParams.get("lineUserId")?.trim()
+    : (await requireCustomerSession(req))?.lineUserId;
+  const customerId = isAdmin ? req.nextUrl.searchParams.get("customerId")?.trim() : undefined;
   const activeOnly = req.nextUrl.searchParams.get("active") === "1";
 
   const cust = customerId

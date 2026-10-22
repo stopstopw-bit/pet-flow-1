@@ -17,7 +17,7 @@ import {
   sendTelegramToChat,
   setTelegramBotCommands,
 } from "@/lib/telegram";
-import { getBootstrapTenantId } from "@/lib/auth";
+import { getBootstrapTenantId, getSessionFrom } from "@/lib/auth";
 import { withTenant } from "@/lib/tenant-context";
 
 export const runtime = "nodejs";
@@ -38,6 +38,11 @@ function requireBootstrapTenant() {
  * GET /api/telegram/webhook?register=1 — ลงทะเบียน webhook อัตโนมัติ
  */
 export async function GET(req: NextRequest) {
+  // เจ้าของร้าน bootstrap เท่านั้น — ดูหมายเหตุใน /api/telegram/webhook/[tenantId]
+  const session = await getSessionFrom(req);
+  if (!session || session.role !== "owner" || session.tenantId !== requireBootstrapTenant()) {
+    return NextResponse.json({ ok: true, endpoint: "telegram-webhook" });
+  }
   return withTenant(requireBootstrapTenant(), () => handleGet(req));
 }
 

@@ -74,6 +74,10 @@ export async function saveShopIntake(input: {
     answers: input.answers,
     updated_at: now,
   };
+  // คำตอบที่ผูกกับร้านแล้ว ห้ามให้คำขอที่มาจากร้านอื่น (หรือไม่ระบุร้าน) เขียนทับ
+  const { data: existing } = await sb.from("shop_intake").select("tenant_id").eq("id", input.id).maybeSingle();
+  const owner = (existing as { tenant_id?: string | null } | null)?.tenant_id || null;
+  if (owner && owner !== (input.tenantId || null)) throw new Error("intake_belongs_to_other_shop");
   let { error } = await sb.from("shop_intake").upsert(row);
   // ตาราง/คอลัมน์ยังไม่มี (ยังไม่เคยกดอัปเดตฐานข้อมูล) — สร้างให้เองแล้วลองใหม่ครั้งเดียว
   if (error && isMissingSchema(error.message) && (await ensureMigration("shop_intake.setup"))) {

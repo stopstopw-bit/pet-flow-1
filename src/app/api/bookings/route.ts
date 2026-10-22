@@ -138,8 +138,10 @@ export async function GET(req: NextRequest) {
   // แอปลูกค้า: ยึดตัวตนจากคุกกี้ที่ตรวจกับ LINE แล้ว ไม่ใช่ค่าที่ client ส่งมา
   // ไม่งั้นใครรู้ lineUserId ของคนอื่นก็ดึงนัดทั้งหมดของเขาได้
   return withResolvedTenant(req, async () => {
+    // ห้ามตกไปใช้ lineUserId ใน query — LINE ID ของคนเดียวกันซ้ำกันได้ทุกร้านที่อยู่ provider เดียวกัน
+    // พนักงานร้านหนึ่งเห็น LINE ID ลูกค้าในหลังบ้าน แล้วเอาไปดึงนัดของคนนั้นจากอีกร้านได้
     const customer = await requireCustomerSession(req);
-    const lineUserId = customer?.lineUserId || claimed;
+    const lineUserId = customer?.lineUserId;
     if (!lineUserId) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
@@ -274,7 +276,11 @@ export async function PATCH(req: NextRequest) {
 
 async function handlePatch(req: NextRequest, admin: boolean) {
   const body = await req.json().catch(() => ({}));
-  const { id, action, lineUserId, checkinTime } = body;
+  const { id, action, checkinTime } = body;
+  // ลูกค้า (ไม่ได้ล็อกอินหลังบ้าน) ยืนยันตัวด้วยคุกกี้ที่ตรวจกับ LINE แล้วเท่านั้น ห้ามเชื่อ lineUserId ใน body
+  const lineUserId: string | undefined = admin
+    ? body.lineUserId
+    : (await requireCustomerSession(req))?.lineUserId;
   // ดูตัวอย่างการ์ดก่อนส่งจริง — ทำทุกอย่างเหมือนส่งจริงเป๊ะ (ข้อมูล/เงื่อนไขเดียวกัน)
   // แค่ข้ามขั้นตอน push เข้า LINE + การเขียนข้อมูลที่มีผลจริง (เช่น ผูกมัดจำ) เท่านั้น
   const preview = body.preview === true;

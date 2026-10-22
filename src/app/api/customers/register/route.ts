@@ -6,6 +6,7 @@ import {
 } from "@/lib/customers-store";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { withResolvedTenant } from "@/lib/tenant-context";
+import { requireCustomerSession } from "@/lib/customer-session";
 
 type CatBody = {
   name?: string;
@@ -27,7 +28,9 @@ export async function POST(req: NextRequest) {
 
 async function handlePost(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
-  const lineUserId = String(body.lineUserId || "").trim();
+  // สมัคร/แก้ข้อมูลได้เฉพาะบัญชี LINE ของตัวเอง (คุกกี้ที่ตรวจกับ LINE แล้ว) — ห้ามเชื่อ body.lineUserId
+  // ไม่งั้นใครรู้ LINE ID ของคนอื่นก็เขียนทับชื่อ/เบอร์/ที่อยู่ของเขาได้
+  const lineUserId = (await requireCustomerSession(req))?.lineUserId || "";
   const name = String(body.name || "").trim();
   const phone = String(body.phone || "").trim();
   const email = String(body.email || "").trim();
@@ -58,7 +61,10 @@ async function handlePost(req: NextRequest) {
     : [];
 
   if (!lineUserId) {
-    return NextResponse.json({ error: "lineUserId required" }, { status: 400 });
+    return NextResponse.json(
+      { error: "กรุณาเปิดหน้านี้จาก LINE ของร้านอีกครั้ง" },
+      { status: 401 }
+    );
   }
   if (!name || !phone || cats.filter((c: { name: string }) => c.name.trim()).length === 0) {
     return NextResponse.json(
