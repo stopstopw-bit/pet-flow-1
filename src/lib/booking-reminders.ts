@@ -6,6 +6,7 @@ import { formatThaiDateShort } from "./format-thai-date";
 import type { StoredBooking } from "./bookings-store";
 import type { InvoiceRecord } from "./invoices-store";
 import type { SiteConfig } from "./config-types";
+import { autoMuted } from "./auto-messages";
 
 /**
  * ตัวสร้างข้อความเตือนลูกค้า — ใช้ร่วมกันทั้ง "cron อัตโนมัติ" และ "ปุ่มกดส่งเอง"
@@ -62,6 +63,48 @@ export function buildCheckinBodyText(
     room: b.room ? `🏠 ห้อง: ${b.room}` : "",
     litterNote: "",
   });
+}
+
+/** วันที่ (YYYY-MM-DD) บวก/ลบ n วัน */
+function shiftDate(dateStr: string, n: number) {
+  const dt = new Date(`${dateStr}T12:00:00Z`);
+  dt.setUTCDate(dt.getUTCDate() + n);
+  return dt.toISOString().slice(0, 10);
+}
+
+/**
+ * การ์ดเลือกเวลาเข้าพักของบ้านนี้ ให้ cron ตัวไหนส่ง — ส่งได้ตัวเดียวเท่านั้น
+ *
+ * มี 2 ทางที่ส่งการ์ดนี้อัตโนมัติ: แนบท้าย "ชุดก่อนเข้าพัก" (cron/reminders 12:00)
+ * กับ "เตือนเช็คอิน" (cron/checkin-checkout ตามรอบที่ร้านตั้ง) เมื่อก่อนต่างคนต่างส่ง
+ * ถ้าตั้งจำนวนวันตรงกัน ลูกค้าจะได้การ์ดเดียวกัน 2 ใบในวันเดียว (เปลือง LINE)
+ * ตอนนี้ให้ตัวที่ถึงคิวก่อนเป็นคนส่ง — นัดที่จองหลังรอบนั้นผ่านไปแล้วค่อยให้อีกตัวส่งแทน
+ * และไม่ส่งเลยถ้าลูกค้าเลือกเวลาไว้ครบทุกตัวแล้ว (arrivalTime)
+ */
+export function checkinPickerSender(
+  group: Pick<StoredBooking, "checkin" | "date" | "arrivalTime" | "autoOff" | "createdAt">[],
+  cfg: SiteConfig
+): "prestay" | "checkin" | null {
+  if (group.length === 0 || group.every((x) => x.arrivalTime)) return null;
+  const auto = cfg.automation;
+  const checkin = group[0].checkin || group[0].date || "";
+  if (!checkin) return null;
+  const muted = (topic: string) => group.every((x) => autoMuted(x, topic));
+  const prestayOn = auto?.prestayReminderEnabled !== false && !muted("prestay");
+  const checkinOn = auto?.checkinReminderEnabled !== false && !muted("checkin");
+  // เวลาที่ cron แต่ละตัวยิง (เวลาไทย) — ชุดก่อนเข้าพักผูกกับรอบเที่ยงของ cron/reminders
+  const prestayAt = Date.parse(
+    `${shiftDate(checkin, -(auto?.prestayReminderDays ?? 3))}T12:00:00+07:00`
+  );
+  const checkinAt = Date.parse(
+    `${shiftDate(checkin, -(auto?.checkinReminderDays ?? 1))}T${auto?.checkinReminderTime || "12:00"}:00+07:00`
+  );
+  const created = Math.min(...group.map((x) => Date.parse(x.createdAt) || 0));
+  // ตัวที่ถึงคิวก่อนเป็นคนส่ง (ถึงพร้อมกัน ให้ชุดก่อนเข้าพักส่ง) แต่ต้องเป็นนัดที่มีอยู่แล้วตอนรอบนั้นยิง
+  if (prestayOn && prestayAt <= checkinAt && created < prestayAt) return "prestay";
+  if (checkinOn && created < checkinAt) return "checkin";
+  if (prestayOn && created < prestayAt) return "prestay";
+  return null;
 }
 
 /** ลิงก์หน้ากรอกประวัติน้องก่อนอาบน้ำ (คืน "" ถ้ายังไม่ได้ตั้ง LIFF ID) — ใส่ array ได้ถ้าจองทั้งบ้านหลายตัว */

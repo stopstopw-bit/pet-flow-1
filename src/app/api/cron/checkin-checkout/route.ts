@@ -8,6 +8,7 @@ import {
   buildCheckinBodyText,
   buildCheckoutBodyText,
   getBookingTimeUrl,
+  checkinPickerSender,
 } from "@/lib/booking-reminders";
 import { withTenant } from "@/lib/tenant-context";
 import { listActiveTenantIds } from "@/lib/tenant-directory";
@@ -79,12 +80,12 @@ async function runForTenant(slot: string) {
     const groupMuted = (topic: string) => group.every((x) => autoMuted(x, topic));
 
     // เตือนเช็คอิน N วันก่อนเข้าพัก → การ์ดให้ลูกค้าเลือกเวลามาส่งน้อง
-    // (ข้ามถ้าลูกค้าเลือกเวลาแล้วจากชุดก่อนเข้าพัก — ไม่ถามซ้ำ)
+    // ข้ามถ้าลูกค้าเลือกเวลาแล้ว หรือชุดก่อนเข้าพักแนบการ์ดนี้ไปแล้ว/จะแนบในวันเดียวกัน
+    // — เมื่อก่อนตั้งจำนวนวันตรงกัน ลูกค้าได้การ์ดเดียวกัน 2 ใบห่างกันไม่กี่นาที
     if (
       doCheckin &&
-      !groupMuted("checkin") &&
       b.checkin === inCheckin &&
-      group.some((x) => !x.arrivalTime)
+      checkinPickerSender(group, cfg) === "checkin"
     ) {
       const url = await getBookingTimeUrl(b.id, "checkin");
       const flex = buildTimePickerFlex(
