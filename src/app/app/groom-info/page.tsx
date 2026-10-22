@@ -66,6 +66,8 @@ function GroomInfoContent() {
   const [done, setDone] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [attempted, setAttempted] = useState(false);
+  // โหลดไม่ขึ้นเพราะยืนยัน LINE ไม่ผ่าน (401) — บอกลูกค้าให้เปิดลิงก์ใหม่ แทน "ไม่พบข้อมูลการนัด"
+  const [loadError, setLoadError] = useState("");
   // นัดเข้าพัก / ลิงก์ kind=stay → ฟอร์มก่อนเข้าพัก (คนละชุดคำถามกับก่อนอาบน้ำ)
   const kindParam = params.get("kind") || "";
   const [isStay, setIsStay] = useState(kindParam === "stay");
@@ -83,15 +85,20 @@ function GroomInfoContent() {
         fetch(
           `/api/bookings/groom-info?${catMode ? "cat" : "id"}=${encodeURIComponent(id)}${kindParam ? `&kind=${kindParam}` : ""}`
         )
-          .then((r) => r.json())
+          .then(async (r) => (r.status === 401 ? { unauthorized: true } : r.json()))
           .catch(() => null)
       )
     )
       .then((results) => {
         const loaded: CatForm[] = [];
         // เซิร์ฟเวอร์บอกว่าเป็นฟอร์มไหน (นัดเข้าพัก = ก่อนเข้าพัก) — ใช้ชุดคำถามนั้นทั้งหน้า
-        const stay = results.some((d) => d?.kind === "stay");
+        // ไม่มีตัวไหนโหลดขึ้น → คงฟอร์มตามลิงก์ไว้ (ไม่งั้นการ์ดก่อนเข้าพักจะโชว์หัว "ก่อนอาบน้ำ")
+        const anyFound = results.some((d) => d?.found);
+        const stay = anyFound ? results.some((d) => d?.kind === "stay") : kindParam === "stay";
         setIsStay(stay);
+        if (!anyFound && results.some((d) => d?.unauthorized)) {
+          setLoadError("ระบบยังยืนยันบัญชี LINE ไม่สำเร็จ — ปิดหน้านี้แล้วเปิดลิงก์จากแชท LINE ใหม่อีกครั้งนะคะ");
+        }
         const fs = stay ? stayFields : groomFields;
         results.forEach((d, i) => {
           if (!d?.found) return;
@@ -251,7 +258,10 @@ function GroomInfoContent() {
         <LoadingScreen />
       ) : forms.length === 0 ? (
         <div className="rounded-petflow border border-petflow-line bg-card shadow-petflow-sm">
-          <EmptyState icon="calendar" title="ไม่พบข้อมูลการนัด" />
+          <EmptyState
+            icon="calendar"
+            title={loadError || (catMode ? "ไม่พบข้อมูลน้องในบัญชี LINE นี้" : "ไม่พบข้อมูลการนัด")}
+          />
         </div>
       ) : (
         <>
