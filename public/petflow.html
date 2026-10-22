@@ -131,6 +131,30 @@
   .before .ic { background: #ffe0ea; }
   .after .ic { background: var(--aqua-soft); }
 
+  /* ═══ NEW FEATURES (ร้านที่มีทีมงาน) ═══ */
+  .pf-new-badge { display:inline-flex; align-items:center; gap:6px; font-size:10px; font-weight:800; letter-spacing:0.12em; color:#fff; background: linear-gradient(92deg, var(--pink), var(--orange)); padding:4px 11px; border-radius:99px; vertical-align: middle; }
+  .pf-shot .pf-new-badge { font-size:8.5px; padding:2px 8px; margin-left:6px; letter-spacing:0.08em; }
+  .pf-lanes { display:grid; grid-template-columns: repeat(3, 1fr); gap:6px; }
+  .pf-lane { background: var(--panel-2); border:1px solid var(--line); border-radius:9px; padding:6px; display:flex; flex-direction:column; gap:5px; min-height: 120px; }
+  .pf-lane .lh { font-size:9px; font-weight:800; color: var(--text-dim); display:flex; justify-content:space-between; }
+  .pf-lane .tk { background:#fff; border:1px solid var(--line); border-radius:7px; padding:5px 6px; font-size:9.5px; line-height:1.35; }
+  .pf-lane .tk b { display:block; font-size:10px; }
+  .pf-lane .tk .g { color: var(--aqua-dim); font-weight:700; }
+  .pf-checks { display:grid; grid-template-columns: 1fr 1fr; gap:5px; }
+  .pf-checks span { display:flex; align-items:center; gap:6px; background: var(--panel-2); border:1px solid var(--line); border-radius:8px; padding:6px 8px; font-size:10px; color: var(--text-dim); }
+  .pf-checks span::before { content:""; flex:none; width:12px; height:12px; border-radius:4px; border:1.5px solid #c9d3e6; background:#fff; }
+  .pf-checks span.on { color: var(--text); background:#e9faf0; border-color:#c6efd5; }
+  .pf-checks span.on::before { background: var(--good) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/9px no-repeat; border-color: var(--good); }
+  .pf-prog { height:6px; border-radius:99px; background: var(--line); overflow:hidden; }
+  .pf-prog i { display:block; height:100%; border-radius:99px; background: linear-gradient(90deg, var(--aqua), var(--good)); }
+  .pf-tip { background: linear-gradient(135deg, #23255c, #3a3d8f); color:#fff; border-radius:10px; padding:9px 10px; font-size:10px; display:grid; gap:5px; }
+  .pf-tip .th { font-weight:800; font-size:10.5px; color: var(--yellow); }
+  .pf-tip div { display:flex; gap:6px; }
+  .pf-tip div em { flex:none; font-style:normal; width:15px; height:15px; border-radius:50%; background: rgba(255,255,255,0.18); display:grid; place-items:center; font-size:8.5px; font-weight:800; }
+  .pf-bars { display:flex; align-items:flex-end; gap:5px; height:54px; padding-top:4px; }
+  .pf-bars i { flex:1; border-radius:4px 4px 0 0; background: var(--aqua-soft); border:1px solid rgba(18,181,205,0.35); }
+  .pf-bars i.hi { background: linear-gradient(180deg, var(--pink), #ff8fbf); border-color: transparent; }
+
   /* ═══ SCREEN GALLERY (product shots) ═══ */
   .pf-shots { display:grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: clamp(28px, 4vw, 44px); }
   @media (max-width: 940px) { .pf-shots { grid-template-columns: repeat(2, 1fr); } }
@@ -340,6 +364,7 @@
             <li><span class="ic">💸</span><span>มัดจำโอนมาแล้ว... <b>แต่ใครจด? หักบิลหรือยัง?</b></span></li>
             <li><span class="ic">🧠</span><span>ประวัติน้องแมวอยู่ในหัวพนักงาน — <b>คนออก ความรู้หาย</b></span></li>
             <li><span class="ic">📄</span><span>ข้อมูลกระจัดกระจาย <b>อยากดูสรุปร้านต้องนั่งรวมเอง</b></span></li>
+            <li><span class="ic">🧮</span><span>สิ้นเดือนนั่งนับว่าช่างทำกี่ตัว <b>ค่าคอมคิดพลาด ทะเลาะกัน</b></span></li>
           </ul>
         </div>
         <div class="pf-ba-col after">
@@ -350,6 +375,7 @@
             <li><span class="ic">🔗</span><span>มัดจำ<b>ผูกบิลอัตโนมัติ</b> ยอดคงเหลือคำนวณให้เสร็จ</span></li>
             <li><span class="ic">🗂️</span><span>โปรไฟล์สัตว์เลี้ยงถาวร <b>อยู่ในระบบตลอดไป</b></span></li>
             <li><span class="ic">📊</span><span>สรุปร้านส่งถึงมือทุกวัน + <b>ข้อมูลไหลลง Google Sheets อัตโนมัติ</b></span></li>
+            <li><span class="ic">💰</span><span>ทุกคิวที่ช่างกดเสร็จ <b>นับเป็นค่าคอมให้เอง</b> สิ้นเดือนกดจ่ายได้เลย</span></li>
           </ul>
         </div>
       </div>
@@ -360,7 +386,7 @@
   <section class="pf-section">
     <div class="pf-wrap">
       <p class="pf-kicker">หน้าจอจริงของระบบ — ฝั่งร้าน</p>
-      <h2 class="pf-h2">เก้าหน้าที่จะกลายเป็น<span class="glow">เครื่องมือประจำวัน</span>ของคุณ</h2>
+      <h2 class="pf-h2">หน้าที่จะกลายเป็น<span class="glow">เครื่องมือประจำวัน</span>ของคุณ</h2>
       <p class="pf-lead">ข้อมูลตัวอย่างจากการใช้งานจริง — ทุกหน้าเปิดจากมือถือได้ ไม่ต้องลงโปรแกรม</p>
 
       <div class="pf-shots">
@@ -506,6 +532,108 @@
             <div class="pf-total"><span class="l">ลูกค้ากดแลกเองจากแอป</span><span class="v" style="font-size:13px">ตัดแต้มอัตโนมัติ</span></div>
           </div>
           <p class="pf-shot-caption">ตั้งของรางวัล + รูปเองได้จากหลังบ้าน — <b>ลูกค้าเห็นแต้มตัวเองตลอด อยากกลับมาสะสมต่อ</b></p>
+        </article>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ NEW — ร้านที่มีทีมงาน ═══════════ -->
+  <section class="pf-section">
+    <div class="pf-wrap">
+      <p class="pf-kicker">อัปเดตใหม่ <span class="pf-new-badge">NEW</span></p>
+      <h2 class="pf-h2">ร้านโตขึ้น มีทีมงานหลายคน — <span class="glow">ระบบก็ดูแลทีมให้ด้วย</span></h2>
+      <p class="pf-lead">หน้าใหม่สำหรับหน้าร้านและเจ้าของ: คิวงานวันนี้ เช็คลิสต์ดูแลน้อง เงินเดือนช่าง และสรุปข้อมูลที่บอกเลยว่าควรทำอะไรต่อ</p>
+
+      <div class="pf-shots">
+
+        <!-- N1. Grooming queue board -->
+        <article class="pf-shot">
+          <div class="pf-shot-head"><span class="t">🛁 บอร์ดคิวอาบน้ำวันนี้<span class="pf-new-badge">NEW</span></span><span class="k">Queue</span></div>
+          <div class="pf-shot-body">
+            <div class="pf-lanes">
+              <div class="pf-lane"><div class="lh"><span>รอคิว</span><span>2</span></div>
+                <div class="tk"><b>มะลิ</b>12:30 · อาบน้ำ</div>
+                <div class="tk"><b>เหมียว</b>15:30 · Premium</div>
+              </div>
+              <div class="pf-lane"><div class="lh"><span>กำลังทำ</span><span>1</span></div>
+                <div class="tk"><b>บูบู</b>ช่าง: พี่แนน<br><span class="g">ทำมาแล้ว 25 นาที</span></div>
+              </div>
+              <div class="pf-lane"><div class="lh"><span>เสร็จแล้ว</span><span>1</span></div>
+                <div class="tk"><b>Soju</b><span class="g">✓ แจ้งเจ้าของแล้ว</span></div>
+              </div>
+            </div>
+          </div>
+          <p class="pf-shot-caption">ช่างกดเริ่ม-กดเสร็จจากมือถือ ทุกเครื่องเห็นตรงกัน — <b>เสร็จปุ๊บ LINE บอกเจ้าของว่ามารับน้องได้</b></p>
+        </article>
+
+        <!-- N2. Daily care checklist -->
+        <article class="pf-shot">
+          <div class="pf-shot-head"><span class="t">✅ เช็คลิสต์ดูแลรายวัน<span class="pf-new-badge">NEW</span></span><span class="k">Daily Care</span></div>
+          <div class="pf-shot-body">
+            <div class="pf-row2"><div class="who"><b>ทองดี · Mid Cozy Room</b><span>คุณบี · ออก 20 ต.ค.</span></div><span class="pf-chipx aqua">4/6</span></div>
+            <div class="pf-checks">
+              <span class="on">อาหารเช้า</span><span class="on">อาหารเย็น</span>
+              <span class="on">เปลี่ยนน้ำ</span><span class="on">เก็บกระบะทราย</span>
+              <span>เล่น / ออกกำลัง</span><span>ให้ยา (ถ้ามี)</span>
+            </div>
+            <div class="pf-prog" style="margin-top:auto"><i style="width:67%"></i></div>
+          </div>
+          <p class="pf-shot-caption">น้องที่พักทุกตัวมีการ์ดของตัวเอง — <b>ติ๊กแล้วจดเวลาให้ เปลี่ยนกะไม่ต้องส่งต่อด้วยปาก</b></p>
+        </article>
+
+        <!-- N3. Payroll & commission -->
+        <article class="pf-shot">
+          <div class="pf-shot-head"><span class="t">💰 เงินเดือน &amp; ค่าคอม<span class="pf-new-badge">NEW</span></span><span class="k">Payroll</span></div>
+          <div class="pf-shot-body">
+            <div class="pf-row2"><div class="who"><b>พี่แนน (ช่าง)</b><span>ฐาน ฿12,000 · คอม 10% ของยอดอาบน้ำ</span></div><span class="pf-chipx aqua">32 ตัว</span></div>
+            <div class="pf-kv"><span>เงินเดือนฐาน</span><span class="v">12,000 ฿</span></div>
+            <div class="pf-kv hl"><span>ค่าคอม (นับจากบอร์ดคิวเอง)</span><span class="v">+2,750 ฿</span></div>
+            <div class="pf-kv"><span>โบนัส / หักลา-สาย</span><span class="v">+500 ฿</span></div>
+            <div class="pf-total"><span class="l">ยอดจ่ายสุทธิ</span><span class="v">15,250 ฿</span></div>
+          </div>
+          <p class="pf-shot-caption">สิ้นเดือนไม่ต้องนั่งนับ — <b>กดจ่ายแล้วลงบัญชีรายจ่ายให้เอง</b> เห็นเฉพาะเจ้าของหรือคนที่ได้สิทธิ์</p>
+        </article>
+
+        <!-- N4. Staff performance -->
+        <article class="pf-shot">
+          <div class="pf-shot-head"><span class="t">🏅 ผลงานพนักงาน<span class="pf-new-badge">NEW</span></span><span class="k">Team</span></div>
+          <div class="pf-shot-body">
+            <div class="pf-row2"><div class="who"><b>🥇 พี่แนน</b><span>เฉลี่ย 917 ฿/ตัว · ขายเสริม 640 ฿</span></div><span class="pf-chipx ok">นัดต่อ 33%</span></div>
+            <div class="pf-row2"><div class="who"><b>🥈 น้องฟ้า</b><span>เฉลี่ย 467 ฿/ตัว · ขายเสริม 0 ฿</span></div><span class="pf-chipx wait">นัดต่อ 0%</span></div>
+            <div class="pf-tip" style="margin-top:auto">
+              <span class="th">✨ สิ่งที่ควรทำ</span>
+              <div><em>1</em><span>ให้น้องฟ้าเสนอทรีทเมนต์เสริมแบบที่พี่แนนทำ</span></div>
+              <div><em>2</em><span>ชวนลูกค้านัดรอบหน้าตอนส่งน้องคืนทุกครั้ง</span></div>
+            </div>
+          </div>
+          <p class="pf-shot-caption">เทียบงานช่างแต่ละคนแบบยุติธรรม — <b>รู้ว่าใครเก่งตรงไหน ควรโค้ชเรื่องอะไร</b></p>
+        </article>
+
+        <!-- N5. Actionable insights -->
+        <article class="pf-shot">
+          <div class="pf-shot-head"><span class="t">💡 สรุปข้อมูลที่บอกว่าควรทำอะไร<span class="pf-new-badge">NEW</span></span><span class="k">Insights</span></div>
+          <div class="pf-shot-body">
+            <div class="pf-row2"><div class="who"><b>อาบน้ำอย่างเดียว ยังไม่เคยฝากพัก</b><span>โอกาสได้ยอด ~1,208 ฿</span></div><span class="pf-chipx vio">8 คน</span></div>
+            <div class="pf-row2"><div class="who"><b>ถึงรอบอาบน้ำแล้ว ยังไม่ได้จอง</b><span>มาครั้งล่าสุด 25–60 วันก่อน</span></div><span class="pf-chipx vio">5 คน</span></div>
+            <div style="font-size:9.5px; color:var(--text-dim)">คิวอาบน้ำแต่ละวัน (90 วัน) — วันสีชมพู = ว่างสุด ควรจัดโปร</div>
+            <div class="pf-bars"><i class="hi" style="height:18%"></i><i style="height:45%"></i><i style="height:42%"></i><i class="hi" style="height:12%"></i><i style="height:95%"></i><i style="height:80%"></i><i style="height:82%"></i></div>
+          </div>
+          <p class="pf-shot-caption">ไม่ใช่แค่กราฟ — <b>เจอกลุ่มที่ควรทัก แล้วกดส่งโปรทาง LINE ได้ทันที</b></p>
+        </article>
+
+        <!-- N6. Pet counts summary -->
+        <article class="pf-shot">
+          <div class="pf-shot-head"><span class="t">🐾 สรุปจำนวนน้อง<span class="pf-new-badge">NEW</span></span><span class="k">Stats</span></div>
+          <div class="pf-shot-body">
+            <div style="display:flex; gap:5px; flex-wrap:wrap;"><span class="pf-chipx aqua">วันนี้</span><span class="pf-chipx aqua">สัปดาห์นี้</span><span class="pf-chipx vio">เดือนนี้</span><span class="pf-chipx aqua">เลือกช่วงเอง</span></div>
+            <div class="pf-kv"><span>🛁 อาบน้ำทั้งหมด</span><span class="v">86 ตัว</span></div>
+            <div class="pf-kv"><span>&nbsp;&nbsp;· อาบน้ำ Premium</span><span class="v">34 ตัว</span></div>
+            <div class="pf-kv"><span>🏠 เข้าพักทั้งหมด</span><span class="v">41 ตัว</span></div>
+            <div class="pf-kv"><span>&nbsp;&nbsp;· Mid Cozy Room</span><span class="v">17 ตัว</span></div>
+            <div class="pf-total"><span class="l">รวมทั้งเดือน</span><span class="v">127 ตัว</span></div>
+          </div>
+          <p class="pf-shot-caption">รู้ว่าเดือนนี้รับน้องไปกี่ตัว <b>แยกตามโปรแกรมและห้อง</b> — วางแผนคนและของใช้ได้แม่น</p>
         </article>
 
       </div>
@@ -788,6 +916,72 @@
             <li><b>ข้อมูลไหลลง Google Sheets ทุกวันอัตโนมัติ</b> เลือกคอลัมน์เองได้</li>
             <li>ยอดขาย/กำไร รายวัน รายเดือน ดูย้อนหลังได้</li>
             <li>ข้อมูลเป็นของร้าน 100% — ส่งออกได้ตลอดเวลา</li>
+            <li><b>สรุปข้อมูลที่บอกว่าควรทำอะไร</b> + กลุ่มลูกค้าที่ควรทัก กดส่งโปรได้ทันที</li>
+            <li>สรุปจำนวนน้อง อาบน้ำ/เข้าพัก แยกโปรแกรมและห้อง</li>
+          </ul>
+        </details></div>
+
+        <div class="pf-pillar"><details>
+          <summary>
+            <div class="ic">🛁</div>
+            <h3>คิวงาน &amp; ดูแลรายวัน <span class="pf-new-badge" style="font-size:8px;padding:2px 7px">NEW</span></h3>
+            <p class="sub">หน้าร้านทำงานตรงกันทั้งทีม</p>
+            <p class="more"><span class="plus"></span></p>
+          </summary>
+          <ul>
+            <li><b>บอร์ดคิวอาบน้ำ</b> รอคิว · กำลังทำ · เสร็จแล้ว อัปเดตเองทุกเครื่อง</li>
+            <li>เลือกช่างที่รับงาน + นับเวลาที่ใช้ต่อตัว</li>
+            <li>เสร็จแล้วแจ้งเจ้าของทาง LINE ให้มารับน้อง</li>
+            <li><b>เช็คลิสต์ดูแลน้องที่พัก</b> อาหาร น้ำ ทราย ยา จดเวลาให้</li>
+            <li>แก้หัวข้อเช็คลิสต์เองให้เข้ากับร้าน</li>
+          </ul>
+        </details></div>
+
+        <div class="pf-pillar"><details>
+          <summary>
+            <div class="ic">👥</div>
+            <h3>ทีมงาน &amp; เงินเดือน <span class="pf-new-badge" style="font-size:8px;padding:2px 7px">NEW</span></h3>
+            <p class="sub">ค่าคอมแม่น ไม่ต้องนั่งนับ</p>
+            <p class="more"><span class="plus"></span></p>
+          </summary>
+          <ul>
+            <li><b>เงินเดือน + ค่าคอม</b> คิดจากงานที่ช่างทำเสร็จจริง</li>
+            <li>ค่าคอมเป็น % หรือบาทต่อตัวก็ได้ + โบนัส/หักลา-สาย</li>
+            <li>กดจ่ายแล้วลงบัญชีรายจ่ายให้อัตโนมัติ</li>
+            <li><b>ผลงานพนักงาน</b> เทียบยอด ยอดขายเสริม อัตรานัดต่อ</li>
+            <li>แบ่งสิทธิ์ว่าพนักงานคนไหนเห็นเมนูไหน</li>
+          </ul>
+        </details></div>
+
+        <div class="pf-pillar"><details>
+          <summary>
+            <div class="ic">🚗</div>
+            <h3>รับ-ส่งน้อง &amp; จองหลายตัว</h3>
+            <p class="sub">ลูกค้าบอกทุกอย่างได้ในการจองครั้งเดียว</p>
+            <p class="more"><span class="plus"></span></p>
+          </summary>
+          <ul>
+            <li>ลูกค้า<b>เลือกน้องหลายตัว</b>ในการจองเดียว</li>
+            <li>ขอบริการรับ-ส่งน้อง พร้อมเวลามาส่ง/มารับ</li>
+            <li>แนบรูปบัตรประชาชน + เซ็นข้อตกลงเข้าพักจากมือถือ</li>
+            <li>ลูกค้าดูประวัติการใช้บริการของตัวเองได้</li>
+            <li>ร้านเพิ่มลูกค้าเองได้ พร้อมที่อยู่และหมุดแผนที่</li>
+          </ul>
+        </details></div>
+
+        <div class="pf-pillar"><details>
+          <summary>
+            <div class="ic">🏪</div>
+            <h3>ร้านของคุณเอง 100%</h3>
+            <p class="sub">โลโก้ สี ลิงก์ ข้อมูล แยกเป็นของร้าน</p>
+            <p class="more"><span class="plus"></span></p>
+          </summary>
+          <ul>
+            <li><b>ลิงก์และการเข้าระบบของร้านเอง</b> ไม่ปนกับร้านอื่น</li>
+            <li>ใส่โลโก้แล้วระบบดึงสีร้านให้อัตโนมัติ</li>
+            <li>ชื่อร้านขึ้นในทุกข้อความและการ์ด LINE</li>
+            <li>แก้ข้อความการ์ด LINE ได้ทุกใบ ตามกลุ่มลูกค้า</li>
+            <li>ขายหน้าร้าน + เอกสารรายได้/ภาษีในตัว</li>
           </ul>
         </details></div>
 
