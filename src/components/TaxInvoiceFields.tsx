@@ -11,12 +11,15 @@ export function TaxInvoiceFields({
   onChange,
   fieldClass,
   prefill,
+  requireAll,
 }: {
   value: TaxInvoiceForm;
   onChange: (next: TaxInvoiceForm) => void;
   fieldClass: string;
   /** ข้อมูลผู้ปกครองที่กรอกไว้แล้ว — เติมให้ตอนเลือก "บุคคลธรรมดา" ถ้าช่องยังว่าง */
   prefill?: { name?: string; phone?: string; address?: string };
+  /** หน้าสมัครสมาชิก: ติ๊กขอบิลแล้วต้องกรอกครบทุกช่อง (รวมเบอร์บริษัท) */
+  requireAll?: boolean;
 }) {
   const set = (patch: Partial<TaxInvoiceForm>) => onChange({ ...value, ...patch });
   const pickKind = (kind: TaxInvoiceKind) => {
@@ -69,6 +72,7 @@ export function TaxInvoiceFields({
           <label className="block">
             <span className={label}>{person ? "ชื่อ-นามสกุล" : "ชื่อบริษัท / นิติบุคคล"}</span>
             <input
+              required={requireAll}
               value={value.name}
               onChange={(e) => set({ name: e.target.value })}
               placeholder={person ? "เช่น สมชาย ใจดี" : "เช่น บริษัท ตัวอย่าง จำกัด"}
@@ -82,6 +86,7 @@ export function TaxInvoiceFields({
               <span className={hint}>{person ? "(เลขบัตรประชาชน 13 หลัก)" : "(13 หลัก)"}</span>
             </span>
             <input
+              required={requireAll}
               value={value.taxId}
               inputMode="numeric"
               onChange={(e) => set({ taxId: e.target.value.replace(/\D/g, "").slice(0, 13) })}
@@ -103,6 +108,7 @@ export function TaxInvoiceFields({
               </div>
               {!value.headOffice && (
                 <input
+                  required={requireAll}
                   value={value.branchNo}
                   inputMode="numeric"
                   onChange={(e) => set({ branchNo: e.target.value.replace(/\D/g, "").slice(0, 5) })}
@@ -116,6 +122,7 @@ export function TaxInvoiceFields({
           <label className="block">
             <span className={label}>{person ? "ที่อยู่" : "ที่อยู่ตามทะเบียน"}</span>
             <textarea
+              required={requireAll}
               value={value.address}
               onChange={(e) => set({ address: e.target.value })}
               rows={3}
@@ -126,9 +133,10 @@ export function TaxInvoiceFields({
 
           <label className="block">
             <span className={label}>
-              เบอร์โทร {!person && <span className={hint}>(ไม่บังคับ)</span>}
+              เบอร์โทร {!person && !requireAll && <span className={hint}>(ไม่บังคับ)</span>}
             </span>
             <input
+              required={requireAll}
               type="tel"
               value={value.phone}
               onChange={(e) => set({ phone: e.target.value })}
