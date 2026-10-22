@@ -147,13 +147,16 @@ export function withDefaultBreeds(shopBreeds: string[], kind: PetKind): string[]
 const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 
 /**
- * สายพันธุ์ที่ให้ลูกค้าเลือก — ร้านตั้งเองไว้ใช้ของร้าน · ยังไม่ได้ตั้ง (หรือยังเป็นรายชื่อแมวเริ่มต้น)
+ * สายพันธุ์ที่ให้ลูกค้าเลือก — ร้านตั้งเองไว้ใช้ของร้าน (ร้านหมาเติมพันธุ์ยอดนิยมต่อท้ายให้) · ยังไม่ได้ตั้ง (หรือยังเป็นรายชื่อแมวเริ่มต้น)
  * ใช้รายชื่อเริ่มต้นตามชนิดสัตว์ของร้าน ร้านหมาจะได้ไม่เห็นสายพันธุ์แมว
  */
 export function breedOptionsFor(cfg?: { business?: { petKind?: string }; options?: { catBreeds?: string[] } } | null): string[] {
   const kind = petKindOf(cfg);
   const saved = cfg?.options?.catBreeds || [];
   if (!saved.length || (kind !== "cat" && sameList(saved, BREED_OPTIONS))) return defaultBreeds(kind);
+  // ร้านหมา/ร้านที่รับทั้งสองแบบ: รายชื่อของร้านมักมาจากแบบสอบถาม ("สายพันธุ์ที่มาบ่อย" เช่น "ปอม")
+  // เติมสายพันธุ์ยอดนิยมให้ครบเสมอ ไม่ต้องรอร้านไปกดเติมเอง · ร้านแมวเดิมใช้รายชื่อที่ร้านตั้งตามเดิม
+  if (kind !== "cat") return withDefaultBreeds(saved, kind);
   return saved;
 }
 
