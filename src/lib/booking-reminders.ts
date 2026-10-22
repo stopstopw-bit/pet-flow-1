@@ -127,9 +127,12 @@ export function checkinPickerSender(
 }
 
 /** ลิงก์หน้ากรอกประวัติน้องก่อนอาบน้ำ (คืน "" ถ้ายังไม่ได้ตั้ง LIFF ID) — ใส่ array ได้ถ้าจองทั้งบ้านหลายตัว */
-export async function getGroomInfoUrl(bookingIds: string | string[]): Promise<string> {
+export async function getGroomInfoUrl(
+  bookingIds: string | string[],
+  kind?: "stay" | "groom"
+): Promise<string> {
   const liffId = (await getLineCredentials())?.liffId;
-  return liffId ? buildGroomInfoUrl(liffId, bookingIds) : "";
+  return liffId ? buildGroomInfoUrl(liffId, bookingIds, kind) : "";
 }
 
 /** ขอให้ลูกค้าถ่ายรูปน้องปัจจุบันส่งมาด้วย — ต่อท้ายทุกการ์ดขอประวัติ ไม่ว่า config จะเป็นแบบไหน */

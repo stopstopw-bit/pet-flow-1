@@ -7,6 +7,7 @@ import { PreviewSendModal } from "@/components/PreviewSendModal";
 import { VaccinePhotosAdmin } from "@/components/VaccinePhotosAdmin";
 import { useConfig } from "@/components/ConfigProvider";
 import { isFeatureOn } from "@/lib/features";
+import { INTAKE_LABEL } from "@/lib/intake-cards";
 import { splitVaccinePhotos } from "@/lib/vaccine-photos";
 import type { CustomerRecord } from "@/lib/customers-store";
 
@@ -33,11 +34,11 @@ export function CustomerIntakeCards({ customer, onDone }: { customer: CustomerRe
   const stayDone = cats.length > 0 && cats.every((c) => c.stayInfo);
   const vaccineDone = cats.length > 0 && cats.every((c) => splitVaccinePhotos(c.vaccinePhotos).length > 0);
   const rows: { part: Part; label: string; icon: string; when: boolean; status?: string; done?: boolean }[] = [
-    { part: "stayInfo", label: "ข้อมูลน้องก่อนเข้าพัก", icon: "edit", when: hotelOn, done: stayDone, status: stayDone ? "กรอกแล้ว" : "ยังไม่กรอก" },
-    { part: "groomInfo", label: "ประวัติน้องก่อนอาบน้ำ", icon: "bath", when: groomOn, done: infoDone, status: infoDone ? "กรอกแล้ว" : "ยังไม่กรอก" },
+    { part: "stayInfo", label: INTAKE_LABEL.stayInfo, icon: "edit", when: hotelOn, done: stayDone, status: stayDone ? "กรอกแล้ว" : "ยังไม่กรอก" },
+    { part: "groomInfo", label: INTAKE_LABEL.groomInfo, icon: "bath", when: groomOn, done: infoDone, status: infoDone ? "กรอกแล้ว" : "ยังไม่กรอก" },
     {
       part: "vaccine",
-      label: "ขอสมุดวัคซีน",
+      label: INTAKE_LABEL.vaccine,
       icon: "image",
       when: true,
       done: vaccineDone,
@@ -45,7 +46,7 @@ export function CustomerIntakeCards({ customer, onDone }: { customer: CustomerRe
     },
     {
       part: "idcard",
-      label: "ขอบัตรประชาชน",
+      label: INTAKE_LABEL.idcard,
       icon: "user",
       when: hotelOn,
       done: !!customer.idCardUrl,
@@ -53,7 +54,7 @@ export function CustomerIntakeCards({ customer, onDone }: { customer: CustomerRe
     },
     {
       part: "consent",
-      label: "กฎ + กดยินยอม",
+      label: INTAKE_LABEL.consent,
       icon: "doc",
       when: true,
       done: !!customer.consentAcceptedAt,
@@ -61,7 +62,7 @@ export function CustomerIntakeCards({ customer, onDone }: { customer: CustomerRe
         ? `ยอมรับล่าสุด ${customer.consentAcceptedAt.slice(0, 10)}`
         : "ยังไม่เคยกดยอมรับ",
     },
-    { part: "prestay", label: "แจ้งเตรียมตัวเข้าพัก", icon: "bed", when: hotelOn },
+    { part: "prestay", label: INTAKE_LABEL.prestay, icon: "bed", when: hotelOn },
   ];
 
   const requestPreview = async (parts: Part[], key: string) => {

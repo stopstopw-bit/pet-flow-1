@@ -35,9 +35,10 @@ export function buildBookingTransportUrl(liffId: string, bookingId: string) {
 }
 
 /** ลิงก์หน้ากรอกประวัติน้องก่อนอาบน้ำ — จองทั้งบ้านหลายตัวใส่เป็น array ได้ ฟอร์มจะรวมทุกตัวในหน้าเดียว */
-export function buildGroomInfoUrl(liffId: string, bookingIds: string | string[]) {
+export function buildGroomInfoUrl(liffId: string, bookingIds: string | string[], kind?: "stay" | "groom") {
   const id = Array.isArray(bookingIds) ? bookingIds.join(",") : bookingIds;
-  return buildLiffUrl(liffId, { path: "groom-info", id });
+  // kind ไม่ส่ง = ตามบริการของนัด (เข้าพัก → ฟอร์มก่อนเข้าพัก)
+  return buildLiffUrl(liffId, kind ? { path: "groom-info", id, kind } : { path: "groom-info", id });
 }
 
 /** ลิงก์หน้ากดรับคูปองจากแคมเปญ */
