@@ -15,7 +15,7 @@ import { contrastRatio, isValidHex } from "@/lib/color-utils";
 import { Icon } from "@/components/Icon";
 import { useConfig } from "@/components/ConfigProvider";
 import { FEATURES, FEATURE_GROUPS, isFeatureOn, type FeatureKey } from "@/lib/features";
-import { breedOptionsFor, petKindOf, petWords, type PetKind } from "@/lib/pet-kind";
+import { breedOptionsFor, petKindOf, petWords, withDefaultBreeds, type PetKind } from "@/lib/pet-kind";
 
 type Tab =
   | "features"
@@ -2966,6 +2966,15 @@ function ListsTab({
         }
         rows={8}
       />
+      <button
+        type="button"
+        onClick={() =>
+          setForm((f) => ({ ...f, catBreeds: withDefaultBreeds(f.catBreeds, petKind) }))
+        }
+        className="-mt-1 min-h-[40px] rounded-full bg-paper px-4 text-xs font-bold text-petflow-chocolate"
+      >
+        + เติมสายพันธุ์ยอดนิยมให้ครบ (ของร้านอยู่บนสุดเหมือนเดิม)
+      </button>
       <TextAreaField
         label="รู้จักร้านจากไหน (referral) — 1 บรรทัด = 1 ตัวเลือก"
         value={form.referralOptions.join("\n")}
