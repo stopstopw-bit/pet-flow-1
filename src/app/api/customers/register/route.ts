@@ -3,25 +3,11 @@ import {
   registerCustomerFromLine,
   findCustomerByReferralCode,
   setReferredBy,
-  normalizeWeightKg,
 } from "@/lib/customers-store";
+import { parseCatInput } from "@/lib/cat-input";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { withResolvedTenant } from "@/lib/tenant-context";
 import { requireCustomerSession } from "@/lib/customer-session";
-
-type CatBody = {
-  name?: string;
-  gender?: string;
-  breed?: string;
-  ageValue?: number | string;
-  ageUnit?: string;
-  birthday?: string;
-  medical?: string;
-  furLength?: string;
-  color?: string;
-  weightKg?: number | string;
-  staffNote?: string;
-};
 
 /** ลูกค้ากรอกฟอร์มลงทะเบียน (ผู้ปกครอง + น้องแมว + ยินยอมรับข่าวสาร) */
 export async function POST(req: NextRequest) {
@@ -43,24 +29,7 @@ async function handlePost(req: NextRequest) {
   const postalCode = String(body.postalCode || "").trim();
   const marketingConsent = body.marketingConsent !== false;
   const cats = Array.isArray(body.cats)
-    ? body.cats.map((c: CatBody) => ({
-        name: String(c.name || ""),
-        gender:
-          c.gender === "male" || c.gender === "female" ? c.gender : undefined,
-        breed: c.breed ? String(c.breed) : undefined,
-        ageValue:
-          c.ageValue != null && c.ageValue !== "" && !isNaN(Number(c.ageValue))
-            ? Number(c.ageValue)
-            : undefined,
-        ageUnit: c.ageUnit === "month" ? "month" : c.ageUnit === "year" ? "year" : undefined,
-        birthday: c.birthday ? String(c.birthday) : undefined,
-        medical: c.medical ? String(c.medical) : undefined,
-        furLength:
-          c.furLength === "short" || c.furLength === "long" ? c.furLength : undefined,
-        color: c.color ? String(c.color) : undefined,
-        weightKg: normalizeWeightKg(c.weightKg),
-        staffNote: c.staffNote ? String(c.staffNote) : undefined,
-      }))
+    ? body.cats.map(parseCatInput)
     : [];
 
   if (!lineUserId) {

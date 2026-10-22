@@ -24,6 +24,7 @@ import {
   unlinkCustomerLine,
   getOrCreateWalkInCustomer,
 } from "@/lib/customers-store";
+import { parseCatInput, type CatInput } from "@/lib/cat-input";
 import type { CustomerTier } from "@/lib/customer-tier";
 import { getAllPointsMap } from "@/lib/points-store";
 import {
@@ -112,30 +113,52 @@ export async function POST(req: NextRequest) {
 
 async function handlePost(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
-  const catName = String(body.catName || "").trim();
+  // ฟอร์ม "เพิ่มลูกค้าเอง" ส่งน้องมาเป็นรายการ (หลายตัว + รายละเอียดเหมือนตอนสมัคร) · ที่อื่นยังส่ง catName ตัวเดียว
+  const cats: CatInput[] = Array.isArray(body.cats)
+    ? body.cats.map(parseCatInput).filter((c: CatInput) => c.name)
+    : [];
+  const catName = cats[0]?.name || String(body.catName || "").trim();
   const customerName = String(body.customerName || "").trim();
   if (!customerName || !catName) {
     return NextResponse.json(
-      { error: "กรอกชื่อลูกค้าและชื่อน้องแมว" },
+      { error: "กรอกชื่อลูกค้าและชื่อน้อง" },
       { status: 400 }
     );
   }
-  const customer = await upsertCustomerFromBooking({
+  let customer = await upsertCustomerFromBooking({
     customerName,
     catName,
     lineUserId: body.lineUserId,
     phone: body.phone,
-    staffNote: body.staffNote,
+    staffNote: cats.length ? undefined : body.staffNote,
   });
-  // ข้อมูลเสริมตอนร้านเพิ่มลูกค้าเอง (ที่อยู่/แผนที่/อีเมล) — ใส่เฉพาะช่องที่กรอกมา
+  // ข้อมูลเสริมตอนร้านเพิ่มลูกค้าเอง — ใส่เฉพาะช่องที่กรอกมา
   const extra: Parameters<typeof updateCustomer>[1] = {};
-  for (const k of ["email", "address", "addressMapUrl"] as const) {
+  for (const k of [
+    "email",
+    "birthday",
+    "referralSource",
+    "address",
+    "addressMapUrl",
+    "postalCode",
+  ] as const) {
     const v = typeof body[k] === "string" ? body[k].trim() : "";
     if (v) extra[k] = v;
   }
   if (Object.keys(extra).length > 0) {
-    const updated = await updateCustomer(customer.id, extra);
-    return NextResponse.json({ ok: true, customer: updated ?? customer });
+    customer = (await updateCustomer(customer.id, extra)) ?? customer;
+  }
+  // รายละเอียดน้อง — ตัวแรกถูกสร้างไว้แล้ว (หรือเป็นตัวเดิมของลูกค้าคนนี้) ก็เติมรายละเอียดให้ ตัวอื่นเพิ่มใหม่
+  for (const cat of cats) {
+    const found = customer.cats.find((x) => x.name.trim() === cat.name);
+    // ช่องที่เว้นว่างไม่ส่งต่อ — ไม่งั้นจะไปลบรายละเอียดเดิมของน้องตัวที่มีอยู่แล้ว
+    const filled = Object.fromEntries(
+      Object.entries(cat).filter(([, v]) => v !== undefined)
+    ) as CatInput;
+    const updated = found
+      ? await updateCat(customer.id, found.id, filled)
+      : await addCat(customer.id, filled);
+    if (updated) customer = updated;
   }
   return NextResponse.json({ ok: true, customer });
 }

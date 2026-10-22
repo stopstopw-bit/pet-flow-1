@@ -30,16 +30,8 @@ type CatInput = {
   photo?: string;
 };
 
-const REFERRAL_OPTIONS = [
-  "Facebook",
-  "Instagram",
-  "TikTok",
-  "Google / ค้นหา",
-  "Google Maps",
-  "เพื่อนแนะนำ / ผ่านหน้าร้าน",
-];
-
 import { OTHER_BREED } from "@/lib/cat-breeds";
+import { REFERRAL_OPTIONS } from "@/lib/referral-options";
 import { breedOptionsFor, petWords } from "@/lib/pet-kind";
 import { StaffNoteTagPicker } from "@/components/StaffNoteTagPicker";
 
