@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
-import { BREED_OPTIONS } from "@/lib/cat-breeds";
+import { breedOptionsFor } from "@/lib/pet-kind";
 import { promoRewardLabel } from "@/lib/promo-format";
 import {
   type CustomerTier,
@@ -579,7 +579,7 @@ export default function PromosAdminPage() {
                       className={`${FIELD} min-w-0`}
                     >
                       <option value="">ทุกพันธุ์</option>
-                      {BREED_OPTIONS.map((b) => (
+                      {breedOptionsFor(config).map((b) => (
                         <option key={b} value={b}>
                           {b}
                         </option>

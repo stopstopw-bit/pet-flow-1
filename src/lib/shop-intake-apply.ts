@@ -2,6 +2,7 @@ import type { RoomType } from "./business";
 import type { SiteConfig } from "./config-types";
 import type { GroomProgram, GroomSize } from "./grooming-prices";
 import { featureLabel, isFeatureOn, type FeatureKey } from "./features";
+import { petKindFromIntake, petKindOf } from "./pet-kind";
 
 /**
  * แปลงคำตอบแบบสอบถามเจ้าของร้าน (public/shop-questions.html) เป็นการตั้งค่าร้าน (SiteConfig)
@@ -125,6 +126,16 @@ function buildDrafts(ans: IntakeAnswers, cfg: SiteConfig): Draft[] {
 
   // ── ข้อมูลร้าน ──
   biz("name", "ชื่อร้าน", r.raw("shopName"));
+  const petKind = petKindFromIntake(r.pets);
+  const KIND_LABEL = { cat: "แมว", dog: "หมา", both: "ทั้งหมาและแมว" } as const;
+  if (petKind)
+    add({
+      key: "business.petKind",
+      label: "ร้านดูแลน้องอะไร (คำและสายพันธุ์ในแอป)",
+      before: KIND_LABEL[petKindOf(cfg)],
+      after: KIND_LABEL[petKind],
+      patch: () => ({ business: { petKind } as SiteConfig["business"] }),
+    });
   const tagline = r.raw("tagline");
   if (tagline)
     add({

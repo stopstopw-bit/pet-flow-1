@@ -207,6 +207,8 @@ export type SiteConfig = {
     /** ข้อความในป้าย (ไม่ใส่ = ใช้ข้อความมาตรฐาน) */
     byAppointmentNote?: { th: string; en: string };
     location: { th: string; en: string };
+    /** ร้านดูแลน้องอะไร (ดู lib/pet-kind.ts) — ไม่ตั้ง = แมว · ตั้งจากแบบสอบถามเปิดร้านหรือหน้าตั้งค่า › ร้าน */
+    petKind?: "cat" | "dog" | "both";
     pointsRate: number;
     /**
      * จ่ายด้วยเครดิต Member แล้วไม่ต้องให้แต้ม — ลูกค้าได้ส่วนลดตอนซื้อเครดิตไปแล้ว

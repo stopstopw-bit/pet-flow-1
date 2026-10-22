@@ -12,6 +12,7 @@ import { extraCatChargePerNight } from "@/lib/business";
 import { roomPricing } from "@/lib/room-board";
 import { toJpegDataUrl } from "@/lib/image-convert";
 import { PetPickList, type PetPickItem } from "@/components/PetPickList";
+import { petWords } from "@/lib/pet-kind";
 
 type Service = "groom" | "room";
 
@@ -69,6 +70,7 @@ function BookPageInner() {
   const params = useSearchParams();
   const { customer, profile, ready } = useLiff();
   const { config } = useConfig();
+  const pw = petWords(config);
   // ชื่อ/รายการห้องดึงจากตั้งค่าของร้านนี้ ไม่ใช่ค่าเริ่มต้นของ CatCha —
   // ร้านที่เปลี่ยนชื่อห้องหรือลบห้องประเภทใดออกจะเห็นรายการที่ตรงกับร้านตัวเอง
   const roomTypes = useMemo(
@@ -392,7 +394,7 @@ function BookPageInner() {
               </p>
               {done.schedule.map((s, i) => (
                 <p key={i} className="flex items-center justify-between text-brown">
-                  <span>🐱 {s.catName}</span>
+                  <span>{pw.emoji} {s.catName}</span>
                   <span className="font-extrabold text-latte-deep">{s.time}</span>
                 </p>
               ))}
@@ -497,7 +499,7 @@ function BookPageInner() {
 
       {!customer?.cats?.length ? (
         <p className="rounded-petflow-sm bg-wait/10 px-3 py-2.5 text-xs font-bold text-wait">
-          ยังไม่มีข้อมูลน้องแมวในระบบ — กรุณาลงทะเบียนก่อนจองนะคะ
+          ยังไม่มีข้อมูลน้อง{pw.th}ในระบบ — กรุณาลงทะเบียนก่อนจองนะคะ
         </p>
       ) : (
         <>
@@ -607,7 +609,7 @@ function BookPageInner() {
                         <p className="mb-1 font-bold text-brown-soft">🕒 คิวที่จะได้:</p>
                         {catNames.map((name, i) => (
                           <p key={i} className="flex items-center justify-between text-brown">
-                            <span>🐱 {name}</span>
+                            <span>{pw.emoji} {name}</span>
                             <span className="font-extrabold text-latte-deep">
                               {assignedPreview[i]}
                             </span>

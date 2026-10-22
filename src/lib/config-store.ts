@@ -5,6 +5,25 @@ import { isEnvOwnerTenant, requireTenantId } from "./tenant-context";
 import { uploadDataUrlToStorage } from "./supabase/storage";
 import { createHash } from "crypto";
 import { applyBrandCardDefaults, stripBrandCardDefaults } from "./card-brand";
+import { latestShopIntakeAnswers } from "./shop-intake-store";
+import { petKindFromIntake, type PetKind } from "./pet-kind";
+
+/**
+ * ร้านที่ยังไม่ได้ตั้ง business.petKind แต่เคยตอบแบบสอบถามเปิดร้านว่าเป็นร้านหมา (เช่น ร้านที่ตอบก่อนมีค่านี้)
+ * — เอาคำตอบนั้นมาใช้เลย ไม่ต้องให้ใครไปกดตั้งซ้ำ · จำไว้ต่อร้านต่อเครื่อง จะได้ไม่ค้นทุกคำขอ
+ * ตั้งเองในหน้าตั้งค่าแล้ว = ใช้ค่าที่ตั้งเสมอ
+ */
+const intakePetKind = new Map<string, Promise<PetKind | null>>();
+function petKindFromShopIntake(tenant: string): Promise<PetKind | null> {
+  let p = intakePetKind.get(tenant);
+  if (!p) {
+    p = latestShopIntakeAnswers(tenant)
+      .then((ans) => petKindFromIntake((ans as { a?: Record<string, unknown> } | null)?.a?.pets))
+      .catch(() => null);
+    intakePetKind.set(tenant, p);
+  }
+  return p;
+}
 
 /**
  * ย้ายรูปที่ฝังเป็น base64 (data:image/...) ในค่าตั้งค่าออกไป Storage แล้วแทนด้วย URL
@@ -181,12 +200,15 @@ async function getRawSiteConfig(): Promise<SiteConfig> {
           }
         })().catch(() => {});
       }
-      return withShopNameInTexts(
-        mergeConfig(defaults, {
-          ...dropCopiedShopValues(stored, envOwner),
-          updatedAt: data.updated_at || defaults.updatedAt,
-        })
-      );
+      const merged = mergeConfig(defaults, {
+        ...dropCopiedShopValues(stored, envOwner),
+        updatedAt: data.updated_at || defaults.updatedAt,
+      });
+      if (!stored.business?.petKind) {
+        const kind = await petKindFromShopIntake(tenant);
+        if (kind) merged.business = { ...merged.business, petKind: kind };
+      }
+      return withShopNameInTexts(merged);
     }
   }
 

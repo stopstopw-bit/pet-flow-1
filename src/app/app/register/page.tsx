@@ -37,7 +37,8 @@ const REFERRAL_OPTIONS = [
   "เพื่อนแนะนำ / ผ่านหน้าร้าน",
 ];
 
-import { BREED_OPTIONS, OTHER_BREED } from "@/lib/cat-breeds";
+import { OTHER_BREED } from "@/lib/cat-breeds";
+import { breedOptionsFor, petWords } from "@/lib/pet-kind";
 import { StaffNoteTagPicker } from "@/components/StaffNoteTagPicker";
 
 function emptyCat(): CatInput {
@@ -59,7 +60,8 @@ export default function RegisterPage() {
   const router = useRouter();
   const { profile, ready, customer, refreshCustomer, refreshAccount } = useLiff();
   const { config } = useConfig();
-  const breeds = config.options?.catBreeds?.length ? config.options.catBreeds : BREED_OPTIONS;
+  const breeds = breedOptionsFor(config);
+  const pw = petWords(config);
   const referrals = config.options?.referralOptions?.length
     ? config.options.referralOptions
     : REFERRAL_OPTIONS;
@@ -113,7 +115,7 @@ export default function RegisterPage() {
 
     const named = cats.filter((c) => c.name.trim());
     if (named.some((c) => !c.gender)) {
-      setError("เลือกเพศน้องแมวทุกตัวด้วยนะคะ 🐱");
+      setError(`เลือกเพศน้อง${pw.th}ทุกตัวด้วยนะคะ ${pw.emoji}`);
       return;
     }
     if (!referral) {
@@ -299,7 +301,7 @@ export default function RegisterPage() {
 
         {/* ── น้องแมว ── */}
         <section>
-          <SectionLabel>My cats · น้องแมว</SectionLabel>
+          <SectionLabel>{`My ${pw.enPlural} · น้อง${pw.th}`}</SectionLabel>
           <ul className="space-y-3">
             {cats.map((cat, idx) => (
               <li
@@ -341,7 +343,7 @@ export default function RegisterPage() {
                   required={idx === 0}
                   value={cat.name}
                   onChange={(e) => updateCat(idx, { name: e.target.value })}
-                  placeholder="ชื่อน้องแมว"
+                  placeholder={`ชื่อน้อง${pw.th}`}
                   className={subFieldClass}
                 />
 
@@ -456,7 +458,7 @@ export default function RegisterPage() {
                   </select>
                 </div>
                 <div className="text-[11px] font-bold text-brown-soft">
-                  วันเกิดน้องแมว{" "}
+                  วันเกิดน้อง{pw.th}{" "}
                   <span className="font-normal text-brown-faint">
                     (ถ้าทราบ · ไม่บังคับ)
                   </span>
@@ -482,7 +484,7 @@ export default function RegisterPage() {
                     className="-ml-1 flex min-h-[44px] items-center gap-1.5 px-1 text-xs font-bold text-brown-soft"
                   >
                     <Icon name="trash" size={15} />
-                    ลบน้องแมวตัวนี้
+                    ลบน้อง{pw.th}ตัวนี้
                   </button>
                 )}
               </li>
@@ -498,7 +500,7 @@ export default function RegisterPage() {
               <Icon name="plus" size={20} strokeWidth={2.4} />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-sm font-extrabold">เพิ่มน้องแมวอีกตัว</span>
+              <span className="block text-sm font-extrabold">เพิ่มน้อง{pw.th}อีกตัว</span>
               <span className="block text-[11px] text-petflow-chocolate/70">มีหลายตัว เพิ่มได้ทุกตัวเลยค่ะ</span>
             </span>
             <Icon name="paw" size={22} className="text-petflow-chocolate/60" />

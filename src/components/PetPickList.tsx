@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import { useConfig } from "@/components/ConfigProvider";
+import { petKindOf, petWords } from "@/lib/pet-kind";
 
 export type PetPickItem = {
   id: string;
@@ -16,15 +18,24 @@ function shortBreed(breed?: string | null) {
   return breed.replace(/\s*\([^)]*\)\s*$/, "").trim();
 }
 
-/** รูปการ์ตูนน้องแมวน่ารักๆ แทนตอนยังไม่มีรูปจริง — ใช้สีธีมร้าน (honey / chocolate) */
-function CutePetPlaceholder() {
+/** รูปการ์ตูนน้องน่ารักๆ แทนตอนยังไม่มีรูปจริง (แมวหูตั้ง / หมาหูตก ตามร้าน) — ใช้สีธีมร้าน (honey / chocolate) */
+function CutePetPlaceholder({ dog }: { dog?: boolean }) {
   return (
     <svg viewBox="0 0 64 64" className="h-full w-full" aria-hidden="true">
-      <path
-        d="M14 26 L17 9 L29 19 Q32 18 35 19 L47 9 L50 26 Q54 33 52 41 Q48 54 32 54 Q16 54 12 41 Q10 33 14 26 Z"
-        className="fill-honey"
-      />
-      <path d="M18 22 L19 14 L25 19 Z M46 22 L45 14 L39 19 Z" className="fill-latte-deep/40" />
+      {dog ? (
+        <>
+          <path d="M32 14 Q52 14 52 36 Q52 54 32 54 Q12 54 12 36 Q12 14 32 14 Z" className="fill-honey" />
+          <path d="M15 17 Q6 20 7 36 Q8 43 13 41 Q17 30 20 20 Z M49 17 Q58 20 57 36 Q56 43 51 41 Q47 30 44 20 Z" className="fill-latte-deep/60" />
+        </>
+      ) : (
+        <>
+          <path
+            d="M14 26 L17 9 L29 19 Q32 18 35 19 L47 9 L50 26 Q54 33 52 41 Q48 54 32 54 Q16 54 12 41 Q10 33 14 26 Z"
+            className="fill-honey"
+          />
+          <path d="M18 22 L19 14 L25 19 Z M46 22 L45 14 L39 19 Z" className="fill-latte-deep/40" />
+        </>
+      )}
       <ellipse cx="24" cy="35" rx="3" ry="3.6" className="fill-petflow-chocolate" />
       <ellipse cx="40" cy="35" rx="3" ry="3.6" className="fill-petflow-chocolate" />
       <circle cx="25" cy="33.8" r="1" fill="#fff" />
@@ -56,6 +67,9 @@ export function PetPickList({
   selected: string[];
   onToggle: (name: string) => void;
 }) {
+  const { config } = useConfig();
+  const pw = petWords(config);
+  const dog = petKindOf(config) === "dog";
   // รูปเสีย/ลิงก์หมดอายุ → กลับไปใช้รูปการ์ตูนแทน ไม่โชว์ไอคอนรูปแตก
   const [brokenIds, setBrokenIds] = useState<string[]>([]);
   return (
@@ -100,7 +114,7 @@ export function PetPickList({
                   />
                 ) : (
                   <div className="h-full w-full p-1.5">
-                    <CutePetPlaceholder />
+                    <CutePetPlaceholder dog={dog} />
                   </div>
                 )}
               </div>
@@ -108,7 +122,7 @@ export function PetPickList({
                 <p className="truncate text-sm font-extrabold text-petflow-chocolate">
                   {pet.name}
                 </p>
-                <p className="truncate text-xs text-brown-soft">{breed || "น้องแมว 🐱"}</p>
+                <p className="truncate text-xs text-brown-soft">{breed || `น้อง${pw.th} ${pw.emoji}`}</p>
               </div>
               <span
                 className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 transition ${

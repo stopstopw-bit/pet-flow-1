@@ -15,6 +15,7 @@ import { contrastRatio, isValidHex } from "@/lib/color-utils";
 import { Icon } from "@/components/Icon";
 import { useConfig } from "@/components/ConfigProvider";
 import { FEATURES, FEATURE_GROUPS, isFeatureOn, type FeatureKey } from "@/lib/features";
+import { breedOptionsFor, petKindOf, petWords, type PetKind } from "@/lib/pet-kind";
 
 type Tab =
   | "features"
@@ -44,7 +45,7 @@ const TAB_GROUPS: { title: string; items: { id: Tab; icon: string; hint?: string
     items: [
       { id: "shop", icon: "home", hint: "ชื่อร้าน ช่องทางติดต่อ ที่อยู่" },
       { id: "payment", icon: "wallet", hint: "บัญชีรับโอน" },
-      { id: "lists", icon: "doc" },
+      { id: "lists", icon: "doc", hint: "ร้านหมา/แมว · สายพันธุ์ · ของแถม" },
       { id: "points", icon: "star", hint: "อัตราแต้มสะสม" },
       { id: "crm", icon: "users" },
     ],
@@ -2832,9 +2833,24 @@ function ListsTab({
   saving: boolean;
   onSave: (p: Partial<SiteConfig>) => void;
 }) {
-  const [form, setForm] = useState({ ...OPTIONS_DEFAULT, ...config.options });
-  useEffect(() => setForm({ ...OPTIONS_DEFAULT, ...config.options }), [config.options]);
+  const initForm = () => ({ ...OPTIONS_DEFAULT, ...config.options, catBreeds: breedOptionsFor(config) });
+  const [form, setForm] = useState(initForm);
+  const [petKind, setPetKind] = useState<PetKind>(petKindOf(config));
+  useEffect(() => {
+    setForm(initForm());
+    setPetKind(petKindOf(config));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config.options, config.business?.petKind]);
   const presets = form.servicePresets;
+  const pickPetKind = (kind: PetKind) => {
+    setPetKind(kind);
+    // ยังใช้รายชื่อเริ่มต้นอยู่ → เปลี่ยนเป็นสายพันธุ์ของชนิดใหม่ให้เลย · ร้านแก้รายชื่อเองแล้วไม่แตะ
+    setForm((f) =>
+      f.catBreeds.join("\n") === breedOptionsFor({ business: { petKind } }).join("\n")
+        ? { ...f, catBreeds: breedOptionsFor({ business: { petKind: kind } }) }
+        : f
+    );
+  };
 
   const setPreset = (i: number, patch: Partial<{ label: string; amount: number }>) =>
     setForm((f) => ({
@@ -2848,6 +2864,7 @@ function ListsTab({
       onSubmit={(e) => {
         e.preventDefault();
         onSave({
+          business: { petKind } as SiteConfig["business"],
           options: {
             ...form,
             servicePresets: form.servicePresets.filter((p) => p.label.trim()),
@@ -2855,6 +2872,33 @@ function ListsTab({
         });
       }}
     >
+      <p className="text-xs font-extrabold text-petflow-chocolate">ร้านดูแลน้องอะไร</p>
+      <div className="flex gap-1 rounded-full bg-paper p-1">
+        {(
+          [
+            ["cat", "🐱 แมว"],
+            ["dog", "🐶 หมา"],
+            ["both", "🐾 ทั้งหมาและแมว"],
+          ] as const
+        ).map(([k, label]) => (
+          <button
+            key={k}
+            type="button"
+            aria-pressed={petKind === k}
+            onClick={() => pickPetKind(k)}
+            className={`min-h-[40px] flex-1 rounded-full text-xs font-bold transition ${
+              petKind === k ? "bg-card text-petflow-chocolate shadow-petflow-sm" : "text-brown-soft"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <p className="text-[10px] text-brown-soft">
+        ใช้เปลี่ยนคำในแอปลูกค้าและหลังบ้าน (น้องแมว / น้องหมา) และรายชื่อสายพันธุ์ด้านล่าง
+      </p>
+
+      <hr className="border-petflow-line" />
       <p className="text-xs font-extrabold text-petflow-chocolate">
         บริการเสริม (หน้าคิดเงิน) — ชื่อ + ราคา
       </p>
@@ -2912,7 +2956,7 @@ function ListsTab({
         rows={4}
       />
       <TextAreaField
-        label="สายพันธุ์แมว (หน้าลงทะเบียน) — 1 บรรทัด = 1 พันธุ์"
+        label={`สายพันธุ์${petWords({ business: { petKind } }).th} (หน้าลงทะเบียน) — 1 บรรทัด = 1 พันธุ์`}
         value={form.catBreeds.join("\n")}
         onChange={(v) =>
           setForm((f) => ({ ...f, catBreeds: v.split("\n").map((s) => s.trim()).filter(Boolean) }))

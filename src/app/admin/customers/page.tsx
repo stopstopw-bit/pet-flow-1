@@ -29,11 +29,12 @@ import { bookingGroupKey, groupBookings } from "@/lib/booking-group";
 import { ExportSheetsButton } from "@/components/ExportSheetsButton";
 import { BookingEditModal, type EditableBooking } from "@/components/BookingEditModal";
 import { RoomPlanSection } from "@/components/RoomPlanSection";
-import { BREED_OPTIONS, OTHER_BREED } from "@/lib/cat-breeds";
+import { OTHER_BREED } from "@/lib/cat-breeds";
+import { breedOptionsFor } from "@/lib/pet-kind";
 import { BirthdayPicker } from "@/components/BirthdayPicker";
 import { StaffNoteTagPicker } from "@/components/StaffNoteTagPicker";
 import { Icon } from "@/components/Icon";
-import { useConfig } from "@/components/ConfigProvider";
+import { useConfig, usePetWords } from "@/components/ConfigProvider";
 import { isFeatureOn } from "@/lib/features";
 import { GroomProgramPicker, useGroomPrograms } from "@/components/GroomProgramPicker";
 import { groomProgramName } from "@/lib/grooming-prices";
@@ -2587,15 +2588,18 @@ function CatBreedField({
   breed?: string;
   onSave: (breed: string) => void;
 }) {
-  const isCustom = !!breed && !BREED_OPTIONS.includes(breed);
+  const { config } = useConfig();
+  const breedList = breedOptionsFor(config);
+  const isCustom = !!breed && !breedList.includes(breed);
   const [otherMode, setOtherMode] = useState(isCustom);
   const [otherText, setOtherText] = useState(isCustom ? breed || "" : "");
 
   useEffect(() => {
-    const nowCustom = !!breed && !BREED_OPTIONS.includes(breed);
+    const nowCustom = !!breed && !breedList.includes(breed);
     setOtherMode(nowCustom);
     setOtherText(nowCustom ? breed || "" : "");
-  }, [breed]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [breed, breedList.join("\n")]);
 
   return (
     <div>
@@ -2613,7 +2617,7 @@ function CatBreedField({
         className={inputCls}
       >
         <option value="">เลือกสายพันธุ์…</option>
-        {BREED_OPTIONS.map((b) => (
+        {breedList.map((b) => (
           <option key={b} value={b}>
             {b}
           </option>
@@ -2636,6 +2640,7 @@ function CatBreedField({
 }
 
 function AddCatForm({ customerId, onAdded }: { customerId: string; onAdded: () => void }) {
+  const pw = usePetWords();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
@@ -2685,7 +2690,7 @@ function AddCatForm({ customerId, onAdded }: { customerId: string; onAdded: () =
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-petflow-chocolate text-card">
           <Icon name="plus" size={20} strokeWidth={2.4} />
         </span>
-        <span className="flex-1 text-sm font-extrabold">เพิ่มน้องแมวอีกตัว</span>
+        <span className="flex-1 text-sm font-extrabold">เพิ่มน้อง{pw.th}อีกตัว</span>
         <Icon name="paw" size={22} className="text-petflow-chocolate/60" />
       </button>
 
@@ -2697,8 +2702,8 @@ function AddCatForm({ customerId, onAdded }: { customerId: string; onAdded: () =
                 <Icon name="paw" size={20} />
               </span>
               <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">New cat</p>
-                <h2 className="text-base font-extrabold text-petflow-chocolate">เพิ่มน้องแมว</h2>
+                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">New {pw.en}</p>
+                <h2 className="text-base font-extrabold text-petflow-chocolate">เพิ่มน้อง{pw.th}</h2>
               </div>
               <button
                 type="button"
@@ -2711,7 +2716,7 @@ function AddCatForm({ customerId, onAdded }: { customerId: string; onAdded: () =
             </div>
             <form onSubmit={submit} className="space-y-3">
               <label className="block text-xs font-bold text-brown-soft">
-                ชื่อน้องแมว *
+                ชื่อน้อง{pw.th} *
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -2726,7 +2731,7 @@ function AddCatForm({ customerId, onAdded }: { customerId: string; onAdded: () =
                 <textarea
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
-                  placeholder="เช่น แมวดุ อาบยาก กลัวเสียง"
+                  placeholder="เช่น ดุ อาบยาก กลัวเสียง"
                   rows={3}
                   className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-xs"
                 />
@@ -2758,6 +2763,7 @@ function AddCatForm({ customerId, onAdded }: { customerId: string; onAdded: () =
 }
 
 export default function CustomersPage() {
+  const pw = usePetWords();
   const searchParams = useSearchParams();
   const [q, setQ] = useState("");
   const [list, setList] = useState<CustomerListItem[]>([]);
@@ -2903,7 +2909,7 @@ export default function CustomersPage() {
         patch,
       }),
     });
-    if (res.ok) toast("✅ บันทึกข้อมูลแมวแล้ว", "success");
+    if (res.ok) toast(`✅ บันทึกข้อมูล${pw.th}แล้ว`, "success");
     open(selected.customer.id);
   };
 
@@ -2991,11 +2997,11 @@ export default function CustomersPage() {
         />
 
         <section className="mb-4">
-          <SectionLabel>Cats · น้องแมว ({c.cats.length})</SectionLabel>
+          <SectionLabel>{`${pw.enPlural[0].toUpperCase()}${pw.enPlural.slice(1)} · น้อง${pw.th} (${c.cats.length})`}</SectionLabel>
 
           {c.cats.length === 0 && (
             <div className="rounded-petflow bg-card shadow-petflow-sm">
-              <EmptyState icon="paw" title="ยังไม่มีน้องแมว" sub="กด “เพิ่มน้องแมวอีกตัว” ด้านล่างเพื่อเพิ่ม" />
+              <EmptyState icon="paw" title={`ยังไม่มีน้อง${pw.th}`} sub={`กด “เพิ่มน้อง${pw.th}อีกตัว” ด้านล่างเพื่อเพิ่ม`} />
             </div>
           )}
           <div className="space-y-3">
@@ -3005,7 +3011,7 @@ export default function CustomersPage() {
                 {/* แตะรูปเพื่อดูเต็มจอ · ปุ่มกล้องเพื่อเปลี่ยนรูป (ลูกค้าเห็นในแอปด้วย) */}
                 <CatPhoto src={cat.photoDataUrl} name={cat.name} size={72} onPick={(f) => onPhoto(cat, f)} />
                 <label className="block min-w-0 flex-1 text-[11px] font-bold text-brown-soft">
-                  <span className="mb-1 block">ชื่อน้องแมว</span>
+                  <span className="mb-1 block">ชื่อน้อง{pw.th}</span>
                   <input
                     defaultValue={cat.name}
                     onBlur={(e) => {
@@ -3316,7 +3322,7 @@ export default function CustomersPage() {
       <SearchField
         value={q}
         onChange={setQ}
-        placeholder="ค้นหาชื่อลูกค้า / แมว / เบอร์"
+        placeholder={`ค้นหาชื่อลูกค้า / ${pw.th} / เบอร์`}
         className="mb-3"
       />
 
@@ -3409,7 +3415,7 @@ export default function CustomersPage() {
               <thead>
                 <tr className="border-b border-petflow-line bg-paper/60 text-[10px] font-extrabold uppercase tracking-wide text-brown-soft">
                   <SortableTh label="ลูกค้า" sortKey="name" active={sortKey} dir={sortDir} onSort={toggleSort} />
-                  <SortableTh label="แมว" sortKey="catName" active={sortKey} dir={sortDir} onSort={toggleSort} />
+                  <SortableTh label={pw.th} sortKey="catName" active={sortKey} dir={sortDir} onSort={toggleSort} />
                   <SortableTh label="LINE" sortKey="line" active={sortKey} dir={sortDir} onSort={toggleSort} />
                   <SortableTh label="เบอร์โทร" sortKey="phone" active={sortKey} dir={sortDir} onSort={toggleSort} />
                   <SortableTh label="วันเกิด" sortKey="birthday" active={sortKey} dir={sortDir} onSort={toggleSort} />
