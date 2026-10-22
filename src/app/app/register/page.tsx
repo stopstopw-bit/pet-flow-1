@@ -21,6 +21,8 @@ type CatInput = {
   color: string;
   ageValue: string;
   ageUnit: "year" | "month";
+  /** น้ำหนัก (กก.) — เก็บเป็นข้อความระหว่างพิมพ์ */
+  weightKg: string;
   birthday: string;
   medical: string;
   note: string;
@@ -49,6 +51,7 @@ function emptyCat(): CatInput {
     color: "",
     ageValue: "",
     ageUnit: "year",
+    weightKg: "",
     birthday: "",
     medical: "",
     note: "",
@@ -148,6 +151,7 @@ export default function RegisterPage() {
                 undefined,
               ageValue: c.ageValue ? Number(c.ageValue) : undefined,
               ageUnit: c.ageUnit,
+              weightKg: c.weightKg ? Number(c.weightKg) : undefined,
               birthday: c.birthday || undefined,
               medical: c.medical || undefined,
               furLength: c.furLength || undefined,
@@ -455,6 +459,19 @@ export default function RegisterPage() {
                     <option value="month">เดือน</option>
                   </select>
                 </div>
+                <label className="block text-[11px] font-bold text-brown-soft">
+                  น้ำหนัก <span className="font-normal text-brown-faint">(กก. · ไม่บังคับ)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    inputMode="decimal"
+                    value={cat.weightKg}
+                    onChange={(e) => updateCat(idx, { weightKg: e.target.value })}
+                    placeholder="เช่น 4.5"
+                    className={`${subFieldClass} mt-0.5`}
+                  />
+                </label>
                 <div className="text-[11px] font-bold text-brown-soft">
                   วันเกิดน้องแมว{" "}
                   <span className="font-normal text-brown-faint">

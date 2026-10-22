@@ -219,6 +219,7 @@ alter table cats add column if not exists gender text;
 alter table cats add column if not exists breed text;
 alter table cats add column if not exists age text;
 alter table cats add column if not exists age_value integer;
+alter table cats add column if not exists weight_kg numeric;
 alter table cats add column if not exists age_unit text;
 alter table cats add column if not exists age_as_of date;
 alter table cats add column if not exists birthday date;

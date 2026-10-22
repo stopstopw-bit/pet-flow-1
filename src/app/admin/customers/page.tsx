@@ -2888,6 +2888,7 @@ export default function CustomersPage() {
       color?: string;
       ageValue?: number;
       ageUnit?: "year" | "month";
+      weightKg?: number | null;
       birthday?: string;
       medical?: string;
     }
@@ -3099,6 +3100,22 @@ export default function CustomersPage() {
                     </select>
                   </label>
                 </div>
+                <label className="block text-[11px] font-bold text-brown-soft">
+                  <span className="mb-1 block">น้ำหนัก (กก.)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    inputMode="decimal"
+                    defaultValue={cat.weightKg}
+                    placeholder="เช่น 4.5"
+                    className={inputCls}
+                    onBlur={(e) => {
+                      const v = e.target.value ? Number(e.target.value) : null;
+                      if (v !== (cat.weightKg ?? null)) saveCat(cat.id, { weightKg: v });
+                    }}
+                  />
+                </label>
                 <label className="block text-[11px] font-bold text-brown-soft">
                   วันเกิดน้อง <span className="font-normal text-brown-faint">(ถ้าทราบ)</span>
                   <BirthdayPicker

@@ -4,6 +4,7 @@ import {
   updateCustomer,
   updateCat,
   addCat,
+  normalizeWeightKg,
 } from "@/lib/customers-store";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { withResolvedTenant } from "@/lib/tenant-context";
@@ -42,6 +43,7 @@ async function handleGet(req: NextRequest) {
         breed: x.breed || "",
         ageValue: x.ageValue ?? "",
         ageUnit: x.ageUnit || "year",
+        weightKg: x.weightKg ?? "",
         birthday: x.birthday || "",
         medical: x.medical || "",
         note: x.staffNote || "",
@@ -108,10 +110,15 @@ async function handlePost(req: NextRequest) {
         staffNote: cat.note ? String(cat.note).trim() : undefined,
       };
       // id ที่ขึ้นต้นด้วย "new-" มาจากการกด "เพิ่มน้องแมว" ในหน้านี้ — ยังไม่มีตัวจริงในระบบ
+      const weightKg = normalizeWeightKg(cat.weightKg);
       if (!cat?.id || String(cat.id).startsWith("new-")) {
-        await addCat(c.id, shared);
+        await addCat(c.id, { ...shared, weightKg });
       } else {
-        await updateCat(c.id, String(cat.id), shared);
+        // หน้าเก่าที่ยังไม่มีช่องน้ำหนักจะไม่ส่ง weightKg มา — อย่าไปลบค่าที่ร้านกรอกไว้
+        await updateCat(c.id, String(cat.id), {
+          ...shared,
+          ...("weightKg" in cat ? { weightKg: weightKg ?? null } : {}),
+        });
       }
     }
   }
