@@ -804,32 +804,38 @@ export default function NewBookingPage() {
               จองอีกคน
             </button>
           </div>
-          {lastBookings.map((b) => (
-            <div key={b.id} className="rounded-petflow-sm border border-sage/30 bg-card p-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="flex min-w-0 items-center gap-1.5 text-sm font-extrabold text-petflow-chocolate">
-                  <Icon name="paw" size={16} className="text-brown-soft" />
-                  <span className="truncate">{b.catName}</span>
-                </p>
-                <Link
-                  href={`/admin/billing?bookingId=${b.id}`}
-                  className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full bg-petflow-chocolate px-3.5 text-xs font-extrabold text-card"
-                >
-                  <Icon name="receipt" size={16} />
-                  ออกบิลเลย
-                </Link>
+          {/* จองหลายตัวในครั้งเดียว = บ้านเดียวกัน → บิลเดียว ส่ง LINE ชุดเดียว (การ์ดรวมชื่อทุกตัว) */}
+          {(() => {
+            const b = lastBookings[0];
+            const many = lastBookings.length > 1;
+            return (
+              <div className="rounded-petflow-sm border border-sage/30 bg-card p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="flex min-w-0 items-center gap-1.5 text-sm font-extrabold text-petflow-chocolate">
+                    <Icon name="paw" size={16} className="shrink-0 text-brown-soft" />
+                    <span className="truncate">{many ? "ทั้งบ้าน" : b.catName}</span>
+                  </p>
+                  <Link
+                    href={`/admin/billing?bookingId=${b.id}`}
+                    className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full bg-petflow-chocolate px-3.5 text-xs font-extrabold text-card"
+                  >
+                    <Icon name="receipt" size={16} />
+                    {many ? "ออกบิลรวม" : "ออกบิลเลย"}
+                  </Link>
+                </div>
+                <div className="mt-2 border-t border-petflow-line pt-2">
+                  <CustomerSendButtons
+                    bookingId={b.id}
+                    customerId={b.customerId}
+                    lineUserId={b.lineUserId}
+                    service={b.service}
+                    groomBookingIds={many ? lastBookings.map((x) => x.id) : undefined}
+                    quickSteps
+                  />
+                </div>
               </div>
-              <div className="mt-2 border-t border-petflow-line pt-2">
-                <CustomerSendButtons
-                  bookingId={b.id}
-                  customerId={b.customerId}
-                  lineUserId={b.lineUserId}
-                  service={b.service}
-                  quickSteps
-                />
-              </div>
-            </div>
-          ))}
+            );
+          })()}
         </div>
       )}
       {appointmentDate && (
