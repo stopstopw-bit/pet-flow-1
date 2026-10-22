@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
+import { CheckBox } from "@/components/ui";
 import { bangkokToday } from "@/lib/bangkok-date";
 import {
   analyzeSales,
@@ -29,9 +30,20 @@ function Tile({ label, value, sub, tone = "" }: { label: string; value: string; 
   );
 }
 
-function SegmentCard({ s, onSend }: { s: ActionSegment; onSend: (s: ActionSegment) => void }) {
+function SegmentCard({ s, onSend }: { s: ActionSegment; onSend: (s: ActionSegment, ids: string[]) => void }) {
   const [open, setOpen] = useState(false);
-  const reachable = s.people.filter((p) => p.hasLine).length;
+  // ติ๊กออกได้รายคน — ค่าเริ่มต้นเลือกทุกคนในกลุ่ม
+  const [excluded, setExcluded] = useState<Set<string>>(new Set());
+  const reachablePeople = s.people.filter((p) => p.hasLine);
+  const reachable = reachablePeople.length;
+  const chosen = reachablePeople.filter((p) => !excluded.has(p.id));
+  const toggle = (id: string) =>
+    setExcluded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   return (
     <div className="rounded-petflow bg-card p-4 shadow-petflow-sm">
       <div className="flex items-start justify-between gap-3">
@@ -46,18 +58,73 @@ function SegmentCard({ s, onSend }: { s: ActionSegment; onSend: (s: ActionSegmen
       </div>
       {s.people.length > 0 && (
         <>
-          <div className="mt-2.5 flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-sage/25 px-2.5 py-1 text-[11px] font-bold text-ok">
-              โอกาสได้ยอด ~{baht(s.potential)}
-            </span>
-            <span className="text-[10px] text-brown-faint">ส่ง LINE ได้ {reachable} คน</span>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
+          {open && (
+            <div className="mt-3 overflow-hidden rounded-petflow-sm bg-paper/60">
+              {reachable > 0 && (
+                <div className="flex items-center justify-between px-3 py-2 text-[11px]">
+                  <span className="font-bold text-brown-soft">
+                    เลือกแล้ว {chosen.length}/{reachable} คน
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setExcluded(excluded.size ? new Set() : new Set(reachablePeople.map((p) => p.id)))
+                    }
+                    className="font-bold text-latte-deep underline"
+                  >
+                    {excluded.size ? "เลือกทั้งหมด" : "ไม่เลือกเลย"}
+                  </button>
+                </div>
+              )}
+              <ul className="max-h-72 divide-y divide-petflow-line overflow-y-auto border-t border-petflow-line">
+                {s.people.map((p) => {
+                  const on = p.hasLine && !excluded.has(p.id);
+                  return (
+                    <li key={p.id} className="flex items-center gap-1 pr-1">
+                      <button
+                        type="button"
+                        role="checkbox"
+                        aria-checked={on}
+                        disabled={!p.hasLine}
+                        onClick={() => toggle(p.id)}
+                        className="flex min-h-[44px] min-w-0 flex-1 items-center gap-2.5 py-1.5 pl-3 text-left text-xs disabled:opacity-60"
+                      >
+                        <CheckBox on={on} />
+                        <span
+                          className={`min-w-0 flex-1 truncate font-bold ${on ? "text-brown" : "text-brown-faint"}`}
+                        >
+                          {p.name}
+                        </span>
+                        <span className="shrink-0 text-[10px] text-brown-faint">
+                          {p.detail}
+                          {!p.hasLine && " · ไม่มี LINE"}
+                        </span>
+                      </button>
+                      <Link
+                        href={`/admin/customers?id=${p.id}`}
+                        aria-label={`เปิดข้อมูล ${p.name}`}
+                        className="flex h-9 w-8 shrink-0 items-center justify-center text-brown-faint"
+                      >
+                        <Icon name="chevron" size={14} />
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+          <div className="mt-3 flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold text-ok">โอกาสได้ยอด ~{baht(s.potential)}</p>
+              <p className="text-[10px] text-brown-faint">
+                {excluded.size ? `เลือกส่ง ${chosen.length} จาก ${reachable} คน` : `ส่ง LINE ได้ ${reachable} คน`}
+              </p>
+            </div>
             <button
               type="button"
-              disabled={reachable === 0}
-              onClick={() => onSend(s)}
-              className="flex h-10 items-center gap-1.5 rounded-full bg-petflow-chocolate px-4 text-xs font-extrabold text-card disabled:opacity-40"
+              disabled={chosen.length === 0}
+              onClick={() => onSend(s, chosen.map((p) => p.id))}
+              className="flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-petflow-chocolate px-4 text-xs font-extrabold text-card disabled:opacity-40"
             >
               <Icon name="send" size={14} />
               {s.action}
@@ -107,13 +174,13 @@ export function SalesActions(props: {
     [props.customers, props.invoices, props.bookings, props.packages, today]
   );
 
-  const send = (s: ActionSegment) => {
+  const send = (s: ActionSegment, ids: string[]) => {
     try {
       sessionStorage.setItem(
         BROADCAST_DRAFT_KEY,
         JSON.stringify({
           label: s.title,
-          customerIds: s.people.map((p) => p.id),
+          customerIds: ids,
           title: s.message.title,
           body: s.message.body,
         })

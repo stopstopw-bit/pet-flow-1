@@ -41,7 +41,14 @@ type AudienceQuery = {
   regularMinVisits: number;
   /** เจาะจงรายคน (มาจากกลุ่มในหน้าสรุปข้อมูล) — ว่าง = ไม่จำกัด */
   customerIds: string[];
+  /** คนที่แอดมินติ๊กออกจากรายชื่อก่อนส่ง — ใช้ตอนส่งจริงเท่านั้น */
+  excludeIds: string[];
 };
+
+function readIds(v: unknown): string[] {
+  const raw = Array.isArray(v) ? v : String(v || "").split(",");
+  return raw.map((x) => String(x).trim()).filter(Boolean);
+}
 
 function readAudienceQuery(get: (k: string) => unknown): AudienceQuery {
   return {
@@ -50,11 +57,8 @@ function readAudienceQuery(get: (k: string) => unknown): AudienceQuery {
     inactiveDays: Number(get("inactiveDays")) || 0,
     segments: parseSegments(get("segments")),
     regularMinVisits: Number(get("regularMinVisits")) || DEFAULT_REGULAR_MIN_VISITS,
-    customerIds: (() => {
-      const v = get("customerIds");
-      const raw = Array.isArray(v) ? v : String(v || "").split(",");
-      return raw.map((x) => String(x).trim()).filter(Boolean);
-    })(),
+    customerIds: readIds(get("customerIds")),
+    excludeIds: readIds(get("excludeIds")),
   };
 }
 
@@ -123,12 +127,13 @@ async function handlePost(req: NextRequest) {
     );
   }
 
-  const customers = (await resolveAudience(query)).recipients;
+  const excluded = new Set(query.excludeIds);
+  const customers = (await resolveAudience(query)).recipients.filter((c) => !excluded.has(c.id));
   const lineIds = customers
     .map((c) => c.lineUserId)
     .filter((id): id is string => Boolean(id));
 
-  if (lineIds.length === 0) {
+  if (lineIds.length === 0 && !body.preview) {
     return NextResponse.json({
       ok: true,
       sent: 0,
@@ -139,7 +144,10 @@ async function handlePost(req: NextRequest) {
   const creds = await getLineCredentials();
   const base = await shopAppBase();
   const promoUrl = `${base}/app/promos`;
-  const imageUrl = await resolveLineImageUrl(body);
+  // พรีวิว = ใช้รูป data: ตรง ๆ ไม่อัปโหลด ไม่ส่งจริง
+  const imageUrl = body.preview
+    ? body.imageData || body.imageUrl || undefined
+    : await resolveLineImageUrl(body);
   const shopConfig = await getSiteConfig();
   const buttons = buildBroadcastButtons(actions, creds?.liffId, shopConfig.business, base);
 
@@ -153,6 +161,9 @@ async function handlePost(req: NextRequest) {
       buttons: buttons.length ? buttons : undefined,
       shopName: shopConfig.business.name,
     }, shopConfig.cards?.promo);
+    if (body.preview) {
+      return NextResponse.json({ ok: true, preview: [flex], count: lineIds.length });
+    }
     const result = await multicastLineMessage(lineIds, [flex]);
     return NextResponse.json({
       ok: true,
