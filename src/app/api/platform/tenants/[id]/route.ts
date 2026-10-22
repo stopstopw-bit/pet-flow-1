@@ -9,6 +9,12 @@ import {
   extendDueDate,
 } from "@/lib/tenant-billing";
 import {
+  clearTenantDomainCache,
+  ensureCustomDomainColumn,
+  isMissingCustomDomain,
+  normalizeDomain,
+} from "@/lib/tenant-domain";
+import {
   shopSessionCookie,
   generateSalt,
   hashPassword,
@@ -130,6 +136,57 @@ export async function PATCH(
       afterState: { dueDate, status: update.status || tenant.status },
     });
     return NextResponse.json({ ok: true, dueDate });
+  }
+
+  if (action === "set_domain") {
+    // โดเมนของร้านเอง (เช่น catcha.com) — ว่าง = เลิกใช้โดเมน กลับไปใช้ลิงก์ /s/<slug> อย่างเดียว
+    // ลิงก์ /s/<slug> เดิมใช้ได้ตลอดไม่ว่าจะตั้งโดเมนหรือไม่ ดูขั้นตอนฝั่ง Vercel/DNS ใน CUSTOM_DOMAIN.md
+    const raw = String(body.domain || "").trim();
+    const domain = raw ? normalizeDomain(raw) : null;
+    if (raw && !domain) {
+      return NextResponse.json(
+        { error: "โดเมนไม่ถูกต้อง — ใส่แค่ชื่อโดเมน เช่น catcha.com (ใช้โดเมน vercel.app ไม่ได้)" },
+        { status: 400 }
+      );
+    }
+    const read = () => sb.from("tenants").select("custom_domain").eq("id", id).maybeSingle();
+    let { data: cur, error: readErr } = await read();
+    if (readErr && isMissingCustomDomain(readErr.message) && (await ensureCustomDomainColumn())) {
+      ({ data: cur, error: readErr } = await read());
+    }
+    if (readErr) return NextResponse.json({ error: readErr.message }, { status: 500 });
+    const before = (cur?.custom_domain as string | null) || null;
+
+    if (domain) {
+      // โดเมนเดียวชี้ได้ร้านเดียว — เช็คก่อนให้ข้อความอ่านง่าย (ฐานมี unique index กันซ้ำอีกชั้น)
+      const { data: taken } = await sb
+        .from("tenants")
+        .select("id, name")
+        .eq("custom_domain", domain)
+        .neq("id", id)
+        .limit(1)
+        .maybeSingle();
+      if (taken) {
+        return NextResponse.json({ error: `โดเมนนี้ผูกกับร้าน "${taken.name}" อยู่แล้ว` }, { status: 400 });
+      }
+    }
+    const { error } = await sb.from("tenants").update({ custom_domain: domain }).eq("id", id);
+    if (error) {
+      const msg = error.code === "23505" ? "โดเมนนี้ผูกกับร้านอื่นอยู่แล้ว" : error.message;
+      return NextResponse.json({ error: msg }, { status: 400 });
+    }
+    clearTenantDomainCache();
+    await logAudit({
+      tenantId: id,
+      actorType: "platform",
+      actorId: "platform_owner",
+      action: "set_tenant_domain",
+      resourceType: "tenant",
+      resourceId: id,
+      beforeState: { customDomain: before },
+      afterState: { customDomain: domain },
+    });
+    return NextResponse.json({ ok: true, customDomain: domain });
   }
 
   if (action === "reset_owner_login") {

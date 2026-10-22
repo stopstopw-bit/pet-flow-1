@@ -8,6 +8,7 @@ import {
 import { PLATFORM_SESSION_COOKIE, verifyPlatformSession } from "@/lib/platform-auth";
 import { TENANT_COOKIE, TENANT_SLUG_HEADER } from "@/lib/tenant-resolve";
 import { rateLimit, clientKey } from "@/lib/rate-limit";
+import { isPlatformHost, slugForHost } from "@/lib/tenant-domain";
 
 /**
  * ด่านตรวจสิทธิ์ก่อนเข้าถึงหลังบ้าน + จับร้าน (multi-tenant, path-based)
@@ -19,6 +20,9 @@ import { rateLimit, clientKey } from "@/lib/rate-limit";
  * Multi-tenant (R3): ลูกค้าเข้าผ่าน /s/<slug>/... — ด่านนี้ตัด prefix ออก, ใส่ header
  * x-tenant-slug ให้ route อ่าน, ตั้ง cookie pf_tenant เพื่อให้ API call ต่อ ๆ มา
  * (ที่ไม่มี /s) ยังรู้ว่าเป็นร้านไหน แล้ว rewrite ไป path จริง
+ *
+ * โดเมนของร้านเอง (เช่น catcha.com — ตั้งในหน้า /platform ดู CUSTOM_DOMAIN.md): ทุกคำขอบนโดเมนนั้น
+ * เป็นของร้านนั้นร้านเดียว ไม่ต้องมี /s/<slug> ในลิงก์ (มีก็ได้ถ้าเป็นร้านเดียวกัน) ร้านอื่นเปิดไม่ได้
  */
 
 /** เปิดสาธารณะจริง ๆ — แอปลูกค้าใน LINE, webhook ของ LINE/Telegram, cron, ไฟล์ที่ LINE มาดึง */
@@ -151,16 +155,44 @@ function limitFor(pathname: string, method: string) {
   return { limit: 240, windowMs: 60_000 };
 }
 
+function notFound(message: string, status = 404) {
+  return new NextResponse(message, {
+    status,
+    headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
+  });
+}
+
 export async function middleware(req: NextRequest) {
+  // ── โดเมนของร้านเอง → ร้านนั้นร้านเดียว ───────────────────────────────────
+  const host = (req.headers.get("host") || req.nextUrl.host || "").toLowerCase();
+  let domainSlug: string | null = null;
+  if (!isPlatformHost(host)) {
+    try {
+      domainSlug = await slugForHost(host);
+    } catch {
+      // ต่อฐานไม่ได้ — ห้ามเดาร้าน (ไม่งั้นโดเมนร้านหนึ่งอาจไปโชว์หน้าของร้าน PetFlow/ร้านอื่น)
+      return notFound("ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้งนะคะ", 503);
+    }
+    // โดเมนที่ชี้มาที่เราแต่ยังไม่ได้ผูกกับร้านไหน — ไม่โชว์อะไรเลย
+    if (!domainSlug) return notFound("ยังไม่ได้ผูกโดเมนนี้กับร้านใน PetFlow");
+  }
+
   // ── จับร้านจาก /s/<slug>/... (path-based tenant) ───────────────────────────
   // ตัด prefix ออกก่อน แล้วให้ด่านตรวจสิทธิ์ด้านล่างทำงานบน path จริง
   let pathname = req.nextUrl.pathname;
-  let tenantSlug: string | null = null;
+  let tenantSlug: string | null = domainSlug;
   const slugMatch = pathname.match(/^\/s\/([a-z0-9-]+)(\/.*|)$/i);
   if (slugMatch) {
+    // บนโดเมนของร้าน เปิด /s/<ร้านอื่น> ไม่ได้ — โดเมนนี้เป็นของร้านนี้ร้านเดียว
+    if (domainSlug && slugMatch[1].toLowerCase() !== domainSlug) return notFound("ไม่พบหน้านี้");
     tenantSlug = slugMatch[1].toLowerCase();
     pathname = slugMatch[2] || "/";
   }
+  // ผู้ดูแลระบบเข้าได้เฉพาะโดเมนของแพลตฟอร์ม — ไม่เปิดหน้า /platform บนโดเมนร้าน
+  if (domainSlug && /^\/(api\/)?platform(\/|$)/.test(pathname)) return notFound("ไม่พบหน้านี้");
+
+  /** path ของร้านนี้สำหรับ redirect — บนโดเมนร้านไม่ต้องมี /s/<slug> */
+  const shopPath = (slug: string, p: string) => (domainSlug ? p : `/s/${slug}${p}`);
 
   // ต้องลบ header นี้ทิ้งก่อนเสมอ — ถ้าไม่ลบ ผู้เรียกยิง API ตรง (ไม่ผ่าน /s/<slug>)
   // แล้วปลอม x-tenant-slug เองได้ จะสวมรอยเข้าข้อมูลร้านอื่นผ่าน route สาธารณะ (LIFF) ได้ทันที
@@ -188,7 +220,8 @@ export async function middleware(req: NextRequest) {
   const shopCookieName = pageShop ? shopSessionCookie(pageShop) : null;
   const shopToken = shopCookieName ? req.cookies.get(shopCookieName)?.value : undefined;
   const sessionCookieName = shopToken && shopCookieName ? shopCookieName : SESSION_COOKIE;
-  const sessionToken = shopToken ?? req.cookies.get(SESSION_COOKIE)?.value;
+  // บนโดเมนร้าน ใช้ได้แค่คุกกี้ของร้านนั้น — ไม่ใช้คุกกี้กลาง (petflow_session) ที่อาจเป็นของร้านอื่น
+  const sessionToken = shopToken ?? (domainSlug ? undefined : req.cookies.get(SESSION_COOKIE)?.value);
   requestHeaders.delete(SESSION_COOKIE_NAME_HEADER);
   requestHeaders.set(SESSION_COOKIE_NAME_HEADER, sessionCookieName);
   if (shopToken) {
@@ -219,14 +252,16 @@ export async function middleware(req: NextRequest) {
 
   /** ปล่อยผ่าน — ถ้ามาจาก /s/<slug> ต้อง rewrite ไป path จริง + แนบ header/cookie */
   function proceed(): NextResponse {
-    if (tenantSlug) {
+    if (tenantSlug && pathname !== req.nextUrl.pathname) {
       const dest = req.nextUrl.clone();
       dest.pathname = pathname;
       const res = NextResponse.rewrite(dest, { request: { headers: requestHeaders } });
       setTenantCookie(res);
       return res;
     }
-    return NextResponse.next({ request: { headers: requestHeaders } });
+    const res = NextResponse.next({ request: { headers: requestHeaders } });
+    setTenantCookie(res);
+    return res;
   }
 
   /** สำหรับ response ที่ปฏิเสธ (redirect/401) — ยังตั้ง cookie ร้านไว้ให้ครั้งถัดไป */
@@ -252,7 +287,7 @@ export async function middleware(req: NextRequest) {
     (pathname === "/" || /^\/(cat-bath|cat-hotel|blog)(\/|$)/.test(pathname))
   ) {
     const url = req.nextUrl.clone();
-    url.pathname = `/s/${tenantSlug}/app`;
+    url.pathname = shopPath(tenantSlug, "/app");
     url.search = "";
     return withCookie(NextResponse.redirect(url));
   }
@@ -317,7 +352,8 @@ export async function middleware(req: NextRequest) {
     if (matches(pathname, SHARED_API)) return proceed();
 
     const session = await verifySession(sessionToken);
-    if (!session) {
+    // บนโดเมนร้าน ต้องเป็นบัญชีของร้านนั้นเท่านั้น
+    if (!session || (domainSlug && session.tenantSlug !== domainSlug)) {
       return withCookie(
         NextResponse.json(
           { error: "unauthorized", message: "ต้องเข้าสู่ระบบหลังบ้านก่อน" },
@@ -361,14 +397,14 @@ export async function middleware(req: NextRequest) {
     const session = await verifySession(sessionToken);
     if (!session) {
       const url = req.nextUrl.clone();
-      url.pathname = tenantSlug ? `/s/${tenantSlug}/admin/login` : "/admin/login";
+      url.pathname = tenantSlug ? shopPath(tenantSlug, "/admin/login") : "/admin/login";
       url.search = `?next=${encodeURIComponent(req.nextUrl.pathname)}`;
       return withCookie(NextResponse.redirect(url));
     }
     // เปิดลิงก์ของร้านหนึ่ง แต่คุกกี้ล็อกอินค้างเป็นของอีกร้าน — ห้ามโชว์หลังบ้านร้านที่ค้างอยู่
     if (tenantSlug && session.tenantSlug !== tenantSlug) {
       const url = req.nextUrl.clone();
-      url.pathname = `/s/${tenantSlug}/admin/login`;
+      url.pathname = shopPath(tenantSlug, "/admin/login");
       url.search = "";
       return withCookie(NextResponse.redirect(url));
     }
@@ -378,5 +414,12 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/api/:path*", "/admin/:path*", "/platform/:path*", "/s/:path*", "/app", "/app/:path*"],
+  // ทุกหน้า (ยกเว้นไฟล์ของ Next และรูป/ไฟล์ใน public) — โดเมนของร้านต้องผ่านด่านนี้ทุกหน้า
+  // ไม่งั้นเปิด catcha.com/ ตรง ๆ จะเห็นหน้าเว็บของ PetFlow แทนร้าน
+  // /api และ /s/... ผ่านด่านทุก path เสมอ (บาง route ลงท้ายด้วย .jpg/.png เช่นไฟล์ส่วนตัว ห้ามหลุดด่าน)
+  matcher: [
+    "/api/:path*",
+    "/s/:path*",
+    "/((?!api/|s/|_next/static|_next/image|favicon\\.ico|.*\\.(?:png|jpe?g|gif|webp|svg|ico|mp4|webm|woff2?|css|js|map)$).*)",
+  ],
 };

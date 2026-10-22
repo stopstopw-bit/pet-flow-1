@@ -591,6 +591,15 @@ where staff_note like '%🎁%';`,
     sql: "alter table tenants add column if not exists due_date date;",
   },
   {
+    // โดเมนของร้านเอง (เช่น catcha.com) — middleware ใช้หาร้านจากชื่อโดเมน ดู tenant-domain.ts
+    // ห้ามซ้ำ: โดเมนเดียวชี้ได้ร้านเดียวเท่านั้น
+    name: "tenants.custom_domain",
+    sql: `
+      alter table tenants add column if not exists custom_domain text;
+      create unique index if not exists tenants_custom_domain_key on tenants (custom_domain) where custom_domain is not null;
+    `,
+  },
+  {
     // ค่าบริการ PetFlow — ราคา/บัญชีรับเงิน (platform_settings) + สลิปที่ร้านส่งมาให้อนุมัติ (tenant_payments)
     name: "subscriptions.setup",
     sql: `
