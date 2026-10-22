@@ -24,6 +24,7 @@ import {
   buildGroomInfoBody,
   buildGroomInfoEditBody,
   getBookingTimeUrl,
+  checkinPickerSender,
   getGroomInfoUrl,
   getConsentUrl,
   bookingScheduleText,
@@ -340,15 +341,18 @@ async function runForTenant() {
         );
       }
       // แนบการ์ดเลือกเวลาเช็คอินไปเลย — ไม่ต้องรอส่งแยกอีกวัน
-      const checkinUrl = await getBookingTimeUrl(b.id, "checkin");
-      prestayBundle.push(
-        buildTimePickerFlex({
-          title: "🕒 เลือกเวลาเข้าพัก",
-          body: buildCheckinBodyText(b, cfg),
-          url: checkinUrl || undefined,
-          label: "🕒 เลือกเวลาส่งน้อง",
-        }, cfg.cards?.timePicker)
-      );
+      // (ข้ามถ้าเลือกเวลาแล้ว หรือ cron เตือนเช็คอินเป็นคนส่งแทน — บ้านหนึ่งได้การ์ดนี้ใบเดียว)
+      if (checkinPickerSender(group, cfg) === "prestay") {
+        const checkinUrl = await getBookingTimeUrl(b.id, "checkin");
+        prestayBundle.push(
+          buildTimePickerFlex({
+            title: "🕒 เลือกเวลาเข้าพัก",
+            body: buildCheckinBodyText(b, cfg),
+            url: checkinUrl || undefined,
+            label: "🕒 เลือกเวลาส่งน้อง",
+          }, cfg.cards?.timePicker)
+        );
+      }
       try {
         await pushLineMessage(to, prestayBundle);
         prestayReminders++;
