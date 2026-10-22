@@ -25,9 +25,22 @@ export async function buildDayScheduleMessage(
   const all = await listBookings();
   // ยกเลิก/ไม่มา ไม่ต้องขึ้นตารางงาน — ไม่มีอะไรให้ทำแล้ว
   const live = all.filter((b) => b.status !== "cancelled" && b.status !== "no_show");
-  const groom = live.filter((b) => b.service === "groom" && b.date === date);
-  const checkin = live.filter((b) => b.service === "room" && b.checkin === date);
-  const checkout = live.filter((b) => b.service === "room" && b.checkout === date);
+  // เรียงตามเวลา ให้อ่านเป็นไทม์ไลน์ของวัน — ยังไม่แจ้งเวลาไว้ท้าย
+  const byTime = (pick: (b: (typeof live)[number]) => string | undefined) =>
+    (a: (typeof live)[number], b: (typeof live)[number]) =>
+      (pick(a) || "99").localeCompare(pick(b) || "99");
+  const groom = live
+    .filter((b) => b.service === "groom" && b.date === date)
+    .sort(byTime((b) => b.time));
+  const checkin = live
+    .filter((b) => b.service === "room" && b.checkin === date)
+    .sort(byTime((b) => b.arrivalTime));
+  const checkout = live
+    .filter((b) => b.service === "room" && b.checkout === date)
+    .sort(byTime((b) => b.pickupTime));
+  // คำเดียวกับปฏิทินร้าน: "มาส่ง 09:00" / "มารับ 17:00" / "ยังไม่แจ้งเวลา"
+  const moveText = (word: string, time?: string) =>
+    time ? `${word} ${time} น.` : `${word} · ยังไม่แจ้งเวลา`;
   // ยังพักอยู่วันนี้ แต่ไม่ใช่วันเข้า/ออก — ไม่งั้นแจ้งแค่วันแรกกับวันสุดท้าย ตัวที่พักยาว
   // หลายคืนตรงกลางจะไม่มีใครเห็นโน้ต/เงื่อนไขที่ลูกค้าเซ็นไว้เลยจนกว่าจะถึงวันออก
   const ongoing = opts?.includeOngoingStays
@@ -82,7 +95,7 @@ export async function buildDayScheduleMessage(
         checkin
           .map(
             (b, i) =>
-              `${i + 1}. ${b.catName} · ${b.customerName} — ห้อง ${b.room || "-"}${b.arrivalTime ? ` · แจ้งเวลา ${b.arrivalTime}` : ""}`
+              `${i + 1}. ${moveText("มาส่ง", b.arrivalTime)} — ${b.catName} · ${b.customerName} · ห้อง ${b.room || "-"}`
           )
           .join("\n")
     );
@@ -93,7 +106,7 @@ export async function buildDayScheduleMessage(
         checkout
           .map(
             (b, i) =>
-              `${i + 1}. ${b.catName} · ${b.customerName} — ห้อง ${b.room || "-"}${b.pickupTime ? ` · แจ้งเวลา ${b.pickupTime}` : ""}`
+              `${i + 1}. ${moveText("มารับ", b.pickupTime)} — ${b.catName} · ${b.customerName} · ห้อง ${b.room || "-"}`
           )
           .join("\n")
     );
