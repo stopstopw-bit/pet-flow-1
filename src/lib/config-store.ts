@@ -6,13 +6,24 @@ import { uploadDataUrlToStorage } from "./supabase/storage";
 import { createHash } from "crypto";
 import { applyBrandCardDefaults, stripBrandCardDefaults } from "./card-brand";
 import { latestShopIntakeAnswers } from "./shop-intake-store";
-import { petKindFromIntake, type PetKind } from "./pet-kind";
+import { petKindFromIntake, speciesOfBreed, type PetKind } from "./pet-kind";
 
 /**
  * ร้านที่ยังไม่ได้ตั้ง business.petKind แต่เคยตอบแบบสอบถามเปิดร้านว่าเป็นร้านหมา (เช่น ร้านที่ตอบก่อนมีค่านี้)
  * — เอาคำตอบนั้นมาใช้เลย ไม่ต้องให้ใครไปกดตั้งซ้ำ · จำไว้ต่อร้านต่อเครื่อง จะได้ไม่ค้นทุกคำขอ
  * ตั้งเองในหน้าตั้งค่าแล้ว = ใช้ค่าที่ตั้งเสมอ
  */
+/**
+ * ทางสำรองเมื่อหาคำตอบแบบสอบถามของร้านไม่เจอ: รายชื่อสายพันธุ์ที่ร้านบันทึกไว้เป็นของหมาล้วน (เช่น ["ปอม"])
+ * = ร้านหมา · มีทั้งสองแบบ = รับทั้งหมาและแมว · ไม่มีพันธุ์หมาเลย = ไม่เดา (คงเป็นร้านแมวตามเดิม)
+ */
+function petKindFromBreeds(breeds: unknown): PetKind | null {
+  if (!Array.isArray(breeds)) return null;
+  const kinds = new Set(breeds.map((b) => speciesOfBreed(String(b))).filter(Boolean));
+  if (!kinds.has("dog")) return null;
+  return kinds.has("cat") ? "both" : "dog";
+}
+
 const intakePetKind = new Map<string, Promise<PetKind | null>>();
 function petKindFromShopIntake(tenant: string): Promise<PetKind | null> {
   let p = intakePetKind.get(tenant);
@@ -205,7 +216,7 @@ async function getRawSiteConfig(): Promise<SiteConfig> {
         updatedAt: data.updated_at || defaults.updatedAt,
       });
       if (!stored.business?.petKind) {
-        const kind = await petKindFromShopIntake(tenant);
+        const kind = (await petKindFromShopIntake(tenant)) || petKindFromBreeds(stored.options?.catBreeds);
         if (kind) merged.business = { ...merged.business, petKind: kind };
       }
       return withShopNameInTexts(merged);
