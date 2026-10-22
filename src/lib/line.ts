@@ -8,6 +8,7 @@ import { hasTransport, transportLabel, type BookingTransport } from "./transport
 import { getLineCredentials } from "./line-config";
 import { DEEMED_CONSENT_NOTICE } from "./messages";
 import type { CardStyleConfig } from "./config-types";
+import { MISS_YOU_DEFAULT_TITLE } from "./miss-you-card";
 
 // สีแบรนด์ของการ์ด LINE — เปลี่ยนจากเขียวเดิม (#5A8F5A/#4A7348) มาเป็นโทน CI ของร้าน
 // (plum หัวการ์ด + rose ปุ่ม) ให้เข้ากับหน้าแอป · ร้านที่อยากได้สีอื่นตั้ง headerColor/buttonColor
@@ -2803,6 +2804,94 @@ export function buildPointsAwardFlex(data: {
     contents: {
       type: "bubble",
       body: { type: "box", layout: "vertical", contents },
+    },
+  };
+}
+
+/**
+ * การ์ด "คิดถึงน้อง" — ทักลูกค้าที่หายไปนาน (ปุ่มในหน้าลูกค้า + ส่งอัตโนมัติ)
+ * body = ข้อความตามลูกค้าที่ร้านตั้งไว้ (เติมชื่อ/น้อง/จำนวนวันแล้ว)
+ * หัว/หัวข้อ/สี/ปุ่ม แก้ได้ในหน้า "ปรับแต่งการ์ด LINE" → cards.missYou
+ */
+export function buildMissYouFlex(data: {
+  body: string;
+  shopName?: string;
+  buttons?: { label: string; uri: string }[];
+}, style?: CardStyleConfig) {
+  const show = (k: string) => style?.show?.[k] !== false;
+  const buttonColor = style?.buttonColor || BRAND_ACTION;
+  const contents: Record<string, unknown>[] = [];
+  const title = style?.texts?.title || MISS_YOU_DEFAULT_TITLE;
+  contents.push({
+      type: "text",
+      text: title,
+      weight: "bold",
+      size: style?.titleSize || "lg",
+    color: "#5C4033",
+    wrap: true,
+  });
+  contents.push({
+    type: "text",
+    text: data.body,
+    size: "sm",
+    color: "#4E3E32",
+    margin: "md",
+    wrap: true,
+  });
+  if (style?.closing) {
+    contents.push({
+      type: "text",
+      text: style.closing,
+      size: "xs",
+      color: "#A2907E",
+      margin: "lg",
+      wrap: true,
+    });
+  }
+  const buttons = (data.buttons || []).slice(0, 3);
+
+  return {
+    type: "flex",
+    altText: data.body.split("\n")[0].slice(0, 100) || "คิดถึงน้องนะคะ",
+    contents: {
+      type: "bubble",
+      ...(show("header")
+        ? {
+            header: {
+              type: "box",
+              layout: "vertical",
+              backgroundColor: style?.headerColor || BRAND_HEADER,
+              paddingAll: "16px",
+              contents: [
+                {
+                  type: "text",
+                  text: style?.texts?.header || `🐾 ${data.shopName || "ร้านของเรา"}`,
+                  color: style?.headerTextColor || "#FFFFFF",
+                  weight: "bold",
+                  size: "md",
+                  wrap: true,
+                },
+              ],
+            },
+          }
+        : {}),
+      body: { type: "box", layout: "vertical", paddingAll: "16px", contents },
+      ...(buttons.length
+        ? {
+            footer: {
+              type: "box",
+              layout: "vertical",
+              spacing: "sm",
+              contents: buttons.map((b, i) => ({
+                type: "button",
+                style: i === 0 ? "primary" : "secondary",
+                ...(i === 0 ? { color: buttonColor } : {}),
+                height: "sm",
+                action: { type: "uri", label: b.label.slice(0, 40), uri: b.uri },
+              })),
+            },
+          }
+        : {}),
     },
   };
 }
