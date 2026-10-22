@@ -13,6 +13,7 @@ import { TIER_LABELS, tierBadgeClass } from "@/lib/customer-tier";
 import { RegistrationQrSection } from "@/components/LineSetupSection";
 import { AddCustomerModal } from "@/components/AddCustomerModal";
 import { EditCustomerSheet } from "@/components/EditCustomerSheet";
+import { PetServiceHistory } from "@/components/PetServiceHistory";
 import { toast } from "@/components/Toast";
 import { PreviewSendModal } from "@/components/PreviewSendModal";
 import { CustomerLinkSection } from "@/components/CustomerLinkSection";
@@ -3173,6 +3174,14 @@ export default function CustomersPage() {
           </div>
           <AddCatForm customerId={c.id} onAdded={() => open(c.id)} />
         </section>
+
+        <PetServiceHistory
+          cats={c.cats}
+          bookings={[
+            ...(selected.history.upcomingBookings || []),
+            ...(selected.history.pastBookings || []),
+          ]}
+        />
 
         <RoomPlanSection
           customerId={c.id}
