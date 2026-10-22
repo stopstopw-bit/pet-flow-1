@@ -2509,6 +2509,7 @@ const AUTOMATION_DEFAULT = {
   reviewRequestEnabled: true,
   reviewRequestDaysAfter: 1,
   groomInfoEnabled: true,
+  intakeAutoEnabled: true,
   freeLitterMinNights: 3,
   birthdayEnabled: true,
   birthdayCouponEnabled: true,
@@ -2780,6 +2781,18 @@ function AutomationTab({
         />
         <p className="mt-1 text-[10px] text-brown-soft">
           นัดอาบน้ำ: หลังส่งการ์ดยืนยันนัด จะส่งการ์ดให้ลูกค้ากรอกประวัติน้อง (โรค/นิสัย/แพ้) ต่อทันที
+        </p>
+      </div>
+
+      <div className="rounded-petflow-sm border border-petflow-line p-3">
+        <Toggle
+          label="ถามข้อมูลก่อนรับน้องอัตโนมัติ"
+          checked={form.intakeAutoEnabled !== false}
+          onChange={(v) => set({ intakeAutoEnabled: v })}
+        />
+        <p className="mt-1 text-[10px] text-brown-soft">
+          ส่งเฉพาะใบที่ลูกค้ายังไม่ได้ส่ง — นัดเข้าพัก: ข้อมูลน้องก่อนเข้าพัก สมุดวัคซีน บัตรประชาชน และกฎ + กดยินยอม
+          พ่วงไปกับชุดแจ้งเตรียมตัวก่อนเข้าพัก · นัดอาบน้ำ: สมุดวัคซีน และกฎ + กดยินยอม พ่วงไปกับการ์ดยืนยันนัด
         </p>
       </div>
 

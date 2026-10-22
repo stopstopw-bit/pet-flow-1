@@ -13,6 +13,7 @@ import {
   buildGroomInfoFlex,
   buildBillSummaryFlex,
   buildConsentFlex,
+  buildDocRequestFlex,
   politeCat,
 } from "@/lib/line";
 import { getPaymentConfig } from "@/lib/payment-config";
@@ -26,9 +27,12 @@ import {
   checkinPickerSender,
   getGroomInfoUrl,
   getConsentUrl,
+  getPetDocsUrl,
+  buildStayInfoBody,
   bookingScheduleText,
 } from "@/lib/booking-reminders";
-import { listCustomers, getCatGroomInfo, getCatStaffNotes } from "@/lib/customers-store";
+import { listCustomers, getCatGroomInfo, getCatStaffNotes, getIntakeStatus } from "@/lib/customers-store";
+import type { StoredBooking } from "@/lib/bookings-store";
 import { parseGroomInfo, groomInfoSummary } from "@/lib/groom-info";
 import { resolveGroomForm } from "@/lib/groom-form";
 import { renderTemplate, DEFAULT_MESSAGES } from "@/lib/messages";
@@ -66,6 +70,114 @@ export async function GET(req: NextRequest) {
     })
   );
   return NextResponse.json({ ok: true, tenants: results.length, results });
+}
+
+/** LINE รับได้สูงสุด 5 การ์ดต่อ 1 push — เกินนั้นแบ่งส่งเป็นหลายครั้ง */
+async function pushInChunks(to: string, messages: object[]) {
+  for (let i = 0; i < messages.length; i += 5) {
+    await pushLineMessage(to, messages.slice(i, i + 5));
+  }
+}
+
+/**
+ * การ์ดถามข้อมูลก่อนรับน้องที่บ้านนี้ยังขาด (ชุดเดียวกับหน้าข้อมูลลูกค้า) — พ่วงไปกับการ์ดอัตโนมัติรอบนั้น
+ * ส่งเฉพาะที่ลูกค้ายังไม่ได้ส่ง และนัดไม่ได้ปิดหัวข้อนั้นไว้ · กฎ + กดยินยอม แยกส่งโดยคนเรียก
+ * room = ข้อมูลก่อนเข้าพัก + สมุดวัคซีน + บัตรประชาชน · groom = สมุดวัคซีนอย่างเดียว (ประวัติอาบน้ำมีของเดิมแล้ว)
+ */
+async function intakeCardsFor(
+  group: StoredBooking[],
+  mode: "room" | "groom",
+  cfg: Awaited<ReturnType<typeof getSiteConfig>>
+): Promise<object[]> {
+  if (cfg.automation?.intakeAutoEnabled === false) return [];
+  const primary = group[0];
+  const to = primary.lineUserId;
+  if (!to) return [];
+  const status = await Promise.all(group.map((x) => getIntakeStatus(String(x.lineUserId || to), x.catName)));
+  const out: object[] = [];
+  const names = (xs: StoredBooking[]) => xs.map((x) => x.catName).join(", ");
+
+  if (mode === "room") {
+    const needStay = group.filter((x, i) => !autoMuted(x, "stayInfo") && !status[i].stayInfo);
+    if (needStay.length > 0) {
+      const url = await getGroomInfoUrl(needStay.map((x) => x.id), "stay");
+      const style = cfg.cards?.groomInfo;
+      const btn = style?.texts?.button || "🩺 แจ้งประวัติน้อง";
+      out.push(
+        buildGroomInfoFlex(
+          {
+            catName: names(needStay),
+            dateText: bookingScheduleText(primary),
+            body: buildStayInfoBody(
+              { catName: needStay.length > 1 ? `น้องๆ ${needStay.length} ตัว` : names(needStay) },
+              cfg
+            ),
+            url: url || undefined,
+            label: needStay.length > 1 ? `${btn} (${needStay.length} ตัว)` : btn,
+          },
+          { ...style, texts: { ...style?.texts, header: style?.texts?.header || "🐾 ข้อมูลน้องก่อนเข้าพัก" } }
+        )
+      );
+    }
+  }
+
+  const needVaccine = group.filter(
+    (x, i) => !autoMuted(x, "vaccine") && !status[i].vaccine && !x.vaccinePhotoUrl
+  );
+  if (needVaccine.length > 0) {
+    const url = await getPetDocsUrl(needVaccine.map((x) => x.id), "vaccine");
+    if (url) {
+      out.push(
+        buildDocRequestFlex({
+          kind: "vaccine",
+          businessName: cfg.business.name,
+          catName: names(needVaccine),
+          dateText: bookingScheduleText(primary),
+          url,
+        })
+      );
+    }
+  }
+
+  if (mode === "room" && !group.every((x) => autoMuted(x, "idcard")) && !status[0].idCard) {
+    const url = await getPetDocsUrl([primary.id], "idcard");
+    if (url) {
+      out.push(
+        buildDocRequestFlex({
+          kind: "idcard",
+          businessName: cfg.business.name,
+          catName: names(group),
+          dateText: bookingScheduleText(primary),
+          url,
+        })
+      );
+    }
+  }
+  return out;
+}
+
+/** การ์ดกฎ + กดยินยอม ของนัดนี้ — ทุกนัดต้องกดยอมรับใหม่ (ลูกค้าเก่าก็ด้วย) ยอมรับแล้วไม่ส่งซ้ำ */
+async function consentCardFor(
+  group: StoredBooking[],
+  b: StoredBooking,
+  cfg: Awaited<ReturnType<typeof getSiteConfig>>
+): Promise<object | null> {
+  if (group.every((x) => autoMuted(x, "consent")) || group.every((x) => x.consentAcceptedAt)) return null;
+  const consentUrl = await getConsentUrl(b.id);
+  if (!consentUrl) return null;
+  return buildConsentFlex(
+    {
+      businessName: cfg.business.name,
+      title: cfg.messages.consentTitle || DEFAULT_MESSAGES.consentTitle,
+      catName: String(b.catName),
+      checkin: b.checkin || b.date,
+      checkout: b.checkout,
+      room: b.room,
+      terms: cfg.messages.consentTerms?.length ? cfg.messages.consentTerms : DEFAULT_MESSAGES.consentTerms,
+      url: consentUrl,
+    },
+    cfg.cards?.consent
+  );
 }
 
 async function runForTenant() {
@@ -193,7 +305,17 @@ async function runForTenant() {
         }
       }
 
-      await pushLineMessage(primary.lineUserId, dayMessages);
+      // นัดอาบน้ำ: ถามสมุดวัคซีน + กฎ/กดยินยอม ที่ยังขาด พ่วงไปกับการ์ดยืนยันเลย
+      // (นัดเข้าพักถามในชุดก่อนเข้าพักแทน — ส่งล่วงหน้ากว่า มีเวลาเตรียม)
+      if (primary.service === "groom") {
+        dayMessages.push(...(await intakeCardsFor(group, "groom", cfg)));
+        if (cfg.automation?.intakeAutoEnabled !== false) {
+          const consent = await consentCardFor(group, primary, cfg);
+          if (consent) dayMessages.push(consent);
+        }
+      }
+
+      await pushInChunks(primary.lineUserId, dayMessages);
       sent++;
     } catch (e) {
       errors.push(`${primary.id}: ${String(e)}`);
@@ -268,7 +390,6 @@ async function runForTenant() {
       !groupMuted("prestay") &&
       b.checkin === in3
     ) {
-      const consentUrl = await getConsentUrl(b.id);
       const prestayBundle: object[] = [
         // การ์ดเตรียมตัว (ไม่มีลิงก์เซ็นแล้ว) + การ์ดเงื่อนไข/ลายเซ็น แยกกันคนละใบ
         buildPrestayFlex({
@@ -276,22 +397,9 @@ async function runForTenant() {
           consentUrl: undefined,
         }, cfg.cards?.prestay),
       ];
-      if (consentUrl) {
-        prestayBundle.push(
-          buildConsentFlex({
-            businessName: cfg.business.name,
-            title: cfg.messages.consentTitle || DEFAULT_MESSAGES.consentTitle,
-            catName: String(b.catName),
-            checkin: b.checkin || b.date,
-            checkout: b.checkout,
-            room: b.room,
-            terms: cfg.messages.consentTerms?.length
-              ? cfg.messages.consentTerms
-              : DEFAULT_MESSAGES.consentTerms,
-            url: consentUrl,
-          }, cfg.cards?.consent)
-        );
-      }
+      // กฎ + กดยินยอม — ปิดรายนัดได้ และไม่ส่งซ้ำถ้ากดยอมรับนัดนี้แล้ว
+      const consent = await consentCardFor(group, b, cfg);
+      if (consent) prestayBundle.push(consent);
       // มีบิลค้าง + มัดจำแล้ว → แนบการ์ดยอดคงเหลือที่ต้องโอนก่อนเข้าพัก
       const pendingInv = allInvoices.find(
         (i) => i.bookingId && ids.includes(i.bookingId) && i.status === "pending" && (i.deposit || 0) > 0
@@ -332,8 +440,10 @@ async function runForTenant() {
           }, cfg.cards?.timePicker)
         );
       }
+      // ข้อมูลก่อนเข้าพัก / สมุดวัคซีน / บัตรประชาชน ที่ยังขาด — ต่อท้ายชุดเดียวกัน (เกิน 5 ใบแบ่งส่ง)
+      prestayBundle.push(...(await intakeCardsFor(group, "room", cfg)));
       try {
-        await pushLineMessage(to, prestayBundle);
+        await pushInChunks(to, prestayBundle);
         prestayReminders++;
       } catch (e) {
         errors.push(`prestay ${b.id}: ${String(e)}`);
