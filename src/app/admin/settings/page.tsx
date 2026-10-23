@@ -840,6 +840,19 @@ function PaymentTab({
   );
 }
 
+/** หมวดของหน้าข้อความ — เรียงตามลำดับที่ลูกค้าเจอจริง ตั้งแต่จองจนหลังกลับบ้าน */
+const MESSAGE_SECTIONS = [
+  { id: "bill", emoji: "💰", title: "สรุปยอด / เก็บเงิน", hint: "หัวเรื่องและข้อความปิดท้าย ตอนกดคิดเงิน" },
+  { id: "deposit", emoji: "🧡", title: "มัดจำ", hint: "การ์ดเรียกมัดจำ · ขอบคุณ · เงื่อนไข · เตือนยอดคงเหลือ" },
+  { id: "consent", emoji: "📋", title: "กฎ + กดยินยอม", hint: "ข้อตกลงที่ลูกค้าอ่านแล้วกดยอมรับ" },
+  { id: "groom", emoji: "🛁", title: "ก่อนอาบน้ำ / นวด", hint: "ข้อความชวนกรอกประวัติก่อนอาบน้ำ" },
+  { id: "prestay", emoji: "🏠", title: "ก่อนเข้าพัก", hint: "การ์ดแจ้งเข้าพัก · ของที่ต้องเตรียม · เตือนเช็คอิน" },
+  { id: "after", emoji: "👋", title: "รับกลับ / หลังเข้าพัก", hint: "เตือนเช็คเอาท์ · ขอรีวิว" },
+  { id: "crm", emoji: "💌", title: "ตามลูกค้า + วันเกิด", hint: "ตามลูกค้าที่หายไป · อวยพรวันเกิด" },
+] as const;
+
+type MessageSectionId = (typeof MESSAGE_SECTIONS)[number]["id"];
+
 function MessagesTab({
   config,
   saving,
@@ -852,232 +865,302 @@ function MessagesTab({
   const [bill, setBill] = useState(config.billing);
   const [msgs, setMsgs] = useState(config.messages);
   const [crm, setCrm] = useState(config.crm);
+  const [open, setOpen] = useState<Set<MessageSectionId>>(new Set());
   useEffect(() => setBill(config.billing), [config.billing]);
   useEffect(() => setMsgs(config.messages), [config.messages]);
   useEffect(() => setCrm(config.crm), [config.crm]);
 
+  const toggle = (id: MessageSectionId) =>
+    setOpen((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  /** กดชิปด้านบน: เปิดหมวดนั้นแล้วเลื่อนไปหา */
+  const jump = (id: MessageSectionId) => {
+    setOpen((s) => new Set(s).add(id));
+    requestAnimationFrame(() =>
+      document.getElementById(`msg-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" })
+    );
+  };
+  const section = (id: MessageSectionId, children: React.ReactNode) => {
+    const s = MESSAGE_SECTIONS.find((x) => x.id === id)!;
+    const isOpen = open.has(id);
+    return (
+      <section id={`msg-${id}`} className="scroll-mt-16 overflow-hidden rounded-petflow bg-card shadow-petflow-sm">
+        <button
+          type="button"
+          onClick={() => toggle(id)}
+          aria-expanded={isOpen}
+          className="flex w-full items-center gap-3 px-4 py-3.5 text-left"
+        >
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-honey/30 text-xl">
+            {s.emoji}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-base font-extrabold text-petflow-chocolate">{s.title}</span>
+            <span className="block text-[11px] text-brown-soft">{s.hint}</span>
+          </span>
+          <span className={`shrink-0 text-brown-soft transition-transform ${isOpen ? "rotate-90" : ""}`}>
+            <Icon name="chevron" size={18} />
+          </span>
+        </button>
+        {isOpen && <div className="space-y-4 border-t border-petflow-line px-4 pb-4 pt-3">{children}</div>}
+      </section>
+    );
+  };
+  const sub = (text: string) => (
+    <p className="border-l-4 border-honey pl-2 text-sm font-extrabold text-petflow-chocolate">{text}</p>
+  );
+  const lines = (v: string) => v.split("\n").map((s) => s.trim()).filter(Boolean);
+
   return (
     <form
-      className="space-y-3 rounded-petflow bg-card p-4 shadow-petflow-sm"
+      className="space-y-3"
       onSubmit={(e) => {
         e.preventDefault();
         onSave({ billing: bill, messages: msgs, crm });
       }}
     >
-      <p className="text-xs font-extrabold text-petflow-chocolate">
-        สรุปยอด / แจ้งมัดจำ / เก็บเงิน (ตอนกดคิดเงิน)
-      </p>
-      <Field
-        label="หัวเรื่อง — สรุปการจอง"
-        value={bill?.summaryBookingTitle || ""}
-        onChange={(v) => setBill({ ...bill, summaryBookingTitle: v })}
-      />
-      <Field
-        label="หัวเรื่อง — แจ้งมัดจำ"
-        value={bill?.summaryDepositTitle || ""}
-        onChange={(v) => setBill({ ...bill, summaryDepositTitle: v })}
-      />
-      <Field
-        label="หัวเรื่อง — แจ้งยอดเต็ม (เก็บเงิน)"
-        value={bill?.summaryFullTitle || ""}
-        onChange={(v) => setBill({ ...bill, summaryFullTitle: v })}
-      />
-      <Field
-        label="ข้อความปิดท้าย (ทุกแบบ)"
-        value={bill?.summaryClosing || ""}
-        onChange={(v) => setBill({ ...bill, summaryClosing: v })}
-      />
+      <div className="rounded-petflow bg-card p-3 shadow-petflow-sm">
+        <p className="px-1 pb-2 text-[11px] font-bold text-brown-soft">กดหัวข้อที่อยากแก้</p>
+        <div className="flex flex-wrap gap-1.5">
+          {MESSAGE_SECTIONS.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => jump(s.id)}
+              className={`min-h-[36px] rounded-full border px-3 text-xs font-bold ${
+                open.has(s.id)
+                  ? "border-petflow-chocolate bg-petflow-chocolate text-card"
+                  : "border-petflow-line bg-paper text-petflow-chocolate"
+              }`}
+            >
+              {s.emoji} {s.title}
+            </button>
+          ))}
+        </div>
+        <div className="flex justify-end gap-3 px-1 pt-2 text-[11px] font-bold text-brown-soft">
+          <button type="button" onClick={() => setOpen(new Set(MESSAGE_SECTIONS.map((s) => s.id)))}>
+            เปิดทั้งหมด
+          </button>
+          <button type="button" onClick={() => setOpen(new Set())}>
+            ปิดทั้งหมด
+          </button>
+        </div>
+      </div>
 
-      <hr className="border-petflow-line" />
-      <p className="text-xs font-extrabold text-petflow-chocolate">
-        ⏰ เตือนอัตโนมัติก่อนเข้าพัก
-      </p>
-      <TextAreaField
-        label="เตือนยอดคงเหลือ (7 วันก่อนเข้าพัก)"
-        hint="ใช้ได้: {shop} {cat} {checkin} {deposit} {remaining} {bank} {accountNumber} {accountName}"
-        value={msgs?.depositReminder || ""}
-        onChange={(v) => setMsgs({ ...msgs, depositReminder: v })}
-        rows={7}
-      />
-      <p className="text-[11px] font-bold text-brown-soft">
-        การ์ดแจ้งเข้าพัก (จัดรูปแบบสวยงามอัตโนมัติ · ส่ง 3 วันก่อนเข้าพัก)
-      </p>
-      <TextAreaField
-        label="ทักทายเปิดการ์ด"
-        hint="ใช้ได้: {shop} {cat}"
-        value={msgs?.prestayIntro || ""}
-        onChange={(v) => setMsgs({ ...msgs, prestayIntro: v })}
-        rows={2}
-      />
-      <TextAreaField
-        label="เกริ่นก่อนลิสต์ของที่ต้องเตรียม"
-        value={msgs?.prestayPrepIntro || ""}
-        onChange={(v) => setMsgs({ ...msgs, prestayPrepIntro: v })}
-        rows={2}
-      />
-      <TextAreaField
-        label="ของที่ต้องเตรียม (1 บรรทัด = 1 ข้อ · ใส่อีโมจิหน้าได้)"
-        value={(msgs?.prestayPrepItems || []).join("\n")}
-        onChange={(v) =>
-          setMsgs({
-            ...msgs,
-            prestayPrepItems: v.split("\n").map((s) => s.trim()).filter(Boolean),
-          })
-        }
-        rows={4}
-      />
-      <TextAreaField
-        label="ข้อความปิดท้าย (ชวนแจ้งการดูแลพิเศษ)"
-        hint="ใช้ได้: {cat}"
-        value={msgs?.prestayCareNote || ""}
-        onChange={(v) => setMsgs({ ...msgs, prestayCareNote: v })}
-        rows={3}
-      />
-      <TextAreaField
-        label="ข้อความเตือนให้เตรียมทราย (เฉพาะเข้าพักสั้นกว่าเกณฑ์แถมฟรี)"
-        hint="ใช้ได้: {min} = จำนวนคืนขั้นต่ำที่แถมทรายฟรี (ตั้งในแท็บ ⏰ อัตโนมัติ)"
-        value={msgs?.prestayLitterNote || ""}
-        onChange={(v) => setMsgs({ ...msgs, prestayLitterNote: v })}
-        rows={3}
-      />
-      <TextAreaField
-        label="เตือนเช็คอิน (ก่อนวันเข้าพัก)"
-        hint="ใช้ได้: {shop} {cat} {checkin} {room} {litterNote}"
-        value={msgs?.checkinReminder || ""}
-        onChange={(v) => setMsgs({ ...msgs, checkinReminder: v })}
-        rows={8}
-      />
-      <TextAreaField
-        label="เตือนเช็คเอาท์ (ก่อนวันออก)"
-        hint="ใช้ได้: {shop} {cat} {checkout}"
-        value={msgs?.checkoutReminder || ""}
-        onChange={(v) => setMsgs({ ...msgs, checkoutReminder: v })}
-        rows={6}
-      />
-      <TextAreaField
-        label="ขอรีวิว (หลังเช็คเอาท์)"
-        hint="ใช้ได้: {shop} {cat}"
-        value={msgs?.reviewRequest || ""}
-        onChange={(v) => setMsgs({ ...msgs, reviewRequest: v })}
-        rows={5}
-      />
-      <TextAreaField
-        label="สอบถามประวัติน้องก่อนอาบน้ำ"
-        hint="ใช้ได้: {shop} {cat}"
-        value={msgs?.groomInfoIntro || ""}
-        onChange={(v) => setMsgs({ ...msgs, groomInfoIntro: v })}
-        rows={5}
-      />
+      {section(
+        "bill",
+        <>
+          <Field
+            label="หัวเรื่อง — สรุปการจอง"
+            value={bill?.summaryBookingTitle || ""}
+            onChange={(v) => setBill({ ...bill, summaryBookingTitle: v })}
+          />
+          <Field
+            label="หัวเรื่อง — แจ้งมัดจำ"
+            value={bill?.summaryDepositTitle || ""}
+            onChange={(v) => setBill({ ...bill, summaryDepositTitle: v })}
+          />
+          <Field
+            label="หัวเรื่อง — แจ้งยอดเต็ม (เก็บเงิน)"
+            value={bill?.summaryFullTitle || ""}
+            onChange={(v) => setBill({ ...bill, summaryFullTitle: v })}
+          />
+          <Field
+            label="ข้อความปิดท้าย (ทุกแบบ)"
+            value={bill?.summaryClosing || ""}
+            onChange={(v) => setBill({ ...bill, summaryClosing: v })}
+          />
+        </>
+      )}
 
-      <hr className="border-petflow-line" />
-      <p className="text-xs font-extrabold text-petflow-chocolate">
-        ตามลูกค้าที่หายไป
-      </p>
-      <TextAreaField
-        label="ข้อความตามลูกค้า"
-        hint="ใช้ได้: {name} = ชื่อลูกค้า · {pets} = ชื่อน้อง · {days} = จำนวนวัน · {shop} = ชื่อร้าน"
-        value={crm?.followUpMessage || ""}
-        onChange={(v) => setCrm({ ...crm, followUpMessage: v })}
-        rows={3}
-      />
+      {section(
+        "deposit",
+        <>
+          {sub("การ์ดเรียกเก็บมัดจำ (ส่งก่อนลูกค้าโอน)")}
+          <Field
+            label="หัวเรื่อง"
+            value={msgs?.depositRequestTitle || ""}
+            onChange={(v) => setMsgs({ ...msgs, depositRequestTitle: v })}
+          />
+          <TextAreaField
+            label="ข้อความ"
+            hint="ใช้ได้: {name} {cat} {amount} · {pct} = ' 30% ของค่าบริการ' (เว้นว่างถ้าไม่ได้เลือก %)"
+            value={msgs?.depositRequestBody || ""}
+            onChange={(v) => setMsgs({ ...msgs, depositRequestBody: v })}
+            rows={4}
+          />
+          {sub("การ์ดขอบคุณตอนรับมัดจำ")}
+          <Field
+            label="หัวเรื่อง"
+            value={msgs?.depositThanksTitle || ""}
+            onChange={(v) => setMsgs({ ...msgs, depositThanksTitle: v })}
+          />
+          <TextAreaField
+            label="ข้อความขอบคุณ"
+            hint="ใช้ได้: {name} {cat} {amount}"
+            value={msgs?.depositThanksBody || ""}
+            onChange={(v) => setMsgs({ ...msgs, depositThanksBody: v })}
+            rows={4}
+          />
+          <TextAreaField
+            label="เงื่อนไขมัดจำ (1 บรรทัด = 1 ข้อ)"
+            value={(msgs?.depositTerms || []).join("\n")}
+            onChange={(v) => setMsgs({ ...msgs, depositTerms: lines(v) })}
+            rows={5}
+          />
+          {sub("เตือนยอดคงเหลือ (7 วันก่อนเข้าพัก)")}
+          <TextAreaField
+            label="ข้อความ"
+            hint="ใช้ได้: {shop} {cat} {checkin} {deposit} {remaining} {bank} {accountNumber} {accountName}"
+            value={msgs?.depositReminder || ""}
+            onChange={(v) => setMsgs({ ...msgs, depositReminder: v })}
+            rows={7}
+          />
+        </>
+      )}
 
-      <hr className="border-petflow-line" />
-      <p className="text-xs font-extrabold text-petflow-chocolate">
-        การ์ดเรียกเก็บมัดจำ (ส่งก่อนลูกค้าโอน)
-      </p>
-      <Field
-        label="หัวเรื่อง"
-        value={msgs?.depositRequestTitle || ""}
-        onChange={(v) => setMsgs({ ...msgs, depositRequestTitle: v })}
-      />
-      <TextAreaField
-        label="ข้อความ"
-        hint="ใช้ได้: {name} {cat} {amount} · {pct} = ' 30% ของค่าบริการ' (เว้นว่างถ้าไม่ได้เลือก %)"
-        value={msgs?.depositRequestBody || ""}
-        onChange={(v) => setMsgs({ ...msgs, depositRequestBody: v })}
-        rows={4}
-      />
+      {section(
+        "consent",
+        <>
+          <Field
+            label="หัวเรื่อง"
+            value={msgs?.consentTitle || ""}
+            onChange={(v) => setMsgs({ ...msgs, consentTitle: v })}
+          />
+          <TextAreaField
+            label="ข้อตกลง (1 บรรทัด = 1 ข้อ)"
+            value={(msgs?.consentTerms || []).join("\n")}
+            onChange={(v) => setMsgs({ ...msgs, consentTerms: lines(v) })}
+            rows={10}
+          />
+          <TextAreaField
+            label="ข้อความชวนกดยอมรับ (แนบลิงก์ตอนแจ้งเข้าพัก + ปุ่ม 📋 เงื่อนไข)"
+            hint="ใช้ได้: {shop} {cat} {url} — ต้องมี {url} เพื่อแนบลิงก์"
+            value={msgs?.consentInvite || ""}
+            onChange={(v) => setMsgs({ ...msgs, consentInvite: v })}
+            rows={3}
+          />
+        </>
+      )}
 
-      <hr className="border-petflow-line" />
-      <p className="text-xs font-extrabold text-petflow-chocolate">
-        การ์ดขอบคุณตอนรับมัดจำ
-      </p>
-      <Field
-        label="หัวเรื่อง"
-        value={msgs?.depositThanksTitle || ""}
-        onChange={(v) => setMsgs({ ...msgs, depositThanksTitle: v })}
-      />
-      <TextAreaField
-        label="ข้อความขอบคุณ"
-        hint="ใช้ได้: {name} {cat} {amount}"
-        value={msgs?.depositThanksBody || ""}
-        onChange={(v) => setMsgs({ ...msgs, depositThanksBody: v })}
-        rows={4}
-      />
-      <TextAreaField
-        label="เงื่อนไขมัดจำ (1 บรรทัด = 1 ข้อ)"
-        value={(msgs?.depositTerms || []).join("\n")}
-        onChange={(v) =>
-          setMsgs({
-            ...msgs,
-            depositTerms: v.split("\n").map((s) => s.trim()).filter(Boolean),
-          })
-        }
-        rows={5}
-      />
+      {section(
+        "groom",
+        <TextAreaField
+          label="สอบถามประวัติน้องก่อนอาบน้ำ"
+          hint="ใช้ได้: {shop} {cat}"
+          value={msgs?.groomInfoIntro || ""}
+          onChange={(v) => setMsgs({ ...msgs, groomInfoIntro: v })}
+          rows={5}
+        />
+      )}
 
-      <hr className="border-petflow-line" />
-      <p className="text-xs font-extrabold text-petflow-chocolate">
-        ข้อตกลงก่อนเข้าพัก (หน้า /app/consent)
-      </p>
-      <Field
-        label="หัวเรื่อง"
-        value={msgs?.consentTitle || ""}
-        onChange={(v) => setMsgs({ ...msgs, consentTitle: v })}
-      />
-      <TextAreaField
-        label="ข้อตกลง (1 บรรทัด = 1 ข้อ)"
-        value={(msgs?.consentTerms || []).join("\n")}
-        onChange={(v) =>
-          setMsgs({
-            ...msgs,
-            consentTerms: v.split("\n").map((s) => s.trim()).filter(Boolean),
-          })
-        }
-        rows={6}
-      />
-      <TextAreaField
-        label="ข้อความชวนกดยอมรับเงื่อนไข (แนบลิงก์ตอนแจ้งเข้าพัก + ปุ่ม 📋 เงื่อนไข)"
-        hint="ใช้ได้: {shop} {cat} {url} — ต้องมี {url} เพื่อแนบลิงก์"
-        value={msgs?.consentInvite || ""}
-        onChange={(v) => setMsgs({ ...msgs, consentInvite: v })}
-        rows={3}
-      />
+      {section(
+        "prestay",
+        <>
+          {sub("การ์ดแจ้งเข้าพัก (ส่ง 3 วันก่อนเข้าพัก · จัดรูปแบบให้อัตโนมัติ)")}
+          <TextAreaField
+            label="ทักทายเปิดการ์ด"
+            hint="ใช้ได้: {shop} {cat}"
+            value={msgs?.prestayIntro || ""}
+            onChange={(v) => setMsgs({ ...msgs, prestayIntro: v })}
+            rows={2}
+          />
+          <TextAreaField
+            label="เกริ่นก่อนลิสต์ของที่ต้องเตรียม"
+            value={msgs?.prestayPrepIntro || ""}
+            onChange={(v) => setMsgs({ ...msgs, prestayPrepIntro: v })}
+            rows={2}
+          />
+          <TextAreaField
+            label="ของที่ต้องเตรียม (1 บรรทัด = 1 ข้อ · ใส่อีโมจิหน้าได้)"
+            value={(msgs?.prestayPrepItems || []).join("\n")}
+            onChange={(v) => setMsgs({ ...msgs, prestayPrepItems: lines(v) })}
+            rows={4}
+          />
+          <TextAreaField
+            label="ข้อความปิดท้าย (ชวนแจ้งการดูแลพิเศษ)"
+            hint="ใช้ได้: {cat}"
+            value={msgs?.prestayCareNote || ""}
+            onChange={(v) => setMsgs({ ...msgs, prestayCareNote: v })}
+            rows={3}
+          />
+          <TextAreaField
+            label="ข้อความเตือนให้เตรียมทราย (เฉพาะเข้าพักสั้นกว่าเกณฑ์แถมฟรี)"
+            hint="ใช้ได้: {min} = จำนวนคืนขั้นต่ำที่แถมทรายฟรี (ตั้งในแท็บ ⏰ อัตโนมัติ)"
+            value={msgs?.prestayLitterNote || ""}
+            onChange={(v) => setMsgs({ ...msgs, prestayLitterNote: v })}
+            rows={3}
+          />
+          {sub("เตือนเช็คอิน (ก่อนวันเข้าพัก)")}
+          <TextAreaField
+            label="ข้อความ"
+            hint="ใช้ได้: {shop} {cat} {checkin} {room} {litterNote}"
+            value={msgs?.checkinReminder || ""}
+            onChange={(v) => setMsgs({ ...msgs, checkinReminder: v })}
+            rows={8}
+          />
+        </>
+      )}
 
-      <hr className="border-petflow-line" />
-      <p className="text-xs font-extrabold text-petflow-chocolate">
-        อวยพรวันเกิดอัตโนมัติ
-      </p>
-      <p className="text-[10px] text-brown-soft">
-        ส่งอัตโนมัติเที่ยงวันที่ตรงกับวันเกิด (เฉพาะลูกค้าที่ยินยอมรับข่าวสาร) — วันเกิดน้องกับวันเกิดเจ้าของใช้คนละข้อความ ถ้าตรงกันวันเดียวจะส่งแค่ใบของเจ้าของใบเดียว
-      </p>
-      <TextAreaField
-        label="ข้อความอวยพร — วันเกิดน้อง"
-        hint="ใช้ได้: {shop} {name} {cat}"
-        value={msgs?.birthdayGreeting || ""}
-        onChange={(v) => setMsgs({ ...msgs, birthdayGreeting: v })}
-        rows={5}
-      />
+      {section(
+        "after",
+        <>
+          <TextAreaField
+            label="เตือนเช็คเอาท์ (ก่อนวันออก)"
+            hint="ใช้ได้: {shop} {cat} {checkout}"
+            value={msgs?.checkoutReminder || ""}
+            onChange={(v) => setMsgs({ ...msgs, checkoutReminder: v })}
+            rows={6}
+          />
+          <TextAreaField
+            label="ขอรีวิว (หลังเช็คเอาท์)"
+            hint="ใช้ได้: {shop} {cat}"
+            value={msgs?.reviewRequest || ""}
+            onChange={(v) => setMsgs({ ...msgs, reviewRequest: v })}
+            rows={5}
+          />
+        </>
+      )}
 
-      <TextAreaField
-        label="ข้อความอวยพร — วันเกิดเจ้าของ"
-        hint="ใช้ได้: {shop} {name} · ไม่มี {cat} เพราะอวยพรคน ไม่ใช่น้อง"
-        value={msgs?.birthdayGreetingOwner || ""}
-        onChange={(v) => setMsgs({ ...msgs, birthdayGreetingOwner: v })}
-        rows={5}
-      />
+      {section(
+        "crm",
+        <>
+          {sub("ตามลูกค้าที่หายไป")}
+          <TextAreaField
+            label="ข้อความตามลูกค้า"
+            hint="ใช้ได้: {name} = ชื่อลูกค้า · {pets} = ชื่อน้อง · {days} = จำนวนวัน · {shop} = ชื่อร้าน"
+            value={crm?.followUpMessage || ""}
+            onChange={(v) => setCrm({ ...crm, followUpMessage: v })}
+            rows={3}
+          />
+          {sub("อวยพรวันเกิดอัตโนมัติ")}
+          <p className="text-[11px] text-brown-soft">
+            ส่งอัตโนมัติเที่ยงวันที่ตรงกับวันเกิด (เฉพาะลูกค้าที่ยินยอมรับข่าวสาร) — วันเกิดน้องกับวันเกิดเจ้าของใช้คนละข้อความ ถ้าตรงกันวันเดียวจะส่งแค่ใบของเจ้าของใบเดียว
+          </p>
+          <TextAreaField
+            label="ข้อความอวยพร — วันเกิดน้อง"
+            hint="ใช้ได้: {shop} {name} {cat}"
+            value={msgs?.birthdayGreeting || ""}
+            onChange={(v) => setMsgs({ ...msgs, birthdayGreeting: v })}
+            rows={5}
+          />
+          <TextAreaField
+            label="ข้อความอวยพร — วันเกิดเจ้าของ"
+            hint="ใช้ได้: {shop} {name} · ไม่มี {cat} เพราะอวยพรคน ไม่ใช่น้อง"
+            value={msgs?.birthdayGreetingOwner || ""}
+            onChange={(v) => setMsgs({ ...msgs, birthdayGreetingOwner: v })}
+            rows={5}
+          />
+        </>
+      )}
 
-      <SaveBtn saving={saving} />
+      <div className="sticky bottom-3 z-10">
+        <SaveBtn saving={saving} />
+      </div>
     </form>
   );
 }
