@@ -71,6 +71,7 @@ const SCHEMA_CHECKS: { table: string; column: string; feature: string }[] = [
   { table: "cats", column: "vaccine_photos", feature: "สมุดวัคซีนที่ตัวน้อง (ขอก่อนมีนัด)" },
   { table: "customers", column: "consent_accepted_at", feature: "ยอมรับข้อตกลงจากหน้าลูกค้า" },
   { table: "cats", column: "species", feature: "น้องแต่ละตัวเป็นหมาหรือแมว" },
+  { table: "member_topups", column: "source_invoice_id", feature: "ยกเลิกนัด เก็บยอดเป็นเครดิต" },
 ];
 
 export type SchemaCheckRow = {
@@ -670,6 +671,13 @@ where staff_note like '%🎁%';`,
         add column if not exists consent_flea_tick boolean,
         add column if not exists consent_care_note text;
     `,
+  },
+  {
+    // 🔁 เครดิตจากบิลที่ยกเลิกนัด — เงินเข้าร้านไปแล้วตอนจ่ายบิลเดิม จึงไม่ลงรายรับ/ไม่ให้แต้มซ้ำ
+    // source_invoice_id = เลขบิลเดิม (ไว้โชว์ในประวัติเครดิต + กันแปลงบิลเดียวกันซ้ำ)
+    // เพิ่มคอลัมน์อย่างเดียว ไม่แก้ข้อมูลเดิม (แถวเก่าได้ค่าเริ่มต้น false / null)
+    name: "member_topups.cancel_credit",
+    sql: "alter table member_topups add column if not exists is_cancel_credit boolean not null default false, add column if not exists source_invoice_id text;",
   },
 ];
 
