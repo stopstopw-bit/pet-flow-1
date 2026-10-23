@@ -74,7 +74,7 @@ export default function CouponsPage() {
   // ร้านปิด "ชวนเพื่อนรับคูปอง" ในตั้งค่า — ไม่โชว์กล่องชวนเพื่อน
   const referralOn = isFeatureOn(config, "referral");
   const reward = referralReward(config).amount;
-  const shareText = `🐾 มาใช้บริการที่ ${config.business.name} กันนะ! สมัครผ่านลิงก์นี้ + มาใช้บริการครั้งแรก รับคูปองส่วนลด ${reward}฿ ทั้งคู่เลย 🎁\n${referralUrl}`;
+  const shareText = `🐾 มาใช้บริการที่ ${config.business.name} กันนะ! สมัครผ่านลิงก์นี้ (หรือกรอกโค้ด ${referralCode} ตอนสมัคร) รับคูปองส่วนลด ${reward}฿ ทั้งคู่ทันที 🎁\n${referralUrl}`;
 
   const share = async () => {
     if (await copyText(shareText)) {
@@ -110,7 +110,7 @@ export default function CouponsPage() {
           <div className="min-w-0">
             <p className="text-sm font-extrabold text-petflow-chocolate">ชวนเพื่อน รับคนละ {reward}฿</p>
             <p className="mt-0.5 text-xs leading-relaxed text-brown-soft">
-              ส่งลิงก์ให้เพื่อนสมัคร + <b className="text-latte-deep">มาใช้บริการครั้งแรก</b> — ได้คูปองส่วนลด <b className="text-latte-deep">{reward}฿ ทั้งคุณและเพื่อน</b> 🧡
+              ส่งลิงก์หรือโค้ดให้เพื่อน <b className="text-latte-deep">สมัครเสร็จ</b> — ได้คูปองส่วนลด <b className="text-latte-deep">{reward}฿ ทั้งคุณและเพื่อน</b> ทันที 🧡
             </p>
           </div>
         </div>
@@ -190,7 +190,7 @@ export default function CouponsPage() {
                 <EmptyState
                   icon="ticket"
                   title="ยังไม่มีคูปอง"
-                  sub={referralOn ? `ชวนเพื่อนมาใช้บริการ รับ ${reward}฿ ได้เลยนะคะ 🧡` : "มีคูปองเมื่อไหร่ จะขึ้นที่นี่นะคะ 🧡"}
+                  sub={referralOn ? `ชวนเพื่อนสมัครด้วยโค้ดของคุณ รับ ${reward}฿ ทั้งคู่เลยนะคะ 🧡` : "มีคูปองเมื่อไหร่ จะขึ้นที่นี่นะคะ 🧡"}
                 />
               ) : (
                 <ul className="divide-y divide-petflow-line">

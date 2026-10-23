@@ -143,7 +143,7 @@ export default function CustomerHome() {
           </p>
           <p className="mt-0.5 text-[11px] font-bold text-brown-soft">
             {on("referral")
-              ? `ชวนเพื่อนมาใช้บริการ รับคูปองคนละ ${referralReward(config).amount}฿`
+              ? `ชวนเพื่อนสมัคร รับคูปองคนละ ${referralReward(config).amount}฿`
               : "คูปองส่วนลดของคุณ ใช้ที่ร้านได้เลย"}
           </p>
         </div>
