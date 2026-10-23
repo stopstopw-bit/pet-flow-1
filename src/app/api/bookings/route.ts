@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { petWords } from "@/lib/pet-kind";
 import {
   createCalendarEvent,
   updateCalendarEventConfirmed,
@@ -547,6 +548,7 @@ function groomInfoCardFor(
     const card = groomInfoCardFor(b, cfg, kind);
     const flex = buildGroomInfoFlex({
       catName: String(b.catName),
+      petEmoji: petWords(cfg).emoji,
       dateText: card.dateText,
       body: card.body(b, cfg),
       url: url || undefined,
@@ -593,6 +595,7 @@ function groomInfoCardFor(
     const card = groomInfoCardFor(b, cfg, kind);
     const flex = buildGroomInfoFlex({
       catName: catNames,
+      petEmoji: petWords(cfg).emoji,
       dateText: card.dateText,
       body: card.body(
         { catName: bookings.length > 1 ? `น้องๆ ${bookings.length} ตัว` : catNames },
@@ -637,6 +640,7 @@ function groomInfoCardFor(
       kind,
       businessName: cfg.business.name,
       catName: String(gb.catName),
+      petEmoji: petWords(cfg).emoji,
       dateText: bookingScheduleText(gb),
       url,
     }, cfg.cards?.docRequest);
@@ -794,6 +798,7 @@ function groomInfoCardFor(
               businessName: cfg.business.name,
               title: cfg.messages.consentTitle || DEFAULT_MESSAGES.consentTitle,
               catName: String(gb.catName),
+              petEmoji: petWords(cfg).emoji,
               checkin: gb.checkin || gb.date,
               checkout: gb.checkout,
               room: gb.room,
@@ -932,11 +937,12 @@ function groomInfoCardFor(
           const catNames = needInfo.map((x) => x.catName).join(", ");
           const card = groomInfoCardFor(b, cfg, kind);
           addIntake({
-            kind: "info",
+            kind: kind === "stay" ? "stayInfo" : "info",
             url: url || undefined,
             count: needInfo.length,
             card: buildGroomInfoFlex({
               catName: catNames,
+              petEmoji: petWords(cfg).emoji,
               dateText: card.dateText,
               body: card.body(
                 { catName: needInfo.length > 1 ? `น้องๆ ${needInfo.length} ตัว` : catNames },
@@ -977,6 +983,7 @@ function groomInfoCardFor(
               kind: part,
               businessName: cfg.business.name,
               catName: part === "vaccine" ? ask.map((x) => x.catName).join(", ") : String(gb.catName),
+              petEmoji: petWords(cfg).emoji,
               dateText: bookingScheduleText(gb),
               url,
             }, cfg.cards?.docRequest),
@@ -1085,6 +1092,7 @@ function groomInfoCardFor(
           {
             service: b.service === "room" ? "stay" : "groom",
             catName: String(gb.catName),
+            petEmoji: petWords(cfg).emoji,
             businessName: cfg.business.name,
             dateText: bookingScheduleText(gb),
             always: intakeAlways,
@@ -1152,6 +1160,7 @@ function groomInfoCardFor(
         businessName: cfg.business.name,
         title: cfg.messages.consentTitle || DEFAULT_MESSAGES.consentTitle,
         catName: String(gb.catName),
+        petEmoji: petWords(cfg).emoji,
         checkin: gb.checkin || gb.date,
         checkout: gb.checkout,
         room: gb.room,

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { petWords } from "@/lib/pet-kind";
 import { listBookings } from "@/lib/bookings-store";
 import { autoMuted } from "@/lib/auto-messages";
 import { listInvoices } from "@/lib/invoices-store";
@@ -107,12 +108,13 @@ async function intakeCardsFor(
       const style = cfg.cards?.groomInfo;
       const btn = style?.texts?.button || "🩺 แจ้งประวัติน้อง";
       out.push({
-        kind: "info",
+        kind: "stayInfo",
         url: url || undefined,
         count: needStay.length,
         card: buildGroomInfoFlex(
           {
             catName: names(needStay),
+            petEmoji: petWords(cfg).emoji,
             dateText: bookingScheduleText(primary),
             body: buildStayInfoBody(
               { catName: needStay.length > 1 ? `น้องๆ ${needStay.length} ตัว` : names(needStay) },
@@ -142,6 +144,7 @@ async function intakeCardsFor(
             kind: "vaccine",
             businessName: cfg.business.name,
             catName: names(needVaccine),
+            petEmoji: petWords(cfg).emoji,
             dateText: bookingScheduleText(primary),
             url,
           },
@@ -162,6 +165,7 @@ async function intakeCardsFor(
             kind: "idcard",
             businessName: cfg.business.name,
             catName: names(group),
+            petEmoji: petWords(cfg).emoji,
             dateText: bookingScheduleText(primary),
             url,
           },
@@ -187,6 +191,7 @@ async function consentCardFor(
       businessName: cfg.business.name,
       title: cfg.messages.consentTitle || DEFAULT_MESSAGES.consentTitle,
       catName: String(b.catName),
+      petEmoji: petWords(cfg).emoji,
       checkin: b.checkin || b.date,
       checkout: b.checkout,
       room: b.room,
@@ -318,6 +323,7 @@ async function runForTenant() {
             count: needInfo.length,
             card: buildGroomInfoFlex({
               catName: names,
+              petEmoji: petWords(cfg).emoji,
               dateText: primary.date ? `📅 นัดอาบน้ำ: ${primary.date}${primary.time ? ` ${primary.time}` : ""}` : undefined,
               body: buildGroomInfoBody(
                 { catName: needInfo.length > 1 ? `น้องๆ ${needInfo.length} ตัว` : names },
@@ -350,6 +356,7 @@ async function runForTenant() {
           {
             service: primary.service === "room" ? "stay" : "groom",
             catName: catLabel,
+            petEmoji: petWords(cfg).emoji,
             businessName: cfg.business.name,
             dateText: bookingScheduleText(primary),
           },
@@ -451,6 +458,7 @@ async function runForTenant() {
           {
             service: "stay",
             catName: String(b.catName),
+            petEmoji: petWords(cfg).emoji,
             businessName: cfg.business.name,
             dateText: bookingScheduleText(b),
           },

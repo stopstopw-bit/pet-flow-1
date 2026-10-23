@@ -15,6 +15,7 @@ import { isFeatureOn } from "@/lib/features";
 import { resolveGroomForm } from "@/lib/groom-form";
 import { resolveStayForm } from "@/lib/stay-form";
 import { requireCustomerSession } from "@/lib/customer-session";
+import { petKindOf, speciesOf } from "@/lib/pet-kind";
 
 type Kind = "groom" | "stay";
 
@@ -66,6 +67,8 @@ async function getHandler(req: NextRequest) {
     info: parseGroomInfo(stored),
     // ตอบโรคประจำตัวไว้แล้วตอนสมัครสมาชิก → ฟอร์มก่อนเข้าพักไม่ถามซ้ำ
     knownMedical: Boolean(t.cat?.medical?.trim()),
+    // หมาหรือแมว — หน้าฟอร์มใช้เลือกชุดคำถาม (หมาไม่ถามเรื่องทราย) · ไม่รู้ = ไม่ส่ง ใช้ชนิดของร้าน
+    species: speciesOf(t.cat, await getSiteConfig()),
   });
 }
 
@@ -93,7 +96,9 @@ async function postHandler(req: NextRequest) {
   if (!isFeatureOn(cfg, feature)) {
     return NextResponse.json({ error: "feature_disabled", feature }, { status: 403 });
   }
-  const fields = t.kind === "stay" ? resolveStayForm() : resolveGroomForm(cfg.groomForm);
+  // ชุดคำถามตามชนิดของน้องตัวนี้ — ต้องตรงกับที่หน้าฟอร์มถาม ไม่งั้นคำตอบข้อของหมาจะหาย
+  const kind = speciesOf(t.cat, cfg) ?? petKindOf(cfg);
+  const fields = t.kind === "stay" ? resolveStayForm(undefined, kind) : resolveGroomForm(cfg.groomForm, kind);
   const payload: Record<string, unknown> = { submittedAt: new Date().toISOString() };
   for (const f of fields) {
     const raw = (info as Record<string, unknown>)[f.key];
