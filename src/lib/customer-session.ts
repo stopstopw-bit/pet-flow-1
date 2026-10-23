@@ -1,4 +1,4 @@
-import type { NextRequest } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { requireTenantId } from "./tenant-context";
 
 /**
@@ -111,4 +111,19 @@ export async function requireCustomerSession(
   if (!session) return null;
   if (session.tenantId !== requireTenantId()) return null;
   return session;
+}
+
+/**
+ * ยังไม่มีคุกกี้เซสชันลูกค้า (แลก LIFF token ไม่ผ่าน / คุกกี้หาย) — ตอบเป็นข้อความไทยที่ลูกค้าอ่านเข้าใจ
+ * แทน "unauthorized" ที่เคยโผล่ขึ้นจอ · code ให้หน้าแอปรู้ว่าควรลองแลกเซสชันใหม่แล้วยิงซ้ำ (customer-fetch.ts)
+ */
+export const NO_CUSTOMER_SESSION = "no_session";
+export const NO_CUSTOMER_SESSION_MESSAGE =
+  "ระบบยังยืนยันบัญชี LINE ไม่สำเร็จ — ปิดหน้านี้แล้วเปิดลิงก์จากแชท LINE ใหม่อีกครั้งนะคะ";
+
+export function noCustomerSessionResponse() {
+  return NextResponse.json(
+    { error: NO_CUSTOMER_SESSION_MESSAGE, code: NO_CUSTOMER_SESSION },
+    { status: 401 }
+  );
 }

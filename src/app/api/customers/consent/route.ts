@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withResolvedTenant } from "@/lib/tenant-context";
 import { featureOff } from "@/lib/features-server";
-import { requireCustomerSession } from "@/lib/customer-session";
+import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 import { findCustomerByLine, setCustomerConsent } from "@/lib/customers-store";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 
@@ -14,7 +14,7 @@ async function postHandler(req: NextRequest) {
   const blocked = await featureOff("consent");
   if (blocked) return blocked;
   const session = await requireCustomerSession(req);
-  if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!session) return noCustomerSessionResponse();
   const body = await req.json().catch(() => ({}));
   const signature = String(body.signature || "").trim();
   const careNote = String(body.careNote || "").trim().slice(0, 2000);

@@ -6,7 +6,7 @@ import { findCustomerByLine } from "@/lib/customers-store";
 import { assignGroomSlots, getGroomAvailability, getRoomAvailability } from "@/lib/availability";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { groomProgram, resolveGroomPrograms } from "@/lib/grooming-prices";
-import { requireCustomerSession } from "@/lib/customer-session";
+import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 import { getSiteConfig } from "@/lib/config-store";
 import { depositAmountFor, type DepositStatus } from "@/lib/booking-deposit";
 import { saveDepositSlip, depositTelegramLine } from "@/lib/booking-deposit-server";
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
 async function handlePost(req: NextRequest) {
   const session = await requireCustomerSession(req);
   if (!session) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return noCustomerSessionResponse();
   }
   const lineUserId = session.lineUserId;
   // ร้านปิด "ลูกค้าจองคิวเอง" หรือปิดบริการนั้นไว้ในตั้งค่า

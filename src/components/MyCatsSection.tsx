@@ -6,6 +6,7 @@ import { useLiff } from "@/components/LiffProvider";
 import { useConfig } from "@/components/ConfigProvider";
 import { petWords, speciesOf, speciesWords } from "@/lib/pet-kind";
 import { toJpegDataUrl } from "@/lib/image-convert";
+import { customerFetch } from "@/lib/customer-fetch";
 
 type MyCat = {
   id: string;
@@ -50,7 +51,7 @@ export function MyCatsSection() {
     setUploadingId(cat.id);
     try {
       const dataUrl = await toJpegDataUrl(file);
-      const res = await fetch("/api/customers/cat-photo", {
+      const res = await customerFetch("/api/customers/cat-photo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
