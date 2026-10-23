@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withResolvedTenant } from "@/lib/tenant-context";
+import { featureOff } from "@/lib/features-server";
 import { getBooking, listBookings, setBookingTime } from "@/lib/bookings-store";
 import { bookingGroupKey, groupCatNames } from "@/lib/booking-group";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
@@ -38,6 +39,9 @@ async function getHandler(req: NextRequest) {
 
 /** ลูกค้าเลือกเวลามาส่ง/รับน้อง */
 async function postHandler(req: NextRequest) {
+  // ร้านปิดเรื่องนี้ในตั้งค่า › เปิด/ปิดฟีเจอร์
+  const blocked = await featureOff("checkinTime");
+  if (blocked) return blocked;
   const session = await requireCustomerSession(req);
   if (!session) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });

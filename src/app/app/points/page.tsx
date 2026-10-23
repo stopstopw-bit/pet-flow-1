@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { EmptyState, SectionLabel } from "@/components/ui";
 import { Icon } from "@/components/Icon";
 import { PointsRedeem } from "@/components/PointsRedeem";
+import { isFeatureOn } from "@/lib/features";
 
 export default function PointsPage() {
   const { locale } = useLocale();
@@ -36,12 +37,15 @@ export default function PointsPage() {
         </p>
       </div>
 
-      <section className="mb-5">
-        <SectionLabel>Redeem · {m.redeemTitle}</SectionLabel>
-        <div className="rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm">
-          <PointsRedeem />
-        </div>
-      </section>
+      {/* ร้านปิด "แลกแต้มเป็นรางวัล" — เห็นแต้มกับประวัติได้ แต่ไม่มีส่วนแลก */}
+      {isFeatureOn(config, "pointsRedeem") && (
+        <section className="mb-5">
+          <SectionLabel>Redeem · {m.redeemTitle}</SectionLabel>
+          <div className="rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm">
+            <PointsRedeem />
+          </div>
+        </section>
+      )}
 
       <section>
         <SectionLabel>History · {m.history}</SectionLabel>

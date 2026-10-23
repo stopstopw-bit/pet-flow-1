@@ -6,7 +6,7 @@ import { toast } from "@/components/Toast";
 import { PreviewSendModal } from "@/components/PreviewSendModal";
 import { VaccinePhotosAdmin } from "@/components/VaccinePhotosAdmin";
 import { useConfig } from "@/components/ConfigProvider";
-import { isFeatureOn } from "@/lib/features";
+import { cardOn } from "@/lib/features";
 import { INTAKE_LABEL } from "@/lib/intake-cards";
 import { splitVaccinePhotos } from "@/lib/vaccine-photos";
 import type { CustomerRecord } from "@/lib/customers-store";
@@ -20,8 +20,8 @@ type Part = "groomInfo" | "stayInfo" | "prestay" | "consent" | "vaccine" | "idca
  */
 export function CustomerIntakeCards({ customer, onDone }: { customer: CustomerRecord; onDone: () => void }) {
   const { config } = useConfig();
-  const hotelOn = isFeatureOn(config, "hotel");
-  const groomOn = isFeatureOn(config, "grooming");
+  // การ์ดที่ร้านปิดในตั้งค่า › เปิด/ปิดฟีเจอร์ ไม่โชว์ให้ส่ง
+  const partOn = (part: Part) => cardOn(config, part);
   const [catIds, setCatIds] = useState<string[]>(customer.cats.map((c) => c.id));
   const [picked, setPicked] = useState<Part[]>([]);
   const [busy, setBusy] = useState("");
@@ -34,13 +34,13 @@ export function CustomerIntakeCards({ customer, onDone }: { customer: CustomerRe
   const stayDone = cats.length > 0 && cats.every((c) => c.stayInfo);
   const vaccineDone = cats.length > 0 && cats.every((c) => splitVaccinePhotos(c.vaccinePhotos).length > 0);
   const rows: { part: Part; label: string; icon: string; when: boolean; status?: string; done?: boolean }[] = [
-    { part: "stayInfo", label: INTAKE_LABEL.stayInfo, icon: "edit", when: hotelOn, done: stayDone, status: stayDone ? "กรอกแล้ว" : "ยังไม่กรอก" },
-    { part: "groomInfo", label: INTAKE_LABEL.groomInfo, icon: "bath", when: groomOn, done: infoDone, status: infoDone ? "กรอกแล้ว" : "ยังไม่กรอก" },
+    { part: "stayInfo", label: INTAKE_LABEL.stayInfo, icon: "edit", when: partOn("stayInfo"), done: stayDone, status: stayDone ? "กรอกแล้ว" : "ยังไม่กรอก" },
+    { part: "groomInfo", label: INTAKE_LABEL.groomInfo, icon: "bath", when: partOn("groomInfo"), done: infoDone, status: infoDone ? "กรอกแล้ว" : "ยังไม่กรอก" },
     {
       part: "vaccine",
       label: INTAKE_LABEL.vaccine,
       icon: "image",
-      when: true,
+      when: partOn("vaccine"),
       done: vaccineDone,
       status: vaccineDone ? "ได้รับแล้ว" : "ยังไม่ได้รับ",
     },
@@ -48,7 +48,7 @@ export function CustomerIntakeCards({ customer, onDone }: { customer: CustomerRe
       part: "idcard",
       label: INTAKE_LABEL.idcard,
       icon: "user",
-      when: hotelOn,
+      when: partOn("idcard"),
       done: !!customer.idCardUrl,
       status: customer.idCardUrl ? "ได้รับแล้ว" : "ยังไม่ได้รับ",
     },
@@ -56,13 +56,13 @@ export function CustomerIntakeCards({ customer, onDone }: { customer: CustomerRe
       part: "consent",
       label: INTAKE_LABEL.consent,
       icon: "doc",
-      when: true,
+      when: partOn("consent"),
       done: !!customer.consentAcceptedAt,
       status: customer.consentAcceptedAt
         ? `ยอมรับล่าสุด ${customer.consentAcceptedAt.slice(0, 10)}`
         : "ยังไม่เคยกดยอมรับ",
     },
-    { part: "prestay", label: INTAKE_LABEL.prestay, icon: "bed", when: hotelOn },
+    { part: "prestay", label: INTAKE_LABEL.prestay, icon: "bed", when: partOn("prestay") },
   ];
 
   const requestPreview = async (parts: Part[], key: string) => {
@@ -110,6 +110,9 @@ export function CustomerIntakeCards({ customer, onDone }: { customer: CustomerRe
       }
       return [...prev, p];
     });
+
+  // ร้านปิดการ์ดถามข้อมูลทุกใบ — ไม่ต้องโชว์กล่องนี้เลย
+  if (!rows.some((r) => r.when)) return null;
 
   return (
     <div className="mb-3 rounded-petflow-sm border border-petflow-line bg-card/85 p-3">
@@ -202,7 +205,7 @@ export function CustomerIntakeCards({ customer, onDone }: { customer: CustomerRe
       </button>
 
       {/* สมุดวัคซีนรายตัว — ลูกค้าส่งมา หรือพนักงานแนบเองจากรูปที่ลูกค้าส่งในแชท */}
-      {customer.cats.length > 0 && (
+      {customer.cats.length > 0 && partOn("vaccine") && (
         <div className="mt-3 space-y-1">
           {customer.cats.map((c) => (
             <div key={c.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">

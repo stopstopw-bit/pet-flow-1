@@ -15,6 +15,7 @@ import { SectionLabel } from "@/components/ui";
 import { Icon } from "@/components/Icon";
 import { MAX_VACCINE_PHOTOS } from "@/lib/vaccine-photos";
 import { idCardPurpose, watermarkIdCard } from "@/lib/id-card-watermark";
+import { isFeatureOn } from "@/lib/features";
 
 type StayBooking = Booking & {
   checkin?: string;
@@ -367,7 +368,7 @@ function ConsentContent() {
                 )}
               </section>
 
-              {!idCardOnFile && (
+              {!idCardOnFile && isFeatureOn(config, "idCard") && (
               <section className="mt-4 rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm">
                 <label className="flex items-center gap-1.5 text-xs font-bold text-petflow-chocolate">
                   <Icon name="user" size={14} />
@@ -411,7 +412,7 @@ function ConsentContent() {
               )}
 
               {/* ลิงก์จากหน้าข้อมูลลูกค้า: สมุดวัคซีนมีการ์ดขอแยกต่างหาก (เก็บที่ตัวน้อง) ไม่ถามซ้ำตรงนี้ */}
-              {!customerMode && (
+              {!customerMode && isFeatureOn(config, "vaccine") && (
               <section className="mt-4 rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm">
                 <label className="flex items-center gap-1.5 text-xs font-bold text-petflow-chocolate">
                   <Icon name="image" size={14} />

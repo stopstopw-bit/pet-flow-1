@@ -9,11 +9,14 @@ import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { parseTaxInvoiceBody } from "@/lib/tax-invoice";
 import { withResolvedTenant } from "@/lib/tenant-context";
 import { requireCustomerSession } from "@/lib/customer-session";
+import { getSiteConfig } from "@/lib/config-store";
+import { isFeatureOn } from "@/lib/features";
+import { referralReward } from "@/lib/referral";
 import { issueCoupon, listCustomerCoupons } from "@/lib/coupons-store";
 import { pushLineMessage } from "@/lib/line";
 
-/** คูปองชวนเพื่อน — ออกให้ทั้งคู่ทันทีที่สมัครด้วยโค้ด (เจ้าของร้านเลือกแบบนี้ 2026-10-23) */
-const REFERRAL_REWARD = 100;
+/** คูปองชวนเพื่อน — ออกให้ทั้งคู่ทันทีที่สมัครด้วยโค้ด (เจ้าของร้านเลือกแบบนี้ 2026-10-23)
+ * มูลค่า/อายุคูปองตั้งได้ในตั้งค่า › เปิด/ปิดฟีเจอร์ (ดู referralReward) */
 const REFERRAL_TAG = "เพื่อนแนะนำ";
 
 /** ลูกค้ากรอกฟอร์มลงทะเบียน (ผู้ปกครอง + น้องแมว + ยินยอมรับข่าวสาร) */
@@ -51,7 +54,12 @@ async function handlePost(req: NextRequest) {
     );
   }
   // โค้ดเพื่อนแนะนำ (มาจากลิงก์ หรือลูกค้าพิมพ์เอง) — กรอกผิดบอกก่อนบันทึก จะได้แก้ได้
-  const refCode = String(body.referralCode || "").trim().toUpperCase();
+  // ร้านปิด "ชวนเพื่อนรับคูปอง" ในตั้งค่า — ไม่สนโค้ด (ไม่ผูกคนชวน ไม่แจกคูปอง)
+  const siteCfg = await getSiteConfig();
+  const reward = referralReward(siteCfg);
+  const refCode = isFeatureOn(siteCfg, "referral")
+    ? String(body.referralCode || "").trim().toUpperCase()
+    : "";
   const referrer = refCode ? await findCustomerByReferralCode(refCode) : undefined;
   if (refCode && !referrer) {
     return NextResponse.json(
@@ -122,27 +130,27 @@ async function handlePost(req: NextRequest) {
       if (!mine.some((c) => c.reason.includes(REFERRAL_TAG))) {
         await issueCoupon({
           customerId: customer.id,
-          amount: REFERRAL_REWARD,
+          amount: reward.amount,
           reason: `🎁 สมัครด้วยโค้ด${REFERRAL_TAG}`,
-          expiresInDays: 60,
+          expiresInDays: reward.expiresInDays,
         });
         await issueCoupon({
           customerId: referrer.id,
-          amount: REFERRAL_REWARD,
+          amount: reward.amount,
           reason: `🎉 ${REFERRAL_TAG}: ${customer.name} สมัครด้วยโค้ดของคุณ`,
-          expiresInDays: 60,
+          expiresInDays: reward.expiresInDays,
         });
         if (referrer.lineUserId) {
           await pushLineMessage(referrer.lineUserId, [
             {
               type: "text",
-              text: `🎉 เพื่อนสมัครด้วยโค้ดของคุณแล้ว!\nคุณได้รับคูปองส่วนลด ${REFERRAL_REWARD}฿ เก็บไว้ในกระเป๋าคูปองแล้วนะคะ 🧡 (ใช้ได้ 60 วัน)`,
+              text: `🎉 เพื่อนสมัครด้วยโค้ดของคุณแล้ว!\nคุณได้รับคูปองส่วนลด ${reward.amount}฿ เก็บไว้ในกระเป๋าคูปองแล้วนะคะ 🧡 (ใช้ได้ ${reward.expiresInDays} วัน)`,
             },
           ]).catch((e) => console.error("referral push failed:", e));
         }
       }
       await sendTelegram(
-        formatBookingTelegram(`🎁 สมัครด้วยโค้ดเพื่อนแนะนำ (คูปอง ${REFERRAL_REWARD}฿ x2)`, {
+        formatBookingTelegram(`🎁 สมัครด้วยโค้ดเพื่อนแนะนำ (คูปอง ${reward.amount}฿ x2)`, {
           คนชวน: referrer.name,
           คนถูกชวน: customer.name,
           โค้ด: refCode,

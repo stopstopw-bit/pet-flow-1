@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withResolvedTenant } from "@/lib/tenant-context";
+import { featureOff } from "@/lib/features-server";
 import { acceptBookingConsent, getBooking } from "@/lib/bookings-store";
 import { splitVaccinePhotos } from "@/lib/vaccine-photos";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
@@ -13,6 +14,9 @@ import { requireCustomerSession } from "@/lib/customer-session";
  * ต้องบังคับใช้ lineUserId จากคุกกี้เซสชันที่ตรวจแล้วจริงเท่านั้น
  */
 async function postHandler(req: NextRequest) {
+  // ร้านปิดเรื่องนี้ในตั้งค่า › เปิด/ปิดฟีเจอร์
+  const blocked = await featureOff("consent");
+  if (blocked) return blocked;
   const session = await requireCustomerSession(req);
   if (!session) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });

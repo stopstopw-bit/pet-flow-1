@@ -4,7 +4,7 @@ import { listBookings } from "@/lib/bookings-store";
 import { autoMuted } from "@/lib/auto-messages";
 import { listInvoices } from "@/lib/invoices-store";
 import { getSiteConfig } from "@/lib/config-store";
-import { isFeatureOn } from "@/lib/features";
+import { cardOn, cardsOff, isFeatureOn } from "@/lib/features";
 import { buildBookingConfirmFlex } from "@/lib/booking-line-card";
 import {
   pushLineMessage,
@@ -219,7 +219,12 @@ async function runForTenant() {
   let groomBriefs = 0;
 
   const todayStr = new Date().toISOString().slice(0, 10);
-  const allBookings = await listBookings();
+  // การ์ดที่ร้านปิดในตั้งค่า › เปิด/ปิดฟีเจอร์ = ถือว่าทุกนัดปิดหัวข้อนั้นไว้ (ไม่ได้บันทึกลงนัดจริง)
+  // ยกเว้นการ์ดเตรียมตัว — ชุดก่อนเข้าพักยังต้องส่งเรื่องอื่นที่เปิดอยู่ แค่ไม่ใส่การ์ดเตรียมตัว
+  const featureMuted = cardsOff(cfg).filter((t) => t !== "prestay");
+  const allBookings = (await listBookings()).map((b) =>
+    featureMuted.length ? { ...b, autoOff: [...(b.autoOff || []), ...featureMuted] } : b
+  );
   const allInvoices = await listInvoices();
 
   // ── ยืนยันนัด ล่วงหน้า N วัน (ตั้งค่าได้ · เปิด/ปิดได้) ──
@@ -443,13 +448,15 @@ async function runForTenant() {
       !groupMuted("prestay") &&
       b.checkin === in3
     ) {
-      const prestayBundle: object[] = [
-        // การ์ดเตรียมตัว (ไม่มีลิงก์เซ็นแล้ว) + การ์ดเงื่อนไข/ลายเซ็น แยกกันคนละใบ
-        buildPrestayFlex({
-          ...buildPrestayFlexData(b, cfg),
-          consentUrl: undefined,
-        }, cfg.cards?.prestay),
-      ];
+      const prestayBundle: object[] = cardOn(cfg, "prestay")
+        ? [
+            // การ์ดเตรียมตัว (ไม่มีลิงก์เซ็นแล้ว) + การ์ดเงื่อนไข/ลายเซ็น แยกกันคนละใบ
+            buildPrestayFlex({
+              ...buildPrestayFlexData(b, cfg),
+              consentUrl: undefined,
+            }, cfg.cards?.prestay),
+          ]
+        : [];
       // กฎ + กดยินยอม (ปิดรายนัดได้ ไม่ส่งซ้ำถ้ากดยอมรับนัดนี้แล้ว) + ข้อมูลก่อนเข้าพัก / สมุดวัคซีน /
       // บัตรประชาชน ที่ยังขาด — ขาดหลายเรื่องรวมเป็นการ์ดใบเดียว ปุ่มเดียวไล่ทีละหน้า
       const consent = await consentCardFor(group, b, cfg);
@@ -508,11 +515,14 @@ async function runForTenant() {
           }, cfg.cards?.timePicker)
         );
       }
-      try {
-        await pushInChunks(to, prestayBundle);
-        prestayReminders++;
-      } catch (e) {
-        errors.push(`prestay ${b.id}: ${String(e)}`);
+      // ร้านปิดการ์ดเตรียมตัว และบ้านนี้ไม่มีเรื่องอื่นต้องส่ง — ไม่ส่งอะไร
+      if (prestayBundle.length > 0) {
+        try {
+          await pushInChunks(to, prestayBundle);
+          prestayReminders++;
+        } catch (e) {
+          errors.push(`prestay ${b.id}: ${String(e)}`);
+        }
       }
     }
 

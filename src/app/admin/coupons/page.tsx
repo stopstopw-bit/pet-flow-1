@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "@/components/Toast";
 import { TIER_LABELS } from "@/lib/customer-tier";
 import { Icon } from "@/components/Icon";
+import { useConfig } from "@/components/ConfigProvider";
+import { isFeatureOn } from "@/lib/features";
 import { EmptyState, MoreMenu, SectionLabel, Segmented } from "@/components/ui";
 
 type Offer = { id: string; title: string; amount: number; reason: string; validDays: number; active: boolean };
@@ -42,6 +44,7 @@ type Stats = {
 const TIERS = ["all", "new", "regular", "member", "vip"] as const;
 
 export default function AdminCouponsPage() {
+  const { config } = useConfig();
   const [offers, setOffers] = useState<Offer[]>([]);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [title, setTitle] = useState("");
@@ -372,6 +375,8 @@ export default function AdminCouponsPage() {
               </div>
             </div>
 
+            {/* ร้านปิดชวนเพื่อนแต่เคยแจกไปแล้ว ยังเห็นสถิติเดิม */}
+            {(isFeatureOn(config, "referral") || stats.referral.issued > 0) && (
             <div className="flex items-center gap-3 rounded-petflow bg-card px-4 py-3 shadow-petflow-sm">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-honey/30 text-petflow-chocolate">
                 <Icon name="gift" size={20} />
@@ -384,6 +389,7 @@ export default function AdminCouponsPage() {
                 </p>
               </div>
             </div>
+            )}
 
             {stats.perOffer.length > 0 && (
               <section>

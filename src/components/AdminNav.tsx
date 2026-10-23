@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { ADMIN_TAB_EN, ADMIN_TAB_GROUPS, ADMIN_TAB_ICONS, Icon } from "@/components/Icon";
 import { useConfig } from "@/components/ConfigProvider";
-import { disabledFeatureForAdminPath } from "@/lib/features";
+import { disabledFeatureForAdminPath, isFeatureOn } from "@/lib/features";
 
 export const ADMIN_TABS = [
   { href: "/admin", label: "แดชบอร์ด", icon: "📊" },
@@ -328,6 +328,9 @@ export function AdminSidebar() {
 
 /** ลิงก์ไปคู่มือใช้งาน (/guide) — ไม่ใช่เมนูที่ต้องให้สิทธิ์ ทุกคนในร้านเห็น */
 function GuideLink({ onClick }: { onClick?: () => void }) {
+  const { config } = useConfig();
+  // ร้านปิด "ลิงก์คู่มือการใช้งาน" ในตั้งค่า › เปิด/ปิดฟีเจอร์
+  if (!isFeatureOn(config, "guide")) return null;
   return (
     <Link
       href="/guide"
