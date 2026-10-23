@@ -33,6 +33,13 @@ async function handleGet(req: NextRequest, isAdmin: boolean) {
     ? req.nextUrl.searchParams.get("lineUserId")?.trim()
     : (await requireCustomerSession(req))?.lineUserId;
   const customerId = isAdmin ? req.nextUrl.searchParams.get("customerId")?.trim() : undefined;
+  // ลูกค้ายังไม่มีคุกกี้ — เดิมตอบ found:false เงียบๆ หน้ากระเป๋าเลยว่าง ปุ่มชวนเพื่อนกดไม่ได้โดยไม่บอกเหตุผล
+  if (!isAdmin && !lineUserId) {
+    return NextResponse.json(
+      { error: "ระบบยังยืนยันบัญชี LINE ไม่สำเร็จ — ปิดหน้านี้แล้วเปิดลิงก์จากแชท LINE ใหม่อีกครั้งนะคะ", code: "no_session" },
+      { status: 401 }
+    );
+  }
   const activeOnly = req.nextUrl.searchParams.get("active") === "1";
 
   const cust = customerId

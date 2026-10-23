@@ -464,15 +464,14 @@ export async function setReferredBy(customerId: string, referrerId: string) {
   c.referredBy = referrerId;
   const sb = getSupabase();
   if (sb) {
-    try {
-      await sb
-        .from("customers")
-        .update({ referred_by: referrerId })
-        .eq("id", customerId)
-        .eq("tenant_id", requireTenantId());
-    } catch {
-      /* ยังไม่ได้ migrate — ข้าม */
-    }
+    // supabase ไม่ throw แต่คืน error มา — เดิมกลืนเงียบ ถ้ายังไม่ได้ migrate คอลัมน์ referred_by
+    // สมัครผ่านลิงก์เพื่อนจะ "ดูเหมือนสำเร็จ" แต่ไม่มีใครได้คูปองตอนมาใช้บริการ
+    const { error } = await sb
+      .from("customers")
+      .update({ referred_by: referrerId })
+      .eq("id", customerId)
+      .eq("tenant_id", requireTenantId());
+    if (error) throw new Error(`บันทึกคนชวนไม่สำเร็จ (ยังไม่ได้ migrate customers.referral_code?): ${error.message}`);
   } else {
     memCustomers.set(customerId, c);
   }
