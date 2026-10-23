@@ -41,6 +41,7 @@ import { useConfig, usePetWords } from "@/components/ConfigProvider";
 import { isFeatureOn } from "@/lib/features";
 import { GroomProgramPicker, useGroomPrograms } from "@/components/GroomProgramPicker";
 import { groomProgramName } from "@/lib/grooming-prices";
+import { tidyServiceText } from "@/lib/stay-line";
 import { Avatar, EmptyState, MoreMenu, SearchField, Segmented, SectionLabel } from "@/components/ui";
 
 type Summary = {
