@@ -2250,15 +2250,18 @@ export function BookingCalendar() {
                       ยังไม่กดยอมรับข้อตกลง
                     </p>
                   ))}
-                {/* สมุดวัคซีนรายตัว — โชว์ทุกนัด พนักงานแนบเองได้ ไม่ต้องรอลูกค้ากดยอมรับข้อตกลงก่อน */}
+                {/* สมุดวัคซีนรายตัว — โชว์ทุกนัดเข้าพัก พนักงานแนบเองได้ ไม่ต้องรอลูกค้ากดยอมรับข้อตกลงก่อน
+                    นัดอาบน้ำอย่างเดียวไม่ใช้สมุดวัคซีน — เหลือแค่แถวหยดยาเห็บหมัด (ถ้ามี) */}
                 <div className="mt-1 space-y-1">
-                  {group.map((x) => (
+                  {group.filter((x) => b.service !== "groom" || x.fleaTickTreated).map((x) => (
                     <div key={x.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
                       <span className="flex items-center gap-1 font-bold text-brown-soft">
                         <Icon name="paw" size={12} />
                         {x.catName}
                       </span>
-                      <VaccinePhotosAdmin bookingId={x.id} value={x.vaccinePhotoUrl} onDone={load} />
+                      {b.service !== "groom" && (
+                        <VaccinePhotosAdmin bookingId={x.id} value={x.vaccinePhotoUrl} onDone={load} />
+                      )}
                       {x.fleaTickTreated && (
                         <span className="flex items-center gap-1 font-bold text-ok">
                           <Icon name="check" size={12} strokeWidth={2.4} />
