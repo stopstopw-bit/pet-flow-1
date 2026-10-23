@@ -15,7 +15,7 @@ import { contrastRatio, isValidHex } from "@/lib/color-utils";
 import { Icon } from "@/components/Icon";
 import { useConfig } from "@/components/ConfigProvider";
 import { FEATURES, FEATURE_GROUPS, isFeatureOn, type FeatureKey } from "@/lib/features";
-import { GROOM_EXTRA_CARDS, type IntakeRules } from "@/lib/intake-rules";
+import { GROOM_EXTRA_CARDS, groomUsesCard, type IntakeRules } from "@/lib/intake-rules";
 import { REFERRAL_DEFAULT, referralReward } from "@/lib/referral";
 import { breedOptionsFor, petKindOf, petWords, withDefaultBreeds, type PetKind } from "@/lib/pet-kind";
 
@@ -2771,6 +2771,113 @@ function FeaturesTab({
   );
 }
 
+type AutoForm = typeof AUTOMATION_DEFAULT;
+
+/** วันที่ส่งเทียบกับวันนัด — 0 = วันนั้นเลย */
+function autoDayText(days: number, anchor: string) {
+  return days <= 0 ? `วัน${anchor}` : `${days} วันก่อน${anchor}`;
+}
+
+/** ไทม์ไลน์ว่าลูกค้าได้อะไรวันไหน ตามที่ตั้งไว้ตอนนี้ — ใบที่ส่งรอบเดียวกันจะรวมอยู่ในข้อความเดียว */
+function AutoTimeline({ form, config }: { form: AutoForm; config: SiteConfig }) {
+  const intake = form.intakeAutoEnabled !== false;
+  const groomExtras = GROOM_EXTRA_CARDS.filter((c) => groomUsesCard(config, c.key)).map((c) => c.label);
+  type Row = { order: number; when: string; what: string; parts?: string[] };
+  const groom: Row[] = [];
+  const stay: Row[] = [];
+  if (form.bookingApprovedEnabled) {
+    const r = { order: 1e6, when: "ทันทีที่กดยืนยันคิว", what: "การ์ดยืนยันคิว" };
+    groom.push(r);
+    stay.push(r);
+  }
+  if (form.confirmTomorrowEnabled) {
+    const d = form.confirmDaysBefore;
+    groom.push({
+      order: d,
+      when: `${autoDayText(d, "นัด")} · 12:00`,
+      what: "การ์ดเตือนนัด",
+      parts: [
+        ...(form.groomInfoEnabled ? ["ฟอร์มประวัติก่อนอาบน้ำ (ถ้ายังไม่เคยกรอก)"] : []),
+        ...(intake ? groomExtras : []),
+      ],
+    });
+    stay.push({ order: d, when: `${autoDayText(d, "เข้าพัก")} · 12:00`, what: "การ์ดเตือนนัด" });
+  }
+  if (form.depositReminderEnabled)
+    stay.push({
+      order: form.depositReminderDays,
+      when: `${autoDayText(form.depositReminderDays, "เข้าพัก")} · 12:00`,
+      what: "ข้อความเตือนยอดคงเหลือ (เฉพาะนัดที่จ่ายมัดจำแล้วยังค้าง)",
+    });
+  if (form.prestayReminderEnabled)
+    stay.push({
+      order: form.prestayReminderDays,
+      when: `${autoDayText(form.prestayReminderDays, "เข้าพัก")} · 12:00`,
+      what: "ชุดก่อนเข้าพัก",
+      parts: [
+        "การ์ดเตรียมตัว",
+        ...(intake ? ["ฟอร์มก่อนเข้าพัก / สมุดวัคซีน / บัตรประชาชน / กฎ + กดยินยอม (ใบที่ยังขาด)"] : []),
+        "ยอดคงเหลือ (ถ้ามี)",
+        "เลือกเวลามาส่งน้อง",
+      ],
+    });
+  if (form.checkinReminderEnabled)
+    stay.push({
+      order: form.checkinReminderDays - 0.1,
+      when: `${autoDayText(form.checkinReminderDays, "เข้าพัก")} · ${form.checkinReminderTime || "12:00"}`,
+      what: "เตือนเช็คอิน + เลือกเวลามาส่ง (ถ้ายังไม่ได้เลือกในชุดก่อนเข้าพัก)",
+    });
+  if (form.checkoutReminderEnabled)
+    stay.push({
+      order: -100 - (10 - form.checkoutReminderDays),
+      when: `${autoDayText(form.checkoutReminderDays, "รับกลับ")} · ${form.checkoutReminderTime || "19:30"}`,
+      what: "เตือนเช็คเอาท์ + เลือกเวลามารับ",
+    });
+  if (form.reviewRequestEnabled)
+    stay.push({
+      order: -1000 - form.reviewRequestDaysAfter,
+      when: `${form.reviewRequestDaysAfter <= 0 ? "วันรับกลับ" : `${form.reviewRequestDaysAfter} วันหลังรับกลับ`} · 12:00`,
+      what: "ขอรีวิว",
+    });
+
+  const list = (title: string, rows: Row[]) => (
+    <div className="rounded-petflow-sm bg-paper p-3">
+      <p className="pb-1.5 text-sm font-extrabold text-petflow-chocolate">{title}</p>
+      {rows.length === 0 ? (
+        <p className="text-[11px] text-brown-faint">ไม่มีการส่งอัตโนมัติ</p>
+      ) : (
+        <ol className="space-y-2">
+          {[...rows]
+            .sort((a, b) => b.order - a.order)
+            .map((r, i) => (
+              <li key={i} className="border-l-4 border-honey pl-2">
+                <p className="text-[11px] font-bold text-brown-soft">{r.when}</p>
+                <p className="text-xs font-bold text-brown">{r.what}</p>
+                {r.parts && r.parts.length > 0 && (
+                  <p className="text-[11px] text-brown-soft">+ {r.parts.join(" · ")}</p>
+                )}
+              </li>
+            ))}
+        </ol>
+      )}
+    </div>
+  );
+
+  return (
+    <section className="space-y-2 rounded-petflow bg-card p-4 shadow-petflow-sm">
+      <p className="text-base font-extrabold text-petflow-chocolate">📅 ลูกค้าจะได้อะไร วันไหน</p>
+      <p className="text-[11px] leading-relaxed text-brown-soft">
+        สรุปจากที่ตั้งไว้ด้านล่าง (ยังไม่บันทึกก็เห็นผลทันที) · ใบที่เขียนต่อกันด้วย + ส่งรวมเป็นข้อความเดียว
+        · หัวข้อที่อยู่คนละบรรทัดส่งแยกกัน แม้ตั้งเป็นวันเดียวกัน · ส่งซ้ำไม่ได้ ใบที่ลูกค้าส่งแล้วจะไม่ขออีก
+      </p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {list("🛁 นัดอาบน้ำ / นวด", groom)}
+        {list("🏠 นัดเข้าพัก", stay)}
+      </div>
+    </section>
+  );
+}
+
 function AutomationTab({
   config,
   saving,
@@ -2786,224 +2893,299 @@ function AutomationTab({
     [config.automation]
   );
   const set = (patch: Partial<typeof form>) => setForm((f) => ({ ...f, ...patch }));
+  const groomExtras = GROOM_EXTRA_CARDS.filter((c) => groomUsesCard(config, c.key)).map((c) => c.label);
+
+  /** การ์ดหนึ่งเรื่อง: หัวข้อ · ใช้กับบริการไหน · ส่งเมื่อไหร่ · ในข้อความมีอะไร */
+  const item = (o: {
+    emoji: string;
+    title: string;
+    services: ("groom" | "stay")[];
+    when: string;
+    sends: string;
+    on?: boolean;
+    onToggle?: (v: boolean) => void;
+    children?: React.ReactNode;
+  }) => (
+    <div className={`rounded-petflow-sm border border-petflow-line p-3 ${o.on === false ? "bg-paper/60" : ""}`}>
+      <div className="flex items-start gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-honey/30 text-lg">{o.emoji}</span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-extrabold text-petflow-chocolate">{o.title}</p>
+          <div className="mt-1 flex flex-wrap gap-1">
+            {o.services.map((s) => (
+              <span key={s} className="rounded-full bg-sage/20 px-2 py-0.5 text-[10px] font-bold text-brown">
+                {s === "groom" ? "🛁 อาบน้ำ / นวด" : "🏠 เข้าพัก"}
+              </span>
+            ))}
+            <span className="rounded-full bg-paper px-2 py-0.5 text-[10px] font-bold text-brown-soft">⏰ {o.when}</span>
+          </div>
+        </div>
+        {o.onToggle && (
+          <div className="shrink-0">
+            <Toggle label="" checked={o.on !== false} onChange={o.onToggle} />
+          </div>
+        )}
+      </div>
+      <p className="mt-2 text-[11px] leading-relaxed text-brown-soft">
+        <span className="font-bold text-brown">ส่งอะไร: </span>
+        {o.sends}
+      </p>
+      {o.on !== false && o.children && <div className="mt-2 space-y-2">{o.children}</div>}
+    </div>
+  );
+  const group = (title: string, children: React.ReactNode) => (
+    <section className="space-y-2 rounded-petflow bg-card p-4 shadow-petflow-sm">
+      <p className="text-base font-extrabold text-petflow-chocolate">{title}</p>
+      {children}
+    </section>
+  );
 
   return (
     <form
-      className="space-y-3 rounded-petflow bg-card p-4 shadow-petflow-sm"
+      className="space-y-3"
       onSubmit={(e) => {
         e.preventDefault();
         onSave({ automation: form });
       }}
     >
-      <p className="text-[11px] text-brown-soft">
-        ระบบส่งอัตโนมัติ เที่ยงวัน (เวลาไทย) ทุกวัน — เปิด/ปิด และตั้งจำนวนวันได้เอง
+      <p className="rounded-petflow-sm bg-paper px-3 py-2.5 text-[11px] leading-relaxed text-brown-soft">
+        ระบบส่งรอบเที่ยงวัน (เวลาไทย) ทุกวัน ยกเว้นเตือนเช็คอิน/เช็คเอาท์ที่เลือกช่วงเวลาได้ · ข้อความแก้ได้ที่ตั้งค่า › ข้อความ
         <br />
-        การ์ดของเรื่องที่ปิดไว้ในแท็บ “เปิด/ปิดฟีเจอร์” จะไม่ถูกส่ง แม้เปิดไว้ตรงนี้
+        การ์ดของเรื่องที่ปิดไว้ในแท็บ “เปิด/ปิดฟีเจอร์” จะไม่ถูกส่ง แม้เปิดไว้ตรงนี้ · ปิดรายนัดได้ที่การ์ดนัดนั้น
       </p>
 
-      <div className="rounded-petflow-sm border border-petflow-line p-3">
-        <Toggle
-          label="แจ้งลูกค้าทันทีที่ร้านกดยืนยันคิว"
-          checked={form.bookingApprovedEnabled}
-          onChange={(v) => set({ bookingApprovedEnabled: v })}
-        />
-        <p className="mt-1 text-[10px] text-brown-faint">
-          ส่งทันทีตอนกดปุ่ม “✔️ ยืนยันนัด” — คนละอันกับการ์ดเตือนล่วงหน้าด้านล่างที่ส่งใกล้ถึงวันจริง
-        </p>
+      <AutoTimeline form={form} config={config} />
+
+      {group(
+        "✔️ ยืนยันนัด",
+        <>
+          {item({
+            emoji: "🎉",
+            title: "แจ้งลูกค้าทันทีที่ร้านกดยืนยันคิว",
+            services: ["groom", "stay"],
+            when: "ทันทีตอนกด ✔️ ยืนยันนัด",
+            sends: "การ์ดยืนยันคิว บอกวันเวลาและชื่อน้อง (คนละใบกับการ์ดเตือนนัดล่วงหน้า)",
+            on: form.bookingApprovedEnabled,
+            onToggle: (v) => set({ bookingApprovedEnabled: v }),
+          })}
+          {item({
+            emoji: "📆",
+            title: "การ์ดเตือนนัดล่วงหน้า",
+            services: ["groom", "stay"],
+            when: `${autoDayText(form.confirmDaysBefore, "นัด")} · 12:00`,
+            sends:
+              "การ์ดเตือนนัดให้ลูกค้ากดยืนยัน · นัดอาบน้ำ/นวด จะพ่วงฟอร์มประวัติและเอกสารที่ร้านเลือก ไว้ในข้อความเดียวกัน · บ้านเดียวกันหลายตัวได้ใบเดียว",
+            on: form.confirmTomorrowEnabled,
+            onToggle: (v) => set({ confirmTomorrowEnabled: v }),
+            children: (
+              <Field
+                label="ส่งล่วงหน้า (วัน) — 1 = พรุ่งนี้"
+                type="number"
+                value={String(form.confirmDaysBefore)}
+                onChange={(v) => set({ confirmDaysBefore: Math.max(1, Number(v) || 1) })}
+              />
+            ),
+          })}
+        </>
+      )}
+
+      {group(
+        "📝 ขอข้อมูลก่อนรับน้อง",
+        <>
+          {item({
+            emoji: "🛁",
+            title: "ขอประวัติน้องก่อนอาบน้ำ / นวด",
+            services: ["groom"],
+            when: "พร้อมการ์ดเตือนนัด",
+            sends:
+              "ฟอร์มประวัติน้อง (โรค นิสัย แพ้) เฉพาะน้องที่ยังไม่เคยกรอก · น้องที่กรอกแล้ว ร้านได้บรีฟทาง Telegram แทน",
+            on: form.groomInfoEnabled,
+            onToggle: (v) => set({ groomInfoEnabled: v }),
+          })}
+          {item({
+            emoji: "📋",
+            title: "ขอเอกสารที่ยังขาดอัตโนมัติ",
+            services: ["groom", "stay"],
+            when: "พ่วงไปกับการ์ดเตือนนัด / ชุดก่อนเข้าพัก",
+            sends: `เข้าพัก: ฟอร์มก่อนเข้าพัก สมุดวัคซีน บัตรประชาชน กฎ + กดยินยอม (ไปกับชุดก่อนเข้าพัก) · อาบน้ำ/นวด: ${
+              groomExtras.length ? groomExtras.join(" ") : "ไม่ขอเพิ่ม"
+            } (ไปกับการ์ดเตือนนัด · เลือกได้ที่ เปิด/ปิดฟีเจอร์ › ขอข้อมูลตามบริการ) · ขาดหลายใบรวมเป็นการ์ดเดียว ปุ่มเดียวไล่ทีละหน้า · ใบที่ส่งแล้วไม่ขอซ้ำ`,
+            on: form.intakeAutoEnabled !== false,
+            onToggle: (v) => set({ intakeAutoEnabled: v }),
+          })}
+        </>
+      )}
+
+      {group(
+        "🏠 ก่อนเข้าพัก",
+        <>
+          {item({
+            emoji: "💰",
+            title: "เตือนยอดคงเหลือ",
+            services: ["stay"],
+            when: `${autoDayText(form.depositReminderDays, "เข้าพัก")} · 12:00`,
+            sends: "ข้อความแจ้งยอดที่ต้องโอนก่อนเข้าพัก เฉพาะนัดที่จ่ายมัดจำแล้วยังค้าง · ร้านได้แจ้งเตือนทาง Telegram ด้วย · ส่งแยกเป็นอีกข้อความ",
+            on: form.depositReminderEnabled,
+            onToggle: (v) => set({ depositReminderEnabled: v }),
+            children: (
+              <Field
+                label="ส่งก่อนเข้าพัก (วัน)"
+                type="number"
+                value={String(form.depositReminderDays)}
+                onChange={(v) => set({ depositReminderDays: Math.max(0, Number(v) || 0) })}
+              />
+            ),
+          })}
+          {item({
+            emoji: "🧳",
+            title: "ชุดแจ้งเตรียมตัวก่อนเข้าพัก",
+            services: ["stay"],
+            when: `${autoDayText(form.prestayReminderDays, "เข้าพัก")} · 12:00`,
+            sends:
+              "รวมในข้อความเดียว: การ์ดเตรียมตัว + เอกสารที่ยังขาด + ยอดคงเหลือ (ถ้ามี) + ปุ่มเลือกเวลามาส่งน้อง",
+            on: form.prestayReminderEnabled,
+            onToggle: (v) => set({ prestayReminderEnabled: v }),
+            children: (
+              <>
+                <Field
+                  label="ส่งก่อนเข้าพัก (วัน)"
+                  type="number"
+                  value={String(form.prestayReminderDays)}
+                  onChange={(v) => set({ prestayReminderDays: Math.max(0, Number(v) || 0) })}
+                />
+                <Field
+                  label="แถมทรายฟรีเมื่อเข้าพัก (คืน) ขึ้นไป"
+                  type="number"
+                  value={String(form.freeLitterMinNights)}
+                  onChange={(v) => set({ freeLitterMinNights: Math.max(1, Number(v) || 1) })}
+                />
+                <p className="text-[10px] text-brown-faint">
+                  เข้าพักน้อยกว่านี้ การ์ดเตรียมตัวจะบอกให้เตรียมทรายมาเอง (ใส่ {"{litterNote}"} ในข้อความ)
+                </p>
+              </>
+            ),
+          })}
+          {item({
+            emoji: "🕒",
+            title: "เตือนเช็คอิน (ถามเวลามาส่ง)",
+            services: ["stay"],
+            when: `${autoDayText(form.checkinReminderDays, "เข้าพัก")} · ${form.checkinReminderTime || "12:00"}`,
+            sends:
+              "การ์ดให้ลูกค้าเลือกเวลามาส่งน้อง · ถ้าเลือกเวลาไปแล้วจากชุดก่อนเข้าพัก จะไม่ส่งซ้ำ (บ้านหนึ่งได้ปุ่มเลือกเวลาใบเดียว)",
+            on: form.checkinReminderEnabled,
+            onToggle: (v) => set({ checkinReminderEnabled: v }),
+            children: (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field
+                    label="ส่งก่อนเข้าพัก (วัน)"
+                    type="number"
+                    value={String(form.checkinReminderDays)}
+                    onChange={(v) => set({ checkinReminderDays: Math.max(0, Number(v) || 0) })}
+                  />
+                  <TimeSlotField
+                    label="ส่งช่วงไหน"
+                    value={form.checkinReminderTime || "12:00"}
+                    onChange={(v) => set({ checkinReminderTime: v })}
+                  />
+                </div>
+                <p className="text-[10px] text-brown-faint">ใส่ 0 = ส่งวันเข้าพักเลย</p>
+              </>
+            ),
+          })}
+        </>
+      )}
+
+      {group(
+        "👋 รับกลับ / หลังเข้าพัก",
+        <>
+          {item({
+            emoji: "🏡",
+            title: "เตือนเช็คเอาท์ (ถามเวลามารับ)",
+            services: ["stay"],
+            when: `${autoDayText(form.checkoutReminderDays, "รับกลับ")} · ${form.checkoutReminderTime || "19:30"}`,
+            sends: "การ์ดให้ลูกค้าเลือกเวลามารับน้อง",
+            on: form.checkoutReminderEnabled,
+            onToggle: (v) => set({ checkoutReminderEnabled: v }),
+            children: (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field
+                    label="ส่งก่อนเช็คเอาท์ (วัน)"
+                    type="number"
+                    value={String(form.checkoutReminderDays)}
+                    onChange={(v) => set({ checkoutReminderDays: Math.max(0, Number(v) || 0) })}
+                  />
+                  <TimeSlotField
+                    label="ส่งช่วงไหน"
+                    value={form.checkoutReminderTime || "19:30"}
+                    onChange={(v) => set({ checkoutReminderTime: v })}
+                  />
+                </div>
+                <p className="text-[10px] text-brown-faint">ใส่ 0 = ส่งวันเช็คเอาท์เลย</p>
+              </>
+            ),
+          })}
+          {item({
+            emoji: "⭐",
+            title: "ขอรีวิว",
+            services: ["stay"],
+            when: `${form.reviewRequestDaysAfter <= 0 ? "วันรับกลับ" : `${form.reviewRequestDaysAfter} วันหลังรับกลับ`} · 12:00`,
+            sends: "การ์ดขอบคุณ + ปุ่มรีวิว (แยกจากใบเสร็จ ลูกค้าที่จ่ายล่วงหน้าจะไม่ถูกขอรีวิวตอนจ่ายเงิน)",
+            on: form.reviewRequestEnabled,
+            onToggle: (v) => set({ reviewRequestEnabled: v }),
+            children: (
+              <Field
+                label="ส่งหลังเช็คเอาท์ (วัน)"
+                type="number"
+                value={String(form.reviewRequestDaysAfter)}
+                onChange={(v) => set({ reviewRequestDaysAfter: Math.max(0, Number(v) || 0) })}
+              />
+            ),
+          })}
+        </>
+      )}
+
+      {group(
+        "🎂 วันเกิด",
+        <>
+          {item({
+            emoji: "🎂",
+            title: "คัดวันเกิดเข้าคิวรอตรวจ",
+            services: ["groom", "stay"],
+            when: "ทุกวัน · ร้านกดส่งเอง",
+            sends: "ไม่ส่งเอง — ระบบคัดวันเกิดของวันนี้ไว้ให้ที่หน้าวันเกิดลูกค้า ร้านตรวจข้อความแล้วกดส่ง",
+            on: form.birthdayEnabled,
+            onToggle: (v) => set({ birthdayEnabled: v }),
+            children: (
+              <a href="/admin/birthdays" className="text-[11px] font-bold underline">
+                เปิดหน้าวันเกิดลูกค้า
+              </a>
+            ),
+          })}
+          {item({
+            emoji: "🎁",
+            title: "แจกคูปองวันเกิดตอนกดส่ง",
+            services: ["groom", "stay"],
+            when: "ตอนร้านกดส่งอวยพร",
+            sends: "คูปองเข้ากระเป๋าลูกค้า (ครั้งเดียวต่อปี · ใช้ได้ 30 วัน) พร้อมข้อความอวยพร",
+            on: form.birthdayCouponEnabled,
+            onToggle: (v) => set({ birthdayCouponEnabled: v }),
+            children: (
+              <Field
+                label="มูลค่าคูปองวันเกิด (บาท)"
+                type="number"
+                value={String(form.birthdayCouponAmount)}
+                onChange={(v) => set({ birthdayCouponAmount: Math.max(0, Number(v) || 0) })}
+              />
+            ),
+          })}
+        </>
+      )}
+
+      <div className="sticky bottom-3 z-10">
+        <SaveBtn saving={saving} />
       </div>
-
-      <div className="rounded-petflow-sm border border-petflow-line p-3">
-        <Toggle
-          label="ส่งการ์ดยืนยันนัดอัตโนมัติ (เตือนล่วงหน้า)"
-          checked={form.confirmTomorrowEnabled}
-          onChange={(v) => set({ confirmTomorrowEnabled: v })}
-        />
-        {form.confirmTomorrowEnabled && (
-          <Field
-            label="ส่งล่วงหน้า (วัน) — 1 = พรุ่งนี้"
-            type="number"
-            value={String(form.confirmDaysBefore)}
-            onChange={(v) => set({ confirmDaysBefore: Math.max(1, Number(v) || 1) })}
-          />
-        )}
-      </div>
-
-      <div className="rounded-petflow-sm border border-petflow-line p-3">
-        <Toggle
-          label="เตือนยอดคงเหลือก่อนเข้าพัก"
-          checked={form.depositReminderEnabled}
-          onChange={(v) => set({ depositReminderEnabled: v })}
-        />
-        {form.depositReminderEnabled && (
-          <Field
-            label="ส่งก่อนเข้าพัก (วัน)"
-            type="number"
-            value={String(form.depositReminderDays)}
-            onChange={(v) => set({ depositReminderDays: Math.max(0, Number(v) || 0) })}
-          />
-        )}
-      </div>
-
-      <div className="rounded-petflow-sm border border-petflow-line p-3">
-        <Toggle
-          label="แจ้งเข้าพัก + เงื่อนไข ก่อนเข้าพัก"
-          checked={form.prestayReminderEnabled}
-          onChange={(v) => set({ prestayReminderEnabled: v })}
-        />
-        {form.prestayReminderEnabled && (
-          <Field
-            label="ส่งก่อนเข้าพัก (วัน)"
-            type="number"
-            value={String(form.prestayReminderDays)}
-            onChange={(v) => set({ prestayReminderDays: Math.max(0, Number(v) || 0) })}
-          />
-        )}
-      </div>
-
-      <div className="rounded-petflow-sm border border-petflow-line p-3">
-        <Toggle
-          label="เตือนเช็คอิน ก่อนวันเข้าพัก"
-          checked={form.checkinReminderEnabled}
-          onChange={(v) => set({ checkinReminderEnabled: v })}
-        />
-        {form.checkinReminderEnabled && (
-          <div className="mt-1 grid grid-cols-2 gap-2">
-            <Field
-              label="ส่งก่อนเข้าพัก (วัน)"
-              type="number"
-              value={String(form.checkinReminderDays)}
-              onChange={(v) => set({ checkinReminderDays: Math.max(0, Number(v) || 0) })}
-            />
-            <TimeSlotField
-              label="ส่งช่วงไหน"
-              value={form.checkinReminderTime || "12:00"}
-              onChange={(v) => set({ checkinReminderTime: v })}
-            />
-          </div>
-        )}
-        {form.checkinReminderEnabled && (
-          <p className="mt-1 text-[10px] text-brown-faint">
-            ใส่ 0 = ส่งวันเข้าพักเลย (ไม่ต้องรอวันก่อนหน้า)
-          </p>
-        )}
-      </div>
-
-      <div className="rounded-petflow-sm border border-petflow-line p-3">
-        <Toggle
-          label="เตือนเช็คเอาท์ ก่อนวันออก"
-          checked={form.checkoutReminderEnabled}
-          onChange={(v) => set({ checkoutReminderEnabled: v })}
-        />
-        {form.checkoutReminderEnabled && (
-          <div className="mt-1 grid grid-cols-2 gap-2">
-            <Field
-              label="ส่งก่อนเช็คเอาท์ (วัน)"
-              type="number"
-              value={String(form.checkoutReminderDays)}
-              onChange={(v) => set({ checkoutReminderDays: Math.max(0, Number(v) || 0) })}
-            />
-            <TimeSlotField
-              label="ส่งช่วงไหน"
-              value={form.checkoutReminderTime || "19:30"}
-              onChange={(v) => set({ checkoutReminderTime: v })}
-            />
-          </div>
-        )}
-        {form.checkoutReminderEnabled && (
-          <p className="mt-1 text-[10px] text-brown-faint">
-            ใส่ 0 = ส่งวันเช็คเอาท์เลย (ไม่ต้องรอวันก่อนหน้า)
-          </p>
-        )}
-      </div>
-
-      <div className="rounded-petflow-sm border border-petflow-line p-3">
-        <Toggle
-          label="ขอรีวิวอัตโนมัติ หลังเช็คเอาท์ (ห้องพัก)"
-          checked={form.reviewRequestEnabled}
-          onChange={(v) => set({ reviewRequestEnabled: v })}
-        />
-        {form.reviewRequestEnabled && (
-          <Field
-            label="ส่งหลังเช็คเอาท์ (วัน)"
-            type="number"
-            value={String(form.reviewRequestDaysAfter)}
-            onChange={(v) => set({ reviewRequestDaysAfter: Math.max(0, Number(v) || 0) })}
-          />
-        )}
-        <p className="mt-1 text-[10px] text-brown-soft">
-          แยกคำขอรีวิวออกจากใบเสร็จ — ลูกค้าที่จ่ายล่วงหน้าก่อนเข้าพักจะไม่ถูกขอรีวิวตอนจ่ายเงิน
-        </p>
-      </div>
-
-      <div className="rounded-petflow-sm border border-petflow-line p-3">
-        <Field
-          label="แถมทรายฟรีเมื่อเข้าพัก (คืน) ขึ้นไป"
-          type="number"
-          value={String(form.freeLitterMinNights)}
-          onChange={(v) => set({ freeLitterMinNights: Math.max(1, Number(v) || 1) })}
-        />
-        <p className="mt-1 text-[10px] text-brown-soft">
-          ถ้าเข้าพักน้อยกว่านี้ การ์ดเตือนเตรียมตัวจะบอกให้ลูกค้าเตรียมทรายมาเอง
-          (ใส่ {"{litterNote}"} ในข้อความ)
-        </p>
-      </div>
-
-      <div className="rounded-petflow-sm border border-petflow-line p-3">
-        <Toggle
-          label="สอบถามประวัติน้องก่อนอาบน้ำ (พ่วงกับยืนยันนัด)"
-          checked={form.groomInfoEnabled}
-          onChange={(v) => set({ groomInfoEnabled: v })}
-        />
-        <p className="mt-1 text-[10px] text-brown-soft">
-          นัดอาบน้ำ: หลังส่งการ์ดยืนยันนัด จะส่งการ์ดให้ลูกค้ากรอกประวัติน้อง (โรค/นิสัย/แพ้) ต่อทันที
-        </p>
-      </div>
-
-      <div className="rounded-petflow-sm border border-petflow-line p-3">
-        <Toggle
-          label="ถามข้อมูลก่อนรับน้องอัตโนมัติ"
-          checked={form.intakeAutoEnabled !== false}
-          onChange={(v) => set({ intakeAutoEnabled: v })}
-        />
-        <p className="mt-1 text-[10px] text-brown-soft">
-          ส่งเฉพาะใบที่ลูกค้ายังไม่ได้ส่ง — นัดเข้าพัก: ข้อมูลน้องก่อนเข้าพัก สมุดวัคซีน บัตรประชาชน และกฎ + กดยินยอม
-          พ่วงไปกับชุดแจ้งเตรียมตัวก่อนเข้าพัก · นัดอาบน้ำ: สมุดวัคซีน และกฎ + กดยินยอม พ่วงไปกับการ์ดยืนยันนัด
-        </p>
-      </div>
-
-      <Toggle
-        label="คัดกรองวันเกิดเข้าคิวรอตรวจ"
-        checked={form.birthdayEnabled}
-        onChange={(v) => set({ birthdayEnabled: v })}
-      />
-      <p className="-mt-1 text-[10px] text-brown-faint">
-        ไม่ส่งอัตโนมัติแล้ว — ระบบแค่คัดวันเกิดของวันนี้ไว้ให้ที่{" "}
-        <a href="/admin/birthdays" className="underline">
-          วันเกิดลูกค้า
-        </a>{" "}
-        ต้องเข้าไปตรวจข้อความแล้วกดส่งเอง (คูปองก็แจกตอนกดส่งเท่านั้น)
-      </p>
-
-      <div className="rounded-petflow-sm border border-petflow-line p-3">
-        <Toggle
-          label="แจกคูปองวันเกิดตอนกดส่ง (น้อง/เจ้าของ)"
-          checked={form.birthdayCouponEnabled}
-          onChange={(v) => set({ birthdayCouponEnabled: v })}
-        />
-        {form.birthdayCouponEnabled && (
-          <Field
-            label="มูลค่าคูปองวันเกิด (บาท)"
-            type="number"
-            value={String(form.birthdayCouponAmount)}
-            onChange={(v) => set({ birthdayCouponAmount: Math.max(0, Number(v) || 0) })}
-          />
-        )}
-        <p className="mt-1 text-[10px] text-brown-soft">
-          วันเกิดน้อง/เจ้าของ ระบบจะแถมคูปองเข้ากระเป๋าให้เอง (ครั้งเดียวต่อปี · ใช้ได้ 30 วัน) พร้อมข้อความอวยพร
-        </p>
-      </div>
-
-      <SaveBtn saving={saving} />
     </form>
   );
 }
