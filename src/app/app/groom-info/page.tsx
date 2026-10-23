@@ -6,8 +6,8 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLiff } from "@/components/LiffProvider";
 import { useConfig } from "@/components/ConfigProvider";
-import { resolveGroomForm, type GroomField } from "@/lib/groom-form";
-import { resolveStayForm } from "@/lib/stay-form";
+import { type GroomField } from "@/lib/groom-form";
+import { intakeFields } from "@/lib/intake-rules";
 import { normalizeSpecies, petKindOf, petWords, speciesWords } from "@/lib/pet-kind";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { BTN_PRIMARY, PageHeader } from "@/components/PageHeader";
@@ -67,6 +67,7 @@ function GroomInfoContent() {
   // เลือกชุดตามชนิดของน้องแต่ละตัว (หมา/แมว) · ไม่รู้ชนิด = ชนิดที่ร้านรับ
   const petKind = petKindOf(config);
   const groomForm = config.groomForm;
+  const rules = config.intakeRules;
 
   const [forms, setForms] = useState<CatForm[]>([]);
   const [loading, setLoading] = useState(true);
@@ -111,7 +112,7 @@ function GroomInfoContent() {
           const info = d.info || null;
           const species = normalizeSpecies(d.species);
           const kind = species ?? petKind;
-          const fs = stay ? resolveStayForm(undefined, kind) : resolveGroomForm(groomForm, kind);
+          const fs = intakeFields(stay ? "stay" : "groom", kind, { groomForm, intakeRules: rules });
           loaded.push({
             id: ids[i],
             catName: d.booking?.catName || "น้อง",
@@ -119,14 +120,14 @@ function GroomInfoContent() {
             emoji: speciesWords(species, config).emoji,
             answers: loadAnswers(fs, info),
             weightUnknown: info?.weight === "unknown",
-            skip: stay && d.knownMedical ? ["medical"] : [],
+            skip: d.knownMedical ? ["medical"] : [],
           });
         });
         setForms(loaded);
       })
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.toString(), groomForm, petKind, profile?.lineUserId]);
+  }, [params.toString(), groomForm, rules, petKind, profile?.lineUserId]);
 
   const setAnswer = (idx: number, key: string, value: string | string[]) =>
     setForms((prev) =>

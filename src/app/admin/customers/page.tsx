@@ -22,7 +22,7 @@ import { CustomerIntakeCards } from "@/components/CustomerIntakeCards";
 import { CustomerLinkSection } from "@/components/CustomerLinkSection";
 import type { PointsHistoryEntry } from "@/lib/points-store";
 import { parseGroomInfo, groomInfoSummary } from "@/lib/groom-info";
-import { resolveStayForm } from "@/lib/stay-form";
+import { summaryFields } from "@/lib/intake-rules";
 import { BOOKING_STATUS_LABELS, type Booking } from "@/lib/business";
 import type { CustomerServiceLog } from "@/lib/customer-service-log";
 import { pastPriceList } from "@/lib/special-price";
@@ -3307,7 +3307,7 @@ export default function CustomersPage() {
                         </div>
                       );
                     }
-                    const s = groomInfoSummary(gi);
+                    const s = groomInfoSummary(gi, summaryFields("groom", speciesOf(cat, config) ?? petKindOf(config), config, gi));
                     return (
                       <div className="rounded-petflow-sm border border-sage/40 bg-sage/10 px-3 py-2.5">
                         <div className="flex items-center justify-between gap-2">
@@ -3340,7 +3340,7 @@ export default function CustomersPage() {
                   {(() => {
                     const si = parseGroomInfo(cat.stayInfo);
                     if (!si) return null;
-                    const s = groomInfoSummary(si, resolveStayForm(undefined, speciesOf(cat, config) ?? petKindOf(config)));
+                    const s = groomInfoSummary(si, summaryFields("stay", speciesOf(cat, config) ?? petKindOf(config), config, si));
                     return (
                       <div className="rounded-petflow-sm border border-sage/40 bg-sage/10 px-3 py-2.5">
                         <p className="flex items-center gap-1.5 text-[11px] font-extrabold text-ok">
