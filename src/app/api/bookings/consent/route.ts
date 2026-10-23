@@ -4,7 +4,7 @@ import { featureOff } from "@/lib/features-server";
 import { acceptBookingConsent, getBooking } from "@/lib/bookings-store";
 import { splitVaccinePhotos } from "@/lib/vaccine-photos";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
-import { requireCustomerSession } from "@/lib/customer-session";
+import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 
 /**
  * ลูกค้ากด "ยอมรับข้อตกลง" ก่อนเข้าพัก
@@ -19,7 +19,7 @@ async function postHandler(req: NextRequest) {
   if (blocked) return blocked;
   const session = await requireCustomerSession(req);
   if (!session) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return noCustomerSessionResponse();
   }
   const body = await req.json().catch(() => ({}));
   const bookingId = String(body.bookingId || "").trim();

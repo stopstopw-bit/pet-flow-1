@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireCustomerSession } from "@/lib/customer-session";
+import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 import { withResolvedTenant } from "@/lib/tenant-context";
 import { featureOff } from "@/lib/features-server";
 import { findCustomerByLine, setCustomerIdCard } from "@/lib/customers-store";
@@ -18,7 +18,7 @@ async function handlePost(req: NextRequest) {
   const blocked = await featureOff("idCard");
   if (blocked) return blocked;
   const session = await requireCustomerSession(req);
-  if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!session) return noCustomerSessionResponse();
   const lineUserId = session.lineUserId;
   const body = await req.json().catch(() => ({}));
   const image = String(body.image || "");

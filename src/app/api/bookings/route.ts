@@ -26,7 +26,7 @@ import { bookingMatchesCustomer } from "@/lib/booking-customer-match";
 import { groomProgram, resolveGroomPrograms } from "@/lib/grooming-prices";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { withResolvedTenant, withTenant } from "@/lib/tenant-context";
-import { requireCustomerSession } from "@/lib/customer-session";
+import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 import { listCustomers, resolveCustomerForBooking } from "@/lib/customers-store";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import {
@@ -157,7 +157,7 @@ export async function GET(req: NextRequest) {
     const customer = await requireCustomerSession(req);
     const lineUserId = customer?.lineUserId;
     if (!lineUserId) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return noCustomerSessionResponse();
     }
     return handleGet(lineUserId);
   });

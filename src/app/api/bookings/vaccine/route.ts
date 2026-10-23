@@ -4,7 +4,7 @@ import { featureOff } from "@/lib/features-server";
 import { addBookingVaccinePhotos, getBooking } from "@/lib/bookings-store";
 import { findCustomerByLine } from "@/lib/customers-store";
 import { bookingMatchesCustomer } from "@/lib/booking-customer-match";
-import { requireCustomerSession } from "@/lib/customer-session";
+import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 
 /**
@@ -17,7 +17,7 @@ async function postHandler(req: NextRequest) {
   const blocked = await featureOff("vaccine");
   if (blocked) return blocked;
   const session = await requireCustomerSession(req);
-  if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!session) return noCustomerSessionResponse();
   const body = await req.json().catch(() => ({}));
   const bookingId = String(body.bookingId || "").trim();
   const photos: string[] = Array.isArray(body.photos)

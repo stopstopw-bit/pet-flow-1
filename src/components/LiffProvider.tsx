@@ -6,6 +6,11 @@ import type { CustomerProfile } from "@/lib/business";
 import type { PointsHistoryEntry } from "@/lib/points-store";
 import type { CustomerTier } from "@/lib/customer-tier";
 import { firstFlowHref } from "@/lib/intake-flow";
+import {
+  customerFetch,
+  setCustomerSessionIssue,
+  setCustomerSessionRefresher,
+} from "@/lib/customer-fetch";
 
 type LineCustomer = {
   id: string;
@@ -46,7 +51,7 @@ async function fetchAccount(lineUserId: string, displayName: string, customerId?
   const q = new URLSearchParams({ lineUserId, displayName });
   if (customerId) q.set("customerId", customerId);
   // no-store — กัน webview ของ LINE เก็บผลแต้มเก่าไว้แล้วโชว์ค้าง (เช่น 0 ทั้งที่มีแต้ม)
-  const res = await fetch(`/api/points?${q}`, { cache: "no-store" });
+  const res = await customerFetch(`/api/points?${q}`, { cache: "no-store" });
   if (!res.ok) return null;
   return res.json() as Promise<{
     points: number;
@@ -58,17 +63,28 @@ async function fetchAccount(lineUserId: string, displayName: string, customerId?
  * แลก LIFF ID token (LINE เซ็นให้ ปลอมไม่ได้) เป็นคุกกี้เซสชันลูกค้า — ต้องเรียกก่อนเสมอ
  * ห้ามส่ง lineUserId ตรงๆ อีกต่อไป เพราะ server จะไม่เชื่อค่านี้แล้ว (ดู liff-auth.ts)
  */
-async function syncLineCustomer(
-  auth: { idToken: string } | { devUserId: string },
-  displayName: string
-) {
-  const res = await fetch("/api/customers/line", {
-    method: "POST",
-    cache: "no-store",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...auth, displayName }),
-  });
-  if (!res.ok) return null;
+type LiffAuth = { idToken?: string; accessToken?: string } | { devUserId: string };
+
+async function syncLineCustomer(auth: LiffAuth, displayName: string) {
+  let res: Response;
+  try {
+    res = await fetch("/api/customers/line", {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...auth, displayName }),
+    });
+  } catch {
+    setCustomerSessionIssue("network");
+    return null;
+  }
+  if (!res.ok) {
+    // จำสาเหตุไว้ — customerFetch แปะเป็น "(รหัส: …)" ท้ายข้อความถ้ายังแลกเซสชันไม่ได้
+    const d = await res.json().catch(() => ({}));
+    setCustomerSessionIssue(String(d?.reason || `http_${res.status}`));
+    return null;
+  }
+  setCustomerSessionIssue("");
   return res.json() as Promise<{
     customer: LineCustomer;
     needsRegistration: boolean;
@@ -77,6 +93,7 @@ async function syncLineCustomer(
 
 type LiffAuthModule = {
   getIDToken: () => string | null;
+  getAccessToken: () => string | null;
   getDecodedIDToken: () => { exp?: number } | null;
   login: (config?: { redirectUri?: string }) => void;
   logout: () => void;
@@ -123,10 +140,13 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
   const devUserIdRef = useRef<string | null>(null);
 
   /** ตัวยืนยันตัวตนสำหรับส่งให้ server แลกคุกกี้เซสชัน — ห้ามส่ง lineUserId ตรงๆ อีกต่อไป */
-  const getAuth = useCallback((): { idToken: string } | { devUserId: string } | null => {
+  // ไม่มี ID token = LIFF app ไม่ได้ติ๊ก scope "openid" ใน LINE Developers — ส่ง access token ไปด้วยเสมอ
+  // เซิร์ฟเวอร์ใช้ยืนยันแทนได้ (ดู verifyLiffAccessTokenDetailed)
+  const getAuth = useCallback((): LiffAuth | null => {
     if (devUserIdRef.current) return { devUserId: devUserIdRef.current };
-    const idToken = liffModRef.current?.getIDToken();
-    return idToken ? { idToken } : null;
+    const idToken = liffModRef.current?.getIDToken() || undefined;
+    const accessToken = liffModRef.current?.getAccessToken() || undefined;
+    return idToken || accessToken ? { idToken, accessToken } : null;
   }, []);
 
   const refreshCustomer = useCallback(async () => {
@@ -158,14 +178,29 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
       async function applyAccount(base: CustomerProfile) {
         const auth = getAuth();
         if (!auth) {
-          // LINE ไม่ส่ง ID token มา — ส่วนใหญ่เพราะ LIFF ไม่ได้เปิดสิทธิ์ openid (ตั้งใน LINE Developers)
+          // LINE ไม่ส่งทั้ง ID token และ access token มา
+          setCustomerSessionIssue("no_token");
           setError("เชื่อมต่อ LINE ไม่สำเร็จ — ปิดหน้านี้แล้วเปิดใหม่จาก LINE อีกครั้งนะคะ (รหัส L1)");
           setReady(true);
           return;
         }
+        // เก็บไว้ให้ customerFetch แลกเซสชันใหม่ได้เองตอนเซิร์ฟเวอร์ตอบว่าไม่มีเซสชัน (คุกกี้หาย/หมดอายุ)
+        setCustomerSessionRefresher(async () => {
+          const a = getAuth();
+          if (!a) {
+            setCustomerSessionIssue("no_token");
+            return false;
+          }
+          return Boolean(await syncLineCustomer(a, base.displayName));
+        });
         // sync ก่อนเพื่อรู้ customerId แล้วค่อยดึงแต้มด้วย customerId นั้น —
         // แต้มจะได้ผูกกับลูกค้าคนเดียวเสมอ ไม่แตกตามอุปกรณ์/LINE ID
-        const sync = await syncLineCustomer(auth, base.displayName);
+        // ไม่ผ่านรอบแรก (เน็ตสะดุด/LINE ตอบช้า) ลองซ้ำอีกครั้ง
+        let sync = await syncLineCustomer(auth, base.displayName);
+        if (!sync) {
+          await new Promise((r) => setTimeout(r, 800));
+          sync = await syncLineCustomer(getAuth() || auth, base.displayName);
+        }
         if (sync) {
           setCustomer(sync.customer);
           setNeedsRegistration(sync.needsRegistration);

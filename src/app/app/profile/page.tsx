@@ -21,6 +21,7 @@ import {
   taxInvoiceToForm,
   type TaxInvoiceForm,
 } from "@/lib/tax-invoice";
+import { customerFetch } from "@/lib/customer-fetch";
 
 const REFERRAL_FALLBACK = [
   "Facebook",
@@ -80,7 +81,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (!profile?.lineUserId) return;
-    fetch(`/api/customers/self?lineUserId=${profile.lineUserId}`)
+    customerFetch(`/api/customers/self?lineUserId=${profile.lineUserId}`)
       .then((r) => r.json())
       .then((d) => {
         if (!d.found) return;
@@ -121,7 +122,7 @@ export default function ProfilePage() {
   }, [profile?.lineUserId, reloadKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadPhotos = async (lineUserId: string) => {
-    const d = await fetch(`/api/customers/cat-photo?lineUserId=${encodeURIComponent(lineUserId)}`)
+    const d = await customerFetch(`/api/customers/cat-photo?lineUserId=${encodeURIComponent(lineUserId)}`)
       .then((r) => r.json())
       .catch(() => ({ cats: [] }));
     const map: Record<string, string | null> = {};
@@ -139,7 +140,7 @@ export default function ProfilePage() {
     setUploadingId(catId);
     try {
       const photoDataUrl = await toJpegDataUrl(file);
-      const res = await fetch("/api/customers/cat-photo", {
+      const res = await customerFetch("/api/customers/cat-photo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lineUserId: profile.lineUserId, catId, photoDataUrl }),
@@ -191,7 +192,7 @@ export default function ProfilePage() {
     setSaving(true);
     setSaved(false);
     try {
-      const res = await fetch("/api/customers/self", {
+      const res = await customerFetch("/api/customers/self", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
