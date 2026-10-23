@@ -3340,7 +3340,7 @@ export default function CustomersPage() {
                   {(() => {
                     const si = parseGroomInfo(cat.stayInfo);
                     if (!si) return null;
-                    const s = groomInfoSummary(si, resolveStayForm(undefined, petKindOf(config)));
+                    const s = groomInfoSummary(si, resolveStayForm(undefined, speciesOf(cat, config) ?? petKindOf(config)));
                     return (
                       <div className="rounded-petflow-sm border border-sage/40 bg-sage/10 px-3 py-2.5">
                         <p className="flex items-center gap-1.5 text-[11px] font-extrabold text-ok">

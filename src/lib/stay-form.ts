@@ -59,8 +59,8 @@ export const STAY_FORM_DEFAULTS: GroomField[] = [
     required: true,
     enabled: true,
     options: [
-      { key: "ok", label: "😊 เข้ากับตัวอื่นได้" },
-      { key: "alone", label: "🙈 ชอบอยู่ตัวเดียว" },
+      { key: "ok", label: "🤝 เข้ากับตัวอื่นได้" },
+      { key: "alone", label: "🏠 ชอบอยู่ตัวเดียว" },
       { key: "unknown", label: "❓ ไม่แน่ใจ" },
     ],
   },
@@ -93,16 +93,86 @@ export const STAY_FORM_DEFAULTS: GroomField[] = [
   },
 ];
 
-/** คำถามเรื่องทรายเป็นของแมว — ร้านหมาถามเรื่องพาเดิน/ขับถ่ายแทน · ร้านรับทั้งสองแบบถามรวม */
-const LITTER_BY_KIND: Partial<Record<PetKind, Pick<GroomField, "label" | "placeholder">>> = {
-  dog: { label: "การขับถ่าย / พาเดินวันละกี่รอบ", placeholder: "เช่น พาเดินเช้า-เย็น ขับถ่ายปกติ" },
-  both: { label: "ทรายที่ใช้ (แมว) / การขับถ่าย-พาเดิน (หมา)", placeholder: "เช่น ทรายเต้าหู้ · หรือ พาเดินเช้า-เย็น" },
+/**
+ * หมากับแมวดูแลคนละแบบ — แมวถามเรื่องทราย หมาถามเรื่องพาเดิน ขับถ่าย สายจูง นอนกรง เห่า
+ * ไม่รู้ชนิด (ร้านรับทั้งสองแบบแต่น้องยังไม่ได้ระบุ) ถามข้อขับถ่ายรวมข้อเดียว
+ * หมาใช้ key "litter" เป็นข้อพาเดิน/ขับถ่าย (ข้อมูลเก่าของร้านหมาเก็บไว้ที่ key นี้)
+ */
+const DOG_FIELDS: GroomField[] = [
+  {
+    key: "litter",
+    type: "text",
+    label: "ปกติพาเดิน / ขับถ่ายวันละกี่รอบ ช่วงไหนคะ",
+    placeholder: "เช่น พาเดินเช้า-เย็น รอบละ 20 นาที",
+    required: false,
+    enabled: true,
+    options: [],
+  },
+  {
+    key: "potty",
+    type: "single",
+    label: "น้องขับถ่ายที่ไหนคะ",
+    required: true,
+    enabled: true,
+    options: [
+      { key: "outside", label: "🌳 ข้างนอกตอนพาเดิน" },
+      { key: "pad", label: "🧻 แผ่นรองฉี่" },
+      { key: "both", label: "👍 ได้ทั้งสองแบบ" },
+    ],
+  },
+  {
+    key: "leash",
+    type: "single",
+    label: "เดินสายจูงเป็นยังไงบ้างคะ",
+    required: false,
+    enabled: true,
+    options: [
+      { key: "good", label: "🦮 เดินดี ไม่ดึง" },
+      { key: "pull", label: "💪 ดึงสายแรง" },
+      { key: "never", label: "🚫 ไม่เคยใส่สายจูง" },
+    ],
+  },
+  {
+    key: "crate",
+    type: "single",
+    label: "นอนในกรง / คอกได้ไหมคะ",
+    required: false,
+    enabled: true,
+    options: [
+      { key: "ok", label: "✅ นอนกรงได้" },
+      { key: "no", label: "❌ ไม่ชินกรง" },
+      { key: "unknown", label: "❓ ไม่แน่ใจ" },
+    ],
+  },
+  {
+    key: "barking",
+    type: "text",
+    label: "เห่า / หอน หรือติดเจ้าของตอนอยู่ที่ใหม่ไหมคะ",
+    placeholder: "เช่น เห่าตอนได้ยินเสียงประตู คืนแรกอาจหอน",
+    required: false,
+    enabled: true,
+    options: [],
+  },
+];
+
+const LITTER_BOTH: Pick<GroomField, "label" | "placeholder"> = {
+  label: "ทรายที่ใช้ (แมว) / การขับถ่าย-พาเดิน (หมา)",
+  placeholder: "เช่น ทรายเต้าหู้ · หรือ พาเดินเช้า-เย็น",
 };
 
-/** รวมค่าเริ่มต้นกับที่ร้านแก้เอง (ถ้ามีในอนาคต) — คืนรายการคำถามที่ใช้แสดงจริง */
+/** คำถามตามชนิดของน้อง — แทนข้อ "ทราย" ของแมว */
+function fieldsFor(kind?: PetKind): GroomField[] {
+  if (kind === "dog") return STAY_FORM_DEFAULTS.flatMap((d) => (d.key === "litter" ? DOG_FIELDS : [d]));
+  if (kind === "both") return STAY_FORM_DEFAULTS.map((d) => (d.key === "litter" ? { ...d, ...LITTER_BOTH } : d));
+  return STAY_FORM_DEFAULTS;
+}
+
+/**
+ * รวมค่าเริ่มต้นกับที่ร้านแก้เอง (ถ้ามีในอนาคต) — คืนรายการคำถามที่ใช้แสดงจริง
+ * kind: ชนิดของน้องตัวนั้น (speciesOf) · ไม่รู้ชนิด = ชนิดที่ร้านรับ (petKindOf) · ไม่ส่ง = แมว
+ */
 export function resolveStayForm(config?: GroomFormConfig, kind?: PetKind): GroomField[] {
-  const byKind = kind ? LITTER_BY_KIND[kind] : undefined;
-  return STAY_FORM_DEFAULTS.map((d) => (d.key === "litter" && byKind ? { ...d, ...byKind } : d)).map((def) => {
+  return fieldsFor(kind).map((def) => {
     const c = config?.[def.key];
     if (!c) return def;
     return {
