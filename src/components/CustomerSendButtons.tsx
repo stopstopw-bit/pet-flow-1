@@ -289,9 +289,15 @@ export function CustomerSendButtons({
   };
   const intakePickOptions: { key: IntakePickKey; label: string }[] = [
     { key: "info", label: hasRoomStay ? INTAKE_LABEL.stayInfo : INTAKE_LABEL.groomInfo },
-    { key: "vaccine", label: "สมุดวัคซีน" },
-    ...(hasRoomStay ? [{ key: "idcard" as const, label: "บัตรประชาชน" }] : []),
-    { key: "consent", label: INTAKE_LABEL.consent },
+    // สมุดวัคซีน บัตรประชาชน และกฎ/กดยินยอม เป็นเรื่องของการเข้าพัก —
+    // นัดอาบน้ำโชว์เฉพาะที่ร้านตั้งให้ขอ (ตั้งค่า › ขอข้อมูลตามบริการ)
+    ...(
+      [
+        { key: "vaccine" as const, label: "สมุดวัคซีน" },
+        { key: "idcard" as const, label: "บัตรประชาชน" },
+        { key: "consent" as const, label: INTAKE_LABEL.consent },
+      ]
+    ).filter((o) => hasRoomStay || groomUsesCard(config, o.key)),
     ...(hasRoomStay
       ? [{ key: "deposit" as const, label: depForBill > 0 ? `มัดจำ (ขอแล้ว ${depForBill.toLocaleString()}฿)` : "มัดจำ" }]
       : []),
