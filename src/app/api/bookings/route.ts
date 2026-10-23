@@ -687,14 +687,19 @@ function groomInfoCardFor(
   // ── 📋 การ์ดรวมขอข้อมูล — ใบเดียวหลายปุ่ม เฉพาะเรื่องที่บ้านนี้ยังขาด (ประวัติ/สมุดวัคซีน/บัตร/กฎ + มัดจำถ้าใส่ยอดมา) ──
   // ใช้ทางเดียวกับชุดการ์ด แค่เลือกหัวข้อให้เองตามบริการ แล้วบังคับรวมเป็นใบเดียวแม้เหลือเรื่องเดียว
   const intakeAlways = action === "send_intake";
+  /** แยกเป็นการ์ดทีละใบ (ร้านเลือกตอนกดส่ง) — ไม่รวมเป็นใบเดียว */
+  const intakeSeparate = intakeAlways && body.separate === true;
   if (intakeAlways) {
     const room = b.service === "room";
+    const hasDeposit = Number(body.depositAmount) > 0;
+    // ร้านติ๊กเลือกเองว่าจะขออะไรบ้าง · ไม่ส่งมา = ทุกเรื่องตามบริการ (ระบบยังข้ามเรื่องที่ส่งแล้วให้)
+    const allowed = new Set(["stayInfo", "groomInfo", "vaccine", "idcard", "consent"]);
+    const picked: string[] | null = Array.isArray(body.parts)
+      ? body.parts.map(String).filter((x: string) => allowed.has(x))
+      : null;
     body.parts = [
-      room ? "stayInfo" : "groomInfo",
-      "vaccine",
-      ...(room ? ["idcard"] : []),
-      "consent",
-      ...(Number(body.depositAmount) > 0 ? ["deposit"] : []),
+      ...(picked ?? [room ? "stayInfo" : "groomInfo", "vaccine", ...(room ? ["idcard"] : []), "consent"]),
+      ...(hasDeposit ? ["deposit"] : []),
     ];
   }
   if (action === "send_bundle" || intakeAlways) {
@@ -1048,7 +1053,9 @@ function groomInfoCardFor(
       }
     }
 
-    if (intake.length > 0) {
+    if (intake.length > 0 && intakeSeparate) {
+      messages.splice(intakeAt, 0, ...intake.map((e) => e.card));
+    } else if (intake.length > 0) {
       const liffId = (await getLineCredentials())?.liffId;
       messages.splice(
         intakeAt,
