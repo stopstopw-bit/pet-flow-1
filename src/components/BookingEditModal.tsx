@@ -13,7 +13,8 @@ import { isUnknownCat, pickableCatNames } from "@/lib/unknown-cat";
 import { GROOM_PROGRAMS, type GroomProgram } from "@/lib/grooming-prices";
 import { freeUnitsForRange, roomCapacity, compositionOf, type BoardBooking, type RoomClosure } from "@/lib/room-board";
 import { DEPOSIT_STATUS_LABEL, type DepositStatus } from "@/lib/booking-deposit";
-import { usePetWords } from "@/components/ConfigProvider";
+import { useConfig, usePetWords } from "@/components/ConfigProvider";
+import { cardOn } from "@/lib/features";
 
 export type EditableBooking = Booking & {
   lineUserId?: string;
@@ -223,6 +224,7 @@ export function BookingEditModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { config: siteConfig } = useConfig();
   const pw = usePetWords();
   const [service, setService] = useState<"groom" | "room">(
     booking.service || (booking.roomType || booking.checkin ? "room" : "groom")
@@ -768,7 +770,7 @@ export function BookingEditModal({
               ติ๊กหัวข้อที่ไม่อยากให้ระบบส่งหาลูกค้ารายนี้ · ไม่กระทบนัดอื่น
             </p>
             <div>
-              {relevantAutoMessageTopics(service).map((t) => (
+              {relevantAutoMessageTopics(service).filter((t) => cardOn(siteConfig, t.id)).map((t) => (
                 <label key={t.id} className="flex min-h-[40px] items-center gap-2.5 text-xs font-bold text-brown-soft">
                   <input
                     type="checkbox"

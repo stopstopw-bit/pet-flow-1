@@ -61,9 +61,10 @@ export async function POST(req: NextRequest) {
 }
 
 async function handlePost(req: NextRequest, isAdmin: boolean) {
-  // ลูกค้าแลกแต้มเอง — ร้านปิดแต้มสะสมไว้ก็แลกไม่ได้ (หลังบ้านยังจัดการแต้มเดิมได้)
+  // ลูกค้าแลกแต้มเอง — ร้านปิดแต้มสะสม หรือปิดแค่ "แลกแต้มเป็นรางวัล" ก็แลกไม่ได้
+  // (pointsRedeem ขึ้นกับ points อยู่แล้ว · หลังบ้านยังจัดการแต้มเดิมได้)
   if (!isAdmin) {
-    const blocked = await featureOff("points");
+    const blocked = await featureOff("pointsRedeem");
     if (blocked) return blocked;
   }
   const body = await req.json().catch(() => ({}));

@@ -14,7 +14,11 @@ export function AppFeatureGate({ children }: { children: React.ReactNode }) {
   const { config, loading } = useConfig();
   const { locale } = useLocale();
   const pathname = usePathname().replace(/^\/s\/[a-z0-9-]+(?=\/)/i, "");
-  if (loading || !disabledFeatureForAppPath(config, pathname)) return <>{children}</>;
+  if (loading) return <>{children}</>;
+  // บางหน้าใช้ร่วมกันหลายเรื่อง แยกด้วย ?need= / ?kind= — อ่านจาก location ตรงๆ
+  // (useSearchParams ใน layout บังคับให้ทุกหน้าต้องห่อ Suspense) · ตอน hydrate ยัง loading อยู่ เลยไม่ชนกับฝั่งเซิร์ฟเวอร์
+  const search = typeof window === "undefined" ? "" : window.location.search;
+  if (!disabledFeatureForAppPath(config, pathname, search)) return <>{children}</>;
   return (
     <div className="px-4 py-16 text-center">
       <p className="text-4xl">🙏</p>

@@ -11,6 +11,8 @@ import {
 } from "@/lib/coupons-store";
 import { getLineCredentials } from "@/lib/line-config";
 import { buildLiffUrl } from "@/lib/liff-urls";
+import { getSiteConfig } from "@/lib/config-store";
+import { isFeatureOn } from "@/lib/features";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { withResolvedTenant, withTenant } from "@/lib/tenant-context";
@@ -52,8 +54,10 @@ async function handleGet(req: NextRequest, isAdmin: boolean) {
   const coupons = activeOnly
     ? await activeCustomerCoupons(cust.id)
     : await listCustomerCoupons(cust.id);
-  const referralCode = referralCodeFor(cust.id);
-  const liffId = (await getLineCredentials())?.liffId;
+  // ร้านปิด "ชวนเพื่อนรับคูปอง" — ไม่ส่งลิงก์ชวนเพื่อนให้แอป
+  const referralOn = isFeatureOn(await getSiteConfig(), "referral");
+  const referralCode = referralOn ? referralCodeFor(cust.id) : "";
+  const liffId = referralOn ? (await getLineCredentials())?.liffId : undefined;
   const referralUrl = liffId
     ? buildLiffUrl(liffId, { path: "register", ref: referralCode })
     : "";

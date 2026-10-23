@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFrom } from "@/lib/auth";
 import { withTenant } from "@/lib/tenant-context";
+import { featureOff } from "@/lib/features-server";
 import { exportToGoogleSheets } from "@/lib/google-sheets-export";
 
 export const runtime = "nodejs";
@@ -16,6 +17,8 @@ export async function POST(req: NextRequest) {
 }
 
 async function handlePost(req: NextRequest) {
+  const blocked = await featureOff("exportSheets");
+  if (blocked) return blocked;
   const body = await req.json().catch(() => ({}));
   const columns = Array.isArray(body.columns)
     ? body.columns.map(String)

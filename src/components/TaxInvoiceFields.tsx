@@ -1,6 +1,8 @@
 "use client";
 
 import type { TaxInvoiceForm, TaxInvoiceKind } from "@/lib/tax-invoice";
+import { useConfig } from "@/components/ConfigProvider";
+import { isFeatureOn } from "@/lib/features";
 
 const label = "mb-1 block text-xs font-bold text-brown";
 const hint = "font-normal text-brown-faint";
@@ -158,6 +160,7 @@ export function TaxInvoiceFields({
   /** หน้าสมัครสมาชิก: ติ๊กแล้วต้องกรอกครบทุกช่อง */
   requireAll?: boolean;
 }) {
+  const { config } = useConfig();
   const personOnly = kinds.length === 1 && kinds[0] === "person";
   const toggle = (on: boolean) => {
     if (!on) return onChange({ ...value, on });
@@ -176,6 +179,9 @@ export function TaxInvoiceFields({
         : {}),
     });
   };
+  // ร้านปิด "ใบกำกับภาษี" ในตั้งค่า › เปิด/ปิดฟีเจอร์ — ไม่ถาม (ข้อมูลเดิมที่เคยกรอกไว้ยังอยู่)
+  if (!isFeatureOn(config, "taxInvoice")) return null;
+
   return (
     <div className="space-y-3">
       <label className="flex min-h-[44px] cursor-pointer items-start gap-2.5">
@@ -227,6 +233,9 @@ export function AccountTypeFields({
   /** หน้าสมัครสมาชิก: ข้อมูลบริษัทต้องกรอกครบทุกช่อง (รวมเบอร์) */
   requireAll?: boolean;
 }) {
+  const { config } = useConfig();
+  // ร้านปิด "ใบกำกับภาษี / สมัครในนามบริษัท" — สมัครแบบบุคคลธรรมดาอย่างเดียว
+  if (!isFeatureOn(config, "taxInvoice") && !isCompany) return null;
   return (
     <div className="space-y-3">
       <div>

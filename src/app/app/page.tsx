@@ -20,6 +20,7 @@ import { MyMemberCreditSection } from "@/components/MyMemberCreditSection";
 import { PackageShopSection } from "@/components/PackageShopSection";
 import { HeaderBand, IconChip } from "@/components/HeaderBand";
 import { isFeatureOn, type FeatureKey } from "@/lib/features";
+import { referralReward } from "@/lib/referral";
 
 export default function CustomerHome() {
   const { locale } = useLocale();
@@ -141,7 +142,9 @@ export default function CustomerHome() {
             🎫 กระเป๋าคูปองของฉัน
           </p>
           <p className="mt-0.5 text-[11px] font-bold text-brown-soft">
-            ชวนเพื่อนสมัคร รับคูปองคนละ 100฿
+            {on("referral")
+              ? `ชวนเพื่อนสมัคร รับคูปองคนละ ${referralReward(config).amount}฿`
+              : "คูปองส่วนลดของคุณ ใช้ที่ร้านได้เลย"}
           </p>
         </div>
         <span className="flex shrink-0 items-center gap-1 rounded-full bg-amber-deep px-3.5 py-2 text-xs font-extrabold text-card shadow-petflow-sm">

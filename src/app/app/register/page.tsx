@@ -45,6 +45,8 @@ import { OTHER_BREED } from "@/lib/cat-breeds";
 import { REFERRAL_OPTIONS } from "@/lib/referral-options";
 import { asksSpecies, breedOptionsForSpecies, petWords, speciesWords, type PetSpecies } from "@/lib/pet-kind";
 import { SpeciesPicker } from "@/components/SpeciesPicker";
+import { isFeatureOn } from "@/lib/features";
+import { referralReward } from "@/lib/referral";
 import { StaffNoteTagPicker } from "@/components/StaffNoteTagPicker";
 
 function emptyCat(): CatInput {
@@ -69,6 +71,7 @@ export default function RegisterPage() {
   const router = useRouter();
   const { profile, ready, customer, refreshCustomer, refreshAccount } = useLiff();
   const { config } = useConfig();
+  const referralOn = isFeatureOn(config, "referral");
   const pw = petWords(config);
   const askSpecies = asksSpecies(config);
   const referrals = config.options?.referralOptions?.length
@@ -169,7 +172,7 @@ export default function RegisterPage() {
       setError("เลือกช่องทางที่รู้จักเราด้วยนะคะ");
       return;
     }
-    if (hasReferralCode && !referralCode.trim()) {
+    if (referralOn && hasReferralCode && !referralCode.trim()) {
       setError("กรอกโค้ดเพื่อนแนะนำ หรือเอาติ๊กออกถ้าไม่มีโค้ดนะคะ");
       return;
     }
@@ -205,7 +208,7 @@ export default function RegisterPage() {
           email,
           birthday: isCompany ? undefined : birthday,
           referralSource: referral,
-          referralCode: (hasReferralCode && referralCode.trim()) || undefined,
+          referralCode: (referralOn && hasReferralCode && referralCode.trim()) || undefined,
           postalCode: postalCode || undefined,
           taxInvoice: billing || undefined,
           marketingConsent: consent,
@@ -287,10 +290,10 @@ export default function RegisterPage() {
         showLang={false}
       />
 
-      {fromLink && (
+      {fromLink && referralOn && (
         <div className="mb-4 flex items-start gap-2 rounded-petflow border border-honey/50 bg-honey/20 px-4 py-3 text-xs font-extrabold text-petflow-chocolate">
           <Icon name="gift" size={16} className="mt-px" />
-          <span>สมัครผ่านเพื่อนแนะนำ — สมัครเสร็จรับคูปองส่วนลด <span className="text-latte-deep">100฿</span> ทั้งคุณและเพื่อนทันที!</span>
+          <span>สมัครผ่านเพื่อนแนะนำ — สมัครเสร็จรับคูปองส่วนลด <span className="text-latte-deep">{referralReward(config).amount}฿</span> ทั้งคุณและเพื่อนทันที!</span>
         </div>
       )}
 
@@ -389,7 +392,7 @@ export default function RegisterPage() {
         </label>
 
         {!isCompany && (
-          <div className="border-t border-petflow-line pt-3">
+          <div className="border-t border-petflow-line pt-3 empty:hidden">
             <TaxInvoiceFields
               value={taxInvoice}
               onChange={setTaxInvoice}
@@ -679,7 +682,8 @@ export default function RegisterPage() {
           </div>
         </section>
 
-        {/* ── โค้ดเพื่อนแนะนำ (ไม่บังคับ) ── */}
+        {/* ── โค้ดเพื่อนแนะนำ (ไม่บังคับ) · ร้านปิด "ชวนเพื่อนรับคูปอง" = ไม่ถาม ── */}
+        {referralOn && (
         <div className="rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm">
           <label className="flex cursor-pointer items-center gap-3">
             <input
@@ -691,7 +695,7 @@ export default function RegisterPage() {
             <span className="text-xs font-bold text-brown">
               มีโค้ดเพื่อนแนะนำ
               <span className="block text-[11px] font-normal text-brown-faint">
-                กรอกโค้ด รับคูปอง 100฿ ทั้งคุณและเพื่อน
+                กรอกโค้ด รับคูปอง {referralReward(config).amount}฿ ทั้งคุณและเพื่อน
               </span>
             </span>
           </label>
@@ -706,6 +710,7 @@ export default function RegisterPage() {
             />
           )}
         </div>
+        )}
 
         {/* ── ยินยอมรับข่าวสาร ── */}
         <label className="flex cursor-pointer items-start gap-3 rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm">

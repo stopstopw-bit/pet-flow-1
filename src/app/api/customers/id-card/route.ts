@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireCustomerSession } from "@/lib/customer-session";
 import { withResolvedTenant } from "@/lib/tenant-context";
+import { featureOff } from "@/lib/features-server";
 import { findCustomerByLine, setCustomerIdCard } from "@/lib/customers-store";
 import { uploadPrivateDataUrl } from "@/lib/supabase/storage";
 
@@ -13,6 +14,9 @@ export async function POST(req: NextRequest) {
 }
 
 async function handlePost(req: NextRequest) {
+  // ร้านปิดเรื่องนี้ในตั้งค่า › เปิด/ปิดฟีเจอร์
+  const blocked = await featureOff("idCard");
+  if (blocked) return blocked;
   const session = await requireCustomerSession(req);
   if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const lineUserId = session.lineUserId;

@@ -319,7 +319,7 @@ export default function ProfilePage() {
                 className={`${field} mt-1`}
               />
             </label>
-            <div className="border-t border-petflow-line pt-3">
+            <div className="border-t border-petflow-line pt-3 empty:hidden">
               <TaxInvoiceFields
                 value={taxInvoice}
                 onChange={setTaxInvoice}

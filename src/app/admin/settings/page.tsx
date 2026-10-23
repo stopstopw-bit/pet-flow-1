@@ -15,6 +15,7 @@ import { contrastRatio, isValidHex } from "@/lib/color-utils";
 import { Icon } from "@/components/Icon";
 import { useConfig } from "@/components/ConfigProvider";
 import { FEATURES, FEATURE_GROUPS, isFeatureOn, type FeatureKey } from "@/lib/features";
+import { REFERRAL_DEFAULT, referralReward } from "@/lib/referral";
 import { breedOptionsFor, petKindOf, petWords, withDefaultBreeds, type PetKind } from "@/lib/pet-kind";
 
 type Tab =
@@ -2559,12 +2560,24 @@ function FeaturesTab({
   );
   const draft = { features: form };
   const parentOff = (key?: FeatureKey) => (key ? !isFeatureOn(draft, key) : false);
+  // คูปองชวนเพื่อน — ตั้งมูลค่า/อายุเองได้ (ว่าง = ค่าเริ่มต้น 100 บาท · 60 วัน)
+  const [referral, setReferral] = useState(() => {
+    const r = referralReward(config);
+    return { amount: String(r.amount), expiresInDays: String(r.expiresInDays) };
+  });
 
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        onSave({ features: form });
+        onSave({
+          features: form,
+          referral: {
+            amount: Math.max(0, Math.round(Number(referral.amount) || 0)) || REFERRAL_DEFAULT.amount,
+            expiresInDays:
+              Math.max(0, Math.round(Number(referral.expiresInDays) || 0)) || REFERRAL_DEFAULT.expiresInDays,
+          },
+        });
       }}
       className="space-y-4"
     >
@@ -2587,6 +2600,22 @@ function FeaturesTab({
                   <p className="-mt-1 pb-1 text-[10px] text-brown-faint">
                     {locked ? `ปิดอยู่เพราะปิด "${FEATURES.find((x) => x.key === f.requires)?.label}"` : f.hint}
                   </p>
+                  {f.key === "referral" && !locked && form.referral && (
+                    <div className="grid grid-cols-2 gap-2 pb-2">
+                      <Field
+                        label="คูปองคนละ (บาท)"
+                        type="number"
+                        value={referral.amount}
+                        onChange={(v) => setReferral((r) => ({ ...r, amount: v }))}
+                      />
+                      <Field
+                        label="ใช้ได้กี่วัน"
+                        type="number"
+                        value={referral.expiresInDays}
+                        onChange={(v) => setReferral((r) => ({ ...r, expiresInDays: v }))}
+                      />
+                    </div>
+                  )}
                 </li>
               );
             })}
@@ -2624,6 +2653,8 @@ function AutomationTab({
     >
       <p className="text-[11px] text-brown-soft">
         ระบบส่งอัตโนมัติ เที่ยงวัน (เวลาไทย) ทุกวัน — เปิด/ปิด และตั้งจำนวนวันได้เอง
+        <br />
+        การ์ดของเรื่องที่ปิดไว้ในแท็บ “เปิด/ปิดฟีเจอร์” จะไม่ถูกส่ง แม้เปิดไว้ตรงนี้
       </p>
 
       <div className="rounded-petflow-sm border border-petflow-line p-3">

@@ -11,6 +11,7 @@ import {
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { parseGroomInfo, groomInfoSummary } from "@/lib/groom-info";
 import { getSiteConfig } from "@/lib/config-store";
+import { isFeatureOn } from "@/lib/features";
 import { resolveGroomForm } from "@/lib/groom-form";
 import { resolveStayForm } from "@/lib/stay-form";
 import { requireCustomerSession } from "@/lib/customer-session";
@@ -90,6 +91,11 @@ async function postHandler(req: NextRequest) {
 
   // เก็บตามคำถามที่ร้านตั้งไว้จริง (ร้านเพิ่ม/แก้ตัวเลือกเองได้) — sanitize ตามชนิดของคำถาม
   const cfg = await getSiteConfig();
+  // ร้านปิดฟอร์มนี้ในตั้งค่า › เปิด/ปิดฟีเจอร์
+  const feature = t.kind === "stay" ? "stayInfo" : "groomInfo";
+  if (!isFeatureOn(cfg, feature)) {
+    return NextResponse.json({ error: "feature_disabled", feature }, { status: 403 });
+  }
   // ชุดคำถามตามชนิดของน้องตัวนี้ — ต้องตรงกับที่หน้าฟอร์มถาม ไม่งั้นคำตอบข้อของหมาจะหาย
   const kind = speciesOf(t.cat, cfg) ?? petKindOf(cfg);
   const fields = t.kind === "stay" ? resolveStayForm(undefined, kind) : resolveGroomForm(cfg.groomForm, kind);
