@@ -8,6 +8,7 @@ import { isFeatureOn } from "@/lib/features";
 import type { PosProduct } from "@/lib/pos-store";
 import { SERVICE_PRESETS, type ServicePreset } from "@/lib/service-presets";
 import { CustomerSendButtons } from "@/components/CustomerSendButtons";
+import { CancelToCreditButton } from "@/components/CancelToCreditButton";
 import { toast } from "@/components/Toast";
 import { Icon, type IconName } from "@/components/Icon";
 import { Avatar, EmptyState, MoreMenu, SearchField, Segmented, SectionLabel } from "@/components/ui";
@@ -1332,6 +1333,8 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
             ? "รับมัดจำบิลนี้ไปแล้ว"
             : data.error === "already_credited"
               ? "บิลนี้โยกเป็นเครดิตไปแล้ว"
+            : typeof data.error === "string" && /[\u0E00-\u0E7F]/.test(data.error)
+              ? data.error
               : "ไม่สำเร็จ",
           "error"
         );
@@ -2817,23 +2820,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
                       "ยกเลิกการชำระบิลนี้? (กดผิดใช่ไหม)\nจะกลับเป็น 'รอชำระ' + ย้อนรายรับ/แต้ม/เครดิตที่ลงไป"
                     ),
                 },
-                // ร้านปิดเครดิต Member ในตั้งค่า › เปิด/ปิดฟีเจอร์ — ไม่มีเมนูโยกเป็นเครดิต
-                ...(creditOn
-                  ? [
-                    {
-                      label: "โยกเป็นเครดิต (ลูกค้าไม่มา)",
-                      icon: "wallet",
-                      disabled: invoiceBusy === `${inv.id}:to_credit`,
-                      onClick: () =>
-                        invoiceAction(
-                          inv.id,
-                          "to_credit",
-                          `โยกเป็นเครดิตแล้ว 💰 +${inv.total.toLocaleString()} บาท ใช้ได้ครั้งหน้า`,
-                          `โยกยอด ${inv.total.toLocaleString()} บาท ไปเป็นเครดิต Member ของ ${inv.customerName}?\nลูกค้าจ่ายแล้วแต่ไม่มา — ใช้เครดิตนี้จ่ายครั้งหน้าได้ (ไม่นับรายรับซ้ำ)`
-                        ),
-                    },
-                    ]
-                  : []),
+                // โยกเป็นเครดิต (ลูกค้าไม่มา) → ใช้ปุ่ม 🔁 "ยกเลิกนัด เก็บยอดเป็นเครดิต" ใต้บิลแทน (ยกเลิกนัดให้ด้วย)
                 { label: "ลบบิล", icon: "trash", danger: true, disabled: invoiceBusy === `${inv.id}:delete`, onClick: del },
               ]
             : [
@@ -2986,6 +2973,17 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
               )}
               <MoreMenu items={menu} />
             </div>
+            {creditOn && (paid || receivedOf(inv) > 0) && inv.customerId && (
+              <div className="mt-2">
+                <CancelToCreditButton
+                  invoiceId={inv.id}
+                  total={paid ? inv.total : receivedOf(inv)}
+                  paid={paid}
+                  size="md"
+                  onDone={load}
+                />
+              </div>
+            )}
 
             {/* แผ่นส่งการ์ด LINE ของบิลนี้ — เปิดจากปุ่ม/เมนูด้านบน (ชุดปุ่มรวม เหมือนในปฏิทิน) */}
             <CustomerSendButtons
