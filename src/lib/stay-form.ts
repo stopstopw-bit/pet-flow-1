@@ -93,41 +93,79 @@ export const STAY_FORM_DEFAULTS: GroomField[] = [
   },
 ];
 
+const text = (key: string, label: string, placeholder: string, required = false): GroomField => ({
+  key,
+  type: "text",
+  label,
+  placeholder,
+  required,
+  enabled: true,
+  options: [],
+});
+
+const MEDICAL = STAY_FORM_DEFAULTS.find((d) => d.key === "medical")!;
+const WITH_OTHERS = STAY_FORM_DEFAULTS.find((d) => d.key === "withOthers")!;
+
 /**
- * หมากับแมวดูแลคนละแบบ — แมวถามเรื่องทราย หมาถามที่ขับถ่าย สายจูง เห่า
- * ไม่ถามรอบพาเดิน/นอนกรง — แต่ละร้านมีวิธีดูแลของตัวเอง
- * ไม่รู้ชนิด (ร้านรับทั้งสองแบบแต่น้องยังไม่ได้ระบุ) ถามข้อขับถ่ายรวมข้อเดียว
+ * ฟอร์มทำประวัติน้องหมาก่อนเข้าพัก — ชุดของตัวเอง เรียงตามแบบฟอร์มที่ร้านใช้จริง (เจ้าของ → สุนัข → การดูแล)
+ * ชื่อ-นามสกุล เบอร์หลัก ชื่อน้อง เพศ พันธุ์ อายุ ถามไปแล้วตอนสมัครสมาชิก ไม่ถามซ้ำ
+ * โรคประจำตัว ("medical") ข้ามให้ถ้าตอบไว้ตอนสมัคร · key ที่ใช้ร่วมกับแมว (food/likes/withOthers/note) คงไว้ให้ข้อมูลเก่าอ่านได้
  */
-const DOG_FIELDS: GroomField[] = [
+const DOG_FORM: GroomField[] = [
+  // ประวัติเจ้าของ
+  text("ownerNickname", "ชื่อเล่นเจ้าของ", "เช่น พี่ส้ม", true),
+  text("emergencyContact", "เบอร์ฉุกเฉินและความเกี่ยวข้อง", "เช่น 081-234-5678 (คุณแม่)", true),
+  // ประวัติสุนัข
+  { ...MEDICAL, label: "โรคประจำตัว (ถ้าไม่มีเว้นว่างได้)", placeholder: "เช่น โรคหัวใจ ต้องกินยาเช้า-เย็น" },
+  text("seizure", "ประวัติการชัก / ช็อค", "เช่น ไม่เคย · หรือ เคยชักตอนตกใจ ครั้งล่าสุด ม.ค.", true),
+  text("allergy", "ประวัติการแพ้ (อาหาร / ยา / แชมพู)", "เช่น ไม่มี · หรือ แพ้ไก่", true),
+  text("temperament", "นิสัยส่วนตัว", "เช่น ขี้อ้อน ตื่นคนแปลกหน้านิดหน่อย", true),
+  text("likes", "สิ่งที่ชอบและไม่ชอบ", "เช่น ชอบลูกบอล ไม่ชอบให้จับเท้า"),
   {
-    key: "potty",
+    key: "neutered",
     type: "single",
-    label: "น้องขับถ่ายที่ไหนคะ",
+    label: "ทำหมันแล้วหรือยังคะ",
     required: true,
     enabled: true,
     options: [
-      { key: "outside", label: "🌳 ข้างนอกตอนพาเดิน" },
-      { key: "pad", label: "🧻 แผ่นรองฉี่" },
-      { key: "both", label: "👍 ได้ทั้งสองแบบ" },
+      { key: "yes", label: "✅ ทำหมันแล้ว" },
+      { key: "no", label: "❌ ยังไม่ทำหมัน" },
     ],
   },
+  text("fleaLast", "กำจัดเห็บหมัดครั้งล่าสุดเมื่อไหร่", "เช่น ต้นเดือนนี้", true),
   {
-    key: "leash",
+    key: "fleaMethod",
     type: "single",
-    label: "เดินสายจูงเป็นยังไงบ้างคะ",
-    required: false,
+    label: "กำจัดเห็บหมัดโดยการหยด หรือ ทานยา",
+    required: true,
     enabled: true,
     options: [
-      { key: "good", label: "🦮 เดินดี ไม่ดึง" },
-      { key: "pull", label: "💪 ดึงสายแรง" },
-      { key: "never", label: "🚫 ไม่เคยใส่สายจูง" },
+      { key: "drop", label: "💧 หยด" },
+      { key: "oral", label: "💊 ทานยา" },
+      { key: "none", label: "❓ ไม่ได้ทำ / ไม่แน่ใจ" },
+    ],
+  },
+  // การดูแล
+  text("food", "อาหาร ให้เวลาไหน อย่างไรบ้าง — รบกวนเตรียมอาหารมาเองนะคะ", "เช่น เม็ด Royal Canin เช้า 8 โมง เย็น 6 โมง มื้อละ 1 ถ้วย", true),
+  text("medicine", "การทานยา (หากมี)", "เช่น ยาโรคหัวใจ 1/2 เม็ด หลังอาหารเช้า"),
+  { ...WITH_OTHERS, label: "เข้าสังคมกับน้องตัวอื่นได้ไหมคะ" },
+  {
+    key: "grass",
+    type: "single",
+    label: "วิ่งสนามหญ้าได้ไหมคะ",
+    required: true,
+    enabled: true,
+    options: [
+      { key: "yes", label: "✅ วิ่งได้" },
+      { key: "no", label: "❌ ไม่ให้วิ่ง" },
+      { key: "unknown", label: "❓ ไม่แน่ใจ" },
     ],
   },
   {
-    key: "barking",
-    type: "text",
-    label: "เห่า / หอน หรือติดเจ้าของตอนอยู่ที่ใหม่ไหมคะ",
-    placeholder: "เช่น เห่าตอนได้ยินเสียงประตู คืนแรกอาจหอน",
+    key: "note",
+    type: "textarea",
+    label: "การดูแลเพิ่มเติม (request) — บอกได้เหมือนเลี้ยงที่บ้าน ทางร้านจะดูแลตามนี้ให้ได้มากที่สุด อาจปรับเล็กน้อยตามขอบเขตค่ะ",
+    placeholder: "เช่น ก่อนนอนชอบให้เปิดเพลงเบาๆ ขอรูปอัปเดตทุกเย็น",
     required: false,
     enabled: true,
     options: [],
@@ -139,9 +177,9 @@ const LITTER_BOTH: Pick<GroomField, "label" | "placeholder"> = {
   placeholder: "เช่น ทรายเต้าหู้ · หรือ ขับถ่ายแผ่นรองฉี่",
 };
 
-/** คำถามตามชนิดของน้อง — แทนข้อ "ทราย" ของแมว */
+/** คำถามตามชนิดของน้อง — หมาใช้ฟอร์มของตัวเอง · ไม่รู้ชนิดถามข้อขับถ่ายรวม */
 function fieldsFor(kind?: PetKind): GroomField[] {
-  if (kind === "dog") return STAY_FORM_DEFAULTS.flatMap((d) => (d.key === "litter" ? DOG_FIELDS : [d]));
+  if (kind === "dog") return DOG_FORM;
   if (kind === "both") return STAY_FORM_DEFAULTS.map((d) => (d.key === "litter" ? { ...d, ...LITTER_BOTH } : d));
   return STAY_FORM_DEFAULTS;
 }
