@@ -12,6 +12,7 @@ import { MISS_YOU_DEFAULT_TITLE } from "./miss-you-card";
 import { DOC_REQUEST_DEFAULTS, INTAKE_CARD_DEFAULTS } from "./line-card-defaults";
 import { encodeFlow, type FlowBy, type FlowStep, type FlowToken } from "./intake-flow";
 import { buildLiffUrl } from "./liff-urls";
+import { splitDiscountTag } from "./line-discount";
 
 export { DOC_REQUEST_DEFAULTS, INTAKE_CARD_DEFAULTS };
 
@@ -794,7 +795,7 @@ export function buildPaymentFlex(data: {
                       text: data.accountNumber,
                       weight: "bold",
                       size: "xl",
-                      color: "#4A7348",
+                      color: "#2E7D4F",
                       wrap: true,
                     },
                     {
@@ -942,28 +943,46 @@ export function buildBillSummaryFlex(data: {
       layout: "vertical",
       margin: "lg",
       spacing: "xs",
-      contents: paidItems.map((i) => ({
-        type: "box",
-        layout: "horizontal",
-        contents: [
+      contents: paidItems.flatMap((i) => {
+        // ส่วนลดเฉพาะรายการ → บรรทัดสีเขียว "ส่วนลด …" ใต้รายการ ให้ลูกค้าเห็นชัดว่าลดแล้ว
+        const { label, tag } = splitDiscountTag(i.label);
+        return [
           {
-            type: "text",
-            text: i.label,
-            size: "sm",
-            color: "#4E3E32",
-            flex: 4,
-            wrap: true,
+            type: "box",
+            layout: "horizontal",
+            contents: [
+              {
+                type: "text",
+                text: label,
+                size: "sm",
+                color: "#4E3E32",
+                flex: 4,
+                wrap: true,
+              },
+              {
+                type: "text",
+                text: money(i.amount),
+                size: "sm",
+                color: "#4E3E32",
+                align: "end",
+                flex: 3,
+              },
+            ],
           },
-          {
-            type: "text",
-            text: money(i.amount),
-            size: "sm",
-            color: "#4E3E32",
-            align: "end",
-            flex: 3,
-          },
-        ],
-      })),
+          ...(tag
+            ? [
+                {
+                  type: "text",
+                  text: `↳ ${tag}`,
+                  size: "xs",
+                  weight: "bold",
+                  color: "#2E7D4F",
+                  wrap: true,
+                },
+              ]
+            : []),
+        ];
+      }),
     },
   ];
 
@@ -1087,7 +1106,7 @@ export function buildBillSummaryFlex(data: {
               text: money(deposit),
               size: "sm",
               weight: "bold",
-              color: "#4A7348",
+              color: "#2E7D4F",
               align: "end",
               flex: 4,
             },
@@ -1131,7 +1150,7 @@ export function buildBillSummaryFlex(data: {
           text: data.accountNumber || "",
           weight: "bold",
           size: "xl",
-          color: "#4A7348",
+          color: "#2E7D4F",
           wrap: true,
         },
         {
@@ -1254,7 +1273,7 @@ export function buildPrestayFlex(data: {
               text: data.dateText,
               size: "sm",
               weight: "bold",
-              color: "#4A7348",
+              color: "#2E7D4F",
               wrap: true,
               margin: "xs",
             },
@@ -2039,7 +2058,7 @@ export function buildDepositRequestFlex(data: {
       cornerRadius: "10px",
       contents: [
         ...(data.bankName ? [{ type: "text", text: data.bankName, weight: "bold", size: "md", color: "#5C4033" }] : []),
-        { type: "text", text: data.accountNumber, weight: "bold", size: "xl", color: "#4A7348", wrap: true },
+        { type: "text", text: data.accountNumber, weight: "bold", size: "xl", color: "#2E7D4F", wrap: true },
         { type: "text", text: `${st.texts?.accountNameLabel || "ชื่อบัญชี:"} ${data.accountName}`, size: "sm", color: "#A2907E", wrap: true },
       ],
     });
@@ -2358,7 +2377,7 @@ export function buildReceiptFlex(data: {
                               text: `${data.memberCreditLeft.toLocaleString()} ฿`,
                               weight: "bold",
                               size: "sm",
-                              color: "#4A7348",
+                              color: "#2E7D4F",
                               align: "end",
                               flex: 2,
                             },
@@ -2385,7 +2404,7 @@ export function buildReceiptFlex(data: {
                               text: `${data.packageLeft.toLocaleString()} ${data.packageUnitLabel || "ครั้ง"}`,
                               weight: "bold",
                               size: "sm",
-                              color: "#4A7348",
+                              color: "#2E7D4F",
                               align: "end",
                               flex: 2,
                             },
