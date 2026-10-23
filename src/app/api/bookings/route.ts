@@ -687,19 +687,31 @@ function groomInfoCardFor(
   // ── 📋 การ์ดรวมขอข้อมูล — ใบเดียวหลายปุ่ม เฉพาะเรื่องที่บ้านนี้ยังขาด (ประวัติ/สมุดวัคซีน/บัตร/กฎ + มัดจำถ้าใส่ยอดมา) ──
   // ใช้ทางเดียวกับชุดการ์ด แค่เลือกหัวข้อให้เองตามบริการ แล้วบังคับรวมเป็นใบเดียวแม้เหลือเรื่องเดียว
   const intakeAlways = action === "send_intake";
-  /** แยกเป็นการ์ดทีละใบ (ร้านเลือกตอนกดส่ง) — ไม่รวมเป็นใบเดียว */
-  const intakeSeparate = intakeAlways && body.separate === true;
+  /**
+   * เรื่องที่ร้านเลือกให้แยกเป็นการ์ดของตัวเอง (ที่เหลือรวมเป็นการ์ดใบเดียวปุ่มเดียว) —
+   * separateParts = รายชื่อเรื่อง · separate: true = แยกทุกเรื่อง
+   */
+  const separateKinds = new Set<string>(
+    !intakeAlways
+      ? []
+      : body.separate === true
+        ? ["stayInfo", "info", "vaccine", "idcard", "consent", "deposit"]
+        : (Array.isArray(body.separateParts) ? body.separateParts : [])
+            .map(String)
+            .map((x: string) => (x === "groomInfo" ? "info" : x))
+  );
   if (intakeAlways) {
     const room = b.service === "room";
     const hasDeposit = Number(body.depositAmount) > 0;
     // ร้านติ๊กเลือกเองว่าจะขออะไรบ้าง · ไม่ส่งมา = ทุกเรื่องตามบริการ (ระบบยังข้ามเรื่องที่ส่งแล้วให้)
     const allowed = new Set(["stayInfo", "groomInfo", "vaccine", "idcard", "consent"]);
-    const picked: string[] | null = Array.isArray(body.parts)
-      ? body.parts.map(String).filter((x: string) => allowed.has(x))
-      : null;
+    const raw: string[] = Array.isArray(body.parts) ? body.parts.map(String) : [];
+    const picked: string[] | null = Array.isArray(body.parts) ? raw.filter((x) => allowed.has(x)) : null;
     body.parts = [
       ...(picked ?? [room ? "stayInfo" : "groomInfo", "vaccine", ...(room ? ["idcard"] : []), "consent"]),
       ...(hasDeposit ? ["deposit"] : []),
+      // แจ้งยอดชำระค่าบริการ (บิล) — การ์ดแยกของตัวเอง ส่งไปพร้อมกันในข้อความเดียว
+      ...(raw.includes("payment") ? ["payment"] : []),
     ];
   }
   if (action === "send_bundle" || intakeAlways) {
@@ -1053,29 +1065,32 @@ function groomInfoCardFor(
       }
     }
 
-    if (intake.length > 0 && intakeSeparate) {
-      messages.splice(intakeAt, 0, ...intake.map((e) => e.card));
-    } else if (intake.length > 0) {
-      const liffId = (await getLineCredentials())?.liffId;
+    const together = intake.filter((e) => !separateKinds.has(e.kind));
+    const apart = intake.filter((e) => separateKinds.has(e.kind)).map((e) => e.card);
+    if (intake.length > 0) {
+      const liffId = together.length > 0 ? (await getLineCredentials())?.liffId : undefined;
       messages.splice(
         intakeAt,
         0,
-        ...mergeIntakeCards(
-          intake,
-          {
-            service: b.service === "room" ? "stay" : "groom",
-            catName: String(gb.catName),
-            petEmoji: petWords(cfg).emoji,
-            businessName: cfg.business.name,
-            dateText: bookingScheduleText(gb),
-            always: intakeAlways,
-            flow: liffId ? { liffId, by: "b" } : undefined,
-          },
-          cfg.cards?.intake
-        )
+        ...(together.length > 0
+          ? mergeIntakeCards(
+              together,
+              {
+                service: b.service === "room" ? "stay" : "groom",
+                catName: String(gb.catName),
+                petEmoji: petWords(cfg).emoji,
+                businessName: cfg.business.name,
+                dateText: bookingScheduleText(gb),
+                always: intakeAlways,
+                flow: liffId ? { liffId, by: "b" } : undefined,
+              },
+              cfg.cards?.intake
+            )
+          : []),
+        ...apart
       );
     }
-    if (intakeAlways && intake.length === 0) {
+    if (intakeAlways && intake.length === 0 && messages.length === 0) {
       return NextResponse.json(
         { error: "บ้านนี้ส่งข้อมูลครบทุกอย่างแล้ว ไม่มีอะไรต้องขอเพิ่มค่ะ", skipped },
         { status: 400 }

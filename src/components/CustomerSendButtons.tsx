@@ -35,26 +35,39 @@ const bundleCardCount = (parts: string[]) => {
 };
 
 /** เรื่องที่เลือกใส่ในการ์ดขอข้อมูลได้ (info = ประวัติ/ข้อมูลก่อนเข้าพักตามบริการ) — เรียงตามลำดับขั้น */
-const INTAKE_PICK_KEYS = ["info", "vaccine", "idcard", "consent"] as const;
+// payment = การ์ดแจ้งยอดชำระค่าบริการ (บิล) — ไม่ใช่เรื่องขอข้อมูล จึงส่งได้แค่แยกใบ
+const INTAKE_PICK_KEYS = ["info", "vaccine", "idcard", "consent", "deposit", "payment"] as const;
 type IntakePickKey = (typeof INTAKE_PICK_KEYS)[number];
-type IntakePick = { parts: IntakePickKey[]; separate: boolean; withDeposit: boolean; deposit: string };
+/** แต่ละเรื่อง: ไม่ส่ง · รวม (อยู่ในการ์ดใบเดียวปุ่มเดียว) · แยก (การ์ดของตัวเอง) — ส่งพร้อมกันในครั้งเดียวได้ */
+type IntakeMode = "off" | "combined" | "separate";
+type IntakePick = { modes: Record<IntakePickKey, IntakeMode>; deposit: string };
 const INTAKE_PICK_STORE = "petflow-intake-pick";
 
-/** ตัวเลือกล่าสุดที่ร้านใช้ (เก็บในเครื่อง) — ครั้งแรก = ทุกเรื่อง รวมใบเดียว */
+/** ตัวเลือกล่าสุดที่ร้านใช้ (เก็บในเครื่อง) — ครั้งแรก = ทุกเรื่องรวมใบเดียว ไม่ขอมัดจำ */
 function loadIntakePick(depositAllowed: boolean): IntakePick {
-  const pick: IntakePick = { parts: [...INTAKE_PICK_KEYS], separate: false, withDeposit: false, deposit: "" };
+  const modes = { info: "combined", vaccine: "combined", idcard: "combined", consent: "combined", deposit: "off", payment: "off" } as Record<
+    IntakePickKey,
+    IntakeMode
+  >;
+  let deposit = "";
   try {
     const saved = JSON.parse(localStorage.getItem(INTAKE_PICK_STORE) || "null");
-    if (saved && Array.isArray(saved.parts)) {
-      pick.parts = INTAKE_PICK_KEYS.filter((k) => saved.parts.includes(k));
-      pick.separate = saved.separate === true;
-      pick.withDeposit = depositAllowed && saved.withDeposit === true;
-      pick.deposit = pick.withDeposit ? String(saved.deposit || "") : "";
+    if (saved?.modes) {
+      for (const k of INTAKE_PICK_KEYS) {
+        const m = saved.modes[k];
+        if (m === "off" || m === "combined" || m === "separate") modes[k] = m;
+      }
+      deposit = String(saved.deposit || "");
     }
   } catch {
     /* ไม่มีที่เก็บ = ใช้ค่าเริ่มต้น */
   }
-  return pick;
+  if (modes.payment === "combined") modes.payment = "separate";
+  if (!depositAllowed) {
+    modes.deposit = "off";
+    deposit = "";
+  }
+  return { modes, deposit };
 }
 
 function saveIntakePick(pick: IntakePick) {
@@ -230,19 +243,23 @@ export function CustomerSendButtons({
     );
   };
 
-  // 📋 การ์ดรวมขอข้อมูล — กดแล้วเปิดช่องให้ร้านติ๊กเลือกเองว่าจะขออะไรบ้าง (มัดจำด้วยไหม)
-  // และจะรวมเป็นใบเดียว (ปุ่มเดียวไล่ทีละหน้า) หรือแยกทีละใบ · จำตัวเลือกล่าสุดไว้ในเครื่อง
-  // เซิร์ฟเวอร์ยังข้ามเรื่องที่ลูกค้าส่งแล้วให้เองเหมือนเดิม
+  // 📋 การ์ดขอข้อมูล — กดแล้วเปิดช่องให้ร้านเลือกทีละเรื่องว่า ไม่ส่ง / รวม / แยก (มัดจำด้วย)
+  // เรื่องที่ "รวม" อยู่ในการ์ดใบเดียวปุ่มเดียวไล่ทีละหน้า · "แยก" ได้การ์ดของตัวเอง — ไปใน LINE ข้อความเดียวกัน
+  // จำตัวเลือกล่าสุดไว้ในเครื่อง · เซิร์ฟเวอร์ยังข้ามเรื่องที่ลูกค้าส่งแล้วให้เองเหมือนเดิม
   const [intakePick, setIntakePick] = useState<IntakePick | null>(null);
-  const sendIntake = () => setIntakePick(loadIntakePick(hasRoomStay && depForBill <= 0));
+  const sendIntake = () => setIntakePick(loadIntakePick(hasRoomStay));
   const confirmIntake = () => {
     if (!intakePick) return;
-    const depositAmount = intakePick.withDeposit ? Math.max(0, Math.round(Number(intakePick.deposit) || 0)) : 0;
-    if (intakePick.withDeposit && depositAmount <= 0) {
-      toast("ใส่ยอดมัดจำ หรือเอาติ๊กมัดจำออก", "error");
+    const { modes } = intakePick;
+    const withDeposit = modes.deposit !== "off";
+    const depositAmount = withDeposit ? Math.max(0, Math.round(Number(intakePick.deposit) || 0)) : 0;
+    if (withDeposit && depositAmount <= 0) {
+      toast("ใส่ยอดมัดจำ หรือเลือก \"ไม่ส่ง\" ที่มัดจำ", "error");
       return;
     }
-    if (intakePick.parts.length === 0 && depositAmount <= 0) {
+    const partOf = (k: IntakePickKey) => (k === "info" ? (hasRoomStay ? "stayInfo" : "groomInfo") : k);
+    const on = intakePickOptions.map((o) => o.key).filter((k) => k !== "deposit" && modes[k] !== "off");
+    if (on.length === 0 && !withDeposit) {
       toast("เลือกอย่างน้อย 1 เรื่อง", "error");
       return;
     }
@@ -255,11 +272,11 @@ export function CustomerSendButtons({
         action: "send_intake",
         lineUserId,
         ids: groomBookingIds,
-        parts: intakePick.parts.map((x) => (x === "info" ? (hasRoomStay ? "stayInfo" : "groomInfo") : x)),
-        separate: intakePick.separate,
+        parts: on.map(partOf),
+        separateParts: INTAKE_PICK_KEYS.filter((k) => modes[k] === "separate").map(partOf),
         depositAmount: depositAmount || undefined,
       },
-      intakePick.separate ? "ส่งการ์ดขอข้อมูลแล้ว 📋" : "ส่งการ์ดรวมขอข้อมูลแล้ว 📋",
+      "ส่งการ์ดขอข้อมูลแล้ว 📋",
       "send_intake"
     );
   };
@@ -268,6 +285,12 @@ export function CustomerSendButtons({
     { key: "vaccine", label: "สมุดวัคซีน" },
     ...(hasRoomStay ? [{ key: "idcard" as const, label: "บัตรประชาชน" }] : []),
     { key: "consent", label: INTAKE_LABEL.consent },
+    ...(hasRoomStay
+      ? [{ key: "deposit" as const, label: depForBill > 0 ? `มัดจำ (ขอแล้ว ${depForBill.toLocaleString()}฿)` : "มัดจำ" }]
+      : []),
+    ...(invId && !billPaid
+      ? [{ key: "payment" as const, label: depForBill > 0 ? "ชำระค่าบริการ (ยอดคงเหลือ)" : "ชำระค่าบริการ" }]
+      : []),
   ];
 
   const invoiceSummary = (mode: string, okMsg: string) =>
@@ -620,44 +643,42 @@ export function CustomerSendButtons({
             <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Request info</p>
             <p className="mb-3 text-sm font-extrabold text-petflow-chocolate">ขอข้อมูลลูกค้า — เลือกว่าจะส่งอะไรบ้าง</p>
 
-            <div className="flex flex-wrap gap-2">
-              {intakePickOptions.map((o) => {
-                const on = intakePick.parts.includes(o.key);
-                return (
-                  <button
-                    key={o.key}
-                    type="button"
-                    onClick={() =>
-                      setIntakePick({
-                        ...intakePick,
-                        parts: on
-                          ? intakePick.parts.filter((x) => x !== o.key)
-                          : INTAKE_PICK_KEYS.filter((k) => k === o.key || intakePick.parts.includes(k)),
-                      })
-                    }
-                    className={`flex min-h-[40px] items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold ${
-                      on ? "bg-latte-deep text-white" : "bg-paper text-brown-soft"
-                    }`}
-                  >
-                    {on && <Icon name="check" size={14} strokeWidth={2.4} />}
-                    {o.label}
-                  </button>
-                );
-              })}
-              {hasRoomStay && (
-                <button
-                  type="button"
-                  onClick={() => setIntakePick({ ...intakePick, withDeposit: !intakePick.withDeposit })}
-                  className={`flex min-h-[40px] items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold ${
-                    intakePick.withDeposit ? "bg-latte-deep text-white" : "bg-paper text-brown-soft"
-                  }`}
-                >
-                  {intakePick.withDeposit && <Icon name="check" size={14} strokeWidth={2.4} />}
-                  มัดจำ{depForBill > 0 ? ` (ขอแล้ว ${depForBill.toLocaleString()}฿)` : ""}
-                </button>
-              )}
-            </div>
-            {intakePick.withDeposit && (
+            <ul className="divide-y divide-petflow-line rounded-petflow-sm border border-petflow-line">
+              {intakePickOptions.map((o) => (
+                <li key={o.key} className="flex items-center gap-2 px-3 py-2">
+                  <span className="min-w-0 flex-1 text-xs font-bold text-petflow-chocolate">{o.label}</span>
+                  <div className="flex shrink-0 gap-1 rounded-full bg-paper p-1">
+                    {(
+                      [
+                        ["off", "ไม่ส่ง"],
+                        ["combined", "รวม"],
+                        ["separate", "แยก"],
+                      ] as const
+                    )
+                      .filter(([m]) => !(o.key === "payment" && m === "combined"))
+                      .map(([m, label]) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() =>
+                          setIntakePick({ ...intakePick, modes: { ...intakePick.modes, [o.key]: m } })
+                        }
+                        className={`min-h-[34px] rounded-full px-3 text-[11px] font-bold ${
+                          intakePick.modes[o.key] === m
+                            ? m === "off"
+                              ? "bg-card text-brown shadow-petflow-sm"
+                              : "bg-latte-deep text-white"
+                            : "text-brown-soft"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {intakePick.modes.deposit !== "off" && (
               <label className="mt-3 flex items-center gap-2 text-xs font-bold text-petflow-chocolate">
                 ยอดมัดจำ
                 <input
@@ -670,21 +691,9 @@ export function CustomerSendButtons({
                 บาท
               </label>
             )}
-
-            <p className="mb-1.5 mt-4 text-[11px] font-bold text-brown-soft">ส่งแบบไหน</p>
-            <Segmented
-              value={intakePick.separate ? "separate" : "combined"}
-              onChange={(v) => setIntakePick({ ...intakePick, separate: v === "separate" })}
-              options={[
-                { id: "combined", label: "รวมใบเดียว" },
-                { id: "separate", label: "แยกทีละใบ" },
-              ]}
-            />
-            <p className="mt-1.5 text-[11px] text-brown-soft">
-              {intakePick.separate
-                ? "แต่ละเรื่องเป็นการ์ดของตัวเอง แต่ยังส่งรวมใน 1 ข้อความ LINE"
-                : "การ์ดใบเดียว ปุ่มเดียว ลูกค้ากดแล้วระบบพาไปทีละหน้า"}{" "}
-              · เรื่องที่ลูกค้าส่งแล้วระบบข้ามให้เอง
+            <p className="mt-2 text-[11px] text-brown-soft">
+              รวม = อยู่ในการ์ดใบเดียว ปุ่มเดียว ลูกค้ากดแล้วระบบพาไปทีละหน้า · แยก = การ์ดของตัวเอง ·
+              ทั้งหมดส่งไปใน LINE ข้อความเดียว · เรื่องที่ลูกค้าส่งแล้วระบบข้ามให้เอง
             </p>
 
             <div className="mt-4 flex gap-2">
