@@ -9,6 +9,7 @@ import { useConfig } from "@/components/ConfigProvider";
 import { type GroomField } from "@/lib/groom-form";
 import { intakeFields } from "@/lib/intake-rules";
 import { normalizeSpecies, petKindOf, petWords, speciesWords } from "@/lib/pet-kind";
+import { BATH_SHARED_WITH_STAY } from "@/lib/stay-form";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { BTN_PRIMARY, PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/ui";
@@ -28,7 +29,12 @@ type CatForm = {
   weightUnknown: boolean;
   /** คำถามที่ข้ามให้ตัวนี้ (เช่น โรคประจำตัวที่ตอบไว้แล้วตอนสมัครสมาชิก) */
   skip: string[];
+  /** เข้าพัก + อาบก่อนกลับ — ถามเรื่องอาบน้ำต่อท้ายในฟอร์มเดียว (key ขึ้นต้น "g:") */
+  bath: boolean;
 };
+
+/** คำถามอาบน้ำในฟอร์มรวม — ใส่ "g:" กัน key ชนกับฝั่งเข้าพัก */
+const BATH_PREFIX = "g:";
 
 function emptyAnswers(fields: GroomField[]): Answers {
   const a: Answers = {};
@@ -112,7 +118,15 @@ function GroomInfoContent() {
           const info = d.info || null;
           const species = normalizeSpecies(d.species);
           const kind = species ?? petKind;
-          const fs = intakeFields(stay ? "stay" : "groom", kind, { groomForm, intakeRules: rules });
+          const own = intakeFields(stay ? "stay" : "groom", kind, { groomForm, intakeRules: rules });
+          // เข้าพัก + อาบก่อนกลับ — ถามเรื่องอาบน้ำต่อท้าย ข้อที่ซ้ำกับฟอร์มเข้าพักถามครั้งเดียว
+          const bath = stay && !!d.withBath;
+          const bathFs = bath
+            ? intakeFields("groom", kind, { groomForm, intakeRules: rules })
+                .filter((fd) => !(fd.key in BATH_SHARED_WITH_STAY) && !own.some((o) => o.key === fd.key))
+                .map((fd) => ({ ...fd, key: BATH_PREFIX + fd.key }))
+            : [];
+          const fs = [...own, ...bathFs];
           loaded.push({
             id: ids[i],
             catName: d.booking?.catName || "น้อง",
@@ -121,6 +135,7 @@ function GroomInfoContent() {
             answers: loadAnswers(fs, info),
             weightUnknown: info?.weight === "unknown",
             skip: d.knownMedical ? ["medical"] : [],
+            bath,
           });
         });
         setForms(loaded);
@@ -158,7 +173,7 @@ function GroomInfoContent() {
     f.fields
       .filter((fd) => {
         if (!fd.required || f.skip.includes(fd.key)) return false;
-        if (fd.key === "weight" && f.weightUnknown) return false;
+        if (fd.hasUnknownToggle && f.weightUnknown) return false;
         const v = f.answers[fd.key];
         return Array.isArray(v) ? v.length === 0 : !String(v || "").trim();
       })
@@ -177,8 +192,14 @@ function GroomInfoContent() {
     setSaveError("");
     try {
       const results = await Promise.all(
-        forms.map((f) =>
-          fetch("/api/bookings/groom-info", {
+        forms.map((f) => {
+          const own: Answers = {};
+          const bath: Answers = {};
+          for (const [k, v] of Object.entries(f.answers)) {
+            if (k.startsWith(BATH_PREFIX)) bath[k.slice(BATH_PREFIX.length)] = v;
+            else own[k] = v;
+          }
+          return fetch("/api/bookings/groom-info", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -186,12 +207,15 @@ function GroomInfoContent() {
               kind: isStay ? "stay" : "groom",
               lineUserId: profile?.lineUserId,
               info: {
-                ...f.answers,
-                weight: f.weightUnknown ? "unknown" : f.answers.weight || "",
+                ...own,
+                weight: f.weightUnknown ? "unknown" : own.weight || "",
               },
+              ...(f.bath
+                ? { groomInfo: { ...bath, weight: f.weightUnknown ? "unknown" : bath.weight || "" } }
+                : {}),
             }),
-          }).then((r) => r.ok)
-        )
+          }).then((r) => r.ok);
+        })
       );
       if (!results.every(Boolean)) {
         setSaveError("บันทึกไม่สำเร็จบางตัว — ลองใหม่อีกครั้ง หรือแจ้งพนักงานที่ร้านได้เลยค่ะ");
@@ -267,7 +291,7 @@ function GroomInfoContent() {
     <div className="px-4 pb-6 pt-5">
       <PageHeader
         eyebrow={isStay ? "Before your stay" : "Before grooming"}
-        title={isStay ? "ข้อมูลน้องก่อนเข้าพัก" : "ประวัติน้องก่อนอาบน้ำ"}
+        title={isStay ? (forms.some((f) => f.bath) ? "ข้อมูลน้องก่อนเข้าพัก + อาบน้ำ" : "ข้อมูลน้องก่อนเข้าพัก") : "ประวัติน้องก่อนอาบน้ำ"}
         back="/app"
         backLabel="กลับหน้าแรก"
         showLang={false}
@@ -316,6 +340,17 @@ function GroomInfoContent() {
                   const value = f.answers[fd.key];
                   return (
                     <div key={fd.key}>
+                      {fd.key === f.fields.find((x) => x.key.startsWith(BATH_PREFIX))?.key && (
+                        <div className="mt-5 border-t border-petflow-line pt-4">
+                          <p className="flex items-center gap-1.5 text-sm font-extrabold text-petflow-chocolate">
+                            <Icon name="bath" size={16} />
+                            ก่อนอาบน้ำ (อาบก่อนกลับบ้าน)
+                          </p>
+                          <p className="mt-0.5 text-[11px] text-brown-faint">
+                            น้องอาบน้ำก่อนกลับด้วย ขอถามเพิ่มอีกนิด ข้อที่ตอบไปแล้วด้านบนไม่ถามซ้ำค่ะ
+                          </p>
+                        </div>
+                      )}
                       <p
                         className={`mt-3 mb-1.5 text-xs font-bold ${
                           isMissing ? "text-wait" : "text-brown-soft"
@@ -364,7 +399,7 @@ function GroomInfoContent() {
                             onChange={(e) => setAnswer(idx, fd.key, e.target.value)}
                             disabled={fd.hasUnknownToggle && f.weightUnknown}
                             placeholder={fd.placeholder}
-                            inputMode={fd.key === "weight" ? "decimal" : undefined}
+                            inputMode={fd.hasUnknownToggle ? "decimal" : undefined}
                             className={`${inputClass} disabled:bg-paper/50 disabled:text-brown-faint`}
                           />
                           {fd.hasUnknownToggle && (
