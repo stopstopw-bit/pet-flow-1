@@ -42,8 +42,11 @@ type CatForm = {
   ageValue: string;
   ageUnit: "year" | "month";
   weightKg: string;
+  neutered: "" | "yes" | "no";
   birthday: string;
   medical: string;
+  seizureHistory: string;
+  allergy: string;
   note: string;
 };
 
@@ -110,8 +113,11 @@ export default function ProfilePage() {
               ageValue: x.ageValue != null ? String(x.ageValue) : "",
               ageUnit: (x.ageUnit as "year" | "month") || "year",
               weightKg: x.weightKg != null ? String(x.weightKg) : "",
+              neutered: x.neutered === true ? "yes" : x.neutered === false ? "no" : "",
               birthday: String(x.birthday || ""),
               medical: String(x.medical || ""),
+              seizureHistory: String(x.seizureHistory || ""),
+              allergy: String(x.allergy || ""),
               note: String(x.note || ""),
             };
           })
@@ -170,8 +176,11 @@ export default function ProfilePage() {
         ageValue: "",
         ageUnit: "year",
         weightKg: "",
+        neutered: "",
         birthday: "",
         medical: "",
+        seizureHistory: "",
+        allergy: "",
         note: "",
       },
     ]);
@@ -216,8 +225,11 @@ export default function ProfilePage() {
             ageValue: c.ageValue,
             ageUnit: c.ageUnit,
             weightKg: c.weightKg,
+            neutered: c.neutered ? c.neutered === "yes" : null,
             birthday: c.birthday || undefined,
             medical: c.medical || undefined,
+            seizureHistory: c.seizureHistory.trim(),
+            allergy: c.allergy.trim(),
             note: c.note || undefined,
           })),
         }),
@@ -392,6 +404,19 @@ export default function ProfilePage() {
                 {cat.breed === OTHER_BREED && (
                   <input value={cat.breedOther} onChange={(e) => updateCat(idx, { breedOther: e.target.value })} placeholder="ระบุสายพันธุ์" className={sub} />
                 )}
+                <div className="flex gap-1 rounded-full bg-paper p-1">
+                  {([["yes", "ทำหมันแล้ว"], ["no", "ยังไม่ทำ"]] as const).map(([v, l]) => (
+                    <button
+                      key={v}
+                      type="button"
+                      aria-pressed={cat.neutered === v}
+                      onClick={() => updateCat(idx, { neutered: cat.neutered === v ? "" : v })}
+                      className={`min-h-[40px] flex-1 rounded-full text-sm font-bold transition ${cat.neutered === v ? "bg-card text-petflow-chocolate shadow-petflow-sm" : "text-brown-soft"}`}
+                    >
+                      {l}
+                    </button>
+                  ))}
+                </div>
                 <div className="flex gap-2">
                   <input
                     type="number"
@@ -429,10 +454,19 @@ export default function ProfilePage() {
                   <input type="date" value={cat.birthday} onChange={(e) => updateCat(idx, { birthday: e.target.value })} className={`${sub} mt-0.5`} />
                 </label>
                 <StaffNoteTagPicker
+                  label="โรคประจำตัว / เรื่องที่ช่างต้องรู้"
                   medicalValue={cat.medical}
                   noteValue={cat.note}
                   onChange={(medical, note) => updateCat(idx, { medical, note })}
                 />
+                <label className="block text-[11px] font-bold text-brown-soft">
+                  ประวัติการชัก/ช็อค <span className="font-normal text-brown-faint">(ไม่มีเว้นว่างได้)</span>
+                  <input value={cat.seizureHistory} onChange={(e) => updateCat(idx, { seizureHistory: e.target.value })} placeholder="เช่น ไม่เคย · หรือ เคยชักตอนตกใจ" className={`${sub} mt-0.5 font-normal text-brown`} />
+                </label>
+                <label className="block text-[11px] font-bold text-brown-soft">
+                  ประวัติการแพ้ <span className="font-normal text-brown-faint">(อาหาร / ยา / แชมพู)</span>
+                  <input value={cat.allergy} onChange={(e) => updateCat(idx, { allergy: e.target.value })} placeholder="เช่น ไม่มี · หรือ แพ้ไก่ แพ้แชมพูบางยี่ห้อ" className={`${sub} mt-0.5 font-normal text-brown`} />
+                </label>
                 {cat.id.startsWith("new-") && (
                   <button
                     type="button"
