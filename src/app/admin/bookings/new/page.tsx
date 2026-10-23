@@ -915,7 +915,6 @@ export default function NewBookingPage() {
                     lineUserId={b.lineUserId}
                     service={b.service}
                     groomBookingIds={many ? list.map((x) => x.id) : undefined}
-                    quickSteps
                   />
                 </div>
               </div>
