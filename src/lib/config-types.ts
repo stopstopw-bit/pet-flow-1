@@ -91,6 +91,10 @@ export type MessagesConfig = {
   consentTitle: string;
   /** ข้อตกลงก่อนเข้าพัก — บรรทัดละ 1 ข้อ */
   consentTerms: string[];
+  /** หัวเรื่องข้อตกลงก่อนอาบน้ำ (นัดอาบน้ำ) */
+  groomConsentTitle: string;
+  /** ข้อตกลงก่อนอาบน้ำ — บรรทัดละ 1 ข้อ ("หัวข้อ — เนื้อหา" ได้) */
+  groomConsentTerms: string[];
   /** การ์ดเรียกเก็บมัดจำ (ส่งก่อนลูกค้าโอน) — หัวเรื่อง */
   depositRequestTitle: string;
   /** การ์ดเรียกเก็บมัดจำ — ข้อความ ({name} {cat} {amount}) */

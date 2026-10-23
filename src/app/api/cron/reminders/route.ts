@@ -39,7 +39,7 @@ import { listCustomers, getCatGroomInfo, getCatStaffNotes, getIntakeStatus } fro
 import type { StoredBooking } from "@/lib/bookings-store";
 import { parseGroomInfo, groomInfoSummary } from "@/lib/groom-info";
 import { groomUsesCard, summaryFields } from "@/lib/intake-rules";
-import { renderTemplate, DEFAULT_MESSAGES } from "@/lib/messages";
+import { renderTemplate, consentDates, consentTextFor } from "@/lib/messages";
 import { withTenant } from "@/lib/tenant-context";
 import { listActiveTenantIds } from "@/lib/tenant-directory";
 import { verifyCronSecret } from "@/lib/cron-auth";
@@ -200,13 +200,10 @@ async function consentCardFor(
   const card = buildConsentFlex(
     {
       businessName: cfg.business.name,
-      title: cfg.messages.consentTitle || DEFAULT_MESSAGES.consentTitle,
+      ...consentTextFor(cfg.messages, b.service),
       catName: String(b.catName),
       petEmoji: petWords(cfg).emoji,
-      checkin: b.checkin || b.date,
-      checkout: b.checkout,
-      room: b.room,
-      terms: cfg.messages.consentTerms?.length ? cfg.messages.consentTerms : DEFAULT_MESSAGES.consentTerms,
+      ...consentDates(b),
       url: consentUrl,
     },
     cfg.cards?.consent

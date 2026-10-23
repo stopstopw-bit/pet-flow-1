@@ -62,7 +62,7 @@ import { getSiteConfig } from "@/lib/config-store";
 import { getLineCredentials } from "@/lib/line-config";
 import { cardOn, CARD_FEATURE, featureLabel } from "@/lib/features";
 import { cleanTransport, hasTransport, transportLabel, type BookingTransport } from "@/lib/transport";
-import { DEFAULT_MESSAGES, renderTemplate } from "@/lib/messages";
+import { DEFAULT_MESSAGES, consentDates, consentTextFor, renderTemplate } from "@/lib/messages";
 import { listInvoices, updateInvoice, invoiceCatNames, findOpenInvoiceForBooking } from "@/lib/invoices-store";
 import { getPaymentConfig } from "@/lib/payment-config";
 import {
@@ -821,15 +821,10 @@ function groomInfoCardFor(
             ids: [b.id],
             card: buildConsentFlex({
               businessName: cfg.business.name,
-              title: cfg.messages.consentTitle || DEFAULT_MESSAGES.consentTitle,
+              ...consentTextFor(cfg.messages, b.service),
               catName: String(gb.catName),
               petEmoji: petWords(cfg).emoji,
-              checkin: gb.checkin || gb.date,
-              checkout: gb.checkout,
-              room: gb.room,
-              terms: cfg.messages.consentTerms?.length
-                ? cfg.messages.consentTerms
-                : DEFAULT_MESSAGES.consentTerms,
+              ...consentDates(gb),
               url,
             }, cfg.cards?.consent),
           });
@@ -1192,15 +1187,10 @@ function groomInfoCardFor(
       }
       const flex = buildConsentFlex({
         businessName: cfg.business.name,
-        title: cfg.messages.consentTitle || DEFAULT_MESSAGES.consentTitle,
+        ...consentTextFor(cfg.messages, b.service),
         catName: String(gb.catName),
         petEmoji: petWords(cfg).emoji,
-        checkin: gb.checkin || gb.date,
-        checkout: gb.checkout,
-        room: gb.room,
-        terms: cfg.messages.consentTerms?.length
-          ? cfg.messages.consentTerms
-          : DEFAULT_MESSAGES.consentTerms,
+        ...consentDates(gb),
         url,
       }, cfg.cards?.consent);
       try {

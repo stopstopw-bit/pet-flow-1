@@ -6,7 +6,7 @@
 import { formatBookingWhen, formatThaiDate } from "./format-thai-date";
 import { hasTransport, transportLabel, type BookingTransport } from "./transport";
 import { getLineCredentials } from "./line-config";
-import { DEEMED_CONSENT_NOTICE } from "./messages";
+import { DEEMED_CONSENT_NOTICE, DEEMED_GROOM_CONSENT_NOTICE } from "./messages";
 import type { CardStyleConfig } from "./config-types";
 import { MISS_YOU_DEFAULT_TITLE } from "./miss-you-card";
 import { DOC_REQUEST_DEFAULTS, INTAKE_CARD_DEFAULTS } from "./line-card-defaults";
@@ -392,7 +392,7 @@ export function buildAppointmentConfirmFlex(booking: {
 }
 
 /** กล่องข้อความ "ไม่ตอบ = ยอมรับข้อตกลง" ใช้ในการ์ดที่ให้ลูกค้ายืนยันเงื่อนไขก่อนเข้าพัก */
-function deemedConsentBox(): Record<string, unknown> {
+function deemedConsentBox(groom = false): Record<string, unknown> {
   return {
     type: "box",
     layout: "vertical",
@@ -410,7 +410,7 @@ function deemedConsentBox(): Record<string, unknown> {
       },
       {
         type: "text",
-        text: DEEMED_CONSENT_NOTICE,
+        text: groom ? DEEMED_GROOM_CONSENT_NOTICE : DEEMED_CONSENT_NOTICE,
         size: "xxs",
         color: "#7A6A5A",
         margin: "xs",
@@ -432,9 +432,14 @@ export function buildConsentFlex(data: {
   room?: string;
   terms?: string[];
   url: string;
+  /** นัดอาบน้ำ — ข้อตกลงอาบน้ำ ไม่ใช่กฎเข้าพัก */
+  groom?: boolean;
 }, style?: CardStyleConfig) {
-  const tx = (k: string, fb: string) => style?.texts?.[k]?.trim() || fb;
-  const dateText = data.checkin
+  // ข้อความที่ร้านแก้ในการ์ดเป็นของกฎเข้าพัก — นัดอาบน้ำใช้ข้อความอาบน้ำของตัวเองเสมอ
+  const tx = (k: string, fb: string) => (data.groom ? fb : style?.texts?.[k]?.trim() || fb);
+  const dateText = data.groom
+    ? data.checkin || ""
+    : data.checkin
     ? `${data.checkin}${data.checkout ? ` → ${data.checkout}` : ""}${
         data.room ? ` · ห้อง ${data.room}` : ""
       }`
@@ -462,7 +467,7 @@ export function buildConsentFlex(data: {
     },
   ];
   if (dateText) {
-    body.push(flexDetailRow("🗓️", tx("stayLabel", "เข้าพัก"), dateText));
+    body.push(flexDetailRow("🗓️", data.groom ? "นัดอาบน้ำ" : tx("stayLabel", "เข้าพัก"), dateText));
   }
   body.push({ type: "separator", margin: "lg" });
   body.push({
@@ -476,7 +481,10 @@ export function buildConsentFlex(data: {
     contents: [
       {
         type: "text",
-        text: tx("stepsTitle", "⚠️ ก่อนฝากน้อง รบกวนทำ 2 ขั้นตอนนี้ก่อนนะคะ"),
+        text: tx(
+          "stepsTitle",
+          data.groom ? "⚠️ ก่อนอาบน้ำน้อง รบกวนทำ 2 ขั้นตอนนี้ก่อนนะคะ" : "⚠️ ก่อนฝากน้อง รบกวนทำ 2 ขั้นตอนนี้ก่อนนะคะ"
+        ),
         size: "sm",
         weight: "bold",
         color: "#5C4033",
@@ -496,7 +504,7 @@ export function buildConsentFlex(data: {
       },
     ],
   });
-  body.push(deemedConsentBox());
+  body.push(deemedConsentBox(data.groom));
   body.push({
     type: "text",
     text: style?.closing?.trim() || "แจ้งการดูแลเพิ่มเติมของน้องในหน้าเดียวกันได้เลยค่ะ 🧡",
@@ -520,7 +528,7 @@ export function buildConsentFlex(data: {
         contents: [
           {
             type: "text",
-            text: tx("header", "📋 เงื่อนไขก่อนเข้าพัก"),
+            text: tx("header", data.groom ? "📋 ข้อตกลงก่อนอาบน้ำ" : "📋 เงื่อนไขก่อนเข้าพัก"),
             color: style?.headerTextColor || "#FFFFFF",
             weight: "bold",
             size: "sm",

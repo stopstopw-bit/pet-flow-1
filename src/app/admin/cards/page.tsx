@@ -727,6 +727,13 @@ const CARDS: CardMeta[] = [
         label: "ข้อตกลงทั้งหมด (1 บรรทัด = 1 ข้อ — เพิ่ม/ลบ/แก้ได้อิสระ)",
         multiline: true,
       },
+      // นัดอาบน้ำใช้ข้อตกลงชุดนี้แทน (การ์ด + หน้าเซ็น) — แยกจากกฎเข้าพัก
+      { stateKey: "groomConsentTitle", label: "นัดอาบน้ำ: หัวข้อข้อตกลงอาบน้ำ" },
+      {
+        stateKey: "groomConsentTerms",
+        label: "นัดอาบน้ำ: ข้อตกลงอาบน้ำ (1 บรรทัด = 1 ข้อ · \"หัวข้อ — เนื้อหา\" หัวข้อจะเป็นตัวหนา)",
+        multiline: true,
+      },
     ],
   },
 ];
@@ -1522,6 +1529,8 @@ export default function CardsStudioPage() {
           followUpMessage: cfg.crm?.followUpMessage || "",
           consentTitle: cfg.messages?.consentTitle || "",
           consentTerms: (cfg.messages?.consentTerms || []).join("\n"),
+          groomConsentTitle: cfg.messages?.groomConsentTitle || "",
+          groomConsentTerms: (cfg.messages?.groomConsentTerms || []).join("\n"),
           // การ์ดเลือกเวลาเช็คอิน/เช็คเอาท์
           checkinReminder: cfg.messages?.checkinReminder || "",
           checkoutReminder: cfg.messages?.checkoutReminder || "",
@@ -1611,6 +1620,8 @@ export default function CardsStudioPage() {
               groomInfoIntro: texts.groomInfoIntro,
               consentTitle: texts.consentTitle,
               consentTerms: lines(texts.consentTerms),
+              groomConsentTitle: texts.groomConsentTitle,
+              groomConsentTerms: lines(texts.groomConsentTerms),
               // การ์ดเลือกเวลาเช็คอิน/เช็คเอาท์
               checkinReminder: texts.checkinReminder,
               checkoutReminder: texts.checkoutReminder,
@@ -1942,7 +1953,7 @@ export default function CardsStudioPage() {
                       <textarea
                         value={texts[t.stateKey] || ""}
                         onChange={(e) => patchText(t.stateKey, e.target.value)}
-                        rows={t.stateKey === "consentTerms" ? 8 : 3}
+                        rows={t.stateKey === "consentTerms" || t.stateKey === "groomConsentTerms" ? 8 : 3}
                         className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-xs font-normal"
                       />
                     ) : (
