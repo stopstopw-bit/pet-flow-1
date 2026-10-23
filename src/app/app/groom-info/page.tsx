@@ -1,5 +1,7 @@
 "use client";
 
+import { IntakeFlowBar } from "@/components/IntakeFlowBar";
+import { flowProgress } from "@/lib/intake-flow";
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLiff } from "@/components/LiffProvider";
@@ -161,6 +163,8 @@ function GroomInfoContent() {
       })
       .map((fd) => fd.key);
 
+  const nextStep = flowProgress(params)?.next;
+
   const submit = async () => {
     if (forms.length === 0) return;
     setAttempted(true);
@@ -190,6 +194,11 @@ function GroomInfoContent() {
       );
       if (!results.every(Boolean)) {
         setSaveError("บันทึกไม่สำเร็จบางตัว — ลองใหม่อีกครั้ง หรือแจ้งพนักงานที่ร้านได้เลยค่ะ");
+        return;
+      }
+      // มาจากการ์ดรวมขอข้อมูล → ไปขั้นต่อไปเลย (สมุดวัคซีน / บัตร / กฎ) ไม่ปิดหน้า
+      if (nextStep) {
+        window.location.href = nextStep.href;
         return;
       }
       try {
@@ -262,6 +271,7 @@ function GroomInfoContent() {
         backLabel="กลับหน้าแรก"
         showLang={false}
       />
+      <IntakeFlowBar mode="progress" />
 
       {loading ? (
         <LoadingScreen />
@@ -409,9 +419,11 @@ function GroomInfoContent() {
             {!saving && <Icon name="send" size={18} />}
             {saving
               ? "กำลังบันทึก…"
-              : forms.length > 1
-                ? `ส่งข้อมูลให้ร้าน (${forms.length} ตัว)`
-                : "ส่งข้อมูลให้ร้าน"}
+              : nextStep
+                ? `บันทึก แล้วไปขั้นต่อไป: ${nextStep.label}`
+                : forms.length > 1
+                  ? `ส่งข้อมูลให้ร้าน (${forms.length} ตัว)`
+                  : "ส่งข้อมูลให้ร้าน"}
           </button>
         </>
       )}

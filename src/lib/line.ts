@@ -10,6 +10,8 @@ import { DEEMED_CONSENT_NOTICE } from "./messages";
 import type { CardStyleConfig } from "./config-types";
 import { MISS_YOU_DEFAULT_TITLE } from "./miss-you-card";
 import { DOC_REQUEST_DEFAULTS, INTAKE_CARD_DEFAULTS } from "./line-card-defaults";
+import { encodeFlow, type FlowBy, type FlowStep, type FlowToken } from "./intake-flow";
+import { buildLiffUrl } from "./liff-urls";
 
 export { DOC_REQUEST_DEFAULTS, INTAKE_CARD_DEFAULTS };
 
@@ -1728,6 +1730,8 @@ export function buildIntakeFlex(data: {
   businessName: string;
   dateText?: string;
   buttons: { kind: IntakeButtonKind; url: string; count?: number }[];
+  /** ปุ่มเดียวไล่ทีละหน้า — มีแล้วจะแทน buttons ด้วยรายการขั้นตอน + ปุ่มเริ่ม */
+  start?: { url: string; steps: { kind: IntakeButtonKind; count?: number }[] };
   deposit?: IntakeDeposit;
 }, style?: CardStyleConfig) {
   const st = style || {};
@@ -1794,10 +1798,6 @@ export function buildIntakeFlex(data: {
       ],
     });
   }
-  if (st.closing) {
-    contents.push({ type: "text", text: st.closing, size: "xs", color: "#A2907E", margin: "md", wrap: true });
-  }
-
   const label: Record<IntakeButtonKind, string> = {
     stayInfo: t("stayInfoButton"),
     info: t("infoButton"),
@@ -1805,7 +1805,40 @@ export function buildIntakeFlex(data: {
     idcard: t("idcardButton"),
     consent: t("consentButton"),
   };
-  const footer: Record<string, unknown>[] = data.buttons.map((b) => ({
+  const withCount = (kind: IntakeButtonKind, count?: number) =>
+    count && count > 1 ? `${label[kind]} (${count} ตัว)` : label[kind];
+  if (data.start) {
+    // ลำดับขั้นที่ลูกค้าจะเจอหลังกดปุ่ม (เฉพาะเรื่องที่ยังขาด)
+    contents.push({
+      type: "box",
+      layout: "vertical",
+      margin: "lg",
+      spacing: "xs",
+      contents: data.start.steps.map((x, i) => ({
+        type: "text",
+        text: `${i + 1}. ${withCount(x.kind, x.count)}`,
+        size: "sm",
+        color: "#5C4033",
+        wrap: true,
+      })),
+    });
+  }
+  if (st.closing) {
+    contents.push({ type: "text", text: st.closing, size: "xs", color: "#A2907E", margin: "md", wrap: true });
+  }
+
+  const buttons = data.start
+    ? [
+        {
+          type: "button",
+          style: "primary",
+          color: st.buttonColor || BRAND_ACTION,
+          height: "sm",
+          action: { type: "uri", label: t("startButton").slice(0, 40), uri: data.start.url },
+        },
+      ]
+    : [];
+  const footer: Record<string, unknown>[] = data.start ? buttons : data.buttons.map((b) => ({
     type: "button",
     style: "primary",
     color: st.buttonColor || BRAND_ACTION,
@@ -1813,7 +1846,7 @@ export function buildIntakeFlex(data: {
     action: {
       type: "uri",
       // LINE ตัดป้ายปุ่มที่ยาวเกิน 40 ตัวอักษร
-      label: (b.count && b.count > 1 ? `${label[b.kind]} (${b.count} ตัว)` : label[b.kind]).slice(0, 40),
+      label: withCount(b.kind, b.count).slice(0, 40),
       uri: b.url,
     },
   }));
@@ -1852,6 +1885,8 @@ export type IntakeEntry = {
   card: object;
   url?: string;
   count?: number;
+  /** นัด (by=b) หรือตัวน้อง (by=c) ที่ขั้นนี้ต้องทำ — ใช้ต่อเป็นลำดับปุ่มเดียว */
+  ids?: string[];
   deposit?: IntakeDeposit;
 };
 
@@ -1870,12 +1905,34 @@ export function mergeIntakeCards(
     dateText?: string;
     always?: boolean;
     petEmoji?: string;
+    /** มี = ปุ่มเดียวไล่ทีละหน้า (ประวัติ → สมุดวัคซีน → บัตร → กฎ) แทนปุ่มแยกทีละเรื่อง */
+    flow?: { liffId: string; by: FlowBy };
   },
   style?: CardStyleConfig
 ): object[] {
   if (entries.length === 0) return [];
   if (entries.length === 1 && !ctx.always) return [entries[0].card];
   const sorted = [...entries].sort((a, b) => INTAKE_ORDER.indexOf(a.kind) - INTAKE_ORDER.indexOf(b.kind));
+  const steps = sorted.filter((e) => e.kind !== "deposit");
+  const hasStay = steps.some((e) => e.kind === "stayInfo");
+  // ข้อมูลก่อนเข้าพัก + ประวัติก่อนอาบน้ำพร้อมกัน = คนละฟอร์ม ไปในลำดับเดียวไม่ได้ → ใช้ปุ่มแยกแบบเดิม
+  const canFlow = ctx.flow && steps.length > 0 && !(hasStay && steps.some((e) => e.kind === "info"));
+  const tokens: FlowToken[] = steps.map((e) => ({
+    step: e.kind === "stayInfo" || e.kind === "info" ? "info" : (e.kind as FlowStep),
+    ids: e.ids || [],
+  }));
+  const start =
+    canFlow && ctx.flow
+      ? {
+          url: buildLiffUrl(ctx.flow.liffId, {
+            path: "intake",
+            flow: encodeFlow(tokens),
+            by: ctx.flow.by,
+            kind: hasStay ? "stay" : "groom",
+          }),
+          steps: steps.map((e) => ({ kind: e.kind as IntakeButtonKind, count: e.count })),
+        }
+      : undefined;
   return [
     buildIntakeFlex(
       {
@@ -1887,6 +1944,7 @@ export function mergeIntakeCards(
         buttons: sorted
           .filter((e) => e.kind !== "deposit" && e.url)
           .map((e) => ({ kind: e.kind as IntakeButtonKind, url: e.url!, count: e.count })),
+        start,
         deposit: sorted.find((e) => e.kind === "deposit")?.deposit,
       },
       style

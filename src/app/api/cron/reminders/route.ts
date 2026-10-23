@@ -20,6 +20,7 @@ import {
   type IntakeEntry,
 } from "@/lib/line";
 import { getPaymentConfig } from "@/lib/payment-config";
+import { getLineCredentials } from "@/lib/line-config";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import {
   buildDepositReminderText,
@@ -111,6 +112,7 @@ async function intakeCardsFor(
         kind: "stayInfo",
         url: url || undefined,
         count: needStay.length,
+        ids: needStay.map((x) => x.id),
         card: buildGroomInfoFlex(
           {
             catName: names(needStay),
@@ -139,6 +141,8 @@ async function intakeCardsFor(
       out.push({
         kind: "vaccine",
         url,
+        count: needVaccine.length,
+        ids: needVaccine.map((x) => x.id),
         card: buildDocRequestFlex(
           {
             kind: "vaccine",
@@ -160,6 +164,7 @@ async function intakeCardsFor(
       out.push({
         kind: "idcard",
         url,
+        ids: [primary.id],
         card: buildDocRequestFlex(
           {
             kind: "idcard",
@@ -200,12 +205,14 @@ async function consentCardFor(
     },
     cfg.cards?.consent
   );
-  return { kind: "consent", url: consentUrl, card };
+  return { kind: "consent", url: consentUrl, ids: [b.id], card };
 }
 
 async function runForTenant() {
   const cfg = await getSiteConfig();
   const auto = cfg.automation;
+  /** การ์ดรวมขอข้อมูลใช้ปุ่มเดียวไล่ทีละหน้า — ต้องมี LIFF ID */
+  const liffId = (await getLineCredentials())?.liffId;
   const errors: string[] = [];
   let sent = 0;
   let groomInfoCards = 0;
@@ -321,6 +328,7 @@ async function runForTenant() {
             kind: "info",
             url: url || undefined,
             count: needInfo.length,
+            ids: needInfo.map((x) => x.b.id),
             card: buildGroomInfoFlex({
               catName: names,
               petEmoji: petWords(cfg).emoji,
@@ -349,7 +357,7 @@ async function runForTenant() {
           if (consent) intake.push(consent);
         }
       }
-      // ขาดหลายเรื่อง = การ์ดใบเดียวหลายปุ่ม (เรื่องเดียว = การ์ดเดิม)
+      // ขาดหลายเรื่อง = การ์ดใบเดียว ปุ่มเดียวไล่ทีละหน้า (เรื่องเดียว = การ์ดเดิม)
       dayMessages.push(
         ...mergeIntakeCards(
           intake,
@@ -359,6 +367,7 @@ async function runForTenant() {
             petEmoji: petWords(cfg).emoji,
             businessName: cfg.business.name,
             dateText: bookingScheduleText(primary),
+            flow: liffId ? { liffId, by: "b" } : undefined,
           },
           cfg.cards?.intake
         )
@@ -449,7 +458,7 @@ async function runForTenant() {
           ]
         : [];
       // กฎ + กดยินยอม (ปิดรายนัดได้ ไม่ส่งซ้ำถ้ากดยอมรับนัดนี้แล้ว) + ข้อมูลก่อนเข้าพัก / สมุดวัคซีน /
-      // บัตรประชาชน ที่ยังขาด — ขาดหลายเรื่องรวมเป็นการ์ดใบเดียวหลายปุ่ม
+      // บัตรประชาชน ที่ยังขาด — ขาดหลายเรื่องรวมเป็นการ์ดใบเดียว ปุ่มเดียวไล่ทีละหน้า
       const consent = await consentCardFor(group, b, cfg);
       const intake = [...(consent ? [consent] : []), ...(await intakeCardsFor(group, "room", cfg))];
       prestayBundle.push(
@@ -461,6 +470,7 @@ async function runForTenant() {
             petEmoji: petWords(cfg).emoji,
             businessName: cfg.business.name,
             dateText: bookingScheduleText(b),
+            flow: liffId ? { liffId, by: "b" } : undefined,
           },
           cfg.cards?.intake
         )

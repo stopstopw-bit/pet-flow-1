@@ -289,8 +289,8 @@ const CARDS: CardMeta[] = [
   },
   {
     key: "intake",
-    name: "การ์ดรวมขอข้อมูล (ใบเดียวหลายปุ่ม)",
-    desc: "ขอหลายเรื่องในใบเดียว — ประวัติน้อง สมุดวัคซีน บัตรประชาชน กฎ + กดยินยอม มัดจำ · ปุ่มขึ้นเฉพาะเรื่องที่ลูกค้ายังไม่ได้ส่ง",
+    name: "การ์ดรวมขอข้อมูล (ปุ่มเดียว ไล่ทีละหน้า)",
+    desc: "ขอหลายเรื่องในใบเดียว ปุ่มเดียวพาลูกค้าไล่ทีละหน้า — ประวัติน้อง → สมุดวัคซีน → บัตรประชาชน → กฎ + กดยินยอม (กฎขอใหม่ทุกรอบเข้าพัก) · เรื่องที่ส่งแล้วข้ามให้เอง",
     colors: [
       { key: "headerColor", label: "สีแถบหัว", fallback: "#6e2f48" },
       { key: "headerTextColor", label: "สีตัวหนังสือหัว", fallback: "#FFFFFF" },
@@ -303,11 +303,12 @@ const CARDS: CardMeta[] = [
       { key: "headerStay", label: "หัวการ์ด (นัดเข้าพัก)", placeholder: INTAKE_CARD_DEFAULTS.headerStay },
       { key: "headerGroom", label: "หัวการ์ด (นัดอาบน้ำ)", placeholder: INTAKE_CARD_DEFAULTS.headerGroom },
       { key: "body", label: "เนื้อความ (ใช้ได้: {cat} {shop})", placeholder: INTAKE_CARD_DEFAULTS.body, multiline: true },
-      { key: "stayInfoButton", label: "ปุ่ม: ข้อมูลก่อนเข้าพัก", placeholder: INTAKE_CARD_DEFAULTS.stayInfoButton },
-      { key: "infoButton", label: "ปุ่ม: ประวัติก่อนอาบน้ำ", placeholder: INTAKE_CARD_DEFAULTS.infoButton },
-      { key: "vaccineButton", label: "ปุ่ม: แนบสมุดวัคซีน", placeholder: INTAKE_CARD_DEFAULTS.vaccineButton },
-      { key: "idcardButton", label: "ปุ่ม: แนบบัตรประชาชน", placeholder: INTAKE_CARD_DEFAULTS.idcardButton },
-      { key: "consentButton", label: "ปุ่ม: กฎ + กดยินยอม", placeholder: INTAKE_CARD_DEFAULTS.consentButton },
+      { key: "startButton", label: "ปุ่ม: เริ่มกรอกข้อมูล (ปุ่มเดียว ไล่ทีละหน้า)", placeholder: INTAKE_CARD_DEFAULTS.startButton },
+      { key: "stayInfoButton", label: "ขั้น: ข้อมูลก่อนเข้าพัก", placeholder: INTAKE_CARD_DEFAULTS.stayInfoButton },
+      { key: "infoButton", label: "ขั้น: ประวัติก่อนอาบน้ำ", placeholder: INTAKE_CARD_DEFAULTS.infoButton },
+      { key: "vaccineButton", label: "ขั้น: แนบสมุดวัคซีน", placeholder: INTAKE_CARD_DEFAULTS.vaccineButton },
+      { key: "idcardButton", label: "ขั้น: แนบบัตรประชาชน", placeholder: INTAKE_CARD_DEFAULTS.idcardButton },
+      { key: "consentButton", label: "ขั้น: กฎ + กดยินยอม", placeholder: INTAKE_CARD_DEFAULTS.consentButton },
       { key: "depositLabel", label: "ป้าย: ยอดมัดจำ", placeholder: INTAKE_CARD_DEFAULTS.depositLabel },
       { key: "copyButton", label: "ปุ่ม: คัดลอกเลขบัญชี", placeholder: INTAKE_CARD_DEFAULTS.copyButton },
     ],
@@ -1402,6 +1403,16 @@ function Preview({
           <p className="whitespace-pre-line">
             {t("body", INTAKE_CARD_DEFAULTS.body).replaceAll("{cat}", "น้องโรเซ่, Soju").replaceAll("{shop}", shop)}
           </p>
+          <div className="space-y-0.5 text-xs text-[#5C4033]">
+            {[
+              `${t("stayInfoButton", INTAKE_CARD_DEFAULTS.stayInfoButton)} (2 ตัว)`,
+              `${t("vaccineButton", INTAKE_CARD_DEFAULTS.vaccineButton)} (2 ตัว)`,
+              t("idcardButton", INTAKE_CARD_DEFAULTS.idcardButton),
+              t("consentButton", INTAKE_CARD_DEFAULTS.consentButton),
+            ].map((label, i) => (
+              <p key={label}>{i + 1}. {label}</p>
+            ))}
+          </div>
           <div className="flex items-center justify-between rounded-lg bg-[#F4ECE0] px-3 py-2.5">
             <span className="text-[#5C4033]">{t("depositLabel", INTAKE_CARD_DEFAULTS.depositLabel)}</span>
             <span className="text-sm font-extrabold" style={{ color: c("accentColor", "#C4956A") }}>500 บาท</span>
@@ -1409,26 +1420,18 @@ function Preview({
           {st.closing && <p className="whitespace-pre-line text-[10px] text-[#A2907E]">{st.closing}</p>}
         </div>
         <div className="space-y-1.5 px-3 pb-3">
-          {[
-            `${t("infoButton", INTAKE_CARD_DEFAULTS.infoButton)} (2 ตัว)`,
-            `${t("vaccineButton", INTAKE_CARD_DEFAULTS.vaccineButton)} (2 ตัว)`,
-            t("idcardButton", INTAKE_CARD_DEFAULTS.idcardButton),
-            t("consentButton", INTAKE_CARD_DEFAULTS.consentButton),
-          ].map((label) => (
-            <div
-              key={label}
-              className="rounded-lg py-2 text-center text-xs font-bold text-white"
-              style={{ background: c("buttonColor", "#bd3a6a") }}
-            >
-              {label}
-            </div>
-          ))}
+          <div
+            className="rounded-lg py-2 text-center text-xs font-bold text-white"
+            style={{ background: c("buttonColor", "#bd3a6a") }}
+          >
+            {t("startButton", INTAKE_CARD_DEFAULTS.startButton)}
+          </div>
           <div className="rounded-lg bg-[#EFEFEF] py-2 text-center text-xs font-bold text-[#555]">
             {t("copyButton", INTAKE_CARD_DEFAULTS.copyButton)}
           </div>
         </div>
         <p className="px-4 pb-3 text-[10px] text-[#A2907E]">
-          ตัวอย่างนี้โชว์ครบทุกปุ่ม — ส่งจริงจะมีเฉพาะเรื่องที่ลูกค้ายังไม่ได้ส่ง
+          ตัวอย่างนี้โชว์ครบทุกขั้น — ส่งจริงจะมีเฉพาะเรื่องที่ลูกค้ายังไม่ได้ส่ง (รอบถัดไปมักเหลือแค่กฎ)
         </p>
       </div>
     );

@@ -58,6 +58,7 @@ import {
   getIntakeStatus,
 } from "@/lib/customers-store";
 import { getSiteConfig } from "@/lib/config-store";
+import { getLineCredentials } from "@/lib/line-config";
 import { cardOn, CARD_FEATURE, featureLabel } from "@/lib/features";
 import { cleanTransport, hasTransport, transportLabel, type BookingTransport } from "@/lib/transport";
 import { DEFAULT_MESSAGES, renderTemplate } from "@/lib/messages";
@@ -718,14 +719,31 @@ function groomInfoCardFor(
   // ── 📋 การ์ดรวมขอข้อมูล — ใบเดียวหลายปุ่ม เฉพาะเรื่องที่บ้านนี้ยังขาด (ประวัติ/สมุดวัคซีน/บัตร/กฎ + มัดจำถ้าใส่ยอดมา) ──
   // ใช้ทางเดียวกับชุดการ์ด แค่เลือกหัวข้อให้เองตามบริการ แล้วบังคับรวมเป็นใบเดียวแม้เหลือเรื่องเดียว
   const intakeAlways = action === "send_intake";
+  /**
+   * เรื่องที่ร้านเลือกให้แยกเป็นการ์ดของตัวเอง (ที่เหลือรวมเป็นการ์ดใบเดียวปุ่มเดียว) —
+   * separateParts = รายชื่อเรื่อง · separate: true = แยกทุกเรื่อง
+   */
+  const separateKinds = new Set<string>(
+    !intakeAlways
+      ? []
+      : body.separate === true
+        ? ["stayInfo", "info", "vaccine", "idcard", "consent", "deposit"]
+        : (Array.isArray(body.separateParts) ? body.separateParts : [])
+            .map(String)
+            .map((x: string) => (x === "groomInfo" ? "info" : x))
+  );
   if (intakeAlways) {
     const room = b.service === "room";
+    const hasDeposit = Number(body.depositAmount) > 0;
+    // ร้านติ๊กเลือกเองว่าจะขออะไรบ้าง · ไม่ส่งมา = ทุกเรื่องตามบริการ (ระบบยังข้ามเรื่องที่ส่งแล้วให้)
+    const allowed = new Set(["stayInfo", "groomInfo", "vaccine", "idcard", "consent"]);
+    const raw: string[] = Array.isArray(body.parts) ? body.parts.map(String) : [];
+    const picked: string[] | null = Array.isArray(body.parts) ? raw.filter((x) => allowed.has(x)) : null;
     body.parts = [
-      room ? "stayInfo" : "groomInfo",
-      "vaccine",
-      ...(room ? ["idcard"] : []),
-      "consent",
-      ...(Number(body.depositAmount) > 0 ? ["deposit"] : []),
+      ...(picked ?? [room ? "stayInfo" : "groomInfo", "vaccine", ...(room ? ["idcard"] : []), "consent"]),
+      ...(hasDeposit ? ["deposit"] : []),
+      // แจ้งยอดชำระค่าบริการ (บิล) — การ์ดแยกของตัวเอง ส่งไปพร้อมกันในข้อความเดียว
+      ...(raw.includes("payment") ? ["payment"] : []),
     ];
   }
   if (action === "send_bundle" || intakeAlways) {
@@ -794,6 +812,7 @@ function groomInfoCardFor(
           addIntake({
             kind: "consent",
             url,
+            ids: [b.id],
             card: buildConsentFlex({
               businessName: cfg.business.name,
               title: cfg.messages.consentTitle || DEFAULT_MESSAGES.consentTitle,
@@ -939,6 +958,7 @@ function groomInfoCardFor(
           addIntake({
             kind: kind === "stay" ? "stayInfo" : "info",
             url: url || undefined,
+            ids: needInfo.map((x) => x.id),
             count: needInfo.length,
             card: buildGroomInfoFlex({
               catName: catNames,
@@ -978,6 +998,7 @@ function groomInfoCardFor(
           addIntake({
             kind: part,
             url,
+            ids: part === "vaccine" ? ask.map((x) => x.id) : [b.id],
             count: part === "vaccine" ? ask.length : undefined,
             card: buildDocRequestFlex({
               kind: part,
@@ -1083,25 +1104,32 @@ function groomInfoCardFor(
       }
     }
 
+    const together = intake.filter((e) => !separateKinds.has(e.kind));
+    const apart = intake.filter((e) => separateKinds.has(e.kind)).map((e) => e.card);
     if (intake.length > 0) {
+      const liffId = together.length > 0 ? (await getLineCredentials())?.liffId : undefined;
       messages.splice(
         intakeAt,
         0,
-        ...mergeIntakeCards(
-          intake,
-          {
-            service: b.service === "room" ? "stay" : "groom",
-            catName: String(gb.catName),
-            petEmoji: petWords(cfg).emoji,
-            businessName: cfg.business.name,
-            dateText: bookingScheduleText(gb),
-            always: intakeAlways,
-          },
-          cfg.cards?.intake
-        )
+        ...(together.length > 0
+          ? mergeIntakeCards(
+              together,
+              {
+                service: b.service === "room" ? "stay" : "groom",
+                catName: String(gb.catName),
+                petEmoji: petWords(cfg).emoji,
+                businessName: cfg.business.name,
+                dateText: bookingScheduleText(gb),
+                always: intakeAlways,
+                flow: liffId ? { liffId, by: "b" } : undefined,
+              },
+              cfg.cards?.intake
+            )
+          : []),
+        ...apart
       );
     }
-    if (intakeAlways && intake.length === 0) {
+    if (intakeAlways && intake.length === 0 && messages.length === 0) {
       return NextResponse.json(
         { error: "บ้านนี้ส่งข้อมูลครบทุกอย่างแล้ว ไม่มีอะไรต้องขอเพิ่มค่ะ", skipped },
         { status: 400 }
