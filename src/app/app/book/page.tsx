@@ -12,6 +12,7 @@ import { extraCatChargePerNight } from "@/lib/business";
 import { roomPricing } from "@/lib/room-board";
 import { toJpegDataUrl } from "@/lib/image-convert";
 import { PetPickList, type PetPickItem } from "@/components/PetPickList";
+import { PetProgramSelect } from "@/components/GroomProgramPicker";
 import { petWords } from "@/lib/pet-kind";
 
 type Service = "groom" | "room";
@@ -140,6 +141,8 @@ function BookPageInner() {
   const [time, setTime] = useState("");
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [groomProgram, setGroomProgram] = useState("");
+  // จองหลายตัว: แต่ละตัวเลือกโปรแกรมของตัวเองได้ (ทับโปรแกรมที่เลือกให้ทุกตัว)
+  const [petPrograms, setPetPrograms] = useState<Record<string, string>>({});
 
   // room state
   const [roomType, setRoomType] = useState("");
@@ -317,6 +320,9 @@ function BookPageInner() {
               date,
               time,
               groomProgram: groomProgram || undefined,
+              petPrograms: Object.fromEntries(
+                catNames.map((n) => [n, (petPrograms[n] ?? groomProgram) || ""])
+              ),
               depositSlip: (withSlip && slip) || undefined,
             }
           : {
@@ -460,6 +466,7 @@ function BookPageInner() {
               setSlipErr("");
               setTime("");
               setGroomProgram("");
+              setPetPrograms({});
             }}
             className="mt-4 rounded-full bg-honey/30 px-4 py-2 text-xs font-bold text-latte-deep"
           >
@@ -511,10 +518,13 @@ function BookPageInner() {
             {service === "groom" ? (
               <>
                 <label className="mb-3 block text-xs font-bold text-brown-soft">
-                  🧴 โปรแกรมอาบน้ำ (ไม่บังคับ)
+                  🧴 {catNames.length > 1 ? "โปรแกรมอาบน้ำ — ทุกตัว (ไม่บังคับ)" : "โปรแกรมอาบน้ำ (ไม่บังคับ)"}
                   <select
                     value={groomProgram}
-                    onChange={(e) => setGroomProgram(e.target.value)}
+                    onChange={(e) => {
+                      setGroomProgram(e.target.value);
+                      setPetPrograms({});
+                    }}
                     className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm"
                   >
                     <option value="">ยังไม่เลือก — ให้ทางร้านแนะนำหน้างาน</option>
@@ -537,6 +547,26 @@ function BookPageInner() {
                     ) : null;
                   })()}
                 </label>
+                {catNames.length > 1 && (
+                  <div className="mb-3 space-y-1.5">
+                    <p className="text-[11px] text-brown-faint">แต่ละตัวอาบไม่เหมือนกัน เปลี่ยนรายตัวได้เลย</p>
+                    {catNames.map((n) => (
+                      <div
+                        key={n}
+                        className="flex flex-wrap items-center gap-2 rounded-petflow-sm bg-paper px-3 py-1.5"
+                      >
+                        <span className="min-w-0 flex-1 truncate text-sm font-bold text-brown">{n}</span>
+                        <PetProgramSelect
+                          cat={n}
+                          value={petPrograms[n] ?? groomProgram}
+                          onChange={(v) => setPetPrograms((p) => ({ ...p, [n]: v }))}
+                          programs={resolveGroomPrograms(config.groomPricePrograms)}
+                          emptyLabel="ยังไม่เลือก — ให้ทางร้านแนะนำ"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <label className="mb-3 block text-xs font-bold text-brown-soft">
                   📅 วันที่
                   <input

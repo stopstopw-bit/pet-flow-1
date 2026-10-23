@@ -466,7 +466,7 @@ async function handlePatch(req: NextRequest, admin: boolean) {
         notes: b.notes,
         groomProgram: b.groomProgram,
         transport: b.transport,
-      });
+      }, group);
 
       if (preview) return NextResponse.json({ ok: true, preview: [flex] });
       await pushLineMessage(to, [flex]);
@@ -805,7 +805,7 @@ function groomInfoCardFor(
             notes: b.notes,
             groomProgram: b.groomProgram,
             transport: b.transport,
-          })
+          }, household)
         );
       } else if (part === "consent") {
         // กดยอมรับนัดนี้ครบทุกตัวแล้ว → ไม่ขอซ้ำ (ทุกนัดใหม่ยังต้องกดใหม่)

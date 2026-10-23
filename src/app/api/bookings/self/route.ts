@@ -5,7 +5,7 @@ import { addBooking, listBookings, type StoredBooking } from "@/lib/bookings-sto
 import { findCustomerByLine } from "@/lib/customers-store";
 import { assignGroomSlots, getGroomAvailability, getRoomAvailability } from "@/lib/availability";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
-import { groomProgram } from "@/lib/grooming-prices";
+import { groomProgram, resolveGroomPrograms } from "@/lib/grooming-prices";
 import { requireCustomerSession } from "@/lib/customer-session";
 import { getSiteConfig } from "@/lib/config-store";
 import { depositAmountFor, type DepositStatus } from "@/lib/booking-deposit";
@@ -104,7 +104,18 @@ async function handlePost(req: NextRequest) {
     if (!assignedTimes) {
       return NextResponse.json({ error: "slot_full" }, { status: 409 });
     }
-    const programId = String(body.groomProgram || "").trim() || undefined;
+    // โปรแกรมรายตัว (จองหลายตัว อาบคนละโปรแกรมได้) — รับเฉพาะ id ที่ร้านมีจริง
+    // ไม่ส่งรายตัวมา (แอปเวอร์ชันเก่า) = ทุกตัวใช้โปรแกรมเดียวกันแบบเดิม
+    const programs = resolveGroomPrograms((await getSiteConfig()).groomPricePrograms);
+    const validProgram = (v: unknown) => {
+      const pid = String(v || "").trim();
+      return pid && groomProgram(pid, programs) ? pid : undefined;
+    };
+    const programId = validProgram(body.groomProgram);
+    const perPet: Record<string, unknown> =
+      body.petPrograms && typeof body.petPrograms === "object" ? body.petPrograms : {};
+    const programOf = (name: string) =>
+      name in perPet ? validProgram(perPet[name]) : programId;
     const deposit = await depositInfo();
     const bookings: StoredBooking[] = [];
     for (let i = 0; i < catNames.length; i++) {
@@ -117,21 +128,24 @@ async function handlePost(req: NextRequest) {
           time: assignedTimes[i],
           lineUserId,
           selfBooked: true,
-          groomProgram: programId,
+          groomProgram: programOf(catNames[i]),
           // ทั้งบ้านที่จองพร้อมกันได้ยอด/สลิป/สถานะเดียวกันทุกแถว (ยอดของทั้งกลุ่ม ไม่ใช่ต่อตัว)
           ...deposit,
         })
       );
     }
+    const programName = (pid?: string) => (pid ? groomProgram(pid, programs)?.name || pid : "");
     const scheduleText = catNames
-      .map((name, i) => `${name} ${assignedTimes[i]}`)
+      .map((name, i) => {
+        const prog = programName(programOf(name));
+        return `${name} ${assignedTimes[i]}${prog ? ` (${prog})` : ""}`;
+      })
       .join(", ");
     await sendTelegram(
       formatBookingTelegram("🐾 ลูกค้าจองคิวอาบน้ำเอง (รอยืนยัน)", {
         ลูกค้า: customer.name,
         น้อง: scheduleText,
         วันที่: date,
-        ...(programId ? { โปรแกรม: groomProgram(programId)?.name || programId } : {}),
         ...depositTelegramLine(deposit),
       })
     );

@@ -192,6 +192,8 @@ export function buildAppointmentConfirmFlex(booking: {
   businessName?: string;
   /** ชื่อโปรแกรมอาบน้ำที่เลือกไว้ตอนจอง (ถ้ามี) — เฉพาะนัดอาบน้ำ */
   program?: string;
+  /** จองหลายตัว อาบคนละโปรแกรม/คนละเวลา — แถวรายตัว (ชื่อ · เวลา · โปรแกรม) */
+  petLines?: { catName: string; time?: string; program?: string }[];
 }, style?: CardStyleConfig) {
   const st = style || {};
   const show = (k: string) => st.show?.[k] !== false;
@@ -265,6 +267,19 @@ export function buildAppointmentConfirmFlex(booking: {
           },
           flexDetailRow("🗓️", st.texts?.dateLabel || "วันที่", dateText),
           flexDetailRow("⏰", st.texts?.timeLabel || "เวลา / รายละเอียด", timeText),
+          ...(!isRoom && booking.petLines?.length
+            ? [
+                flexDetailRow(
+                  "🐾",
+                  "แต่ละตัว",
+                  booking.petLines
+                    .map((x) =>
+                      [politeCat(x.catName), x.time, x.program].filter(Boolean).join(" · ")
+                    )
+                    .join("\n")
+                ),
+              ]
+            : []),
           ...(show("location") && booking.location
             ? [flexDetailRow("📍", st.texts?.locationLabel || "สถานที่", booking.location)]
             : []),
