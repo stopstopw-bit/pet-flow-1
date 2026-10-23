@@ -18,11 +18,13 @@ import { FEATURES, FEATURE_GROUPS, isFeatureOn, type FeatureKey } from "@/lib/fe
 import { GROOM_EXTRA_CARDS, type IntakeRules } from "@/lib/intake-rules";
 import { REFERRAL_DEFAULT, referralReward } from "@/lib/referral";
 import { breedOptionsFor, petKindOf, petWords, withDefaultBreeds, type PetKind } from "@/lib/pet-kind";
+import { LINE_PROMO_KINDS, type LinePromo } from "@/lib/line-discount";
 
 type Tab =
   | "features"
   | "shop"
   | "payment"
+  | "linePromos"
   | "messages"
   | "automation"
   | "lists"
@@ -47,6 +49,7 @@ const TAB_GROUPS: { title: string; items: { id: Tab; icon: string; hint?: string
     items: [
       { id: "shop", icon: "home", hint: "ชื่อร้าน ช่องทางติดต่อ ที่อยู่" },
       { id: "payment", icon: "wallet", hint: "บัญชีรับโอน" },
+      { id: "linePromos", icon: "ticket", hint: "เช่น ลด 5% เฉพาะห้องพัก/อาบน้ำ" },
       { id: "lists", icon: "doc", hint: "ร้านหมา/แมว · สายพันธุ์ · ของแถม" },
       { id: "points", icon: "star", hint: "อัตราแต้มสะสม" },
       { id: "crm", icon: "users" },
@@ -82,6 +85,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "features", label: "เปิด/ปิดฟีเจอร์" },
   { id: "shop", label: "ร้าน" },
   { id: "payment", label: "บัญชี" },
+  { id: "linePromos", label: "โปรลดเฉพาะรายการ" },
   { id: "messages", label: "ข้อความ" },
   { id: "automation", label: "อัตโนมัติ" },
   { id: "lists", label: "รายการ" },
@@ -125,6 +129,12 @@ export default function SettingsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // เปิดหมวดตรงจากลิงก์ เช่น /admin/settings?tab=linePromos (ปุ่ม "ตั้งโปร" ในหน้าออกบิล)
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get("tab");
+    if (t && TABS.some((x) => x.id === t)) setTab(t as Tab);
+  }, []);
 
   const save = async (patch: Partial<SiteConfig>) => {
     setSaving(true);
@@ -244,6 +254,9 @@ export default function SettingsPage() {
       )}
       {tab === "payment" && (
         <PaymentTab config={config} saving={saving} onSave={save} />
+      )}
+      {tab === "linePromos" && (
+        <LinePromosTab config={config} saving={saving} onSave={save} />
       )}
       {tab === "messages" && (
         <MessagesTab config={config} saving={saving} onSave={save} />
@@ -835,6 +848,113 @@ function PaymentTab({
         ข้อความสรุป/แจ้งมัดจำ/เก็บเงิน และข้อความอื่นๆ ที่ส่งให้ลูกค้า
         ย้ายไปแก้ที่แท็บ <b>ข้อความ</b> แล้ว
       </p>
+      <SaveBtn saving={saving} />
+    </form>
+  );
+}
+
+function LinePromosTab({
+  config,
+  saving,
+  onSave,
+}: {
+  config: SiteConfig;
+  saving: boolean;
+  onSave: (p: Partial<SiteConfig>) => void;
+}) {
+  const [list, setList] = useState<LinePromo[]>(config.linePromos || []);
+  useEffect(() => setList(config.linePromos || []), [config.linePromos]);
+  const update = (i: number, patch: Partial<LinePromo>) =>
+    setList((prev) => prev.map((p, k) => (k === i ? { ...p, ...patch } : p)));
+
+  return (
+    <form
+      className="space-y-3 rounded-petflow bg-card p-4 shadow-petflow-sm"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSave({
+          linePromos: list
+            .map((p) => ({
+              ...p,
+              name: p.name.replace(/[()]/g, "").trim(),
+              percent: Math.min(100, Math.max(0, Math.round(Number(p.percent) || 0))),
+            }))
+            .filter((p) => p.name && p.percent > 0 && p.kinds.length > 0),
+        });
+      }}
+    >
+      <p className="rounded-petflow-sm bg-paper px-3 py-2 text-[11px] text-brown-soft">
+        ตั้งโปรไว้ แล้วตอนออกบิลกดเลือกได้เลย — ลดเฉพาะรายการประเภทที่ติ๊กไว้
+        (เช่น ลดห้องพักกับอาบน้ำ แต่ค่ารับ-ส่งไม่ลด) บิลจะเขียนบอกส่วนลดทีละรายการ
+      </p>
+      {list.map((p, i) => (
+        <div key={p.id} className="space-y-2 rounded-petflow-sm border border-petflow-line p-3">
+          <div className="flex gap-2">
+            <input
+              value={p.name}
+              onChange={(e) => update(i, { name: e.target.value })}
+              placeholder="ชื่อโปร เช่น ลูกค้าประจำ"
+              className="min-h-[40px] min-w-0 flex-1 rounded-petflow-sm border border-petflow-line bg-paper px-3 text-sm"
+            />
+            <div className="flex items-center gap-1">
+              <input
+                type="number"
+                min={1}
+                max={100}
+                inputMode="numeric"
+                value={p.percent || ""}
+                onChange={(e) => update(i, { percent: Number(e.target.value) })}
+                className="min-h-[40px] w-16 rounded-petflow-sm border border-petflow-line bg-paper px-2 text-right text-sm font-bold"
+              />
+              <span className="text-sm font-bold text-brown-soft">%</span>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {LINE_PROMO_KINDS.map((k) => {
+              const on = p.kinds.includes(k.id);
+              return (
+                <button
+                  key={k.id}
+                  type="button"
+                  onClick={() =>
+                    update(i, {
+                      kinds: on ? p.kinds.filter((x) => x !== k.id) : [...p.kinds, k.id],
+                    })
+                  }
+                  className={`min-h-[34px] rounded-full border px-3 text-xs font-bold ${
+                    on
+                      ? "border-petflow-chocolate bg-petflow-chocolate text-card"
+                      : "border-petflow-line bg-card text-brown-soft"
+                  }`}
+                >
+                  {on ? "✓ " : ""}
+                  {k.label}
+                </button>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            onClick={() => setList((prev) => prev.filter((_, k) => k !== i))}
+            className="text-[11px] font-bold text-wait"
+          >
+            ลบโปรนี้
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() =>
+          setList((prev) => [
+            ...prev,
+            { id: `lp${Date.now().toString(36)}`, name: "", percent: 5, kinds: ["stay", "grooming"] },
+          ])
+        }
+        className="flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-full border border-dashed border-petflow-line text-xs font-bold text-brown"
+      >
+        <Icon name="plus" size={16} />
+        เพิ่มโปร
+      </button>
       <SaveBtn saving={saving} />
     </form>
   );

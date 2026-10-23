@@ -52,6 +52,8 @@ export type InvoiceItem = {
   discount?: number;
   /** ส่วนลดเฉพาะรายการนี้แบบ % — ใช้แทน discount */
   discountPercent?: number;
+  /** ชื่อโปรลดเฉพาะรายการที่ให้ส่วนลดบรรทัดนี้ */
+  discountName?: string;
 };
 
 /**
