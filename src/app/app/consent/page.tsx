@@ -6,7 +6,12 @@ import { useLiff } from "@/components/LiffProvider";
 import { useConfig } from "@/components/ConfigProvider";
 import type { Booking } from "@/lib/business";
 
-import { DEFAULT_MESSAGES, DEEMED_CONSENT_NOTICE } from "@/lib/messages";
+import {
+  DEEMED_CONSENT_NOTICE,
+  DEEMED_GROOM_CONSENT_NOTICE,
+  GROOM_CONSENT_CONFIRM,
+  consentTextFor,
+} from "@/lib/messages";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { toJpegDataUrl } from "@/lib/image-convert";
 import { BTN_PRIMARY, PageHeader } from "@/components/PageHeader";
@@ -110,6 +115,18 @@ function SignaturePad({
   );
 }
 
+/** "หัวข้อ — เนื้อหา" → หัวข้อตัวหนาบรรทัดแรก (ข้อตกลงที่ไม่มีหัวข้อโชว์ตามเดิม) */
+function TermText({ term }: { term: string }) {
+  const m = term.match(/^(.{2,60}?) — ([\s\S]+)$/);
+  if (!m) return <span className="min-w-0">{term}</span>;
+  return (
+    <span className="min-w-0">
+      <span className="block font-extrabold text-petflow-chocolate">{m[1]}</span>
+      {m[2]}
+    </span>
+  );
+}
+
 function ConsentContent() {
   const params = useSearchParams();
   const bookingIdParam = params.get("id") || "";
@@ -134,11 +151,9 @@ function ConsentContent() {
   const [idCardBusy, setIdCardBusy] = useState(false);
   const [fleaError, setFleaError] = useState(false);
 
-  const terms =
-    config.messages?.consentTerms?.length
-      ? config.messages.consentTerms
-      : DEFAULT_MESSAGES.consentTerms;
-  const consentTitle = config.messages?.consentTitle || DEFAULT_MESSAGES.consentTitle;
+  // นัดอาบน้ำใช้ข้อตกลงอาบน้ำ (แยกจากกฎเข้าพัก) — ไม่มีบัตรประชาชน/ยาเห็บหมัดก่อนเข้าพัก
+  const isGroom = booking?.service === "groom";
+  const { title: consentTitle, terms } = consentTextFor(config.messages, booking?.service);
 
   useEffect(() => {
     if (!profile?.lineUserId) return;
@@ -214,7 +229,7 @@ function ConsentContent() {
       setSignError(true);
       hasError = true;
     }
-    if (!fleaTickTreated) {
+    if (!fleaTickTreated && !isGroom) {
       setFleaError(true);
       hasError = true;
     }
@@ -270,9 +285,14 @@ function ConsentContent() {
   return (
     <div className="px-4 pb-6 pt-5">
       <PageHeader
-        eyebrow="Boarding agreement"
-        title={consentTitle}
-        subtitle={`${config.business.name} — กรุณาอ่านและกดยอมรับก่อนวันเข้าพักของน้อง`}
+        // ลิงก์เจาะจงนัด: รู้ว่าเป็นนัดอาบน้ำหรือเข้าพักหลังโหลดนัดเสร็จ — ระหว่างนั้นไม่โชว์หัวข้อผิดชุด
+        eyebrow={loading && bookingIdParam ? "Agreement" : isGroom ? "Grooming agreement" : "Boarding agreement"}
+        title={loading && bookingIdParam ? "ข้อตกลงและเงื่อนไข" : consentTitle}
+        subtitle={
+          isGroom
+            ? `${config.business.name} — เพื่อความปลอดภัยและสุขภาพที่ดีของน้อง กรุณาอ่านและยอมรับเงื่อนไขก่อนเข้ารับบริการ`
+            : `${config.business.name} — กรุณาอ่านและกดยอมรับก่อนวันเข้าพักของน้อง`
+        }
         back="/app"
         backLabel="กลับหน้าแรก"
         showLang={false}
@@ -286,14 +306,23 @@ function ConsentContent() {
           {booking && (
             <div className="flex items-center gap-3 rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-honey/25 text-petflow-chocolate">
-                <Icon name="bed" size={20} />
+                <Icon name={isGroom ? "bath" : "bed"} size={20} />
               </span>
               <div className="min-w-0">
                 <p className="truncate text-sm font-extrabold text-petflow-chocolate">{booking.catName}</p>
                 <p className="text-xs text-brown-soft">
-                  เข้าพัก: {booking.checkin || booking.date}
-                  {booking.checkout ? ` → ${booking.checkout}` : ""}
-                  {booking.room ? ` · ห้อง ${booking.room}` : ""}
+                  {isGroom ? (
+                    <>
+                      นัดอาบน้ำ: {booking.date}
+                      {booking.time ? ` ${booking.time} น.` : ""}
+                    </>
+                  ) : (
+                    <>
+                      เข้าพัก: {booking.checkin || booking.date}
+                      {booking.checkout ? ` → ${booking.checkout}` : ""}
+                      {booking.room ? ` · ห้อง ${booking.room}` : ""}
+                    </>
+                  )}
                 </p>
               </div>
             </div>
@@ -307,12 +336,12 @@ function ConsentContent() {
                   <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-honey/30 text-[11px] font-extrabold text-petflow-chocolate">
                     {i + 1}
                   </span>
-                  <span className="min-w-0">{term}</span>
+                  <TermText term={term} />
                 </li>
               ))}
             </ol>
             <p className="mt-2 rounded-petflow border border-petflow-line bg-cream px-3 py-2.5 text-[11px] leading-relaxed text-brown">
-              {DEEMED_CONSENT_NOTICE}
+              {isGroom ? DEEMED_GROOM_CONSENT_NOTICE : DEEMED_CONSENT_NOTICE}
             </p>
           </section>
 
@@ -322,7 +351,9 @@ function ConsentContent() {
               แจ้งการดูแลเพิ่มเติม (ไม่บังคับ)
             </label>
             <p className="mb-1.5 text-[11px] text-brown-faint">
-              เช่น อาหารที่กินประจำ/ปริมาณ · ยาที่ต้องให้ · นิสัย/สิ่งที่กลัว · โรคประจำตัว
+              {isGroom
+                ? "เช่น โรคประจำตัว · แพ้ยา/แพ้แชมพู · จุดที่ไม่ชอบให้จับ · นิสัยตอนอาบน้ำ"
+                : "เช่น อาหารที่กินประจำ/ปริมาณ · ยาที่ต้องให้ · นิสัย/สิ่งที่กลัว · โรคประจำตัว"}
             </p>
             <textarea
               value={careNote}
@@ -368,7 +399,7 @@ function ConsentContent() {
                 )}
               </section>
 
-              {!idCardOnFile && isFeatureOn(config, "idCard") && (
+              {!idCardOnFile && !isGroom && isFeatureOn(config, "idCard") && (
               <section className="mt-4 rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm">
                 <label className="flex items-center gap-1.5 text-xs font-bold text-petflow-chocolate">
                   <Icon name="user" size={14} />
@@ -477,6 +508,7 @@ function ConsentContent() {
               </section>
               )}
 
+              {!isGroom && (
               <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-petflow border border-honey-deep/40 bg-honey/10 p-4 text-xs leading-relaxed text-brown">
                 <input
                   type="checkbox"
@@ -492,7 +524,8 @@ function ConsentContent() {
                   ก่อนเข้าพักครั้งนี้
                 </span>
               </label>
-              {fleaError && (
+              )}
+              {fleaError && !isGroom && (
                 <p className="mt-1 text-[11px] font-bold text-wait">
                   กรุณาติ๊กยืนยันเรื่องหยดยาเห็บหมัดก่อนกดยอมรับข้อตกลง
                 </p>
@@ -505,11 +538,15 @@ function ConsentContent() {
                   onChange={(e) => setChecked(e.target.checked)}
                   className="mt-0.5 h-5 w-5 flex-none accent-latte-deep"
                 />
-                <span>
-                  ข้าพเจ้าขอรับรองว่าข้อมูลทั้งหมดที่กรอกและแนบมาข้างต้น
-                  (รวมถึงประวัติวัคซีนและการหยดยาเห็บหมัด) เป็นความจริงทุกประการ
-                  และร้านสามารถใช้ข้อมูลนี้เป็นหลักฐานได้หากเกิดปัญหาที่เกี่ยวข้อง
-                </span>
+                {isGroom ? (
+                  <span>{GROOM_CONSENT_CONFIRM}</span>
+                ) : (
+                  <span>
+                    ข้าพเจ้าขอรับรองว่าข้อมูลทั้งหมดที่กรอกและแนบมาข้างต้น
+                    (รวมถึงประวัติวัคซีนและการหยดยาเห็บหมัด) เป็นความจริงทุกประการ
+                    และร้านสามารถใช้ข้อมูลนี้เป็นหลักฐานได้หากเกิดปัญหาที่เกี่ยวข้อง
+                  </span>
+                )}
               </label>
               <button
                 type="button"

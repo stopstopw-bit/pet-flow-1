@@ -646,6 +646,8 @@ export function BookingCalendar() {
   const [closedWeekdays, setClosedWeekdays] = useState<number[]>([]);
   /** นัดอาบน้ำของร้านนี้ขอสมุดวัคซีนด้วยไหม (ตั้งค่า › ขอข้อมูลตามบริการ) */
   const [groomVaccine, setGroomVaccine] = useState(false);
+  /** นัดอาบน้ำของร้านนี้ขอข้อตกลงอาบน้ำ + กดยินยอมไหม */
+  const [groomConsent, setGroomConsent] = useState(false);
   const [togglingClosed, setTogglingClosed] = useState(false);
   /** การ์ดที่รอยืนยันก่อนส่งจริง พร้อมงานที่จะทำต่อเมื่อกดยืนยัน */
   const [stagePreview, setStagePreview] = useState<{
@@ -865,6 +867,7 @@ export function BookingCalendar() {
     setClosedDates(d.config?.closedDates || []);
     setClosedWeekdays(d.config?.closedWeekdays || []);
     setGroomVaccine(groomUsesCard(d.config, "vaccine"));
+    setGroomConsent(groomUsesCard(d.config, "consent"));
   }, []);
 
   useEffect(() => {
@@ -2249,7 +2252,8 @@ export function BookingCalendar() {
                     </button>
                   );
                 })()}
-                {b.service === "room" &&
+                {/* อาบก่อนกลับระหว่างเข้าพัก ใช้ข้อตกลง/สมุดวัคซีนของการเข้าพัก — ไม่ซ้ำแถวที่นี่ */}
+                {(b.service === "room" || (groomConsent && !stayForGroom(b, liveBookings))) &&
                   (b.consentAcceptedAt ? (
                     <div className="mt-2 flex items-center gap-2">
                       <p className="flex min-w-0 items-center gap-1 text-[11px] font-bold text-ok">
@@ -2281,9 +2285,10 @@ export function BookingCalendar() {
                     </p>
                   ))}
                 {/* สมุดวัคซีนรายตัว — โชว์ทุกนัดเข้าพัก พนักงานแนบเองได้ ไม่ต้องรอลูกค้ากดยอมรับข้อตกลงก่อน
-                    นัดอาบน้ำอย่างเดียวไม่ใช้สมุดวัคซีน (เว้นแต่ร้านตั้งให้ขอ) — เหลือแค่แถวหยดยาเห็บหมัด (ถ้ามี) */}
+                    นัดอาบน้ำอย่างเดียวไม่ใช้สมุดวัคซีน (เว้นแต่ร้านตั้งให้ขอ) — เหลือแค่แถวหยดยาเห็บหมัด (ถ้ามี)
+                    อาบก่อนกลับระหว่างเข้าพักใช้สมุดของการเข้าพัก */}
                 <div className="mt-1 space-y-1">
-                  {group.filter((x) => b.service !== "groom" || groomVaccine || x.fleaTickTreated).map((x) => (
+                  {group.filter((x) => b.service !== "groom" || ((groomVaccine || x.fleaTickTreated) && !stayForGroom(x, liveBookings))).map((x) => (
                     <div key={x.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
                       <span className="flex items-center gap-1 font-bold text-brown-soft">
                         <Icon name="paw" size={12} />

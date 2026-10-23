@@ -55,13 +55,18 @@ async function postHandler(req: NextRequest) {
   if (res.ok) {
     const b = await getBooking(bookingId);
     if (b) {
+      const groom = b.service === "groom";
       await sendTelegram(
-        formatBookingTelegram("✅ ลูกค้ายอมรับข้อตกลงก่อนเข้าพักแล้ว", {
+        formatBookingTelegram(groom ? "✅ ลูกค้ายอมรับข้อตกลงก่อนอาบน้ำแล้ว" : "✅ ลูกค้ายอมรับข้อตกลงก่อนเข้าพักแล้ว", {
           น้องแมว: b.catName,
           ลูกค้า: b.customerName,
-          เข้าพัก: `${b.checkin || b.date || "-"}${b.checkout ? ` → ${b.checkout}` : ""}`,
+          ...(groom
+            ? { นัดอาบน้ำ: `${b.date || "-"}${b.time ? ` ${b.time}` : ""}` }
+            : { เข้าพัก: `${b.checkin || b.date || "-"}${b.checkout ? ` → ${b.checkout}` : ""}` }),
           ลายเซ็น: signature ? "มี ✍️" : "ไม่ได้เซ็น",
-          หยดยาเห็บหมัด: fleaTickTreated ? "✅ ลูกค้ายืนยันว่าหยดมาแล้ว" : "❌ ยังไม่ได้หยด/ไม่ระบุ",
+          ...(groom
+            ? {}
+            : { หยดยาเห็บหมัด: fleaTickTreated ? "✅ ลูกค้ายืนยันว่าหยดมาแล้ว" : "❌ ยังไม่ได้หยด/ไม่ระบุ" }),
           ...(b.vaccinePhotoUrl ? { สมุดวัคซีน: `แนบรูปมาแล้ว ${splitVaccinePhotos(b.vaccinePhotoUrl).length} รูป 📸` } : {}),
           ...(careNote ? { "การดูแลเพิ่มเติม": careNote } : {}),
         })

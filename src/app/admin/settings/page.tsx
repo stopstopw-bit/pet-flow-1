@@ -1049,13 +1049,27 @@ function MessagesTab({
 
       {section(
         "groom",
-        <TextAreaField
-          label="สอบถามประวัติน้องก่อนอาบน้ำ"
-          hint="ใช้ได้: {shop} {cat}"
-          value={msgs?.groomInfoIntro || ""}
-          onChange={(v) => setMsgs({ ...msgs, groomInfoIntro: v })}
-          rows={5}
-        />
+        <>
+          <TextAreaField
+            label="สอบถามประวัติน้องก่อนอาบน้ำ"
+            hint="ใช้ได้: {shop} {cat}"
+            value={msgs?.groomInfoIntro || ""}
+            onChange={(v) => setMsgs({ ...msgs, groomInfoIntro: v })}
+            rows={5}
+          />
+          {sub("ข้อตกลงก่อนอาบน้ำ (นัดอาบน้ำใช้ชุดนี้แทนกฎเข้าพัก)")}
+          <Field
+            label="หัวเรื่อง"
+            value={msgs?.groomConsentTitle || ""}
+            onChange={(v) => setMsgs({ ...msgs, groomConsentTitle: v })}
+          />
+          <TextAreaField
+            label="ข้อตกลงอาบน้ำ (1 บรรทัด = 1 ข้อ · ขึ้นต้นด้วย หัวข้อ — แล้วตามด้วยเนื้อหา หัวข้อจะเป็นตัวหนา)"
+            value={(msgs?.groomConsentTerms || []).join("\n")}
+            onChange={(v) => setMsgs({ ...msgs, groomConsentTerms: lines(v) })}
+            rows={10}
+          />
+        </>
       )}
 
       {section(
