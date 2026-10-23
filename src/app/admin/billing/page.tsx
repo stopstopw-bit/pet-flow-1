@@ -26,6 +26,7 @@ import {
   type GroomProgram,
 } from "@/lib/grooming-prices";
 import { priceSignature, findLastPrice } from "@/lib/special-price";
+import { groomPrefillForPet, itemIsForPet, lastGroomForPet, type PetCard } from "@/lib/pet-groom-memory";
 import { roomPricing, roomNightPrice } from "@/lib/room-board";
 import { isRoomLine, roomLineLabel, splitRoomLabel } from "@/lib/stay-line";
 
@@ -34,7 +35,7 @@ type Customer = {
   name: string;
   phone?: string;
   lineUserId?: string;
-  cats: { id?: string; name: string }[];
+  cats: ({ id?: string } & PetCard)[];
   isMember: boolean;
   memberCredit: number;
   /** มัดจำล่วงหน้าคงเหลือ — หักบิลนี้อัตโนมัติ */
@@ -912,6 +913,20 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
 
   const pickCustomer = async (c: Customer) => {
     setCustomerId(c.id);
+    // บรรทัดอาบน้ำเริ่มต้นที่ยังไม่มีใครแตะ → เลือกขน/ไซส์ตามน้อง (บ้านที่มีตัวเดียว)
+    setItems((prev) => {
+      const first = prev[0];
+      const def = newGrooming(undefined, groomPrograms);
+      const untouched =
+        prev.length === 1 &&
+        first.kind === "grooming" &&
+        !first.catName &&
+        first.priceOverride === undefined &&
+        first.program === def.program &&
+        first.breed === def.breed &&
+        first.size === def.size;
+      return untouched ? [prefillGroom(first, c)] : prev;
+    });
     setSearch(c.name);
     setShowList(false);
     setPromoId("");
@@ -980,10 +995,14 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
     const many = new Set(group.map((g) => g.catName)).size > 1;
     // อาบน้ำก่อนกลับ = อยู่ในกลุ่มเดียวกับการเข้าพัก → บิลเดียว: บรรทัดห้อง + บรรทัดอาบน้ำ
     const groomLines = (list: Booking[]): Item[] =>
-      list.map((g) => ({
-        ...newGrooming(g.groomProgram, groomPrograms),
-        catName: many ? g.catName : undefined,
-      }));
+      list.map((g) =>
+        prefillGroom(
+          { ...newGrooming(g.groomProgram, groomPrograms), catName: many ? g.catName : undefined },
+          cust,
+          g.catName,
+          !!g.groomProgram
+        )
+      );
     const stayPart = group.filter((g) => g.service === "room");
     if (stayPart.length > 0) {
       // คิดค่าห้องเป็นรายห้อง ไม่ใช่รายตัว: น้องที่อยู่ห้องเดียวกันรวมเป็นบรรทัดเดียว
@@ -1032,6 +1051,43 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
   const [dismissedRecalls, setDismissedRecalls] = useState<Set<string>>(new Set());
   const dismissRecall = (sig: string) =>
     setDismissedRecalls((prev) => new Set(prev).add(sig));
+
+  /**
+   * เลือก ขน/ไซส์ (และโปรแกรม) ให้บรรทัดอาบน้ำตามที่น้องตัวนี้เคยอาบครั้งล่าสุด
+   * ยังไม่เคยมา → เดาจากการ์ดน้อง (พันธุ์/ขนสั้น-ยาว/น้ำหนัก) · ดู pet-groom-memory.ts
+   * petName ว่าง = บ้านที่มีน้องตัวเดียว
+   */
+  const prefillGroom = (
+    item: Item,
+    cust: Customer | undefined,
+    petName?: string,
+    keepProgram = false
+  ): Item => {
+    if (item.kind !== "grooming" || !cust) return item;
+    const pet = petName
+      ? cust.cats.find((c) => catKey(c.name) === catKey(petName))
+      : cust.cats.length === 1
+        ? cust.cats[0]
+        : undefined;
+    if (!pet) return item;
+    const pf = groomPrefillForPet({
+      invoices,
+      pet,
+      onlyPet: cust.cats.length === 1,
+      customerId: cust.id,
+      programs: groomPrograms,
+      sizeLabels: groomSizeLabels,
+      currentProgram: item.program,
+      keepProgram,
+    });
+    if (!pf) return item;
+    return {
+      ...item,
+      program: pf.program ?? item.program,
+      breed: pf.breed ?? item.breed,
+      size: pf.size ?? item.size,
+    };
+  };
 
   /** ตั้งราคาต่อหน่วยของรายการ — ตรงกับราคากลางก็ล้าง override ทิ้ง
    *  ไม่งั้นบิลจะค้างราคาที่ "เท่าราคาปกติพอดี" ไว้ แล้วขึ้นป้ายราคาพิเศษหลอกตา */
@@ -1149,7 +1205,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
       .map((it, i) => ({
         ...lines[i],
         kind: it.roomLine ? ("room" as const) : it.kind,
-        ...(it.kind === "grooming" ? { program: it.program } : {}),
+        ...(it.kind === "grooming" ? { program: it.program, breed: it.breed, size: it.size } : {}),
         ...(it.kind === "product" && it.productId ? { productId: it.productId } : {}),
       }))
       .filter((l) => l.label.trim());
@@ -1884,11 +1940,23 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
               const isSpecial =
                 item.priceOverride !== undefined && item.priceOverride !== stdUnit;
               const sig = priceSignature(line.label);
+              // น้องตัวไหน (ตัวเดียว) — ราคา/การอาบครั้งก่อนจะดูของตัวนี้ก่อน ไม่ใช่ของทั้งบ้าน
+              const pickedPets = parseCatNames(item.catName);
+              const onlyPet = (selected?.cats.length || 0) === 1;
+              const petName =
+                pickedPets.length === 1 ? pickedPets[0] : onlyPet ? selected?.cats[0].name : undefined;
+              const isThisPet = petName
+                ? (it: { label: string; catName?: string }) => itemIsForPet(it, petName, onlyPet)
+                : undefined;
               // เตือนเฉพาะตอนที่ยังคิดราคาปกติอยู่ และราคาเก่าต่างจากราคาปกติจริงๆ
               const past =
                 item.kind === "freebie" || item.priceOverride !== undefined
                   ? null
-                  : findLastPrice(invoices, customerId, sig);
+                  : findLastPrice(invoices, customerId, sig, isThisPet);
+              const petLast =
+                item.kind === "grooming" && petName
+                  ? lastGroomForPet(invoices, petName, onlyPet, customerId)
+                  : null;
               const recall =
                 past && past.unitAmount !== stdUnit && !dismissedRecalls.has(sig)
                   ? past
@@ -1947,15 +2015,24 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
                             <button
                               key={c.id || c.name}
                               type="button"
-                              onClick={() =>
-                                updateItem(i, {
-                                  catName: joinCatNames(
-                                    on
-                                      ? picked.filter((n) => catKey(n) !== key)
-                                      : [...picked, c.name]
-                                  ),
-                                })
-                              }
+                              onClick={() => {
+                                const names = on
+                                  ? picked.filter((n) => catKey(n) !== key)
+                                  : [...picked, c.name];
+                                const next = { ...item, catName: joinCatNames(names) };
+                                // เลือกน้องตัวเดียว → เติมขน/ไซส์ตามที่ตัวนั้นเคยอาบ (โปรแกรมที่เลือกไว้แล้วไม่เปลี่ยน)
+                                updateItem(
+                                  i,
+                                  names.length === 1 && item.priceOverride === undefined
+                                    ? prefillGroom(
+                                        next,
+                                        selected,
+                                        names[0],
+                                        item.program !== groomPrograms[0]?.id
+                                      )
+                                    : next
+                                );
+                              }}
                               className={`flex min-h-[36px] items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold ${
                                 on
                                   ? "bg-latte-deep text-white"
@@ -2247,6 +2324,17 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
                     </div>
                   )}
 
+                  {petLast && (
+                    <p className="flex items-start gap-1 text-[11px] text-brown-soft">
+                      <Icon name="paw" size={13} />
+                      <span>
+                        ครั้งก่อน{petName}: {petLast.programName} · {petLast.breed} · {petLast.sizeLabel} ·{" "}
+                        <b className="text-brown">฿{petLast.unitAmount.toLocaleString()}</b>
+                        {petLast.when ? ` (${petLast.when.slice(0, 10)})` : ""}
+                      </span>
+                    </p>
+                  )}
+
                   {/* เคยให้ราคาอื่นกับลูกค้าคนนี้มาก่อน — ถามก่อน ไม่เปลี่ยนให้เอง
                       เพราะราคาพิเศษครั้งก่อนอาจเป็นโปรที่จบไปแล้ว */}
                   {recall && (
@@ -2283,7 +2371,9 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
           <div className="mt-3 flex gap-2">
             <button
               type="button"
-              onClick={() => setItems((prev) => [...prev, newGrooming(undefined, groomPrograms)])}
+              onClick={() =>
+                setItems((prev) => [...prev, prefillGroom(newGrooming(undefined, groomPrograms), selected)])
+              }
               className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-petflow-sm border border-dashed border-latte/60 bg-latte/10 py-2.5 text-sm font-extrabold text-latte-deep transition active:scale-[.98]"
             >
               <Icon name="plus" size={18} />
