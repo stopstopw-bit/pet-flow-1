@@ -21,6 +21,7 @@ type Invoice = {
     qty?: number;
     unitAmount?: number;
     discountPercent?: number;
+    discountName?: string;
   }[];
   subtotal: number;
   discount: number;
@@ -91,7 +92,10 @@ export default function PayPage() {
                 </div>
                 {off > 0 && (
                   <div className="mt-0.5 flex justify-between gap-3 text-xs font-bold text-ok">
-                    <span>ส่วนลด{item.discountPercent ? ` ${item.discountPercent}%` : ""}</span>
+                    <span>
+                      ส่วนลด{item.discountName ? ` ${item.discountName}` : ""}
+                      {item.discountPercent ? ` ${item.discountPercent}%` : ""}
+                    </span>
                     <span>-{off.toLocaleString()} ฿</span>
                   </div>
                 )}

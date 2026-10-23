@@ -20,6 +20,28 @@ export type LineDiscountFields = {
   kind?: string;
   discount?: number;
   discountPercent?: number;
+  /** ชื่อโปรที่ให้ส่วนลดบรรทัดนี้ (เลือกจากโปรลดเฉพาะรายการ) — ไม่มี = ลดเองทีละรายการ */
+  discountName?: string;
+};
+
+/** ประเภทรายการที่โปรลดเฉพาะรายการเลือกได้ */
+export type LinePromoKind = "stay" | "daycare" | "grooming" | "transport" | "service" | "product";
+
+export const LINE_PROMO_KINDS: { id: LinePromoKind; label: string }[] = [
+  { id: "stay", label: "ห้องพัก" },
+  { id: "daycare", label: "Day Care" },
+  { id: "grooming", label: "อาบน้ำ / กรูม" },
+  { id: "transport", label: "รับ-ส่ง" },
+  { id: "service", label: "บริการเสริมอื่นๆ" },
+  { id: "product", label: "สินค้าหน้าร้าน" },
+];
+
+/** โปรลดเฉพาะรายการ — ตั้งไว้ในตั้งค่า แล้วกดเลือกตอนออกบิล ลดเฉพาะรายการประเภทที่ติ๊กไว้ */
+export type LinePromo = {
+  id: string;
+  name: string;
+  percent: number;
+  kinds: LinePromoKind[];
 };
 
 /** ป้ายส่วนลดท้ายชื่อรายการ — รองรับแบบเก่า "(ลด 50฿)" / "(ลด 10%)" ด้วย */
@@ -40,10 +62,11 @@ export function lineDiscountOff(
   return Math.min(gross, Math.max(0, Math.round(Number(d.discount) || 0)));
 }
 
-export function discountTag(off: number, percent?: number): string {
-  return percent
-    ? `ส่วนลด ${Math.min(100, percent)}% -${off.toLocaleString()}฿`
-    : `ส่วนลด -${off.toLocaleString()}฿`;
+export function discountTag(off: number, percent?: number, name?: string): string {
+  // ชื่อโปรห้ามมีวงเล็บ — ป้ายทั้งก้อนอยู่ในวงเล็บ ถอดออกทีหลังด้วย regex
+  const promo = (name || "").replace(/[()]/g, "").trim();
+  const head = percent ? `ส่วนลด ${Math.min(100, percent)}%` : "ส่วนลด";
+  return `${head}${promo ? ` ${promo}` : ""} -${off.toLocaleString()}฿`;
 }
 
 /**
@@ -71,10 +94,11 @@ export function normalizeLineDiscount<T extends LineDiscountFields>(it: T): T {
     qty,
     unitAmount: unit,
     amount: gross - off,
-    label: off > 0 ? `${label} (${discountTag(off, pct)})` : label,
+    label: off > 0 ? `${label} (${discountTag(off, pct, it.discountName)})` : label,
   };
   delete out.discount;
   delete out.discountPercent;
+  if (off <= 0) delete out.discountName;
   if (off > 0) {
     if (pct) out.discountPercent = Math.min(100, pct);
     else out.discount = off;

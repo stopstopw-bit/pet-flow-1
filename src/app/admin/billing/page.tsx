@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { PosPanel } from "@/components/PosPanel";
@@ -25,11 +26,17 @@ import {
   type GroomSize,
   type GroomProgram,
 } from "@/lib/grooming-prices";
-import { normalizeLineDiscount, stripDiscountTag } from "@/lib/line-discount";
 import { priceSignature, findLastPrice } from "@/lib/special-price";
 import { groomPrefillForPet, itemIsForPet, lastGroomForPet, type PetCard } from "@/lib/pet-groom-memory";
 import { roomPricing, roomNightPrice } from "@/lib/room-board";
 import { isRoomLine, roomLineLabel, splitRoomLabel } from "@/lib/stay-line";
+import {
+  LINE_PROMO_KINDS,
+  normalizeLineDiscount,
+  stripDiscountTag,
+  type LinePromo,
+  type LinePromoKind,
+} from "@/lib/line-discount";
 
 type Customer = {
   id: string;
@@ -75,6 +82,7 @@ type Invoice = {
     unitAmount?: number;
     discount?: number;
     discountPercent?: number;
+    discountName?: string;
   }[];
 };
 
@@ -117,6 +125,8 @@ type Item = {
   /** ส่วนลดเฉพาะรายการนี้ (หักจากยอดรวมของรายการ ก่อนส่วนลดท้ายบิล) — บาท หรือ % */
   discount?: number;
   discountMode?: "baht" | "percent";
+  /** ชื่อโปรลดเฉพาะรายการ (ใส่ให้เองตอนเลือกโปร) */
+  discountName?: string;
   /** บรรทัดค่าห้องจากบิลเดิมที่เปิดมาแก้ (โหลดเป็น "พิมพ์เอง") — qty = จำนวนคืน
    *  บันทึกกลับเป็นค่าห้อง "× N คืน" ไม่ใช่ "× N" ระบบต่อคืนจะได้นับคืนที่จ่ายไปแล้วถูก */
   roomLine?: { note?: string };
@@ -201,7 +211,11 @@ function computeLine(
   it: Item,
   programs: GroomProgram[] = GROOM_PROGRAMS,
   sizeLabels?: Partial<Record<GroomSize, string>>
-): ReturnType<typeof computeLineBase> & { discount?: number; discountPercent?: number } {
+): ReturnType<typeof computeLineBase> & {
+  discount?: number;
+  discountPercent?: number;
+  discountName?: string;
+} {
   const base = computeLineBase(it, programs, sizeLabels);
   const d = Math.max(0, it.discount || 0);
   if (it.kind === "freebie" || d <= 0 || base.amount <= 0) return base;
@@ -210,7 +224,29 @@ function computeLine(
   return normalizeLineDiscount({
     ...base,
     ...(it.discountMode === "percent" ? { discountPercent: d } : { discount: d }),
+    discountName: it.discountName,
   });
+}
+
+/** ประเภทของรายการในบิล ตามที่โปรลดเฉพาะรายการติ๊กเลือกได้ */
+function linePromoKindOf(it: Item): LinePromoKind | null {
+  if (it.roomLine) return "stay";
+  if (it.kind === "room") return /day\s*care/i.test(it.roomLabel || "") ? "daycare" : "stay";
+  if (it.kind === "grooming") return "grooming";
+  if (it.kind === "service") return /รับ\s*-?\s*ส่ง/.test(it.label || "") ? "transport" : "service";
+  if (it.kind === "product") return "product";
+  return null;
+}
+
+/**
+ * ใส่ส่วนลดจากโปรที่เลือกให้รายการที่ตรงประเภท — รายการที่ใส่ส่วนลดเองไว้แล้วใช้ของเดิม
+ * (ไม่ได้เขียนทับลง state เพิ่มรายการทีหลังก็ได้ส่วนลดเอง เปลี่ยน/เลิกโปรก็กลับเป็นราคาเต็ม)
+ */
+function withLinePromo(it: Item, promo?: LinePromo): Item {
+  if (!promo || (it.discount || 0) > 0) return it;
+  const kind = linePromoKindOf(it);
+  if (!kind || !promo.kinds.includes(kind)) return it;
+  return { ...it, discount: promo.percent, discountMode: "percent", discountName: promo.name };
 }
 
 function computeLineBase(
@@ -468,6 +504,9 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
   const [productTab, setProductTab] = useState("ทั้งหมด");
   // ส่วนลดกรอกได้ทั้งบาทและเปอร์เซ็นต์ — ร้านคิดโปรเป็น % บ่อย จะได้ไม่ต้องกดเครื่องคิดเลขเอง
   const [discountMode, setDiscountMode] = useState<"baht" | "percent">("baht");
+  /** โปรลดเฉพาะรายการ (ตั้งในตั้งค่า) + ตัวที่เลือกใช้กับบิลนี้ */
+  const [linePromos, setLinePromos] = useState<LinePromo[]>([]);
+  const [linePromoId, setLinePromoId] = useState("");
   const [creating, setCreating] = useState(false);
   const [pay, setPay] = useState({ bankName: "", accountNumber: "", accountName: "" });
   const [shopName, setShopName] = useState("");
@@ -519,6 +558,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
     if (config?.business?.name) setShopName(config.business.name);
     if (config?.billing) setBillMsg(config.billing);
     if (config?.options?.servicePresets?.length) setServicePresets(config.options.servicePresets);
+    setLinePromos(config?.linePromos || []);
     if (config?.options?.freebies?.length) setFreebiePresets(config.options.freebies);
     // ดึงจากนัดเฉพาะที่ยังไม่จบ — เสร็จสิ้น/ยกเลิก/ไม่มา ไม่ควรโผล่ให้ออกบิลซ้ำอีก
     // (บิลที่ออกไปแล้วตัดออกด้วย paidForGroup ด้านล่าง)
@@ -659,7 +699,14 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
       if (aDue !== bDue) return aDue ? -1 : 1;
       return aDue ? kb.localeCompare(ka) : ka.localeCompare(kb);
     });
-  const lines = items.map((it) => computeLine(it, groomPrograms, groomSizeLabels));
+  const linePromo = linePromos.find((p) => p.id === linePromoId);
+  const lines = items.map((it) => computeLine(withLinePromo(it, linePromo), groomPrograms, groomSizeLabels));
+  /** ยอดที่โปรลดเฉพาะรายการลดให้ในบิลนี้ (ไม่นับรายการที่ใส่ส่วนลดเองไว้) */
+  const linePromoOff = lines.reduce(
+    (sum, l, i) =>
+      sum + ((items[i].discount || 0) > 0 || !l.discountName ? 0 : l.unitAmount * l.qty - l.amount),
+    0
+  );
   const subtotal = lines.reduce((s, l) => s + l.amount, 0);
   const selectedPromo = promos.find((p) => p.id === promoId);
   const promoDiscount = selectedPromo
@@ -1163,6 +1210,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
     setItems(quickSale ? [] : [newGrooming(undefined, groomPrograms)]);
     setDiscount("");
     setDiscountMode("baht");
+    setLinePromoId("");
     setBillDeposit("");
     setBillDepPct(null);
     setBookingId(undefined);
@@ -1338,7 +1386,13 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
         };
       }).map((item, k) => {
         const raw = inv.items![k];
-        if (raw.discountPercent) return { ...item, discount: raw.discountPercent, discountMode: "percent" as const };
+        if (raw.discountPercent)
+          return {
+            ...item,
+            discount: raw.discountPercent,
+            discountMode: "percent" as const,
+            discountName: raw.discountName,
+          };
         // บิลเก่าไม่มีฟิลด์ส่วนลด → ถอดจากส่วนต่างราคาเต็มกับยอดจริง
         const off =
           raw.discount ??
@@ -1353,6 +1407,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
     setBillDeposit(inv.deposit ? String(inv.deposit) : "");
     setBillDepPct(null);
     setDiscount("");
+    setLinePromoId(""); // ส่วนลดจากโปรเดิมโหลดกลับมาเป็นส่วนลดของแต่ละรายการแล้ว
     setEditingId(inv.id);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -2325,6 +2380,11 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
                           = {line.amount.toLocaleString()} ฿
                         </span>
                       )}
+                      {!(item.discount || 0) && line.discountName && (
+                        <span className="text-ok">
+                          {line.discountName} -{line.discountPercent}% = {line.amount.toLocaleString()} ฿
+                        </span>
+                      )}
                     </div>
                   )}
 
@@ -2482,6 +2542,58 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
         {/* ── โปร + ส่วนลด ── */}
         <section>
         <SectionLabel>Discount · โปร / ส่วนลด</SectionLabel>
+        {/* โปรลดเฉพาะรายการ — ลดแค่ประเภทที่ตั้งไว้ (เช่น ห้องพัก/อาบน้ำ) ค่ารับ-ส่งไม่ลด */}
+        <div className="mb-3 rounded-petflow-sm border border-petflow-line bg-paper/60 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-bold text-brown-soft">โปรลดเฉพาะรายการ</span>
+            <Link
+              href="/admin/settings?tab=linePromos"
+              className="text-[11px] font-bold text-latte-deep underline-offset-2 hover:underline"
+            >
+              {linePromos.length ? "แก้โปร" : "+ ตั้งโปร"}
+            </Link>
+          </div>
+          {linePromos.length === 0 ? (
+            <p className="mt-1 text-[11px] text-brown-faint">
+              ตั้งไว้ครั้งเดียว เช่น &quot;ลด 5% เฉพาะห้องพัก + อาบน้ำ&quot; แล้วกดเลือกตอนออกบิล
+            </p>
+          ) : (
+            <>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {[{ id: "", name: "ไม่ใช้", percent: 0, kinds: [] } as LinePromo, ...linePromos].map(
+                  (p) => {
+                    const on = linePromoId === p.id;
+                    return (
+                      <button
+                        key={p.id || "none"}
+                        type="button"
+                        onClick={() => setLinePromoId(p.id)}
+                        className={`min-h-[36px] rounded-full border px-3 text-xs font-bold ${
+                          on
+                            ? "border-petflow-chocolate bg-petflow-chocolate text-card"
+                            : "border-petflow-line bg-card text-brown"
+                        }`}
+                      >
+                        {p.id ? `${p.name} ${p.percent}%` : p.name}
+                      </button>
+                    );
+                  }
+                )}
+              </div>
+              {linePromo && (
+                <p className="mt-2 text-[11px] font-bold text-ok">
+                  ลด {linePromo.percent}% เฉพาะ{" "}
+                  {LINE_PROMO_KINDS.filter((k) => linePromo.kinds.includes(k.id))
+                    .map((k) => k.label)
+                    .join(" · ") || "—"}
+                  {linePromoOff > 0
+                    ? ` = -${linePromoOff.toLocaleString()} บาท`
+                    : " (บิลนี้ยังไม่มีรายการที่เข้าโปร)"}
+                </p>
+              )}
+            </>
+          )}
+        </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="block text-xs font-bold text-brown-soft">
             โปรโมชั่น
@@ -3006,7 +3118,8 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
                       {off > 0 && (
                         <div className="flex justify-between gap-2 pl-2 text-[11px] font-bold text-ok">
                           <span>
-                            ส่วนลดรายการนี้{it.discountPercent ? ` ${it.discountPercent}%` : ""}
+                            {it.discountName ? `ส่วนลด ${it.discountName}` : "ส่วนลดรายการนี้"}
+                            {it.discountPercent ? ` ${it.discountPercent}%` : ""}
                           </span>
                           <span>-{off.toLocaleString()} ฿</span>
                         </div>
