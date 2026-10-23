@@ -736,12 +736,14 @@ function groomInfoCardFor(
     const room = b.service === "room";
     const hasDeposit = Number(body.depositAmount) > 0;
     // ร้านติ๊กเลือกเองว่าจะขออะไรบ้าง · ไม่ส่งมา = ทุกเรื่องตามบริการ (ระบบยังข้ามเรื่องที่ส่งแล้วให้)
-    // กฎ + กดยินยอม = ข้อตกลงการเข้าพัก — นัดอาบน้ำอย่างเดียวไม่ขอ
-    const allowed = new Set(["stayInfo", "groomInfo", "vaccine", "idcard", ...(b.service === "groom" ? [] : ["consent"])]);
+    // สมุดวัคซีน บัตร และกฎ + กดยินยอม เป็นเรื่องของการเข้าพัก — นัดอาบน้ำอย่างเดียวขอแค่ประวัติ
+    const allowed = new Set(
+      b.service === "groom" ? ["groomInfo"] : ["stayInfo", "groomInfo", "vaccine", "idcard", "consent"]
+    );
     const raw: string[] = Array.isArray(body.parts) ? body.parts.map(String) : [];
     const picked: string[] | null = Array.isArray(body.parts) ? raw.filter((x) => allowed.has(x)) : null;
     body.parts = [
-      ...(picked ?? [room ? "stayInfo" : "groomInfo", "vaccine", ...(room ? ["idcard", "consent"] : [])]),
+      ...(picked ?? (room ? ["stayInfo", "vaccine", "idcard", "consent"] : ["groomInfo"])),
       ...(hasDeposit ? ["deposit"] : []),
       // แจ้งยอดชำระค่าบริการ (บิล) — การ์ดแยกของตัวเอง ส่งไปพร้อมกันในข้อความเดียว
       ...(raw.includes("payment") ? ["payment"] : []),

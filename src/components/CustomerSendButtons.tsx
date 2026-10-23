@@ -282,10 +282,10 @@ export function CustomerSendButtons({
   };
   const intakePickOptions: { key: IntakePickKey; label: string }[] = [
     { key: "info", label: hasRoomStay ? INTAKE_LABEL.stayInfo : INTAKE_LABEL.groomInfo },
-    { key: "vaccine", label: "สมุดวัคซีน" },
-    // บัตรประชาชน + กฎ/กดยินยอม (ข้อตกลงการเข้าพัก) เฉพาะนัดที่มีเข้าพัก
+    // สมุดวัคซีน บัตรประชาชน และกฎ/กดยินยอม (ข้อตกลงการเข้าพัก) เฉพาะนัดที่มีเข้าพัก
     ...(hasRoomStay
       ? [
+          { key: "vaccine" as const, label: "สมุดวัคซีน" },
           { key: "idcard" as const, label: "บัตรประชาชน" },
           { key: "consent" as const, label: INTAKE_LABEL.consent },
         ]
