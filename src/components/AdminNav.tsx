@@ -25,7 +25,6 @@ export const ADMIN_TABS = [
   { href: "/admin/birthdays", label: "วันเกิดลูกค้า", icon: "🎂" },
   { href: "/admin/packages", label: "ขายคอร์สในแอป", icon: "🛍️" },
   { href: "/admin/cards", label: "ปรับแต่งการ์ด LINE", icon: "🎴" },
-  { href: "/admin/articles", label: "บทความหน้าเว็บ", icon: "📝" },
   { href: "/admin/staff", label: "พนักงาน", icon: "👥" },
   { href: "/admin/settings", label: "ตั้งค่า", icon: "⚙️" },
   { href: "/admin/trash", label: "ถังขยะ", icon: "🗑️" },

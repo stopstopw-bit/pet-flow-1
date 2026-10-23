@@ -342,7 +342,6 @@ export const ADMIN_TAB_ICONS: Record<string, string> = {
   "/admin/birthdays": "cake",
   "/admin/packages": "bag",
   "/admin/cards": "message",
-  "/admin/articles": "doc",
   "/admin/staff": "team",
   "/admin/settings": "settings",
   "/admin/trash": "trash",
@@ -370,7 +369,6 @@ export const ADMIN_TAB_EN: Record<string, string> = {
   "/admin/birthdays": "Birthdays",
   "/admin/packages": "Packages",
   "/admin/cards": "LINE Cards",
-  "/admin/articles": "Articles",
   "/admin/staff": "Staff",
   "/admin/settings": "Settings",
   "/admin/trash": "Trash",
@@ -395,7 +393,7 @@ export const ADMIN_TAB_GROUPS: { title: string; hrefs: string[] }[] = [
   { title: "Finance", hrefs: ["/admin/finance", "/admin/payroll", "/admin/tax", "/admin/insights", "/admin/staff-performance"] },
   {
     title: "Marketing",
-    hrefs: ["/admin/promos", "/admin/coupons", "/admin/birthdays", "/admin/packages", "/admin/cards", "/admin/articles"],
+    hrefs: ["/admin/promos", "/admin/coupons", "/admin/birthdays", "/admin/packages", "/admin/cards"],
   },
   { title: "System", hrefs: ["/admin/staff", "/admin/settings", "/admin/trash", "/admin/setup", "/admin/subscription"] },
 ];
