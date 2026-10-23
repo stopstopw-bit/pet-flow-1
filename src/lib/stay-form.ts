@@ -93,6 +93,14 @@ export const STAY_FORM_DEFAULTS: GroomField[] = [
   },
 ];
 
+/**
+ * เข้าพัก + อาบก่อนกลับ = ฟอร์มเดียว: คำถามอาบน้ำที่ซ้ำกับฟอร์มเข้าพักไม่ถามซ้ำ
+ * key ฝั่งอาบน้ำ → key ฝั่งเข้าพักที่ใช้คำตอบแทน (key ที่ชื่อตรงกันสองฟอร์มก็ถามครั้งเดียวเช่นกัน)
+ */
+export const BATH_SHARED_WITH_STAY: Record<string, string> = {
+  note: "note",
+};
+
 const text = (key: string, label: string, placeholder: string, required = false): GroomField => ({
   key,
   type: "text",
