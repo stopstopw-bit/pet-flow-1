@@ -9,6 +9,9 @@ import { getLineCredentials } from "./line-config";
 import { DEEMED_CONSENT_NOTICE } from "./messages";
 import type { CardStyleConfig } from "./config-types";
 import { MISS_YOU_DEFAULT_TITLE } from "./miss-you-card";
+import { DOC_REQUEST_DEFAULTS, INTAKE_CARD_DEFAULTS } from "./line-card-defaults";
+
+export { DOC_REQUEST_DEFAULTS, INTAKE_CARD_DEFAULTS };
 
 // สีแบรนด์ของการ์ด LINE — เปลี่ยนจากเขียวเดิม (#5A8F5A/#4A7348) มาเป็นโทน CI ของร้าน
 // (plum หัวการ์ด + rose ปุ่ม) ให้เข้ากับหน้าแอป · ร้านที่อยากได้สีอื่นตั้ง headerColor/buttonColor
@@ -1621,26 +1624,28 @@ export function buildGroomInfoFlex(data: {
 /**
  * การ์ดขอเอกสารก่อนเข้าพัก — ขอรูปสมุดวัคซีน หรือ ขอรูปบัตรประชาชนผู้ปกครอง
  * ปุ่มเปิดหน้าแนบรูปในแอปลูกค้า (/app/pet-docs) ซึ่งแนบได้อย่างเดียว ไม่ต้องเซ็นข้อตกลงซ้ำ
+ * ข้อความ/สีแก้ได้ใน /admin/cards (cards.docRequest) — {cat} = ชื่อน้อง
  */
+
 export function buildDocRequestFlex(data: {
   kind: "vaccine" | "idcard";
   businessName: string;
   catName: string;
   dateText?: string;
   url: string;
-}) {
+}, style?: CardStyleConfig) {
+  const st = style || {};
+  const t = (k: keyof typeof DOC_REQUEST_DEFAULTS) => st.texts?.[k]?.trim() || DOC_REQUEST_DEFAULTS[k];
   const vaccine = data.kind === "vaccine";
-  const header = vaccine ? "💉 ขอรูปสมุดวัคซีนน้อง" : "🪪 ขอรูปบัตรประชาชนผู้ปกครอง";
-  const bodyText = vaccine
-    ? `รบกวนถ่ายรูปสมุดวัคซีนของ${politeCat(data.catName)}ส่งให้ทางร้านหน่อยนะคะ 📸\nแนบได้หลายหน้า กดปุ่มด้านล่างแล้วเลือกรูปได้เลยค่ะ`
-    : `รบกวนแนบรูปบัตรประชาชนของผู้ปกครองน้อง เพื่อลงทะเบียนเข้าพักนะคะ 🙏\nระบบจะพิมพ์ข้อความขีดทับลงในรูปให้อัตโนมัติก่อนส่ง แนบครั้งเดียวพอ รอบหน้าไม่ต้องแนบอีกค่ะ`;
+  const header = vaccine ? t("vaccineHeader") : t("idcardHeader");
+  const bodyText = (vaccine ? t("vaccineBody") : t("idcardBody")).replaceAll("{cat}", politeCat(data.catName));
   const contents: Record<string, unknown>[] = [
     {
       type: "text",
       text: `🐱 ${politeCat(data.catName)}`,
       weight: "bold",
-      size: "lg",
-      color: "#5C4033",
+      size: st.titleSize || "lg",
+      color: st.accentColor || "#5C4033",
       wrap: true,
     },
     {
@@ -1653,6 +1658,9 @@ export function buildDocRequestFlex(data: {
     },
     { type: "text", text: bodyText, size: "sm", color: "#4E3E32", margin: "md", wrap: true },
   ];
+  if (st.closing) {
+    contents.push({ type: "text", text: st.closing, size: "xs", color: "#A2907E", margin: "md", wrap: true });
+  }
   return {
     type: "flex",
     altText: `${header} — ${politeCat(data.catName)}`,
@@ -1662,9 +1670,9 @@ export function buildDocRequestFlex(data: {
       header: {
         type: "box",
         layout: "vertical",
-        backgroundColor: BRAND_HEADER,
+        backgroundColor: st.headerColor || BRAND_HEADER,
         paddingAll: "16px",
-        contents: [{ type: "text", text: header, color: "#FFFFFF", weight: "bold", size: "sm" }],
+        contents: [{ type: "text", text: header, color: st.headerTextColor || "#FFFFFF", weight: "bold", size: "sm" }],
       },
       body: { type: "box", layout: "vertical", paddingAll: "16px", contents },
       footer: {
@@ -1675,11 +1683,11 @@ export function buildDocRequestFlex(data: {
           {
             type: "button",
             style: "primary",
-            color: BRAND_ACTION,
+            color: st.buttonColor || BRAND_ACTION,
             height: "sm",
             action: {
               type: "uri",
-              label: vaccine ? "📸 แนบสมุดวัคซีน" : "🪪 แนบบัตรประชาชน",
+              label: vaccine ? t("vaccineButton") : t("idcardButton"),
               uri: data.url,
             },
           },
@@ -1687,6 +1695,183 @@ export function buildDocRequestFlex(data: {
       },
     },
   };
+}
+
+/**
+ * การ์ดรวมขอข้อมูลก่อนรับน้อง — ใบเดียว หลายปุ่ม แทนการ์ดแยก (ประวัติ / สมุดวัคซีน / บัตรประชาชน /
+ * กฎ + กดยินยอม / มัดจำ) · คนเรียกใส่มาเฉพาะเรื่องที่บ้านนี้ยังขาด ปุ่มไหนครบแล้วจะไม่มีในการ์ด
+ * ข้อความแก้ได้ใน /admin/cards (cards.intake) · หัวการ์ดตามบริการ (เข้าพัก / อาบน้ำ)
+ */
+
+export type IntakeButtonKind = "info" | "vaccine" | "idcard" | "consent";
+export type IntakeDeposit = {
+  amount: number;
+  bankName: string;
+  accountNumber: string;
+  accountName: string;
+};
+
+export function buildIntakeFlex(data: {
+  service: "stay" | "groom";
+  catName: string;
+  businessName: string;
+  dateText?: string;
+  buttons: { kind: IntakeButtonKind; url: string; count?: number }[];
+  deposit?: IntakeDeposit;
+}, style?: CardStyleConfig) {
+  const st = style || {};
+  const t = (k: keyof typeof INTAKE_CARD_DEFAULTS) => st.texts?.[k]?.trim() || INTAKE_CARD_DEFAULTS[k];
+  const header = data.service === "stay" ? t("headerStay") : t("headerGroom");
+  const cat = politeCat(data.catName);
+  const contents: Record<string, unknown>[] = [
+    { type: "text", text: `🐱 ${cat}`, weight: "bold", size: st.titleSize || "lg", color: st.accentColor || "#5C4033", wrap: true },
+    {
+      type: "text",
+      text: data.dateText ? `${data.businessName} · ${data.dateText}` : data.businessName,
+      size: "xs",
+      color: "#A2907E",
+      margin: "xs",
+      wrap: true,
+    },
+    {
+      type: "text",
+      text: t("body").replaceAll("{cat}", cat).replaceAll("{shop}", data.businessName),
+      size: "sm",
+      color: "#4E3E32",
+      margin: "md",
+      wrap: true,
+    },
+  ];
+  if (data.deposit && data.deposit.amount > 0) {
+    const d = data.deposit;
+    contents.push({
+      type: "box",
+      layout: "vertical",
+      margin: "lg",
+      paddingAll: "12px",
+      cornerRadius: "10px",
+      backgroundColor: "#F4ECE0",
+      contents: [
+        {
+          type: "box",
+          layout: "horizontal",
+          contents: [
+            { type: "text", text: t("depositLabel"), size: "sm", color: "#5C4033", flex: 3, wrap: true },
+            {
+              type: "text",
+              text: `${d.amount.toLocaleString()} บาท`,
+              size: "md",
+              weight: "bold",
+              color: st.accentColor || "#C4956A",
+              align: "end",
+              flex: 2,
+            },
+          ],
+        },
+        ...(d.accountNumber
+          ? [
+              {
+                type: "text",
+                text: [d.bankName, d.accountNumber, d.accountName].filter(Boolean).join(" · "),
+                size: "xs",
+                color: "#7A6A5C",
+                margin: "sm",
+                wrap: true,
+              },
+            ]
+          : []),
+      ],
+    });
+  }
+  if (st.closing) {
+    contents.push({ type: "text", text: st.closing, size: "xs", color: "#A2907E", margin: "md", wrap: true });
+  }
+
+  const label: Record<IntakeButtonKind, string> = {
+    info: t("infoButton"),
+    vaccine: t("vaccineButton"),
+    idcard: t("idcardButton"),
+    consent: t("consentButton"),
+  };
+  const footer: Record<string, unknown>[] = data.buttons.map((b) => ({
+    type: "button",
+    style: "primary",
+    color: st.buttonColor || BRAND_ACTION,
+    height: "sm",
+    action: {
+      type: "uri",
+      // LINE ตัดป้ายปุ่มที่ยาวเกิน 40 ตัวอักษร
+      label: (b.count && b.count > 1 ? `${label[b.kind]} (${b.count} ตัว)` : label[b.kind]).slice(0, 40),
+      uri: b.url,
+    },
+  }));
+  if (data.deposit && data.deposit.amount > 0 && data.deposit.accountNumber) {
+    footer.push({
+      type: "button",
+      style: "secondary",
+      height: "sm",
+      action: { type: "clipboard", label: t("copyButton").slice(0, 40), clipboardText: data.deposit.accountNumber },
+    });
+  }
+  const bubble: Record<string, unknown> = {
+    type: "bubble",
+    size: "mega",
+    header: {
+      type: "box",
+      layout: "vertical",
+      backgroundColor: st.headerColor || BRAND_HEADER,
+      paddingAll: "16px",
+      contents: [{ type: "text", text: header, color: st.headerTextColor || "#FFFFFF", weight: "bold", size: "sm" }],
+    },
+    body: { type: "box", layout: "vertical", paddingAll: "16px", contents },
+  };
+  if (footer.length) {
+    bubble.footer = { type: "box", layout: "vertical", spacing: "sm", paddingAll: "12px", contents: footer };
+  }
+  return { type: "flex", altText: `${header} — ${cat}`, contents: bubble };
+}
+
+/**
+ * เรื่องที่ต้องขอจากลูกค้า 1 เรื่อง — เก็บทั้ง "การ์ดเดี่ยวแบบเดิม" และ "ปุ่มในการ์ดรวม" ไว้คู่กัน
+ * แล้วค่อยตัดสินตอนท้ายด้วย mergeIntakeCards ว่าจะส่งแบบไหน
+ */
+export type IntakeEntry = {
+  kind: IntakeButtonKind | "deposit";
+  card: object;
+  url?: string;
+  count?: number;
+  deposit?: IntakeDeposit;
+};
+
+const INTAKE_ORDER: IntakeEntry["kind"][] = ["info", "vaccine", "idcard", "consent", "deposit"];
+
+/**
+ * รวมหลายเรื่องเป็นการ์ดใบเดียว (ประหยัดโควตา LINE + ลูกค้าไม่ต้องไล่อ่านหลายใบ)
+ * มีเรื่องเดียว = ส่งการ์ดเดี่ยวแบบเดิม (ข้อความที่ร้านแต่งไว้ของการ์ดนั้นยังใช้ได้) · always = รวมเสมอ
+ */
+export function mergeIntakeCards(
+  entries: IntakeEntry[],
+  ctx: { service: "stay" | "groom"; catName: string; businessName: string; dateText?: string; always?: boolean },
+  style?: CardStyleConfig
+): object[] {
+  if (entries.length === 0) return [];
+  if (entries.length === 1 && !ctx.always) return [entries[0].card];
+  const sorted = [...entries].sort((a, b) => INTAKE_ORDER.indexOf(a.kind) - INTAKE_ORDER.indexOf(b.kind));
+  return [
+    buildIntakeFlex(
+      {
+        service: ctx.service,
+        catName: ctx.catName,
+        businessName: ctx.businessName,
+        dateText: ctx.dateText,
+        buttons: sorted
+          .filter((e) => e.kind !== "deposit" && e.url)
+          .map((e) => ({ kind: e.kind as IntakeButtonKind, url: e.url!, count: e.count })),
+        deposit: sorted.find((e) => e.kind === "deposit")?.deposit,
+      },
+      style
+    ),
+  ];
 }
 
 /** การ์ดเรียกเก็บมัดจำ — ชัดๆ ว่าต้องโอนเท่าไหร่ (ส่งก่อนลูกค้าโอน) */

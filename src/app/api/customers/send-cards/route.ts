@@ -11,6 +11,8 @@ import {
   buildPrestayFlex,
   buildGroomInfoFlex,
   buildDocRequestFlex,
+  mergeIntakeCards,
+  type IntakeEntry,
 } from "@/lib/line";
 import { buildGroomInfoBody, buildPrestayFlexData, buildStayInfoBody } from "@/lib/booking-reminders";
 import {
@@ -28,6 +30,7 @@ type Part = (typeof CUSTOMER_CARD_PARTS)[number];
  * POST /api/customers/send-cards — ส่งการ์ดถามข้อมูลก่อนรับน้องจากหน้าข้อมูลลูกค้า (หลังบ้านเท่านั้น)
  * body: { customerId, parts: Part[], catIds?: string[], preview?: true }
  * ส่งหลายใบรวมใน push เดียว (LINE นับ 1 ข้อความ, สูงสุด 5 ใบ) — preview คืน flex ตัวเดียวกับที่จะส่งจริง
+ * เรื่องที่ขอข้อมูล (ประวัติ/สมุดวัคซีน/บัตร/กฎ) ตั้งแต่ 2 เรื่องขึ้นไป รวมเป็นการ์ดใบเดียวหลายปุ่ม
  */
 export async function POST(req: NextRequest) {
   const session = await verifySession(req.cookies.get(SESSION_COOKIE)?.value);
@@ -46,7 +49,7 @@ async function handlePost(req: NextRequest) {
   const parts: Part[] = (Array.isArray(body.parts) ? body.parts : [])
     .map(String)
     .filter((p: string): p is Part => (CUSTOMER_CARD_PARTS as readonly string[]).includes(p))
-    .slice(0, 5);
+    .slice(0, CUSTOMER_CARD_PARTS.length);
   if (parts.length === 0) return NextResponse.json({ error: "เลือกอย่างน้อย 1 การ์ด" }, { status: 400 });
 
   const wanted: string[] = Array.isArray(body.catIds) ? body.catIds.map(String) : [];
@@ -64,11 +67,17 @@ async function handlePost(req: NextRequest) {
     );
   }
   const cfg = await getSiteConfig();
-  const catIds = cats.map((x) => x.id);
   const catNames = cats.map((x) => x.name).join(", ") || c.name;
 
   const messages: object[] = [];
   const skipped: string[] = [];
+  /** เรื่องที่ขอข้อมูล — รวมเป็นการ์ดเดียวตอนท้าย แทรกตรงตำแหน่งเรื่องแรก */
+  const intake: IntakeEntry[] = [];
+  let intakeAt = -1;
+  const addIntake = (e: IntakeEntry) => {
+    if (intakeAt < 0) intakeAt = messages.length;
+    intake.push(e);
+  };
   for (const part of parts) {
     if (part === "groomInfo" || part === "stayInfo") {
       const stay = part === "stayInfo";
@@ -80,31 +89,59 @@ async function handlePost(req: NextRequest) {
       const askLabel = ask.length > 1 ? `น้องๆ ${ask.length} ตัว` : askNames;
       const style = cfg.cards?.groomInfo;
       const button = style?.texts?.button || "🩺 แจ้งประวัติน้อง";
-      messages.push(
-        buildGroomInfoFlex(
+      const url = buildCatInfoUrl(liffId, ask.map((x) => x.id), stay ? "stay" : "groom");
+      addIntake({
+        kind: "info",
+        url,
+        count: ask.length,
+        card: buildGroomInfoFlex(
           {
             catName: askNames,
             body: (stay ? buildStayInfoBody : buildGroomInfoBody)({ catName: askLabel }, cfg),
-            url: buildCatInfoUrl(liffId, ask.map((x) => x.id), stay ? "stay" : "groom"),
+            url,
             label: ask.length > 1 ? `${button} (${ask.length} ตัว)` : button,
           },
           stay
             ? { ...style, texts: { ...style?.texts, header: "🐾 ข้อมูลน้องก่อนเข้าพัก" } }
             : style
-        )
-      );
-    } else if (part === "vaccine" || part === "idcard") {
-      messages.push(
-        buildDocRequestFlex({
-          kind: part,
-          businessName: cfg.business.name,
-          catName: catNames,
-          url: part === "vaccine" ? buildCatVaccineUrl(liffId, catIds) : buildIdCardUrl(liffId),
-        })
-      );
+        ),
+      });
+    } else if (part === "vaccine") {
+      // น้องที่ร้านมีสมุดวัคซีนแล้ว ไม่ขอซ้ำ
+      const ask = cats.filter((x) => !x.vaccinePhotos?.trim());
+      for (const x of cats) if (!ask.includes(x)) skipped.push(`${x.name}: มีสมุดวัคซีนแล้ว ไม่ขอซ้ำ`);
+      if (ask.length === 0) continue;
+      const url = buildCatVaccineUrl(liffId, ask.map((x) => x.id));
+      addIntake({
+        kind: "vaccine",
+        url,
+        count: ask.length,
+        card: buildDocRequestFlex(
+          { kind: "vaccine", businessName: cfg.business.name, catName: ask.map((x) => x.name).join(", "), url },
+          cfg.cards?.docRequest
+        ),
+      });
+    } else if (part === "idcard") {
+      // บัตรประชาชนแนบครั้งเดียวต่อลูกค้า
+      if (c.idCardUrl) {
+        skipped.push("มีบัตรประชาชนแล้ว ไม่ขอซ้ำ");
+        continue;
+      }
+      const url = buildIdCardUrl(liffId);
+      addIntake({
+        kind: "idcard",
+        url,
+        card: buildDocRequestFlex(
+          { kind: "idcard", businessName: cfg.business.name, catName: catNames, url },
+          cfg.cards?.docRequest
+        ),
+      });
     } else if (part === "consent") {
-      messages.push(
-        buildConsentFlex(
+      const url = buildCustomerConsentUrl(liffId);
+      addIntake({
+        kind: "consent",
+        url,
+        card: buildConsentFlex(
           {
             businessName: cfg.business.name,
             title: cfg.messages.consentTitle || DEFAULT_MESSAGES.consentTitle,
@@ -112,11 +149,11 @@ async function handlePost(req: NextRequest) {
             terms: cfg.messages.consentTerms?.length
               ? cfg.messages.consentTerms
               : DEFAULT_MESSAGES.consentTerms,
-            url: buildCustomerConsentUrl(liffId),
+            url,
           },
           cfg.cards?.consent
-        )
-      );
+        ),
+      });
     } else if (part === "prestay") {
       messages.push(
         buildPrestayFlex(
@@ -128,6 +165,23 @@ async function handlePost(req: NextRequest) {
         )
       );
     }
+  }
+
+  if (intake.length > 0) {
+    messages.splice(
+      intakeAt,
+      0,
+      ...mergeIntakeCards(
+        intake,
+        {
+          // มีเรื่องเข้าพัก (ข้อมูลก่อนเข้าพัก/บัตร) = หัวการ์ดเข้าพัก ไม่งั้นหัวอาบน้ำ
+          service: parts.includes("stayInfo") || parts.includes("idcard") || !parts.includes("groomInfo") ? "stay" : "groom",
+          catName: catNames,
+          businessName: cfg.business.name,
+        },
+        cfg.cards?.intake
+      )
+    );
   }
 
   if (messages.length === 0) {
