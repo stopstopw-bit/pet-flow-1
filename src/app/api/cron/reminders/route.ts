@@ -268,7 +268,7 @@ async function runForTenant() {
           notes: primary.notes,
           groomProgram: primary.groomProgram,
           transport: primary.transport,
-        }),
+        }, group),
       ];
 
       // เรื่องที่ต้องขอจากลูกค้ารอบนี้ (ประวัติ/สมุดวัคซีน/กฎ) — รวมเป็นการ์ดใบเดียวตอนท้าย
