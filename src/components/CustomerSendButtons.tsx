@@ -283,8 +283,13 @@ export function CustomerSendButtons({
   const intakePickOptions: { key: IntakePickKey; label: string }[] = [
     { key: "info", label: hasRoomStay ? INTAKE_LABEL.stayInfo : INTAKE_LABEL.groomInfo },
     { key: "vaccine", label: "สมุดวัคซีน" },
-    ...(hasRoomStay ? [{ key: "idcard" as const, label: "บัตรประชาชน" }] : []),
-    { key: "consent", label: INTAKE_LABEL.consent },
+    // บัตรประชาชน + กฎ/กดยินยอม (ข้อตกลงการเข้าพัก) เฉพาะนัดที่มีเข้าพัก
+    ...(hasRoomStay
+      ? [
+          { key: "idcard" as const, label: "บัตรประชาชน" },
+          { key: "consent" as const, label: INTAKE_LABEL.consent },
+        ]
+      : []),
     ...(hasRoomStay
       ? [{ key: "deposit" as const, label: depForBill > 0 ? `มัดจำ (ขอแล้ว ${depForBill.toLocaleString()}฿)` : "มัดจำ" }]
       : []),

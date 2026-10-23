@@ -348,14 +348,10 @@ async function runForTenant() {
         }
       }
 
-      // นัดอาบน้ำ: ถามสมุดวัคซีน + กฎ/กดยินยอม ที่ยังขาด พ่วงไปกับการ์ดยืนยันเลย
-      // (นัดเข้าพักถามในชุดก่อนเข้าพักแทน — ส่งล่วงหน้ากว่า มีเวลาเตรียม)
+      // นัดอาบน้ำ: ถามสมุดวัคซีนที่ยังขาด พ่วงไปกับการ์ดยืนยันเลย
+      // กฎ + กดยินยอม = ข้อตกลงการเข้าพัก ขอเฉพาะนัดเข้าพัก (ในชุดก่อนเข้าพัก ส่งล่วงหน้ากว่า มีเวลาเตรียม)
       if (primary.service === "groom") {
         intake.push(...(await intakeCardsFor(group, "groom", cfg)));
-        if (cfg.automation?.intakeAutoEnabled !== false) {
-          const consent = await consentCardFor(group, primary, cfg);
-          if (consent) intake.push(consent);
-        }
       }
       // ขาดหลายเรื่อง = การ์ดใบเดียว ปุ่มเดียวไล่ทีละหน้า (เรื่องเดียว = การ์ดเดิม)
       dayMessages.push(
