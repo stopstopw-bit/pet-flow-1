@@ -226,7 +226,7 @@ export default function RegisterPage() {
           name: contact.name,
           phone: contact.phone,
           address: contact.address,
-          email,
+          email: ownerHistory.length ? undefined : email,
           birthday: isCompany ? undefined : birthday,
           referralSource: referral,
           referralCode: (referralOn && hasReferralCode && referralCode.trim()) || undefined,
@@ -371,18 +371,21 @@ export default function RegisterPage() {
           </>
         )}
 
-        <div className={isCompany ? "" : "grid grid-cols-2 gap-3"}>
-          <label className="block">
-            <span className="mb-1 block text-xs font-bold text-brown">อีเมล</span>
-            <input
-              required
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@email.com"
-              className={fieldClass}
-            />
-          </label>
+        {/* ร้านที่ถามประวัติตอนสมัคร (เช่น Back Home) ไม่ขออีเมล — ลิสต์ของร้านไม่มี */}
+        <div className={isCompany || ownerHistory.length ? "" : "grid grid-cols-2 gap-3"}>
+          {!ownerHistory.length && (
+            <label className="block">
+              <span className="mb-1 block text-xs font-bold text-brown">อีเมล</span>
+              <input
+                required
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@email.com"
+                className={fieldClass}
+              />
+            </label>
+          )}
           {!isCompany && (
             <label className="block">
               <span className="mb-1 block text-xs font-bold text-brown">
