@@ -7,6 +7,7 @@ import type { StoredBooking } from "./bookings-store";
 import type { InvoiceRecord } from "./invoices-store";
 import type { SiteConfig } from "./config-types";
 import { autoMuted } from "./auto-messages";
+import { petWords } from "./pet-kind";
 
 /**
  * ตัวสร้างข้อความเตือนลูกค้า — ใช้ร่วมกันทั้ง "cron อัตโนมัติ" และ "ปุ่มกดส่งเอง"
@@ -283,6 +284,7 @@ export function buildPrestayFlexData(
   return {
     businessName: cfg.business.name,
     catName: b.catName,
+    petEmoji: petWords(cfg).emoji,
     dateText,
     room: b.room,
     intro: renderTemplate(msg.prestayIntro ?? DEFAULT_MESSAGES.prestayIntro, {

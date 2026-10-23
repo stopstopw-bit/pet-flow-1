@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { petWords } from "@/lib/pet-kind";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { withTenant } from "@/lib/tenant-context";
 import { getCustomer } from "@/lib/customers-store";
@@ -91,12 +92,13 @@ async function handlePost(req: NextRequest) {
       const button = style?.texts?.button || "🩺 แจ้งประวัติน้อง";
       const url = buildCatInfoUrl(liffId, ask.map((x) => x.id), stay ? "stay" : "groom");
       addIntake({
-        kind: "info",
+        kind: stay ? "stayInfo" : "info",
         url,
         count: ask.length,
         card: buildGroomInfoFlex(
           {
             catName: askNames,
+            petEmoji: petWords(cfg).emoji,
             body: (stay ? buildStayInfoBody : buildGroomInfoBody)({ catName: askLabel }, cfg),
             url,
             label: ask.length > 1 ? `${button} (${ask.length} ตัว)` : button,
@@ -117,7 +119,7 @@ async function handlePost(req: NextRequest) {
         url,
         count: ask.length,
         card: buildDocRequestFlex(
-          { kind: "vaccine", businessName: cfg.business.name, catName: ask.map((x) => x.name).join(", "), url },
+          { kind: "vaccine", businessName: cfg.business.name, petEmoji: petWords(cfg).emoji, catName: ask.map((x) => x.name).join(", "), url },
           cfg.cards?.docRequest
         ),
       });
@@ -132,7 +134,7 @@ async function handlePost(req: NextRequest) {
         kind: "idcard",
         url,
         card: buildDocRequestFlex(
-          { kind: "idcard", businessName: cfg.business.name, catName: catNames, url },
+          { kind: "idcard", businessName: cfg.business.name, petEmoji: petWords(cfg).emoji, catName: catNames, url },
           cfg.cards?.docRequest
         ),
       });
@@ -146,6 +148,7 @@ async function handlePost(req: NextRequest) {
             businessName: cfg.business.name,
             title: cfg.messages.consentTitle || DEFAULT_MESSAGES.consentTitle,
             catName: catNames,
+            petEmoji: petWords(cfg).emoji,
             terms: cfg.messages.consentTerms?.length
               ? cfg.messages.consentTerms
               : DEFAULT_MESSAGES.consentTerms,
@@ -177,6 +180,7 @@ async function handlePost(req: NextRequest) {
           // มีเรื่องเข้าพัก (ข้อมูลก่อนเข้าพัก/บัตร) = หัวการ์ดเข้าพัก ไม่งั้นหัวอาบน้ำ
           service: parts.includes("stayInfo") || parts.includes("idcard") || !parts.includes("groomInfo") ? "stay" : "groom",
           catName: catNames,
+          petEmoji: petWords(cfg).emoji,
           businessName: cfg.business.name,
         },
         cfg.cards?.intake
