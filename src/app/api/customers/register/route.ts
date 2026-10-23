@@ -14,6 +14,9 @@ import { isFeatureOn } from "@/lib/features";
 import { referralReward } from "@/lib/referral";
 import { issueCoupon, listCustomerCoupons } from "@/lib/coupons-store";
 import { pushLineMessage } from "@/lib/line";
+import { setCatStayInfo } from "@/lib/customers-store";
+import { REGISTER_HISTORY_SOURCE, registerHistoryFields, sanitizeIntakeInfo, stayInfoDone } from "@/lib/intake-rules";
+import { petKindOf } from "@/lib/pet-kind";
 
 /** คูปองชวนเพื่อน — ออกให้ทั้งคู่ทันทีที่สมัครด้วยโค้ด (เจ้าของร้านเลือกแบบนี้ 2026-10-23)
  * มูลค่า/อายุคูปองตั้งได้ในตั้งค่า › เปิด/ปิดฟีเจอร์ (ดู referralReward) */
@@ -98,6 +101,33 @@ async function handlePost(req: NextRequest) {
 
   if (!customer) {
     return NextResponse.json({ error: "ลงทะเบียนไม่สำเร็จ" }, { status: 500 });
+  }
+
+  // ── ประวัติเจ้าของ + น้อง ที่ร้านให้ถามตอนสมัคร — เก็บเป็นข้อมูลก่อนเข้าพักของน้องแต่ละตัว
+  // (ฟอร์มก่อนเข้าพัก/ทำประวัติดึงคำตอบนี้มาให้ ลูกค้าไม่ต้องกรอกซ้ำ) จับคู่น้องด้วยชื่อ ตัวล่าสุดก่อน
+  const rawCats: Record<string, unknown>[] = Array.isArray(body.cats) ? body.cats : [];
+  const usedCats = new Set<string>();
+  for (const raw of rawCats) {
+    const history = raw?.history;
+    const catName = String(raw?.name || "").trim();
+    if (!history || typeof history !== "object" || !catName) continue;
+    const match = [...customer.cats].reverse().find((c) => !usedCats.has(c.id) && c.name.trim() === catName);
+    if (!match) continue;
+    usedCats.add(match.id);
+    const h = registerHistoryFields(match.species || petKindOf(siteCfg), siteCfg);
+    if (!h) continue;
+    let prev: Record<string, unknown> = {};
+    try {
+      prev = match.stayInfo ? JSON.parse(match.stayInfo) : {};
+    } catch {
+      prev = {};
+    }
+    const answers = sanitizeIntakeInfo([...h.owner, ...h.pet], history);
+    // ยังไม่เคยกรอกฟอร์มก่อนเข้าพัก = ติดป้ายไว้ ระบบจะยังส่งฟอร์มไปถามหมวดการดูแล (คำตอบนี้เติมให้แล้ว)
+    const source = stayInfoDone(match.stayInfo) ? {} : { source: REGISTER_HISTORY_SOURCE };
+    await setCatStayInfo(customer.id, match.id, JSON.stringify({ ...prev, ...answers, ...source })).catch((e) =>
+      console.error("register history save failed:", e)
+    );
   }
 
   // ── แจ้งเตือนลูกค้าสมัครใหม่ ──

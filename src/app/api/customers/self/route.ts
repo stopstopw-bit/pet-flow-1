@@ -10,6 +10,7 @@ import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { parseTaxInvoiceBody, type CustomerTaxInvoice } from "@/lib/tax-invoice";
 import { withResolvedTenant } from "@/lib/tenant-context";
 import { requireCustomerSession } from "@/lib/customer-session";
+import { stayInfoDone } from "@/lib/intake-rules";
 
 /** ลูกค้าดึงข้อมูลตัวเอง (สำหรับหน้าแก้ไขโปรไฟล์ใน LINE) — ครบทุกฟิลด์ที่กรอกตอนสมัคร */
 export async function GET(req: NextRequest) {
@@ -54,7 +55,7 @@ async function handleGet(req: NextRequest) {
         // หน้าแนบสมุดวัคซีน/ฟอร์มประวัติใช้บอกลูกค้าว่าส่งอะไรไปแล้วบ้าง (ไม่ส่งตัวรูปออกไป)
         vaccineCount: x.vaccinePhotos ? x.vaccinePhotos.split("\n").filter(Boolean).length : 0,
         hasPetInfo: Boolean(x.groomHealthInfo),
-        hasStayInfo: Boolean(x.stayInfo),
+        hasStayInfo: stayInfoDone(x.stayInfo),
       })),
     },
   });

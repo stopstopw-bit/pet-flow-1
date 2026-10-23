@@ -2881,6 +2881,16 @@ function FeaturesTab({
                   />
                   <p className="-mt-1 pb-1 text-[10px] text-brown-faint">ข้อที่ไม่มี ให้ลูกค้าพิมพ์ &quot;ไม่มี&quot;</p>
                 </li>
+                <li className="py-1">
+                  <Toggle
+                    label="หน้าสมัครสมาชิก ถามประวัติเจ้าของ + น้องไปเลย"
+                    checked={Boolean(rules.registerAsksHistory)}
+                    onChange={(v) => setRules((r) => ({ ...r, registerAsksHistory: v }))}
+                  />
+                  <p className="-mt-1 pb-1 text-[10px] text-brown-faint">
+                    ถามตามฟอร์มทำประวัติ ไม่บังคับ ไม่กรอกก็สมัครได้ · เก็บไว้ที่น้องแต่ละตัว ฟอร์มก่อนเข้าพัก/อาบน้ำจะเติมให้เอง ไม่ต้องกรอกซ้ำ · ตอนนี้มีฟอร์มทำประวัติเฉพาะหมา
+                  </p>
+                </li>
               </ul>
             </div>
           )}
