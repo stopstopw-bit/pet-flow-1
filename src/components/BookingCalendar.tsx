@@ -1,5 +1,6 @@
 "use client";
 
+import { groomUsesCard } from "@/lib/intake-rules";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -643,6 +644,8 @@ export function BookingCalendar() {
   const [groomPrograms, setGroomPrograms] = useState<GroomProgram[]>(GROOM_PROGRAMS);
   const [closedDates, setClosedDates] = useState<{ date: string; note?: string }[]>([]);
   const [closedWeekdays, setClosedWeekdays] = useState<number[]>([]);
+  /** นัดอาบน้ำของร้านนี้ขอสมุดวัคซีนด้วยไหม (ตั้งค่า › ขอข้อมูลตามบริการ) */
+  const [groomVaccine, setGroomVaccine] = useState(false);
   const [togglingClosed, setTogglingClosed] = useState(false);
   /** การ์ดที่รอยืนยันก่อนส่งจริง พร้อมงานที่จะทำต่อเมื่อกดยืนยัน */
   const [stagePreview, setStagePreview] = useState<{
@@ -861,6 +864,7 @@ export function BookingCalendar() {
     setGroomPrograms(resolveGroomPrograms(d.config?.groomPricePrograms));
     setClosedDates(d.config?.closedDates || []);
     setClosedWeekdays(d.config?.closedWeekdays || []);
+    setGroomVaccine(groomUsesCard(d.config, "vaccine"));
   }, []);
 
   useEffect(() => {
@@ -2251,15 +2255,15 @@ export function BookingCalendar() {
                     </p>
                   ))}
                 {/* สมุดวัคซีนรายตัว — โชว์ทุกนัดเข้าพัก พนักงานแนบเองได้ ไม่ต้องรอลูกค้ากดยอมรับข้อตกลงก่อน
-                    นัดอาบน้ำอย่างเดียวไม่ใช้สมุดวัคซีน — เหลือแค่แถวหยดยาเห็บหมัด (ถ้ามี) */}
+                    นัดอาบน้ำอย่างเดียวไม่ใช้สมุดวัคซีน (เว้นแต่ร้านตั้งให้ขอ) — เหลือแค่แถวหยดยาเห็บหมัด (ถ้ามี) */}
                 <div className="mt-1 space-y-1">
-                  {group.filter((x) => b.service !== "groom" || x.fleaTickTreated).map((x) => (
+                  {group.filter((x) => b.service !== "groom" || groomVaccine || x.fleaTickTreated).map((x) => (
                     <div key={x.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
                       <span className="flex items-center gap-1 font-bold text-brown-soft">
                         <Icon name="paw" size={12} />
                         {x.catName}
                       </span>
-                      {b.service !== "groom" && (
+                      {(b.service !== "groom" || groomVaccine) && (
                         <VaccinePhotosAdmin bookingId={x.id} value={x.vaccinePhotoUrl} onDone={load} />
                       )}
                       {x.fleaTickTreated && (

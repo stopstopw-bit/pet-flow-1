@@ -1,5 +1,6 @@
 "use client";
 
+import { groomUsesCard } from "@/lib/intake-rules";
 import { useEffect, useState } from "react";
 import { toast } from "@/components/Toast";
 import { relevantAutoMessageTopics } from "@/lib/auto-messages";
@@ -155,9 +156,12 @@ export function CustomerSendButtons({
   const invId = invoiceId || foundInvoiceId;
   // บิลที่มีทั้งอาบน้ำและเข้าพัก (service = "both") ต้องเห็นการ์ดฝั่งเข้าพักด้วย
   const hasRoomStay = service === "room" || service === "both";
-  /** นัดอาบน้ำอย่างเดียวไม่มีเรื่องของการเข้าพัก (สมุดวัคซีน/บัตร/กฎ/เตรียมตัว/เวลาเข้า-ออก/มัดจำ) */
+  /**
+   * นัดอาบน้ำอย่างเดียวไม่มีเรื่องของการเข้าพัก (สมุดวัคซีน/บัตร/กฎ/เตรียมตัว/เวลาเข้า-ออก/มัดจำ)
+   * เว้นแต่ร้านตั้งให้ขอในนัดอาบน้ำด้วย (ตั้งค่า › ขอข้อมูลตามบริการ เช่น สมุดวัคซีน)
+   */
   const stayOk = service !== "groom";
-  const stayOn = (part: string) => stayOk && on(part);
+  const stayOn = (part: string) => (stayOk || groomUsesCard(config, part)) && on(part);
   const depForBill = invoiceId ? invoiceDeposit : foundDeposit;
   const billPaid = (invoiceId ? invoiceStatus : foundStatus) === "paid";
 
