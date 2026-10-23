@@ -19,6 +19,7 @@ export type GroupableBooking = {
   time?: string;
   checkin?: string;
   checkout?: string;
+  status?: string;
 };
 
 export type GroupOptions = {
@@ -59,5 +60,52 @@ export function groupBookings<T extends GroupableBooking>(
 
 /** ชื่อแมวทุกตัวในกลุ่ม เช่น "ลาล่า, บาซ่า, ซิมบ้า" */
 export function groupCatNames(group: GroupableBooking[]) {
-  return group.map((b) => b.catName).join(", ");
+  // ตัวเดียวกันมีทั้งนัดเข้าพักและอาบน้ำก่อนกลับได้ (กลุ่มบิล) — ชื่อไม่ซ้ำ
+  return Array.from(new Set(group.map((b) => b.catName))).join(", ");
+}
+
+/**
+ * จัดกลุ่มตอน "ออกบิล" — เหมือน groupBookings แบบอาบน้ำรวมทั้งวัน
+ * แต่อาบน้ำก่อนกลับ (อาบระหว่างพัก) ไปอยู่กลุ่มเดียวกับการเข้าพักครั้งนั้น → บิลใบเดียวกับค่าห้อง
+ */
+export function groupForBilling<T extends GroupableBooking>(list: T[]): T[][] {
+  const inStay = new Map<string, T>();
+  for (const b of list) {
+    const stay = stayForGroom(b, list);
+    if (stay) inStay.set(b.id, stay);
+  }
+  const out = groupBookings(
+    list.filter((b) => !inStay.has(b.id)),
+    { groomByDay: true }
+  );
+  for (const [id, stay] of inStay) {
+    const g = out.find((x) => x.some((y) => y.id === stay.id));
+    const b = list.find((x) => x.id === id)!;
+    if (g) g.push(b);
+    else out.push([b]);
+  }
+  return out;
+}
+
+const isLive = (b: GroupableBooking) => b.status !== "cancelled" && b.status !== "no_show";
+
+/**
+ * นัดอาบน้ำที่อยู่ระหว่างการเข้าพักของน้องตัวเดียวกัน (ปกติคืออาบวันออกก่อนกลับบ้าน)
+ * → คืนนัดเข้าพักที่มันเป็นส่วนหนึ่ง ใช้รวมบิล/การ์ดเป็นนัดเดียว และไม่ส่งยืนยันนัดอาบน้ำแยก
+ * (ลูกค้าไม่ต้องพาน้องมา น้องอยู่ที่ร้านอยู่แล้ว) · คิวอาบน้ำยังเป็นนัดของตัวเองเพื่อกันเวลาช่าง
+ */
+export function stayForGroom<T extends GroupableBooking>(b: T, list: T[]): T | undefined {
+  if (b.service !== "groom" || !b.date || !isLive(b)) return undefined;
+  const d = b.date.slice(0, 10);
+  const who = b.customerId || b.customerName;
+  return list.find(
+    (s) =>
+      s.service === "room" &&
+      isLive(s) &&
+      (s.customerId || s.customerName) === who &&
+      s.catName === b.catName &&
+      !!s.checkin &&
+      s.checkin.slice(0, 10) <= d &&
+      d <= (s.checkout || s.checkin).slice(0, 10)
+  );
 }

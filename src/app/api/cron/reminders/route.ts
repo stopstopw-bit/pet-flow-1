@@ -43,7 +43,7 @@ import { renderTemplate, DEFAULT_MESSAGES } from "@/lib/messages";
 import { withTenant } from "@/lib/tenant-context";
 import { listActiveTenantIds } from "@/lib/tenant-directory";
 import { verifyCronSecret } from "@/lib/cron-auth";
-import { groupBookings, groupCatNames } from "@/lib/booking-group";
+import { stayForGroom, groupBookings, groupCatNames } from "@/lib/booking-group";
 import { findBirthdayMatch } from "@/lib/birthday-greeting";
 import { queueBirthdayGreeting } from "@/lib/birthday-queue";
 import { getAppUrlFromEnv } from "@/lib/telegram-config";
@@ -244,7 +244,9 @@ async function runForTenant() {
             b.status !== "cancelled" &&
             b.status !== "no_show" &&
             !autoMuted(b, "confirm") &&
-            (b.checkin || b.date) === confirmDate
+            (b.checkin || b.date) === confirmDate &&
+            // อาบน้ำก่อนกลับ: น้องอยู่ที่ร้านแล้ว ไม่ต้องยืนยัน/ขอประวัติแยก — เป็นส่วนหนึ่งของการเข้าพัก
+            !stayForGroom(b, allBookings)
         );
   // บ้านเดียวกัน + นัดเวลาเดียวกัน (จองหลายตัวพร้อมกัน) → รวมเป็นการ์ดยืนยันใบเดียว
   // เมื่อก่อนส่งแยกทีละตัว บ้านที่มี 3 ตัวได้ 3 การ์ดรัวๆ ลิงก์ยืนยันก็ยังใช้ตัวแทนกลุ่มได้
