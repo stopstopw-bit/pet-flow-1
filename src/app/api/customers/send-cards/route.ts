@@ -94,6 +94,7 @@ async function handlePost(req: NextRequest) {
       addIntake({
         kind: stay ? "stayInfo" : "info",
         url,
+        ids: ask.map((x) => x.id),
         count: ask.length,
         card: buildGroomInfoFlex(
           {
@@ -117,6 +118,7 @@ async function handlePost(req: NextRequest) {
       addIntake({
         kind: "vaccine",
         url,
+        ids: ask.map((x) => x.id),
         count: ask.length,
         card: buildDocRequestFlex(
           { kind: "vaccine", businessName: cfg.business.name, petEmoji: petWords(cfg).emoji, catName: ask.map((x) => x.name).join(", "), url },
@@ -182,6 +184,7 @@ async function handlePost(req: NextRequest) {
           catName: catNames,
           petEmoji: petWords(cfg).emoji,
           businessName: cfg.business.name,
+          flow: { liffId, by: "c" },
         },
         cfg.cards?.intake
       )

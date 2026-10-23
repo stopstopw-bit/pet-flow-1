@@ -10,6 +10,7 @@ import { DEFAULT_MESSAGES, DEEMED_CONSENT_NOTICE } from "@/lib/messages";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { toJpegDataUrl } from "@/lib/image-convert";
 import { BTN_PRIMARY, PageHeader } from "@/components/PageHeader";
+import { IntakeFlowBar } from "@/components/IntakeFlowBar";
 import { SectionLabel } from "@/components/ui";
 import { Icon } from "@/components/Icon";
 import { MAX_VACCINE_PHOTOS } from "@/lib/vaccine-photos";
@@ -275,6 +276,7 @@ function ConsentContent() {
         backLabel="กลับหน้าแรก"
         showLang={false}
       />
+      <IntakeFlowBar mode="progress" />
 
       {!ready || loading ? (
         <LoadingScreen />
@@ -340,6 +342,7 @@ function ConsentContent() {
               <p className="mt-1 text-xs text-brown-soft">
                 ขอบคุณค่ะ ทางเราพร้อมดูแลน้องอย่างดีที่สุด 🧡
               </p>
+              <IntakeFlowBar mode="next" />
             </div>
           ) : (
             <>

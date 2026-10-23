@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import type { CustomerProfile } from "@/lib/business";
 import type { PointsHistoryEntry } from "@/lib/points-store";
 import type { CustomerTier } from "@/lib/customer-tier";
+import { firstFlowHref } from "@/lib/intake-flow";
 
 type LineCustomer = {
   id: string;
@@ -319,6 +320,11 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
     if (path === "claim-coupon") {
       const offer = params.get("offer");
       router.replace(offer ? `${shop}/app/claim-coupon?offer=${encodeURIComponent(offer)}` : `${shop}/app/coupons`);
+      return;
+    }
+    if (path === "intake") {
+      // การ์ดรวมขอข้อมูล ปุ่มเดียว → หน้าแรกของลำดับ แล้วแต่ละหน้าพาไปขั้นต่อไปเอง
+      router.replace(`${shop}${firstFlowHref(params) || "/app"}`);
       return;
     }
     if (path === "pet-docs") {
