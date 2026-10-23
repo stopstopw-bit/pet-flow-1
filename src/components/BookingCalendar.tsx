@@ -1,5 +1,6 @@
 "use client";
 
+import { groomUsesCard } from "@/lib/intake-rules";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -12,7 +13,7 @@ import { InvoiceActionButtons } from "@/components/InvoiceActionButtons";
 import { bookingOnDate } from "@/lib/booking-customer-match";
 import { toast } from "@/components/Toast";
 import { PreviewSendModal } from "@/components/PreviewSendModal";
-import { groupBookings } from "@/lib/booking-group";
+import { groupBookings, stayForGroom } from "@/lib/booking-group";
 import {
   attachClosures,
   buildRoomBoard,
@@ -643,6 +644,8 @@ export function BookingCalendar() {
   const [groomPrograms, setGroomPrograms] = useState<GroomProgram[]>(GROOM_PROGRAMS);
   const [closedDates, setClosedDates] = useState<{ date: string; note?: string }[]>([]);
   const [closedWeekdays, setClosedWeekdays] = useState<number[]>([]);
+  /** นัดอาบน้ำของร้านนี้ขอสมุดวัคซีนด้วยไหม (ตั้งค่า › ขอข้อมูลตามบริการ) */
+  const [groomVaccine, setGroomVaccine] = useState(false);
   const [togglingClosed, setTogglingClosed] = useState(false);
   /** การ์ดที่รอยืนยันก่อนส่งจริง พร้อมงานที่จะทำต่อเมื่อกดยืนยัน */
   const [stagePreview, setStagePreview] = useState<{
@@ -861,6 +864,7 @@ export function BookingCalendar() {
     setGroomPrograms(resolveGroomPrograms(d.config?.groomPricePrograms));
     setClosedDates(d.config?.closedDates || []);
     setClosedWeekdays(d.config?.closedWeekdays || []);
+    setGroomVaccine(groomUsesCard(d.config, "vaccine"));
   }, []);
 
   useEffect(() => {
@@ -2174,6 +2178,32 @@ export function BookingCalendar() {
                         · {bookingWhen(b)}
                       </span>
                     </p>
+                    {/* อาบน้ำก่อนกลับ = ส่วนหนึ่งของการเข้าพัก (บิลเดียวกัน) — โชว์ทั้งสองฝั่งให้เห็นว่าเป็นนัดเดียวกัน */}
+                    {(() => {
+                      if (b.service === "room") {
+                        const ids = new Set(group.map((x) => x.id));
+                        const baths = liveBookings.filter((x) => {
+                          const st = stayForGroom(x, liveBookings);
+                          return !!st && ids.has(st.id);
+                        });
+                        if (baths.length === 0) return null;
+                        return (
+                          <p className="mt-0.5 flex items-center gap-1 text-xs font-bold text-petflow-chocolate">
+                            <Icon name="bath" size={13} />
+                            อาบน้ำก่อนกลับ {baths[0].date} · {baths[0].time || "ยังไม่ระบุเวลา"}
+                            {new Set(baths.map((x) => x.catName)).size < new Set(group.map((x) => x.catName)).size
+                              ? ` (${Array.from(new Set(baths.map((x) => x.catName))).join(", ")})`
+                              : ""}
+                          </p>
+                        );
+                      }
+                      return stayForGroom(b, liveBookings) ? (
+                        <p className="mt-0.5 flex items-center gap-1 text-[11px] font-bold text-latte-deep">
+                          <Icon name="bed" size={12} />
+                          อาบก่อนกลับ · อยู่ในการเข้าพัก (บิลรวมกับค่าห้อง)
+                        </p>
+                      ) : null;
+                    })()}
                     {moves.length > 0 && (
                       <div className="mt-1.5 flex flex-wrap gap-1.5">
                         {moves.map((x) => (
@@ -2250,15 +2280,18 @@ export function BookingCalendar() {
                       ยังไม่กดยอมรับข้อตกลง
                     </p>
                   ))}
-                {/* สมุดวัคซีนรายตัว — โชว์ทุกนัด พนักงานแนบเองได้ ไม่ต้องรอลูกค้ากดยอมรับข้อตกลงก่อน */}
+                {/* สมุดวัคซีนรายตัว — โชว์ทุกนัดเข้าพัก พนักงานแนบเองได้ ไม่ต้องรอลูกค้ากดยอมรับข้อตกลงก่อน
+                    นัดอาบน้ำอย่างเดียวไม่ใช้สมุดวัคซีน (เว้นแต่ร้านตั้งให้ขอ) — เหลือแค่แถวหยดยาเห็บหมัด (ถ้ามี) */}
                 <div className="mt-1 space-y-1">
-                  {group.map((x) => (
+                  {group.filter((x) => b.service !== "groom" || groomVaccine || x.fleaTickTreated).map((x) => (
                     <div key={x.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
                       <span className="flex items-center gap-1 font-bold text-brown-soft">
                         <Icon name="paw" size={12} />
                         {x.catName}
                       </span>
-                      <VaccinePhotosAdmin bookingId={x.id} value={x.vaccinePhotoUrl} onDone={load} />
+                      {(b.service !== "groom" || groomVaccine) && (
+                        <VaccinePhotosAdmin bookingId={x.id} value={x.vaccinePhotoUrl} onDone={load} />
+                      )}
                       {x.fleaTickTreated && (
                         <span className="flex items-center gap-1 font-bold text-ok">
                           <Icon name="check" size={12} strokeWidth={2.4} />

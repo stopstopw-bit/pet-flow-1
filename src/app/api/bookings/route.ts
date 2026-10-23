@@ -1,3 +1,4 @@
+import { GROOM_EXTRA_CARDS, groomUsesCard } from "@/lib/intake-rules";
 import { NextRequest, NextResponse } from "next/server";
 import { petWords } from "@/lib/pet-kind";
 import {
@@ -736,14 +737,16 @@ function groomInfoCardFor(
     const room = b.service === "room";
     const hasDeposit = Number(body.depositAmount) > 0;
     // ร้านติ๊กเลือกเองว่าจะขออะไรบ้าง · ไม่ส่งมา = ทุกเรื่องตามบริการ (ระบบยังข้ามเรื่องที่ส่งแล้วให้)
-    // สมุดวัคซีน บัตร และกฎ + กดยินยอม เป็นเรื่องของการเข้าพัก — นัดอาบน้ำอย่างเดียวขอแค่ประวัติ
-    const allowed = new Set(
-      b.service === "groom" ? ["groomInfo"] : ["stayInfo", "groomInfo", "vaccine", "idcard", "consent"]
-    );
+    const allowed = new Set(["stayInfo", "groomInfo", "vaccine", "idcard", "consent"]);
     const raw: string[] = Array.isArray(body.parts) ? body.parts.map(String) : [];
     const picked: string[] | null = Array.isArray(body.parts) ? raw.filter((x) => allowed.has(x)) : null;
+    // นัดอาบน้ำ: ประวัติ + เฉพาะการ์ดที่ร้านตั้งให้ขอในนัดอาบน้ำ (ตั้งค่า › ขอข้อมูลตามบริการ)
+    const groomCfg = room ? null : await getSiteConfig();
     body.parts = [
-      ...(picked ?? (room ? ["stayInfo", "vaccine", "idcard", "consent"] : ["groomInfo"])),
+      ...(picked ??
+        (room
+          ? ["stayInfo", "vaccine", "idcard", "consent"]
+          : ["groomInfo", ...GROOM_EXTRA_CARDS.map((c) => c.key).filter((k) => groomUsesCard(groomCfg, k))])),
       ...(hasDeposit ? ["deposit"] : []),
       // แจ้งยอดชำระค่าบริการ (บิล) — การ์ดแยกของตัวเอง ส่งไปพร้อมกันในข้อความเดียว
       ...(raw.includes("payment") ? ["payment"] : []),

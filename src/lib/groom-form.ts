@@ -29,6 +29,8 @@ export type GroomField = {
   options: GroomFormOption[];
   /** คำถามนี้มีปุ่ม "ไม่ทราบ" ให้ติ๊ก (เฉพาะน้ำหนัก) */
   hasUnknownToggle?: boolean;
+  /** หมวดในฟอร์มทำประวัติ (เจ้าของ / น้อง / การดูแล) — นัดอาบน้ำถามแค่เจ้าของ + น้องได้ ดู intake-rules.ts */
+  section?: "owner" | "pet" | "care";
 };
 
 /** ค่าเริ่มต้นของระบบ — key ห้ามเปลี่ยน (ข้อมูลเก่าอ้างอิงอยู่) */

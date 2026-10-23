@@ -177,6 +177,21 @@ const LITTER_BOTH: Pick<GroomField, "label" | "placeholder"> = {
   placeholder: "เช่น ทรายเต้าหู้ · หรือ ขับถ่ายแผ่นรองฉี่",
 };
 
+/** หมวดของคำถามในฟอร์มหมา — เจ้าของ → น้อง → การดูแล (ตามลำดับใน DOG_FORM) */
+const DOG_SECTIONS: Record<string, GroomField["section"]> = {
+  ownerNickname: "owner",
+  emergencyContact: "owner",
+  medical: "pet",
+  seizure: "pet",
+  allergy: "pet",
+  temperament: "pet",
+  likes: "pet",
+  neutered: "pet",
+  fleaLast: "pet",
+  fleaMethod: "pet",
+};
+for (const f of DOG_FORM) f.section = DOG_SECTIONS[f.key] ?? "care";
+
 /** คำถามตามชนิดของน้อง — หมาใช้ฟอร์มของตัวเอง · ไม่รู้ชนิดถามข้อขับถ่ายรวม */
 function fieldsFor(kind?: PetKind): GroomField[] {
   if (kind === "dog") return DOG_FORM;
@@ -184,12 +199,33 @@ function fieldsFor(kind?: PetKind): GroomField[] {
   return STAY_FORM_DEFAULTS;
 }
 
+/** บังคับตอบข้อนี้ — ข้อความ "ถ้าไม่มีเว้นว่างได้" ไม่ใช้แล้ว ให้พิมพ์ "ไม่มี" แทน */
+function requireAnswer(f: GroomField): GroomField {
+  if (f.required) return f;
+  const label = f.label.replace(/\s*\((ถ้าไม่มีเว้นว่างได้|หากมี|ถ้ามี)\)/, "");
+  const hint = f.type === "text" || f.type === "textarea" ? " — ไม่มีพิมพ์ \"ไม่มี\"" : "";
+  return { ...f, required: true, label: `${label}${hint}` };
+}
+
+/**
+ * ฟอร์มประวัติ (หมวดเจ้าของ + น้อง) ของชนิดนี้ — ใช้กับนัดอาบน้ำ/นวดเมื่อร้านตั้งไว้
+ * ชนิดที่ฟอร์มไม่ได้แบ่งหมวด (แมว) คืน null = ใช้ฟอร์มก่อนอาบน้ำตามเดิม
+ */
+export function resolveHistoryForm(kind?: PetKind, opts?: { allRequired?: boolean }): GroomField[] | null {
+  const fs = resolveStayForm(undefined, kind, opts).filter((f) => f.section === "owner" || f.section === "pet");
+  return fs.length ? fs : null;
+}
+
 /**
  * รวมค่าเริ่มต้นกับที่ร้านแก้เอง (ถ้ามีในอนาคต) — คืนรายการคำถามที่ใช้แสดงจริง
  * kind: ชนิดของน้องตัวนั้น (speciesOf) · ไม่รู้ชนิด = ชนิดที่ร้านรับ (petKindOf) · ไม่ส่ง = แมว
  */
-export function resolveStayForm(config?: GroomFormConfig, kind?: PetKind): GroomField[] {
-  return fieldsFor(kind).map((def) => {
+export function resolveStayForm(
+  config?: GroomFormConfig,
+  kind?: PetKind,
+  opts?: { allRequired?: boolean }
+): GroomField[] {
+  return fieldsFor(kind).map((d) => (opts?.allRequired ? requireAnswer(d) : d)).map((def) => {
     const c = config?.[def.key];
     if (!c) return def;
     return {

@@ -12,8 +12,7 @@ import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { parseGroomInfo, groomInfoSummary } from "@/lib/groom-info";
 import { getSiteConfig } from "@/lib/config-store";
 import { isFeatureOn } from "@/lib/features";
-import { resolveGroomForm } from "@/lib/groom-form";
-import { resolveStayForm } from "@/lib/stay-form";
+import { intakeFields } from "@/lib/intake-rules";
 import { requireCustomerSession } from "@/lib/customer-session";
 import { petKindOf, speciesOf } from "@/lib/pet-kind";
 
@@ -54,21 +53,25 @@ async function getHandler(req: NextRequest) {
   const t = await resolveTarget(session.lineUserId, id, catId, sp.get("kind") || "");
   if (t === "forbidden") return NextResponse.json({ error: "forbidden" }, { status: 403 });
   if (!t) return NextResponse.json({ found: false });
-  const stored =
-    t.kind === "stay"
-      ? t.cat?.stayInfo
-      : t.cat?.groomHealthInfo ?? (t.booking?.lineUserId ? await getCatGroomInfo(t.booking.lineUserId, t.catName) : undefined);
+  const groomStored =
+    t.cat?.groomHealthInfo ?? (t.booking?.lineUserId ? await getCatGroomInfo(t.booking.lineUserId, t.catName) : undefined);
+  const stored = t.kind === "stay" ? t.cat?.stayInfo : groomStored;
+  const cfg = await getSiteConfig();
+  // ร้านที่นัดอาบน้ำใช้ฟอร์มประวัติ (หมวดเจ้าของ + น้อง) — คำตอบชุดนี้ใช้ร่วมกับฟอร์มเข้าพัก
+  // เติมคำตอบจากอีกฟอร์มให้ก่อน ลูกค้าไม่ต้องพิมพ์ซ้ำ (ของฟอร์มนี้เองทับ)
+  const other = cfg.intakeRules?.groomUsesHistory ? (t.kind === "stay" ? groomStored : t.cat?.stayInfo) : undefined;
+  const info = other ? { ...parseGroomInfo(other), ...parseGroomInfo(stored) } : parseGroomInfo(stored);
   return NextResponse.json({
     found: true,
     kind: t.kind,
     booking: t.booking
       ? { id: t.booking.id, catName: t.catName, service: t.booking.service, date: t.booking.date, time: t.booking.time }
       : { id: t.cat!.id, catName: t.catName },
-    info: parseGroomInfo(stored),
+    info,
     // ตอบโรคประจำตัวไว้แล้วตอนสมัครสมาชิก → ฟอร์มก่อนเข้าพักไม่ถามซ้ำ
     knownMedical: Boolean(t.cat?.medical?.trim()),
     // หมาหรือแมว — หน้าฟอร์มใช้เลือกชุดคำถาม (หมาไม่ถามเรื่องทราย) · ไม่รู้ = ไม่ส่ง ใช้ชนิดของร้าน
-    species: speciesOf(t.cat, await getSiteConfig()),
+    species: speciesOf(t.cat, cfg),
   });
 }
 
@@ -98,7 +101,7 @@ async function postHandler(req: NextRequest) {
   }
   // ชุดคำถามตามชนิดของน้องตัวนี้ — ต้องตรงกับที่หน้าฟอร์มถาม ไม่งั้นคำตอบข้อของหมาจะหาย
   const kind = speciesOf(t.cat, cfg) ?? petKindOf(cfg);
-  const fields = t.kind === "stay" ? resolveStayForm(undefined, kind) : resolveGroomForm(cfg.groomForm, kind);
+  const fields = intakeFields(t.kind, kind, cfg);
   const payload: Record<string, unknown> = { submittedAt: new Date().toISOString() };
   for (const f of fields) {
     const raw = (info as Record<string, unknown>)[f.key];

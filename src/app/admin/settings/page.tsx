@@ -15,6 +15,7 @@ import { contrastRatio, isValidHex } from "@/lib/color-utils";
 import { Icon } from "@/components/Icon";
 import { useConfig } from "@/components/ConfigProvider";
 import { FEATURES, FEATURE_GROUPS, isFeatureOn, type FeatureKey } from "@/lib/features";
+import { GROOM_EXTRA_CARDS, type IntakeRules } from "@/lib/intake-rules";
 import { REFERRAL_DEFAULT, referralReward } from "@/lib/referral";
 import { breedOptionsFor, petKindOf, petWords, withDefaultBreeds, type PetKind } from "@/lib/pet-kind";
 
@@ -2565,6 +2566,13 @@ function FeaturesTab({
     const r = referralReward(config);
     return { amount: String(r.amount), expiresInDays: String(r.expiresInDays) };
   });
+  // ขอข้อมูลตามบริการ — นัดอาบน้ำ/นวดขออะไรเพิ่ม, ใช้ฟอร์มไหน, บังคับตอบทุกข้อไหม
+  const [rules, setRules] = useState<IntakeRules>(() => ({ groomCards: [], ...config.intakeRules }));
+  const toggleGroomCard = (key: string, v: boolean) =>
+    setRules((r) => {
+      const cur = r.groomCards || [];
+      return { ...r, groomCards: v ? [...cur.filter((k) => k !== key), key] : cur.filter((k) => k !== key) };
+    });
 
   return (
     <form
@@ -2572,6 +2580,7 @@ function FeaturesTab({
         e.preventDefault();
         onSave({
           features: form,
+          intakeRules: rules,
           referral: {
             amount: Math.max(0, Math.round(Number(referral.amount) || 0)) || REFERRAL_DEFAULT.amount,
             expiresInDays:
@@ -2622,6 +2631,42 @@ function FeaturesTab({
           </ul>
         </section>
       ))}
+      <section className="rounded-petflow bg-card p-4 shadow-petflow-sm">
+        <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">ขอข้อมูลตามบริการ</p>
+        <p className="pb-2 text-[10px] text-brown-faint">
+          แต่ละร้านขอข้อมูลไม่เหมือนกัน — ตั้งว่านัดอาบน้ำ/นวดขออะไร และฟอร์มทำประวัติบังคับตอบไหม (ใช้ทั้งปุ่มส่งการ์ดและการ์ดอัตโนมัติ)
+        </p>
+        <p className="pt-1 text-xs font-bold text-petflow-chocolate">นัดอาบน้ำ / นวด ขอเพิ่มด้วย</p>
+        <ul className="divide-y divide-petflow-line">
+          {GROOM_EXTRA_CARDS.map((c) => (
+            <li key={c.key} className="py-1">
+              <Toggle
+                label={c.label}
+                checked={Boolean(rules.groomCards?.includes(c.key))}
+                onChange={(v) => toggleGroomCard(c.key, v)}
+              />
+            </li>
+          ))}
+          <li className="py-1">
+            <Toggle
+              label="นัดอาบน้ำ / นวด ใช้ฟอร์มทำประวัติ (เจ้าของ + น้อง)"
+              checked={Boolean(rules.groomUsesHistory)}
+              onChange={(v) => setRules((r) => ({ ...r, groomUsesHistory: v }))}
+            />
+            <p className="-mt-1 pb-1 text-[10px] text-brown-faint">
+              เปิด = ลูกค้าอาบน้ำกรอกแค่ประวัติเจ้าของ + ประวัติน้อง (ฟอร์มหมา) แทนฟอร์มก่อนอาบน้ำ · ฝากเลี้ยงกรอกหมวดการดูแลเพิ่ม ไม่ต้องพิมพ์ซ้ำ
+            </p>
+          </li>
+          <li className="py-1">
+            <Toggle
+              label="ฟอร์มทำประวัติ / ก่อนเข้าพัก บังคับตอบทุกข้อ"
+              checked={Boolean(rules.allRequired)}
+              onChange={(v) => setRules((r) => ({ ...r, allRequired: v }))}
+            />
+            <p className="-mt-1 pb-1 text-[10px] text-brown-faint">ข้อที่ไม่มี ให้ลูกค้าพิมพ์ &quot;ไม่มี&quot;</p>
+          </li>
+        </ul>
+      </section>
       <SaveBtn saving={saving} />
     </form>
   );

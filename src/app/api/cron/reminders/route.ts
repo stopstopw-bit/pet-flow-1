@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { petWords } from "@/lib/pet-kind";
+import { petKindOf, petWords } from "@/lib/pet-kind";
 import { listBookings } from "@/lib/bookings-store";
 import { autoMuted } from "@/lib/auto-messages";
 import { listInvoices } from "@/lib/invoices-store";
@@ -38,12 +38,12 @@ import {
 import { listCustomers, getCatGroomInfo, getCatStaffNotes, getIntakeStatus } from "@/lib/customers-store";
 import type { StoredBooking } from "@/lib/bookings-store";
 import { parseGroomInfo, groomInfoSummary } from "@/lib/groom-info";
-import { resolveGroomForm } from "@/lib/groom-form";
+import { groomUsesCard, summaryFields } from "@/lib/intake-rules";
 import { renderTemplate, DEFAULT_MESSAGES } from "@/lib/messages";
 import { withTenant } from "@/lib/tenant-context";
 import { listActiveTenantIds } from "@/lib/tenant-directory";
 import { verifyCronSecret } from "@/lib/cron-auth";
-import { groupBookings, groupCatNames } from "@/lib/booking-group";
+import { stayForGroom, groupBookings, groupCatNames } from "@/lib/booking-group";
 import { findBirthdayMatch } from "@/lib/birthday-greeting";
 import { queueBirthdayGreeting } from "@/lib/birthday-queue";
 import { getAppUrlFromEnv } from "@/lib/telegram-config";
@@ -86,7 +86,8 @@ async function pushInChunks(to: string, messages: object[]) {
 /**
  * เรื่องที่ต้องขอก่อนรับน้องที่บ้านนี้ยังขาด (ชุดเดียวกับหน้าข้อมูลลูกค้า) — พ่วงไปกับการ์ดอัตโนมัติรอบนั้น
  * ส่งเฉพาะที่ลูกค้ายังไม่ได้ส่ง และนัดไม่ได้ปิดหัวข้อนั้นไว้ · กฎ + กดยินยอม แยกส่งโดยคนเรียก
- * room = ข้อมูลก่อนเข้าพัก + สมุดวัคซีน + บัตรประชาชน · groom = สมุดวัคซีนอย่างเดียว (ประวัติอาบน้ำมีของเดิมแล้ว)
+ * room = ข้อมูลก่อนเข้าพัก + สมุดวัคซีน + บัตรประชาชน
+ * groom = เฉพาะการ์ดที่ร้านตั้งให้ขอในนัดอาบน้ำ (สมุดวัคซีน / บัตร — ดู intake-rules.ts) · ประวัติอาบน้ำมีของเดิมแล้ว
  * คืนเป็นรายการเรื่อง — คนเรียกรวมเป็นการ์ดใบเดียวด้วย mergeIntakeCards
  */
 async function intakeCardsFor(
@@ -132,8 +133,9 @@ async function intakeCardsFor(
     }
   }
 
+  const wantVaccine = mode === "room" || groomUsesCard(cfg, "vaccine");
   const needVaccine = group.filter(
-    (x, i) => !autoMuted(x, "vaccine") && !status[i].vaccine && !x.vaccinePhotoUrl
+    (x, i) => wantVaccine && !autoMuted(x, "vaccine") && !status[i].vaccine && !x.vaccinePhotoUrl
   );
   if (needVaccine.length > 0) {
     const url = await getPetDocsUrl(needVaccine.map((x) => x.id), "vaccine");
@@ -158,7 +160,11 @@ async function intakeCardsFor(
     }
   }
 
-  if (mode === "room" && !group.every((x) => autoMuted(x, "idcard")) && !status[0].idCard) {
+  if (
+    (mode === "room" || groomUsesCard(cfg, "idcard")) &&
+    !group.every((x) => autoMuted(x, "idcard")) &&
+    !status[0].idCard
+  ) {
     const url = await getPetDocsUrl([primary.id], "idcard");
     if (url) {
       out.push({
@@ -238,7 +244,9 @@ async function runForTenant() {
             b.status !== "cancelled" &&
             b.status !== "no_show" &&
             !autoMuted(b, "confirm") &&
-            (b.checkin || b.date) === confirmDate
+            (b.checkin || b.date) === confirmDate &&
+            // อาบน้ำก่อนกลับ: น้องอยู่ที่ร้านแล้ว ไม่ต้องยืนยัน/ขอประวัติแยก — เป็นส่วนหนึ่งของการเข้าพัก
+            !stayForGroom(b, allBookings)
         );
   // บ้านเดียวกัน + นัดเวลาเดียวกัน (จองหลายตัวพร้อมกัน) → รวมเป็นการ์ดยืนยันใบเดียว
   // เมื่อก่อนส่งแยกทีละตัว บ้านที่มี 3 ตัวได้ 3 การ์ดรัวๆ ลิงก์ยืนยันก็ยังใช้ตัวแทนกลุ่มได้
@@ -291,7 +299,7 @@ async function runForTenant() {
             formatBookingTelegram(`🩺 บรีฟก่อนอาบน้ำ: ${cat.catName}`, {
               ลูกค้า: cat.customerName,
               วันนัด: `${cat.date || ""}${cat.time ? ` ${cat.time}` : ""}`,
-              ...groomInfoSummary(info!, resolveGroomForm(cfg.groomForm)),
+              ...groomInfoSummary(info!, summaryFields("groom", petKindOf(cfg), cfg, info as Record<string, unknown>)),
               ...(notes?.medical ? { "โรคประจำตัว/ยา": notes.medical } : {}),
               ...(notes?.staffNote ? { นิสัย: notes.staffNote } : {}),
               ...(notes?.privateNote ? { "🔒 โน้ตลับร้าน": notes.privateNote } : {}),
@@ -348,8 +356,15 @@ async function runForTenant() {
         }
       }
 
-      // นัดอาบน้ำขอแค่ประวัติก่อนอาบน้ำ — สมุดวัคซีน บัตร และกฎ + กดยินยอม เป็นเรื่องของการเข้าพัก
-      // (ขอในชุดก่อนเข้าพักแทน ส่งล่วงหน้ากว่า มีเวลาเตรียม)
+      // นัดอาบน้ำ: ถามสมุดวัคซีน / กฎ+กดยินยอม ที่ยังขาด (เฉพาะที่ร้านตั้งให้ขอในนัดอาบน้ำ) พ่วงไปกับการ์ดยืนยันเลย
+      // (นัดเข้าพักถามในชุดก่อนเข้าพักแทน — ส่งล่วงหน้ากว่า มีเวลาเตรียม)
+      if (primary.service === "groom") {
+        intake.push(...(await intakeCardsFor(group, "groom", cfg)));
+        if (cfg.automation?.intakeAutoEnabled !== false && groomUsesCard(cfg, "consent")) {
+          const consent = await consentCardFor(group, primary, cfg);
+          if (consent) intake.push(consent);
+        }
+      }
       // ขาดหลายเรื่อง = การ์ดใบเดียว ปุ่มเดียวไล่ทีละหน้า (เรื่องเดียว = การ์ดเดิม)
       dayMessages.push(
         ...mergeIntakeCards(

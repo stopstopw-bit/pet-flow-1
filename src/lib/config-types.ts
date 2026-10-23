@@ -1,3 +1,4 @@
+import type { IntakeRules } from "./intake-rules";
 import type { RoomType } from "./business";
 import type { GroomFormConfig } from "./groom-form";
 import type { GroomProgram } from "./grooming-prices";
@@ -320,6 +321,8 @@ export type SiteConfig = {
   cards?: Record<string, CardStyleConfig>;
   /** คำถาม/ตัวเลือกในฟอร์มประวัติน้องก่อนอาบน้ำ — แก้เองได้ในหลังบ้าน */
   groomForm?: GroomFormConfig;
+  /** ขอข้อมูลอะไรบ้างตามบริการ (การ์ดในนัดอาบน้ำ, ฟอร์มที่ใช้, บังคับตอบ) — ดู src/lib/intake-rules.ts */
+  intakeRules?: IntakeRules;
   /** สีประจำร้าน — แต่ละร้านปรับเองได้ ไม่ตั้ง = ใช้โทนสีเริ่มต้นของ PetFlow */
   branding?: {
     /** สีหลัก (ปุ่ม, ลิงก์เด่น) */
