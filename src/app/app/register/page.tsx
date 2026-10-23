@@ -39,11 +39,15 @@ type CatInput = {
   note: string;
   /** รูปน้อง (JPEG data URL) — อัปขึ้นหลังสมัครเสร็จ เพราะต้องรู้ id แมวก่อน */
   photo?: string;
+  /** คำตอบประวัติน้อง (ร้านเปิดให้หน้าสมัครถามประวัติ) */
+  history: IntakeAnswers;
 };
 
 import { OTHER_BREED } from "@/lib/cat-breeds";
 import { REFERRAL_OPTIONS } from "@/lib/referral-options";
-import { asksSpecies, breedOptionsForSpecies, petWords, speciesWords, type PetSpecies } from "@/lib/pet-kind";
+import { asksSpecies, breedOptionsForSpecies, petKindOf, petWords, speciesWords, type PetSpecies } from "@/lib/pet-kind";
+import { registerHistoryFields, type IntakeAnswers } from "@/lib/intake-rules";
+import { IntakeFieldsInput, intakeAnswerEmpty } from "@/components/IntakeFieldsInput";
 import { SpeciesPicker } from "@/components/SpeciesPicker";
 import { isFeatureOn } from "@/lib/features";
 import { referralReward } from "@/lib/referral";
@@ -64,6 +68,7 @@ function emptyCat(): CatInput {
     birthday: "",
     medical: "",
     note: "",
+    history: {},
   };
 }
 
@@ -95,6 +100,11 @@ export default function RegisterPage() {
   const [sameContact, setSameContact] = useState(true);
   const useCompanyContact = isCompany && sameContact;
   const [cats, setCats] = useState<CatInput[]>([emptyCat()]);
+  /** ประวัติที่ร้านให้ถามตอนสมัคร — ตามชนิดของน้องแต่ละตัว (ร้านแมวไม่มีฟอร์มนี้ = ไม่ถาม) */
+  const historyFor = (c: CatInput) => registerHistoryFields(c.species || petKindOf(config), config);
+  const ownerHistory = cats.map(historyFor).find((h) => h && h.owner.length > 0)?.owner || [];
+  const [ownerAnswers, setOwnerAnswers] = useState<IntakeAnswers>({});
+  const [attempted, setAttempted] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [referralCode, setReferralCode] = useState("");
@@ -141,6 +151,7 @@ export default function RegisterPage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profile?.lineUserId) return;
+    setAttempted(true);
 
     // บังคับกรอกให้ครบทุกช่อง (ยกเว้นรูป/วันเกิดน้อง/โรคประจำตัว) — ไม่อยากได้ตัวไหนให้กดลบออก
     const catProblem = (c: CatInput, n: string): string => {
@@ -155,8 +166,18 @@ export default function RegisterPage() {
       if (!c.ageValue) return `กรอกอายุน้อง${pw.th}${n}ด้วยนะคะ`;
       if (!c.weightUnknown && !(Number(c.weightKg) > 0))
         return `กรอกน้ำหนักน้อง${pw.th}${n} หรือติ๊ก "ไม่ทราบ" ด้วยนะคะ`;
+      const h = historyFor(c);
+      if (h) {
+        const miss = h.pet.find((f) => f.required && intakeAnswerEmpty(c.history[f.key]));
+        if (miss) return `ตอบ "${miss.label.split(" — ")[0]}" ของน้อง${pw.th}${n}ด้วยนะคะ`;
+      }
       return "";
     };
+    const ownerMiss = ownerHistory.find((f) => f.required && intakeAnswerEmpty(ownerAnswers[f.key]));
+    if (ownerMiss) {
+      setError(`กรอก "${ownerMiss.label.split(" — ")[0]}" ด้วยนะคะ`);
+      return;
+    }
     for (let i = 0; i < cats.length; i++) {
       const problem = catProblem(cats[i], cats.length > 1 ? ` ตัวที่ ${i + 1}` : "");
       if (problem) {
@@ -229,6 +250,7 @@ export default function RegisterPage() {
               furLength: c.furLength || undefined,
               color: c.color || undefined,
               staffNote: c.note || undefined,
+              history: historyFor(c) ? { ...ownerAnswers, ...c.history } : undefined,
             })),
         }),
       });
@@ -317,10 +339,12 @@ export default function RegisterPage() {
           <>
             <label className="block">
               <span className="mb-1 block text-xs font-bold text-brown">
-                {isCompany ? "ชื่อผู้ติดต่อ" : "ชื่อผู้ปกครอง"}{" "}
-                <span className="font-normal text-brown-faint">
-                  (ชื่อเล่นหรือชื่อจริงก็ได้นะคะ)
-                </span>
+                {isCompany ? "ชื่อผู้ติดต่อ" : ownerHistory.length ? "ชื่อจริง-นามสกุล" : "ชื่อผู้ปกครอง"}{" "}
+                {!ownerHistory.length && (
+                  <span className="font-normal text-brown-faint">
+                    (ชื่อเล่นหรือชื่อจริงก็ได้นะคะ)
+                  </span>
+                )}
               </span>
               <input
                 required
@@ -333,7 +357,7 @@ export default function RegisterPage() {
 
             <label className="block">
               <span className="mb-1 block text-xs font-bold text-brown">
-                {isCompany ? "เบอร์ผู้ติดต่อ" : "เบอร์โทร"}
+                {isCompany ? "เบอร์ผู้ติดต่อ" : ownerHistory.length ? "เบอร์หลัก" : "เบอร์โทร"}
               </span>
               <input
                 required
@@ -390,6 +414,18 @@ export default function RegisterPage() {
             className={fieldClass}
           />
         </label>
+
+        {ownerHistory.length > 0 && (
+          <div className="space-y-3">
+            <IntakeFieldsInput
+              fields={ownerHistory}
+              answers={ownerAnswers}
+              onChange={(k, v) => setOwnerAnswers((a) => ({ ...a, [k]: v }))}
+              showMissing={attempted}
+              inputClass={fieldClass}
+            />
+          </div>
+        )}
 
         {!isCompany && (
           <div className="border-t border-petflow-line pt-3 empty:hidden">
@@ -627,6 +663,28 @@ export default function RegisterPage() {
                   noteValue={cat.note}
                   onChange={(medical, note) => updateCat(idx, { medical, note })}
                 />
+
+                {(() => {
+                  const h = historyFor(cat);
+                  if (!h || h.pet.length === 0) return null;
+                  return (
+                    <div className="space-y-3 border-t border-petflow-line pt-3">
+                      <p className="text-sm font-extrabold text-petflow-chocolate">
+                        ประวัติน้อง{speciesWords(cat.species || undefined, config).th}
+                        <span className="block text-[11px] font-normal text-brown-faint">
+                          ตอบครั้งเดียว ใช้ได้ทุกบริการ · ข้อที่ไม่มี พิมพ์ &quot;ไม่มี&quot; ได้เลยค่ะ
+                        </span>
+                      </p>
+                      <IntakeFieldsInput
+                        fields={h.pet}
+                        answers={cat.history}
+                        onChange={(k, v) => updateCat(idx, { history: { ...cat.history, [k]: v } })}
+                        showMissing={attempted}
+                        inputClass={subFieldClass}
+                      />
+                    </div>
+                  );
+                })()}
 
                 {cats.length > 1 && (
                   <button

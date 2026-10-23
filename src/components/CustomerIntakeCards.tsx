@@ -9,6 +9,7 @@ import { useConfig } from "@/components/ConfigProvider";
 import { cardOn } from "@/lib/features";
 import { INTAKE_LABEL } from "@/lib/intake-cards";
 import { splitVaccinePhotos } from "@/lib/vaccine-photos";
+import { stayInfoDone } from "@/lib/intake-rules";
 import type { CustomerRecord } from "@/lib/customers-store";
 
 type Part = "groomInfo" | "stayInfo" | "prestay" | "consent" | "vaccine" | "idcard";
@@ -31,7 +32,7 @@ export function CustomerIntakeCards({ customer, onDone }: { customer: CustomerRe
   const cats = customer.cats.filter((c) => catIds.includes(c.id));
 
   const infoDone = cats.length > 0 && cats.every((c) => c.groomHealthInfo);
-  const stayDone = cats.length > 0 && cats.every((c) => c.stayInfo);
+  const stayDone = cats.length > 0 && cats.every((c) => stayInfoDone(c.stayInfo));
   const vaccineDone = cats.length > 0 && cats.every((c) => splitVaccinePhotos(c.vaccinePhotos).length > 0);
   const rows: { part: Part; label: string; icon: string; when: boolean; status?: string; done?: boolean }[] = [
     { part: "stayInfo", label: INTAKE_LABEL.stayInfo, icon: "edit", when: partOn("stayInfo"), done: stayDone, status: stayDone ? "กรอกแล้ว" : "ยังไม่กรอก" },

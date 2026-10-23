@@ -16,6 +16,7 @@ import { ensureMigration } from "./migrations";
 import { normalizeSpecies, type PetSpecies } from "./pet-kind";
 import { taxInvoiceFromRow, type CustomerTaxInvoice } from "./tax-invoice";
 import { MAX_VACCINE_PHOTOS, joinVaccinePhotos, splitVaccinePhotos } from "./vaccine-photos";
+import { stayInfoDone } from "./intake-rules";
 
 export type { CustomerTier } from "./customer-tier";
 
@@ -1380,7 +1381,7 @@ export async function getIntakeStatus(lineUserId: string, catName?: string) {
   const key = catName ? catKey(catName) : "";
   const cat = c?.cats.find((x) => !key || catKey(x.name) === key);
   return {
-    stayInfo: Boolean(cat?.stayInfo),
+    stayInfo: stayInfoDone(cat?.stayInfo),
     groomInfo: Boolean(cat?.groomHealthInfo),
     vaccine: splitVaccinePhotos(cat?.vaccinePhotos).length > 0,
     idCard: Boolean(c?.idCardUrl),
