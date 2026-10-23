@@ -271,6 +271,9 @@ async function handlePatch(req: NextRequest) {
     try {
       const c = await addCat(id, {
         name: String(body.name || ""),
+        neutered: typeof body.neutered === "boolean" ? body.neutered : undefined,
+        seizureHistory: body.seizureHistory ? String(body.seizureHistory) : undefined,
+        allergy: body.allergy ? String(body.allergy) : undefined,
         staffNote: body.staffNote ? String(body.staffNote) : undefined,
         species: normalizeSpecies(body.species),
       });

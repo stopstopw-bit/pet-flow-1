@@ -298,6 +298,8 @@ async function runForTenant() {
               วันนัด: `${cat.date || ""}${cat.time ? ` ${cat.time}` : ""}`,
               ...groomInfoSummary(info!, summaryFields("groom", petKindOf(cfg), cfg, info as Record<string, unknown>)),
               ...(notes?.medical ? { "โรคประจำตัว/ยา": notes.medical } : {}),
+              ...(notes?.seizureHistory ? { "ประวัติชัก/ช็อค": notes.seizureHistory } : {}),
+              ...(notes?.allergy ? { ประวัติการแพ้: notes.allergy } : {}),
               ...(notes?.staffNote ? { นิสัย: notes.staffNote } : {}),
               ...(notes?.privateNote ? { "🔒 โน้ตลับร้าน": notes.privateNote } : {}),
               ...(cat.notes ? { โน้ตนัดนี้: cat.notes } : {}),
@@ -313,13 +315,22 @@ async function runForTenant() {
           const notes = cat.lineUserId
             ? await getCatStaffNotes(cat.lineUserId, cat.catName)
             : undefined;
-          if (!notes?.privateNote && !notes?.staffNote && !notes?.medical) continue;
+          if (
+            !notes?.privateNote &&
+            !notes?.staffNote &&
+            !notes?.medical &&
+            !notes?.seizureHistory &&
+            !notes?.allergy
+          )
+            continue;
           await sendTelegram(
             formatBookingTelegram(`🩺 บรีฟก่อนอาบน้ำ: ${cat.catName}`, {
               ลูกค้า: cat.customerName,
               วันนัด: `${cat.date || ""}${cat.time ? ` ${cat.time}` : ""}`,
               ประวัติ: "ยังไม่เคยกรอก — ขอไปในการ์ดวันนี้แล้ว",
               ...(notes.medical ? { "โรคประจำตัว/ยา": notes.medical } : {}),
+              ...(notes.seizureHistory ? { "ประวัติชัก/ช็อค": notes.seizureHistory } : {}),
+              ...(notes.allergy ? { ประวัติการแพ้: notes.allergy } : {}),
               ...(notes.staffNote ? { นิสัย: notes.staffNote } : {}),
               ...(notes.privateNote ? { "🔒 โน้ตลับร้าน": notes.privateNote } : {}),
             })

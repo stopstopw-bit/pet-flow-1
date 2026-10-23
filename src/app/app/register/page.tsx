@@ -27,6 +27,7 @@ type CatInput = {
   breed: string;
   breedOther: string;
   furLength: "" | "short" | "long";
+  neutered: "" | "yes" | "no";
   color: string;
   ageValue: string;
   ageUnit: "year" | "month";
@@ -34,8 +35,12 @@ type CatInput = {
   weightKg: string;
   /** ลูกค้าติ๊ก "ไม่ทราบน้ำหนัก" — ไม่ต้องกรอกช่องน้ำหนัก */
   weightUnknown: boolean;
+  /** ลูกค้าติ๊ก "ไม่ทราบอายุ/วันเกิด" — ไม่ต้องกรอกอายุ */
+  ageUnknown: boolean;
   birthday: string;
   medical: string;
+  seizureHistory: string;
+  allergy: string;
   note: string;
   /** รูปน้อง (JPEG data URL) — อัปขึ้นหลังสมัครเสร็จ เพราะต้องรู้ id แมวก่อน */
   photo?: string;
@@ -60,13 +65,17 @@ function emptyCat(): CatInput {
     breed: "",
     breedOther: "",
     furLength: "",
+    neutered: "",
     color: "",
     ageValue: "",
     ageUnit: "year",
     weightKg: "",
     weightUnknown: false,
+    ageUnknown: false,
     birthday: "",
     medical: "",
+    seizureHistory: "",
+    allergy: "",
     note: "",
     history: {},
   };
@@ -153,7 +162,7 @@ export default function RegisterPage() {
     if (!profile?.lineUserId) return;
     setAttempted(true);
 
-    // บังคับกรอกให้ครบทุกช่อง (ยกเว้นรูป/วันเกิดน้อง/โรคประจำตัว) — ไม่อยากได้ตัวไหนให้กดลบออก
+    // บังคับกรอกให้ครบทุกช่อง (ยกเว้นรูป/สี/อายุ/วันเกิดน้อง/โรคประจำตัว) — ไม่อยากได้ตัวไหนให้กดลบออก
     const catProblem = (c: CatInput, n: string): string => {
       if (askSpecies && !c.species) return `เลือกว่าน้อง${n}เป็นหมาหรือแมวด้วยนะคะ`;
       const pw = speciesWords(c.species || undefined, config);
@@ -162,8 +171,7 @@ export default function RegisterPage() {
       if (!c.breed || (c.breed === OTHER_BREED && !c.breedOther.trim()))
         return `เลือกสายพันธุ์น้อง${pw.th}${n}ด้วยนะคะ`;
       if (!c.furLength) return `เลือกลักษณะขนน้อง${pw.th}${n}ด้วยนะคะ`;
-      if (!c.color.trim()) return `กรอกสี/ลักษณะเด่นน้อง${pw.th}${n}ด้วยนะคะ`;
-      if (!c.ageValue) return `กรอกอายุน้อง${pw.th}${n}ด้วยนะคะ`;
+      if (!c.neutered) return `เลือกว่าน้อง${pw.th}${n}ทำหมันแล้วหรือยังด้วยนะคะ`;
       if (!c.weightUnknown && !(Number(c.weightKg) > 0))
         return `กรอกน้ำหนักน้อง${pw.th}${n} หรือติ๊ก "ไม่ทราบ" ด้วยนะคะ`;
       const h = historyFor(c);
@@ -242,12 +250,15 @@ export default function RegisterPage() {
               breed:
                 (c.breed === OTHER_BREED ? c.breedOther.trim() : c.breed) ||
                 undefined,
-              ageValue: c.ageValue ? Number(c.ageValue) : undefined,
-              ageUnit: c.ageUnit,
+              ageValue: !c.ageUnknown && c.ageValue ? Number(c.ageValue) : undefined,
+              ageUnit: !c.ageUnknown && c.ageValue ? c.ageUnit : undefined,
               weightKg: !c.weightUnknown && c.weightKg ? Number(c.weightKg) : undefined,
-              birthday: c.birthday || undefined,
+              birthday: (!c.ageUnknown && c.birthday) || undefined,
               medical: c.medical || undefined,
+              seizureHistory: c.seizureHistory.trim() || undefined,
+              allergy: c.allergy.trim() || undefined,
               furLength: c.furLength || undefined,
+              neutered: c.neutered ? c.neutered === "yes" : undefined,
               color: c.color || undefined,
               staffNote: c.note || undefined,
               history: historyFor(c) ? { ...ownerAnswers, ...c.history } : undefined,
@@ -588,37 +599,98 @@ export default function RegisterPage() {
                     ))}
                   </div>
                 </div>
+                <div>
+                  <span className="mb-1 block text-[11px] font-bold text-brown-soft">
+                    ทำหมัน
+                  </span>
+                  <div className="flex gap-1 rounded-full bg-paper p-1">
+                    {(
+                      [
+                        ["yes", "ทำหมันแล้ว"],
+                        ["no", "ยังไม่ทำ"],
+                      ] as const
+                    ).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => updateCat(idx, { neutered: value })}
+                        aria-pressed={cat.neutered === value}
+                        className={`min-h-[40px] flex-1 rounded-full text-sm font-bold transition ${
+                          cat.neutered === value
+                            ? "bg-card text-petflow-chocolate shadow-petflow-sm"
+                            : "text-brown-soft"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <input
-                  required
                   value={cat.color}
                   onChange={(e) => updateCat(idx, { color: e.target.value })}
-                  placeholder="สี/ลักษณะเด่น เช่น สีขาวสลับดำ มีจุดที่หู"
+                  placeholder="สี/ลักษณะเด่น (ไม่บังคับ) เช่น สีขาวสลับดำ"
                   className={subFieldClass}
                 />
-                <div className="flex gap-2">
-                  <input
-                    required
-                    type="number"
-                    min="0"
-                    inputMode="numeric"
-                    value={cat.ageValue}
-                    onChange={(e) => updateCat(idx, { ageValue: e.target.value })}
-                    placeholder="อายุ"
-                    className="min-h-[44px] min-w-0 flex-1 rounded-xl border border-petflow-line bg-paper px-3 py-2 text-sm"
-                  />
-                  <select
-                    value={cat.ageUnit}
-                    onChange={(e) =>
-                      updateCat(idx, {
-                        ageUnit: e.target.value as "year" | "month",
-                      })
-                    }
-                    className="min-h-[44px] w-24 shrink-0 rounded-xl border border-petflow-line bg-paper px-3 py-2 text-sm"
-                  >
-                    <option value="year">ปี</option>
-                    <option value="month">เดือน</option>
-                  </select>
+                <div className="text-[11px] font-bold text-brown-soft">
+                  อายุ <span className="font-normal text-brown-faint">(ไม่บังคับ)</span>
+                  <div className="mt-0.5 flex items-center gap-2">
+                    <input
+                      disabled={cat.ageUnknown}
+                      type="number"
+                      min="0"
+                      inputMode="numeric"
+                      value={cat.ageUnknown ? "" : cat.ageValue}
+                      onChange={(e) => updateCat(idx, { ageValue: e.target.value })}
+                      placeholder={cat.ageUnknown ? "ไม่ทราบอายุ" : "อายุ"}
+                      className={`${subFieldClass} min-w-0 flex-1 disabled:opacity-50`}
+                    />
+                    {!cat.ageUnknown && (
+                      <select
+                        value={cat.ageUnit}
+                        onChange={(e) =>
+                          updateCat(idx, {
+                            ageUnit: e.target.value as "year" | "month",
+                          })
+                        }
+                        className="min-h-[44px] w-20 shrink-0 rounded-xl border border-petflow-line bg-paper px-3 py-2 text-sm font-normal text-brown"
+                      >
+                        <option value="year">ปี</option>
+                        <option value="month">เดือน</option>
+                      </select>
+                    )}
+                    <label className="flex min-h-[44px] shrink-0 cursor-pointer items-center gap-1.5 text-xs font-bold text-brown">
+                      <input
+                        type="checkbox"
+                        checked={cat.ageUnknown}
+                        onChange={(e) =>
+                          updateCat(idx, {
+                            ageUnknown: e.target.checked,
+                            ageValue: "",
+                            birthday: "",
+                          })
+                        }
+                        className="h-5 w-5 accent-latte-deep"
+                      />
+                      ไม่ทราบ
+                    </label>
+                  </div>
                 </div>
+                {!cat.ageUnknown && (
+                  <div className="text-[11px] font-bold text-brown-soft">
+                    วันเกิดน้อง{pw.th}{" "}
+                    <span className="font-normal text-brown-faint">
+                      (ถ้าทราบ · ไม่บังคับ)
+                    </span>
+                    <div className="mt-0.5">
+                      <BirthdayPicker
+                        value={cat.birthday}
+                        onChange={(iso) => updateCat(idx, { birthday: iso })}
+                        yearsBack={25}
+                      />
+                    </div>
+                  </div>
+                )}
                 <div className="text-[11px] font-bold text-brown-soft">
                   น้ำหนัก <span className="font-normal text-brown-faint">(กก.)</span>
                   <div className="mt-0.5 flex items-center gap-2">
@@ -647,25 +719,31 @@ export default function RegisterPage() {
                     </label>
                   </div>
                 </div>
-                <div className="text-[11px] font-bold text-brown-soft">
-                  วันเกิดน้อง{pw.th}{" "}
-                  <span className="font-normal text-brown-faint">
-                    (ถ้าทราบ · ไม่บังคับ)
-                  </span>
-                  <div className="mt-0.5">
-                    <BirthdayPicker
-                      value={cat.birthday}
-                      onChange={(iso) => updateCat(idx, { birthday: iso })}
-                      yearsBack={25}
-                    />
-                  </div>
-                </div>
 
                 <StaffNoteTagPicker
+                  label="โรคประจำตัว / เรื่องที่ช่างต้องรู้"
                   medicalValue={cat.medical}
                   noteValue={cat.note}
                   onChange={(medical, note) => updateCat(idx, { medical, note })}
                 />
+                <label className="block text-[11px] font-bold text-brown-soft">
+                  ประวัติการชัก/ช็อค <span className="font-normal text-brown-faint">(ไม่มีเว้นว่างได้)</span>
+                  <input
+                    value={cat.seizureHistory}
+                    onChange={(e) => updateCat(idx, { seizureHistory: e.target.value })}
+                    placeholder="เช่น ไม่เคย · หรือ เคยชักตอนตกใจ"
+                    className={`${subFieldClass} mt-0.5 font-normal text-brown`}
+                  />
+                </label>
+                <label className="block text-[11px] font-bold text-brown-soft">
+                  ประวัติการแพ้ <span className="font-normal text-brown-faint">(อาหาร / ยา / แชมพู · ไม่มีเว้นว่างได้)</span>
+                  <input
+                    value={cat.allergy}
+                    onChange={(e) => updateCat(idx, { allergy: e.target.value })}
+                    placeholder="เช่น ไม่มี · หรือ แพ้ไก่ แพ้แชมพูบางยี่ห้อ"
+                    className={`${subFieldClass} mt-0.5 font-normal text-brown`}
+                  />
+                </label>
 
                 {(() => {
                   const h = historyFor(cat);
