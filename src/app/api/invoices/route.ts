@@ -612,7 +612,11 @@ async function handlePatch(req: NextRequest) {
       try {
         const REWARD_TAG = "มาใช้บริการครั้งแรก";
         const mine = await listCustomerCoupons(customer.id);
-        const alreadyRewarded = mine.some((c) => c.reason.includes(REWARD_TAG));
+        // ตั้งแต่ 2026-10-23 คูปองออกทันทีตอนสมัครด้วยโค้ด (reason มีคำว่า "เพื่อนแนะนำ") —
+        // ส่วนนี้เหลือไว้จ่ายให้คนที่สมัครผ่านลิงก์ก่อนหน้านั้นและยังไม่เคยได้
+        const alreadyRewarded = mine.some(
+          (c) => c.reason.includes(REWARD_TAG) || c.reason.includes("เพื่อนแนะนำ")
+        );
         if (!alreadyRewarded) {
           const referrer = await getCustomer(customer.referredBy);
           if (referrer && referrer.id !== customer.id) {

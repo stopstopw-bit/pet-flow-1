@@ -69,7 +69,7 @@ export default function CouponsPage() {
       .catch(() => {});
   }, [profile?.lineUserId, customer?.id]);
 
-  const shareText = `🐾 มาใช้บริการที่ ${config.business.name} กันนะ! สมัครผ่านลิงก์นี้ + มาใช้บริการครั้งแรก รับคูปองส่วนลด 100฿ ทั้งคู่เลย 🎁\n${referralUrl}`;
+  const shareText = `🐾 มาใช้บริการที่ ${config.business.name} กันนะ! สมัครผ่านลิงก์นี้ (หรือกรอกโค้ด ${referralCode} ตอนสมัคร) รับคูปองส่วนลด 100฿ ทั้งคู่ทันที 🎁\n${referralUrl}`;
 
   const share = async () => {
     if (await copyText(shareText)) {
@@ -104,7 +104,7 @@ export default function CouponsPage() {
           <div className="min-w-0">
             <p className="text-sm font-extrabold text-petflow-chocolate">ชวนเพื่อน รับคนละ 100฿</p>
             <p className="mt-0.5 text-xs leading-relaxed text-brown-soft">
-              ส่งลิงก์ให้เพื่อนสมัคร + <b className="text-latte-deep">มาใช้บริการครั้งแรก</b> — ได้คูปองส่วนลด <b className="text-latte-deep">100฿ ทั้งคุณและเพื่อน</b> 🧡
+              ส่งลิงก์หรือโค้ดให้เพื่อน <b className="text-latte-deep">สมัครเสร็จ</b> — ได้คูปองส่วนลด <b className="text-latte-deep">100฿ ทั้งคุณและเพื่อน</b> ทันที 🧡
             </p>
           </div>
         </div>
@@ -180,7 +180,7 @@ export default function CouponsPage() {
                 <EmptyState
                   icon="ticket"
                   title="ยังไม่มีคูปอง"
-                  sub="ชวนเพื่อนมาใช้บริการ รับ 100฿ ได้เลยนะคะ 🧡"
+                  sub="ชวนเพื่อนสมัครด้วยโค้ดของคุณ รับ 100฿ ทั้งคู่เลยนะคะ 🧡"
                 />
               ) : (
                 <ul className="divide-y divide-petflow-line">
