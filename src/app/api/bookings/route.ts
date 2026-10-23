@@ -1,6 +1,7 @@
 import { GROOM_EXTRA_CARDS, groomUsesCard } from "@/lib/intake-rules";
 import { NextRequest, NextResponse } from "next/server";
 import { petWords } from "@/lib/pet-kind";
+import { isDayCareStay } from "@/lib/day-care";
 import {
   createCalendarEvent,
   updateCalendarEventConfirmed,
@@ -247,9 +248,11 @@ async function handlePost(req: NextRequest) {
     pickupTime: isRoom ? transport?.dropoffTime : undefined,
   });
 
+  const serviceLabel =
+    body.service === "room" ? (isDayCareStay(body) ? "Day Care" : "ห้องพัก") : "อาบน้ำ";
   const cal = await createCalendarEvent({
     summary: `${body.service === "room" ? "🏠" : "🛁"}${hasTransport(booking.transport) ? "🚗" : ""} ${body.catName} (${customer.name})`,
-    description: `${body.service === "room" ? "ห้องพัก" : "อาบน้ำ"} · ${body.notes || ""}${transportCalendarText(booking.transport)}`,
+    description: `${serviceLabel} · ${body.notes || ""}${transportCalendarText(booking.transport)}`,
     start: body.date || body.checkin,
     end: body.checkout || body.date || body.checkin,
     time: body.time,
@@ -267,7 +270,7 @@ async function handlePost(req: NextRequest) {
     formatBookingTelegram("📌 จองใหม่", {
       ลูกค้า: customer.name,
       น้องแมว: body.catName,
-      บริการ: body.service === "room" ? "ห้องพัก" : "อาบน้ำ",
+      บริการ: serviceLabel,
       ...(hasTransport(booking.transport) ? { รับส่ง: transportLabel(booking.transport) } : {}),
       วันที่: `${body.date || body.checkin}${body.time ? ` ${body.time}` : ""}`,
       ปฏิทิน: cal.googleUrl || icsUrl,
@@ -1261,7 +1264,7 @@ function groomInfoCardFor(
     if (body.time != null) patch.time = String(body.time) || undefined;
     if (body.checkin != null) patch.checkin = String(body.checkin) || undefined;
     if (body.checkout != null) patch.checkout = String(body.checkout) || undefined;
-    if (patch.checkin && patch.checkout && patch.checkout <= patch.checkin) {
+    if (patch.checkin && patch.checkout && patch.checkout < patch.checkin) {
       return NextResponse.json({ error: "checkout_before_checkin" }, { status: 400 });
     }
     const res = await rescheduleGroup(id, patch, body.applyToGroup !== false);

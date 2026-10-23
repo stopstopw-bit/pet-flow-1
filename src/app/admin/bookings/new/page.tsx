@@ -21,6 +21,7 @@ import { isFeatureOn } from "@/lib/features";
 import { GroomClashNote, confirmClashes, useGroomClashes } from "@/components/GroomClashNote";
 import { PetProgramSelect } from "@/components/GroomProgramPicker";
 import { UNKNOWN_CAT, isUnknownCat } from "@/lib/unknown-cat";
+import { dayCarePrice } from "@/lib/day-care";
 import {
   typeAvailability,
   attachClosures,
@@ -425,6 +426,8 @@ export default function NewBookingPage() {
   // แต่ละตัวอาบคนละโปรแกรมได้ — ค่าที่แก้รายตัว (ตามชื่อน้อง) ทับโปรแกรมรวมด้านบน
   const [petPrograms, setPetPrograms] = useState<Record<string, string>>({});
   const [appointmentDate, setAppointmentDate] = useState(presetDate);
+  /** Day Care = ฝากรายวัน ไม่ค้างคืน — วันออก = วันเข้า คิดครึ่งราคาห้อง */
+  const [dayCare, setDayCare] = useState(false);
   const [checkoutDate, setCheckoutDate] = useState(() => {
     if (!presetDate) return "";
     const d = new Date(`${presetDate}T12:00:00`);
@@ -492,7 +495,8 @@ export default function NewBookingPage() {
   const [lastBath, setLastBath] = useState<{ date: string; time: string } | null>(null);
   // วันอาบน้ำตั้งต้นเป็นวันออก (อาบก่อนกลับบ้าน) — เลื่อนวันเข้า/ออกแล้วตามไปด้วยจนกว่าจะแก้เอง
   const [groomDateTouched, setGroomDateTouched] = useState(false);
-  const stayOut = checkoutDate || appointmentDate;
+  /** วันออกที่ใช้คิดห้องว่าง — Day Care ใช้ห้องแค่วันเดียว */
+  const stayOut = dayCare ? appointmentDate : checkoutDate || appointmentDate;
   useEffect(() => {
     if (!groomDateTouched) setAddGroomDate(stayOut);
   }, [stayOut, groomDateTouched]);
@@ -580,12 +584,12 @@ export default function NewBookingPage() {
         existing,
         r.id,
         appointmentDate,
-        checkoutDate || appointmentDate
+        stayOut
       );
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [service, appointmentDate, checkoutDate, rooms, existing]);
+  }, [service, appointmentDate, stayOut, rooms, existing]);
 
   // ห้องที่เลือกไว้เต็มไปแล้ว (เช่นเพิ่งเปลี่ยนวัน) → เด้งไปห้องที่ยังว่าง
   useEffect(() => {
@@ -608,10 +612,10 @@ export default function NewBookingPage() {
       existing,
       roomId,
       appointmentDate,
-      checkoutDate || appointmentDate
+      stayOut
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [service, roomId, appointmentDate, checkoutDate, rooms, existing]);
+  }, [service, roomId, appointmentDate, stayOut, rooms, existing]);
 
   // เปลี่ยนห้อง/วัน แล้วเลขที่เคยเลือกไว้ไม่ว่างแล้ว → เคลียร์ทิ้ง (ให้ระบบเดาเองแทน)
   useEffect(() => {
@@ -625,11 +629,11 @@ export default function NewBookingPage() {
   const free2 = (id: string) => (availability[id]?.free ?? 0) - (id === roomId ? 1 : 0);
   const freeUnits2 = useMemo(() => {
     if (service !== "room" || !room2Id || !appointmentDate || compositionOf(room2Id, boardRooms)) return [];
-    return freeUnitsForRange(boardRooms, existing, room2Id, appointmentDate, checkoutDate || appointmentDate).filter(
+    return freeUnitsForRange(boardRooms, existing, room2Id, appointmentDate, stayOut).filter(
       (u) => !(room2Id === roomId && u === roomUnit)
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [service, room2Id, roomId, roomUnit, appointmentDate, checkoutDate, rooms, existing]);
+  }, [service, room2Id, roomId, roomUnit, appointmentDate, stayOut, rooms, existing]);
   useEffect(() => {
     if (room2Unit != null && !freeUnits2.includes(room2Unit)) setRoom2Unit(null);
   }, [freeUnits2, room2Unit]);
@@ -700,7 +704,12 @@ export default function NewBookingPage() {
           ? Number(fd.get("roomUnit")) || undefined
           : undefined,
       checkin: service === "room" ? String(fd.get("checkin") || "") : undefined,
-      checkout: service === "room" ? String(fd.get("checkout") || "") : undefined,
+      checkout:
+        service !== "room"
+          ? undefined
+          : dayCare
+            ? String(fd.get("checkin") || "")
+            : String(fd.get("checkout") || ""),
       notes,
       transport: transport.pickup || transport.dropoff ? transport : undefined,
     };
@@ -826,6 +835,8 @@ export default function NewBookingPage() {
       setGroomDateTouched(false);
       setAddGroomProgram("");
       setAddPetPrograms({});
+      // ลูกค้า Day Care มีน้อย — จองเสร็จกลับไปที่ "ค้างคืน" เสมอ
+      setDayCare(false);
       setRoomUnit(null);
       setGroomProgram("");
       setPetPrograms({});
@@ -933,7 +944,10 @@ export default function NewBookingPage() {
       {groomOn && hotelOn && (
         <Segmented
           value={service}
-          onChange={setService}
+          onChange={(v) => {
+            setService(v);
+            setDayCare(false);
+          }}
           className="mb-4"
           options={[
             { id: "groom", label: "อาบน้ำ", icon: "bath" },
@@ -1138,10 +1152,20 @@ export default function NewBookingPage() {
           </>
         ) : (
           <>
+            <Segmented
+              value={dayCare ? "day" : "stay"}
+              onChange={(v) => setDayCare(v === "day")}
+              options={[
+                { id: "stay", label: "ค้างคืน", icon: "bed" },
+                { id: "day", label: "Day Care", icon: "clock" },
+              ]}
+            />
             <div>
               <p className="text-xs font-bold text-brown-soft">ห้อง</p>
               <p className="mb-1.5 text-[10px] text-brown-faint">
-                ตัวเลขคือห้องที่ว่างจริงตลอดช่วงที่เลือก · ห้องเต็มจะกดไม่ได้
+                {dayCare
+                  ? "ฝากรายวัน ไม่ค้างคืน · คิดครึ่งราคาห้อง · ตัวเลขคือห้องที่ว่างวันนั้น"
+                  : "ตัวเลขคือห้องที่ว่างจริงตลอดช่วงที่เลือก · ห้องเต็มจะกดไม่ได้"}
               </p>
               <input type="hidden" name="room" value={roomId} />
               <div className="space-y-1.5">
@@ -1174,7 +1198,7 @@ export default function NewBookingPage() {
                           </span>
                         </span>
                         <span className="block text-[10px] text-brown-soft">
-                          {r.price} บาท/คืน
+                          {dayCare ? `${dayCarePrice(r.price)} บาท/วัน` : `${r.price} บาท/คืน`}
                           {full && a
                             ? ` · เต็มวันที่ ${a.tightestDate}`
                             : combo
@@ -1273,7 +1297,7 @@ export default function NewBookingPage() {
                       const f = free2(r.id);
                       return (
                         <option key={r.id} value={r.id} disabled={tracked && f <= 0}>
-                          {r.name} · {r.price} บาท/คืน{tracked ? (f > 0 ? ` · ว่าง ${f}` : " · เต็ม") : ""}
+                          {r.name} · {dayCare ? `${dayCarePrice(r.price)} บาท/วัน` : `${r.price} บาท/คืน`}{tracked ? (f > 0 ? ` · ว่าง ${f}` : " · เต็ม") : ""}
                         </option>
                       );
                     })}
@@ -1327,21 +1351,23 @@ export default function NewBookingPage() {
               )}
             </div>
             <Field
-              label="เช็คอิน"
+              label={dayCare ? "วันที่ฝาก" : "เช็คอิน"}
               name="checkin"
               type="date"
               required
               value={appointmentDate}
               onChange={setAppointmentDate}
             />
-            <Field
-              label="เช็คเอาท์"
-              name="checkout"
-              type="date"
-              required
-              value={checkoutDate}
-              onChange={setCheckoutDate}
-            />
+            {!dayCare && (
+              <Field
+                label="เช็คเอาท์"
+                name="checkout"
+                type="date"
+                required
+                value={checkoutDate}
+                onChange={setCheckoutDate}
+              />
+            )}
 
             {/* เข้าพัก + อาบน้ำ ลงทีเดียว — ระบบสร้างนัดอาบน้ำแยกอีกนัดให้ (ขอข้อมูล/แจ้งเตือนของอาบน้ำแยกกัน) */}
             {groomOn && (
