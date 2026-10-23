@@ -350,7 +350,7 @@ export default function RegisterPage() {
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="เช่น คุณมาย"
+                placeholder={ownerHistory.length ? "เช่น สมใจ ใจดี" : "เช่น คุณมาย"}
                 className={fieldClass}
               />
             </label>
@@ -369,6 +369,18 @@ export default function RegisterPage() {
               />
             </label>
           </>
+        )}
+
+        {ownerHistory.length > 0 && (
+          <div className="space-y-3">
+            <IntakeFieldsInput
+              fields={ownerHistory}
+              answers={ownerAnswers}
+              onChange={(k, v) => setOwnerAnswers((a) => ({ ...a, [k]: v }))}
+              showMissing={attempted}
+              inputClass={fieldClass}
+            />
+          </div>
         )}
 
         {/* ร้านที่ถามประวัติตอนสมัคร (เช่น Back Home) ไม่ขออีเมล — ลิสต์ของร้านไม่มี */}
@@ -417,18 +429,6 @@ export default function RegisterPage() {
             className={fieldClass}
           />
         </label>
-
-        {ownerHistory.length > 0 && (
-          <div className="space-y-3">
-            <IntakeFieldsInput
-              fields={ownerHistory}
-              answers={ownerAnswers}
-              onChange={(k, v) => setOwnerAnswers((a) => ({ ...a, [k]: v }))}
-              showMissing={attempted}
-              inputClass={fieldClass}
-            />
-          </div>
-        )}
 
         {!isCompany && (
           <div className="border-t border-petflow-line pt-3 empty:hidden">
@@ -674,9 +674,6 @@ export default function RegisterPage() {
                     <div className="space-y-3 border-t border-petflow-line pt-3">
                       <p className="text-sm font-extrabold text-petflow-chocolate">
                         ประวัติน้อง{speciesWords(cat.species || undefined, config).th}
-                        <span className="block text-[11px] font-normal text-brown-faint">
-                          ตอบครั้งเดียว ใช้ได้ทุกบริการ · ข้อที่ไม่มี พิมพ์ &quot;ไม่มี&quot; ได้เลยค่ะ
-                        </span>
                       </p>
                       <IntakeFieldsInput
                         fields={h.pet}
