@@ -43,6 +43,7 @@ import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { withTenant } from "@/lib/tenant-context";
 import { pushLineMessage, buildMemberBalanceFlex } from "@/lib/line";
 import { getSiteConfig } from "@/lib/config-store";
+import { isFeatureOn } from "@/lib/features";
 import { customerServiceLog } from "@/lib/customer-service-log";
 
 async function requireTenant(req: NextRequest) {
@@ -369,6 +370,10 @@ async function handlePatch(req: NextRequest) {
   }
 
   if (action === "topup_member") {
+    // ร้านปิดเครดิต Member ในตั้งค่า › เปิด/ปิดฟีเจอร์ — เติมใหม่ไม่ได้
+    if (!isFeatureOn(await getSiteConfig(), "memberCredit")) {
+      return NextResponse.json({ error: "feature_disabled", feature: "memberCredit" }, { status: 403 });
+    }
     const paidAmount =
       body.paidAmount != null
         ? Number(body.paidAmount)

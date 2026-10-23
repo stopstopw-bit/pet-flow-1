@@ -470,7 +470,7 @@ export function AddCustomerModal({
               </button>
 
               {!isCompany && (
-                <div className="rounded-petflow-sm border border-petflow-line p-3">
+                <div className="rounded-petflow-sm border border-petflow-line p-3 empty:hidden">
                   <TaxInvoiceFields
                     value={taxInvoice}
                     onChange={setTaxInvoice}

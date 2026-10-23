@@ -3,6 +3,7 @@ import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { withTenant } from "@/lib/tenant-context";
 import { getCustomer } from "@/lib/customers-store";
 import { getSiteConfig } from "@/lib/config-store";
+import { cardOn } from "@/lib/features";
 import { getLineCredentials } from "@/lib/line-config";
 import { DEFAULT_MESSAGES } from "@/lib/messages";
 import {
@@ -46,9 +47,12 @@ async function handlePost(req: NextRequest) {
   if (!c.lineUserId) {
     return NextResponse.json({ error: "ลูกค้ายังไม่ผูก LINE — ส่งการ์ดไม่ได้" }, { status: 400 });
   }
+  const cfg = await getSiteConfig();
+  // การ์ดที่ร้านปิดในตั้งค่า › เปิด/ปิดฟีเจอร์ ส่งไม่ได้
   const parts: Part[] = (Array.isArray(body.parts) ? body.parts : [])
     .map(String)
     .filter((p: string): p is Part => (CUSTOMER_CARD_PARTS as readonly string[]).includes(p))
+    .filter((p: Part) => cardOn(cfg, p))
     .slice(0, CUSTOMER_CARD_PARTS.length);
   if (parts.length === 0) return NextResponse.json({ error: "เลือกอย่างน้อย 1 การ์ด" }, { status: 400 });
 
@@ -66,7 +70,6 @@ async function handlePost(req: NextRequest) {
       { status: 400 }
     );
   }
-  const cfg = await getSiteConfig();
   const catNames = cats.map((x) => x.name).join(", ") || c.name;
 
   const messages: object[] = [];

@@ -7,6 +7,7 @@ import type { StoredBooking } from "./bookings-store";
 import type { InvoiceRecord } from "./invoices-store";
 import type { SiteConfig } from "./config-types";
 import { autoMuted } from "./auto-messages";
+import { isFeatureOn } from "./features";
 
 /**
  * ตัวสร้างข้อความเตือนลูกค้า — ใช้ร่วมกันทั้ง "cron อัตโนมัติ" และ "ปุ่มกดส่งเอง"
@@ -105,6 +106,8 @@ export function checkinPickerSender(
   cfg: SiteConfig
 ): "prestay" | "checkin" | null {
   if (group.length === 0 || group.every((x) => x.arrivalTime)) return null;
+  // ร้านปิดการ์ดเลือกเวลาในตั้งค่า › เปิด/ปิดฟีเจอร์
+  if (!isFeatureOn(cfg, "checkinTime")) return null;
   const auto = cfg.automation;
   const checkin = group[0].checkin || group[0].date || "";
   if (!checkin) return null;

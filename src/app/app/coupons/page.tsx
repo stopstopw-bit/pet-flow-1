@@ -7,6 +7,8 @@ import { LoadingScreen } from "@/components/LoadingScreen";
 import { BTN_PRIMARY, BTN_SECONDARY, PageHeader } from "@/components/PageHeader";
 import { EmptyState, SectionLabel } from "@/components/ui";
 import { Icon } from "@/components/Icon";
+import { isFeatureOn } from "@/lib/features";
+import { referralReward } from "@/lib/referral";
 
 type Coupon = {
   id: string;
@@ -59,8 +61,12 @@ export default function CouponsPage() {
       .catch(() => {});
   }, [profile?.lineUserId, customer?.id]);
 
+  // ร้านปิด "ชวนเพื่อนรับคูปอง" ในตั้งค่า — ไม่โชว์กล่องชวนเพื่อน
+  const referralOn = isFeatureOn(config, "referral");
+  const reward = referralReward(config).amount;
+
   const share = async () => {
-    const text = `🐾 มาใช้บริการที่ ${config.business.name} กันนะ! สมัครผ่านลิงก์นี้ + มาใช้บริการครั้งแรก รับคูปองส่วนลด 100฿ ทั้งคู่เลย 🎁\n${referralUrl}`;
+    const text = `🐾 มาใช้บริการที่ ${config.business.name} กันนะ! สมัครผ่านลิงก์นี้ + มาใช้บริการครั้งแรก รับคูปองส่วนลด ${reward}฿ ทั้งคู่เลย 🎁\n${referralUrl}`;
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -84,15 +90,16 @@ export default function CouponsPage() {
       />
 
       {/* ── ชวนเพื่อน ── */}
+      {referralOn && (
       <div className="rounded-petflow border border-honey/50 bg-gradient-to-br from-honey/25 via-card to-latte/15 p-4 shadow-petflow-sm">
         <div className="flex items-start gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-honey/40 text-petflow-chocolate">
             <Icon name="users" size={20} />
           </span>
           <div className="min-w-0">
-            <p className="text-sm font-extrabold text-petflow-chocolate">ชวนเพื่อน รับคนละ 100฿</p>
+            <p className="text-sm font-extrabold text-petflow-chocolate">ชวนเพื่อน รับคนละ {reward}฿</p>
             <p className="mt-0.5 text-xs leading-relaxed text-brown-soft">
-              ส่งลิงก์ให้เพื่อนสมัคร + <b className="text-latte-deep">มาใช้บริการครั้งแรก</b> — ได้คูปองส่วนลด <b className="text-latte-deep">100฿ ทั้งคุณและเพื่อน</b> 🧡
+              ส่งลิงก์ให้เพื่อนสมัคร + <b className="text-latte-deep">มาใช้บริการครั้งแรก</b> — ได้คูปองส่วนลด <b className="text-latte-deep">{reward}฿ ทั้งคุณและเพื่อน</b> 🧡
             </p>
           </div>
         </div>
@@ -111,6 +118,7 @@ export default function CouponsPage() {
           {copied ? "คัดลอกลิงก์แล้ว — เอาไปส่งเพื่อนได้เลย!" : "คัดลอกลิงก์ชวนเพื่อน"}
         </button>
       </div>
+      )}
 
       {/* ── คอร์ส/แพ็กเกจ ── */}
       {packages.length > 0 && (
@@ -150,7 +158,7 @@ export default function CouponsPage() {
                 <EmptyState
                   icon="ticket"
                   title="ยังไม่มีคูปอง"
-                  sub="ชวนเพื่อนมาใช้บริการ รับ 100฿ ได้เลยนะคะ 🧡"
+                  sub={referralOn ? `ชวนเพื่อนมาใช้บริการ รับ ${reward}฿ ได้เลยนะคะ 🧡` : "มีคูปองเมื่อไหร่ จะขึ้นที่นี่นะคะ 🧡"}
                 />
               ) : (
                 <ul className="divide-y divide-petflow-line">

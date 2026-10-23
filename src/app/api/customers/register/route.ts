@@ -9,6 +9,9 @@ import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { parseTaxInvoiceBody } from "@/lib/tax-invoice";
 import { withResolvedTenant } from "@/lib/tenant-context";
 import { requireCustomerSession } from "@/lib/customer-session";
+import { getSiteConfig } from "@/lib/config-store";
+import { isFeatureOn } from "@/lib/features";
+import { referralReward } from "@/lib/referral";
 
 /** ลูกค้ากรอกฟอร์มลงทะเบียน (ผู้ปกครอง + น้องแมว + ยินยอมรับข่าวสาร) */
 export async function POST(req: NextRequest) {
@@ -100,7 +103,8 @@ async function handlePost(req: NextRequest) {
   // คูปองจะจ่ายให้ทั้งคู่ตอนเพื่อน "มาใช้บริการครั้งแรก" (กันปั๊มบัญชีปลอมรับคูปอง)
   const refCode = String(body.referralCode || "").trim();
   let referredOk = false;
-  if (refCode && !customer.referredBy) {
+  // ร้านปิด "ชวนเพื่อนรับคูปอง" — ไม่ผูกคนชวน (ไม่มีคูปองให้ทีหลัง)
+  if (refCode && !customer.referredBy && isFeatureOn(await getSiteConfig(), "referral")) {
     const referrer = await findCustomerByReferralCode(refCode);
     if (referrer && referrer.id !== customer.id) {
       try {
@@ -110,7 +114,7 @@ async function handlePost(req: NextRequest) {
           formatBookingTelegram("👥 สมัครผ่านเพื่อนแนะนำ (รอมาใช้บริการ)", {
             คนชวน: referrer.name,
             คนถูกชวน: customer.name,
-            หมายเหตุ: "คูปอง 100฿ x2 จะจ่ายเมื่อมาใช้บริการครั้งแรก",
+            หมายเหตุ: `คูปอง ${referralReward(await getSiteConfig()).amount}฿ x2 จะจ่ายเมื่อมาใช้บริการครั้งแรก`,
           })
         );
       } catch (e) {

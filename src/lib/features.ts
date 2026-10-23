@@ -10,24 +10,37 @@ import type { SiteConfig } from "./config-types";
 export type FeatureKey =
   | "selfBooking"
   | "hotel"
+  | "stayInfo"
+  | "idCard"
+  | "prestay"
+  | "checkinTime"
   | "grooming"
+  | "groomInfo"
+  | "vaccine"
+  | "consent"
   | "transport"
   | "points"
+  | "pointsRedeem"
+  | "memberCredit"
   | "promos"
   | "coupons"
+  | "referral"
   | "packages"
   | "pos"
   | "careChecklist"
   | "groomQueue"
   | "finance"
   | "tax"
+  | "taxInvoice"
   | "payroll"
   | "insights"
   | "staffPerformance"
   | "birthdays"
   | "followUp"
   | "lineCards"
-  | "articles";
+  | "articles"
+  | "exportSheets"
+  | "guide";
 
 export type FeatureDef = {
   key: FeatureKey;
@@ -39,18 +52,41 @@ export type FeatureDef = {
   adminHrefs?: string[];
   /** หน้าในแอปลูกค้าที่เข้าไม่ได้เมื่อปิด */
   appPaths?: string[];
+  /**
+   * หน้าที่ใช้ร่วมกันหลายเรื่อง แยกด้วยพารามิเตอร์ในลิงก์ (เช่น /app/pet-docs?need=idcard)
+   * ตรงกับลิงก์ = ใช้ฟีเจอร์นี้ตัดสินแทน appPaths ของหน้านั้น
+   */
+  appQueries?: { path: string; param: string; value: string }[];
 };
 
-export const FEATURE_GROUPS = ["บริการของร้าน", "ลูกค้าในแอป", "ขายและการเงิน", "การตลาด", "หลังร้าน"] as const;
+export const FEATURE_GROUPS = [
+  "บริการของร้าน",
+  "ข้อมูลก่อนรับน้อง",
+  "ลูกค้าในแอป",
+  "ขายและการเงิน",
+  "การตลาด",
+  "หลังร้าน",
+] as const;
 
+/**
+ * ลำดับในรายการ = ลำดับที่โชว์ในหน้าตั้งค่า — ฟีเจอร์ย่อย (requires) วางถัดจากฟีเจอร์แม่ หรือในกลุ่มของเรื่องนั้น
+ */
 export const FEATURES: FeatureDef[] = [
   // ── บริการของร้าน ──
   {
     key: "hotel",
     label: "รับฝาก / ห้องพัก",
-    hint: "หน้าห้องพัก กฎการฝาก และข้อตกลงก่อนเข้าพักในแอปลูกค้า",
+    hint: "หน้าห้องพักและกฎการฝากในแอปลูกค้า",
     group: "บริการของร้าน",
-    appPaths: ["/app/rooms", "/app/boarding-rules", "/app/consent"],
+    appPaths: ["/app/rooms", "/app/boarding-rules"],
+  },
+  {
+    key: "checkinTime",
+    label: "ให้ลูกค้าเลือกเวลาส่ง-รับน้อง",
+    hint: "การ์ดเลือกเวลาเช็คอิน/เช็คเอาท์ ทั้งกดส่งเองและส่งอัตโนมัติ",
+    group: "บริการของร้าน",
+    requires: "hotel",
+    appPaths: ["/app/booking-time"],
   },
   {
     key: "careChecklist",
@@ -63,9 +99,9 @@ export const FEATURES: FeatureDef[] = [
   {
     key: "grooming",
     label: "อาบน้ำตัดขน",
-    hint: "หน้าอาบน้ำและฟอร์มประวัติก่อนอาบน้ำในแอปลูกค้า",
+    hint: "หน้าอาบน้ำในแอปลูกค้า",
     group: "บริการของร้าน",
-    appPaths: ["/app/grooming", "/app/groom-info"],
+    appPaths: ["/app/grooming"],
   },
   {
     key: "groomQueue",
@@ -82,6 +118,52 @@ export const FEATURES: FeatureDef[] = [
     group: "บริการของร้าน",
     appPaths: ["/app/booking-transport"],
   },
+  // ── ข้อมูลก่อนรับน้อง (การ์ด LINE ที่ร้านขอจากลูกค้า) ──
+  {
+    key: "stayInfo",
+    label: "ฟอร์มข้อมูลน้องก่อนเข้าพัก",
+    hint: "การ์ดขอข้อมูลก่อนเข้าพัก (ใช้เมื่อเปิดรับฝาก)",
+    group: "ข้อมูลก่อนรับน้อง",
+    requires: "hotel",
+    appQueries: [{ path: "/app/groom-info", param: "kind", value: "stay" }],
+  },
+  {
+    key: "groomInfo",
+    label: "ฟอร์มประวัติน้องก่อนอาบน้ำ",
+    hint: "การ์ดขอประวัติก่อนอาบน้ำ (ใช้เมื่อเปิดอาบน้ำ)",
+    group: "ข้อมูลก่อนรับน้อง",
+    requires: "grooming",
+    appPaths: ["/app/groom-info"],
+  },
+  {
+    key: "vaccine",
+    label: "ขอสมุดวัคซีน",
+    hint: "การ์ดขอสมุดวัคซีน และช่องแนบสมุดวัคซีนในแอปลูกค้า",
+    group: "ข้อมูลก่อนรับน้อง",
+    appPaths: ["/app/pet-docs"],
+  },
+  {
+    key: "idCard",
+    label: "ขอบัตรประชาชนผู้ปกครอง",
+    hint: "การ์ดขอบัตรประชาชน และช่องแนบบัตรตอนกดยอมรับกฎ (ใช้เมื่อเปิดรับฝาก)",
+    group: "ข้อมูลก่อนรับน้อง",
+    requires: "hotel",
+    appQueries: [{ path: "/app/pet-docs", param: "need", value: "idcard" }],
+  },
+  {
+    key: "consent",
+    label: "กฎ + กดยินยอม (เซ็นชื่อ)",
+    hint: "การ์ดกฎของร้านให้ลูกค้ากดยอมรับและเซ็นชื่อ",
+    group: "ข้อมูลก่อนรับน้อง",
+    appPaths: ["/app/consent"],
+  },
+  {
+    key: "prestay",
+    label: "การ์ดแจ้งเตรียมตัวก่อนเข้าพัก",
+    hint: "การ์ดบอกของที่ต้องเตรียมมา (ใช้เมื่อเปิดรับฝาก)",
+    group: "ข้อมูลก่อนรับน้อง",
+    requires: "hotel",
+  },
   // ── ลูกค้าในแอป ──
   {
     key: "selfBooking",
@@ -93,9 +175,22 @@ export const FEATURES: FeatureDef[] = [
   {
     key: "points",
     label: "แต้มสะสม",
-    hint: "เมนูแต้มและการแลกรางวัลในแอปลูกค้า",
+    hint: "เมนูแต้มในแอปลูกค้า",
     group: "ลูกค้าในแอป",
     appPaths: ["/app/points"],
+  },
+  {
+    key: "pointsRedeem",
+    label: "แลกแต้มเป็นรางวัล",
+    hint: "ปิดแล้วลูกค้ายังเห็นแต้ม แต่กดแลกเองในแอปไม่ได้",
+    group: "ลูกค้าในแอป",
+    requires: "points",
+  },
+  {
+    key: "memberCredit",
+    label: "เครดิต Member (เติมเงินล่วงหน้า)",
+    hint: "ปิดแล้วเติมเครดิตใหม่ไม่ได้ ยอดเดิมที่ลูกค้ามีอยู่ยังหักจ่ายได้",
+    group: "ลูกค้าในแอป",
   },
   // ── ขายและการเงิน ──
   {
@@ -111,6 +206,12 @@ export const FEATURES: FeatureDef[] = [
     hint: "ลูกค้าซื้อคอร์สหรือเติมเครดิตเองในแอป",
     group: "ขายและการเงิน",
     adminHrefs: ["/admin/packages"],
+  },
+  {
+    key: "taxInvoice",
+    label: "ใบกำกับภาษี / สมัครในนามบริษัท",
+    hint: "ช่องขอใบกำกับภาษี และตัวเลือกสมัครในนามนิติบุคคล ในหน้าสมัครสมาชิกและข้อมูลลูกค้า",
+    group: "ขายและการเงิน",
   },
   {
     key: "finance",
@@ -145,10 +246,17 @@ export const FEATURES: FeatureDef[] = [
   {
     key: "coupons",
     label: "คูปอง",
-    hint: "คูปองส่วนลด กระเป๋าคูปอง และคูปองชวนเพื่อน",
+    hint: "คูปองส่วนลด กระเป๋าคูปองในแอป และคูปองวันเกิด",
     group: "การตลาด",
     adminHrefs: ["/admin/coupons"],
     appPaths: ["/app/coupons", "/app/claim-coupon"],
+  },
+  {
+    key: "referral",
+    label: "ชวนเพื่อนรับคูปอง",
+    hint: "ลิงก์ชวนเพื่อนในกระเป๋าคูปอง — เพื่อนมาใช้บริการครั้งแรก ได้คูปองทั้งคู่",
+    group: "การตลาด",
+    requires: "coupons",
   },
   {
     key: "birthdays",
@@ -160,7 +268,7 @@ export const FEATURES: FeatureDef[] = [
   {
     key: "followUp",
     label: "ทักลูกค้าที่หายไปทาง LINE",
-    hint: "ปุ่มตามลูกค้าในหน้าลูกค้า และการส่งอัตโนมัติ",
+    hint: "ปุ่มการ์ด \"คิดถึงน้อง\" ในหน้าลูกค้า และการส่งอัตโนมัติ",
     group: "การตลาด",
   },
   {
@@ -192,7 +300,34 @@ export const FEATURES: FeatureDef[] = [
     group: "หลังร้าน",
     adminHrefs: ["/admin/cards"],
   },
+  {
+    key: "exportSheets",
+    label: "ส่งออกไป Google Sheets",
+    hint: "ปุ่มส่งออกข้อมูลในหน้าลูกค้า รายรับ-รายจ่าย และภาษี",
+    group: "หลังร้าน",
+  },
+  {
+    key: "guide",
+    label: "ลิงก์คู่มือการใช้งาน",
+    hint: "ปุ่ม \"คู่มือ\" ในเมนูหลังร้าน",
+    group: "หลังร้าน",
+  },
 ];
+
+/**
+ * การ์ดถามข้อมูล / หัวข้อข้อความอัตโนมัติ → ฟีเจอร์ที่คุม
+ * (ชื่อ part เดียวกับ INTAKE_CARDS / AUTO_MESSAGE_TOPICS / ชุดการ์ด)
+ */
+export const CARD_FEATURE: Record<string, FeatureKey> = {
+  stayInfo: "stayInfo",
+  groomInfo: "groomInfo",
+  vaccine: "vaccine",
+  idcard: "idCard",
+  consent: "consent",
+  prestay: "prestay",
+  checkin: "checkinTime",
+  checkout: "checkinTime",
+};
 
 const BY_KEY = Object.fromEntries(FEATURES.map((f) => [f.key, f])) as Record<FeatureKey, FeatureDef>;
 
@@ -215,10 +350,32 @@ export function disabledFeatureForAdminPath(config: WithFeatures, pathname: stri
   return f && !isFeatureOn(config, f.key) ? f.key : null;
 }
 
-/** ฟีเจอร์ที่ปิดอยู่ซึ่งคุมหน้านี้ (แอปลูกค้า) — null = เปิดได้ */
-export function disabledFeatureForAppPath(config: WithFeatures, pathname: string): FeatureKey | null {
-  const f = FEATURES.find((x) => x.appPaths?.some((h) => matches(pathname, h)));
+/**
+ * ฟีเจอร์ที่ปิดอยู่ซึ่งคุมหน้านี้ (แอปลูกค้า) — null = เปิดได้
+ * search = ส่วน ?a=b ของลิงก์ (ไม่ใส่ = ดูแค่ path)
+ */
+export function disabledFeatureForAppPath(
+  config: WithFeatures,
+  pathname: string,
+  search = ""
+): FeatureKey | null {
+  const params = new URLSearchParams(search);
+  const byQuery = FEATURES.find((x) =>
+    x.appQueries?.some((q) => matches(pathname, q.path) && params.get(q.param) === q.value)
+  );
+  const f = byQuery || FEATURES.find((x) => x.appPaths?.some((h) => matches(pathname, h)));
   return f && !isFeatureOn(config, f.key) ? f.key : null;
+}
+
+/** การ์ด/หัวข้อนี้ส่งได้ไหม — part ที่ไม่ได้ผูกฟีเจอร์ (เช่น แจ้งเตือนนัด ใบเสร็จ) = ได้เสมอ */
+export function cardOn(config: WithFeatures, part: string): boolean {
+  const key = CARD_FEATURE[part];
+  return key ? isFeatureOn(config, key) : true;
+}
+
+/** หัวข้อการ์ดที่ร้านปิดอยู่ทั้งหมด */
+export function cardsOff(config: WithFeatures): string[] {
+  return Object.keys(CARD_FEATURE).filter((p) => !cardOn(config, p));
 }
 
 export function featureLabel(key: FeatureKey) {

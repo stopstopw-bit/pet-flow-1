@@ -387,6 +387,8 @@ function NumField({
 }
 
 function BillsView({ tabs }: { tabs: React.ReactNode }) {
+  const { config: siteConfig } = useConfig();
+  const creditOn = isFeatureOn(siteConfig, "memberCredit");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [promos, setPromos] = useState<Promo[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -2808,18 +2810,23 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
                       "ยกเลิกการชำระบิลนี้? (กดผิดใช่ไหม)\nจะกลับเป็น 'รอชำระ' + ย้อนรายรับ/แต้ม/เครดิตที่ลงไป"
                     ),
                 },
-                {
-                  label: "โยกเป็นเครดิต (ลูกค้าไม่มา)",
-                  icon: "wallet",
-                  disabled: invoiceBusy === `${inv.id}:to_credit`,
-                  onClick: () =>
-                    invoiceAction(
-                      inv.id,
-                      "to_credit",
-                      `โยกเป็นเครดิตแล้ว 💰 +${inv.total.toLocaleString()} บาท ใช้ได้ครั้งหน้า`,
-                      `โยกยอด ${inv.total.toLocaleString()} บาท ไปเป็นเครดิต Member ของ ${inv.customerName}?\nลูกค้าจ่ายแล้วแต่ไม่มา — ใช้เครดิตนี้จ่ายครั้งหน้าได้ (ไม่นับรายรับซ้ำ)`
-                    ),
-                },
+                // ร้านปิดเครดิต Member ในตั้งค่า › เปิด/ปิดฟีเจอร์ — ไม่มีเมนูโยกเป็นเครดิต
+                ...(creditOn
+                  ? [
+                    {
+                      label: "โยกเป็นเครดิต (ลูกค้าไม่มา)",
+                      icon: "wallet",
+                      disabled: invoiceBusy === `${inv.id}:to_credit`,
+                      onClick: () =>
+                        invoiceAction(
+                          inv.id,
+                          "to_credit",
+                          `โยกเป็นเครดิตแล้ว 💰 +${inv.total.toLocaleString()} บาท ใช้ได้ครั้งหน้า`,
+                          `โยกยอด ${inv.total.toLocaleString()} บาท ไปเป็นเครดิต Member ของ ${inv.customerName}?\nลูกค้าจ่ายแล้วแต่ไม่มา — ใช้เครดิตนี้จ่ายครั้งหน้าได้ (ไม่นับรายรับซ้ำ)`
+                        ),
+                    },
+                    ]
+                  : []),
                 { label: "ลบบิล", icon: "trash", danger: true, disabled: invoiceBusy === `${inv.id}:delete`, onClick: del },
               ]
             : [

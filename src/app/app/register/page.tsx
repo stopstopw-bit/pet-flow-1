@@ -45,6 +45,8 @@ import { OTHER_BREED } from "@/lib/cat-breeds";
 import { REFERRAL_OPTIONS } from "@/lib/referral-options";
 import { asksSpecies, breedOptionsForSpecies, petWords, speciesWords, type PetSpecies } from "@/lib/pet-kind";
 import { SpeciesPicker } from "@/components/SpeciesPicker";
+import { isFeatureOn } from "@/lib/features";
+import { referralReward } from "@/lib/referral";
 import { StaffNoteTagPicker } from "@/components/StaffNoteTagPicker";
 
 function emptyCat(): CatInput {
@@ -276,10 +278,10 @@ export default function RegisterPage() {
         showLang={false}
       />
 
-      {referralCode && (
+      {referralCode && isFeatureOn(config, "referral") && (
         <div className="mb-4 flex items-start gap-2 rounded-petflow border border-honey/50 bg-honey/20 px-4 py-3 text-xs font-extrabold text-petflow-chocolate">
           <Icon name="gift" size={16} className="mt-px" />
-          <span>สมัครผ่านเพื่อนแนะนำ — มาใช้บริการครั้งแรก รับคูปองส่วนลด <span className="text-latte-deep">100฿</span> ทั้งคุณและเพื่อน!</span>
+          <span>สมัครผ่านเพื่อนแนะนำ — มาใช้บริการครั้งแรก รับคูปองส่วนลด <span className="text-latte-deep">{referralReward(config).amount}฿</span> ทั้งคุณและเพื่อน!</span>
         </div>
       )}
 
@@ -378,7 +380,7 @@ export default function RegisterPage() {
         </label>
 
         {!isCompany && (
-          <div className="border-t border-petflow-line pt-3">
+          <div className="border-t border-petflow-line pt-3 empty:hidden">
             <TaxInvoiceFields
               value={taxInvoice}
               onChange={setTaxInvoice}

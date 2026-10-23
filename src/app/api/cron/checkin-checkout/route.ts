@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listBookings } from "@/lib/bookings-store";
 import { autoMuted } from "@/lib/auto-messages";
+import { isFeatureOn } from "@/lib/features";
 import { getSiteConfig } from "@/lib/config-store";
 import { pushLineMessage, buildTimePickerFlex } from "@/lib/line";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
@@ -55,8 +56,10 @@ async function runForTenant(slot: string) {
   let checkinReminders = 0;
   let checkoutReminders = 0;
 
-  const doCheckin = auto?.checkinReminderEnabled !== false && (auto?.checkinReminderTime || "12:00") === slot;
-  const doCheckout = auto?.checkoutReminderEnabled !== false && (auto?.checkoutReminderTime || "19:30") === slot;
+  // ร้านปิด "ให้ลูกค้าเลือกเวลาส่ง-รับน้อง" ในตั้งค่า › เปิด/ปิดฟีเจอร์ — ไม่ส่งการ์ดเลือกเวลา
+  const timeOn = isFeatureOn(cfg, "checkinTime");
+  const doCheckin = timeOn && auto?.checkinReminderEnabled !== false && (auto?.checkinReminderTime || "12:00") === slot;
+  const doCheckout = timeOn && auto?.checkoutReminderEnabled !== false && (auto?.checkoutReminderTime || "19:30") === slot;
   if (!doCheckin && !doCheckout) {
     return { ok: true, skipped: true, checkinReminders, checkoutReminders };
   }

@@ -13,6 +13,8 @@ import { LoadingScreen } from "@/components/LoadingScreen";
 import { groomProgram } from "@/lib/grooming-prices";
 import { groupBookings, groupCatNames } from "@/lib/booking-group";
 import { TimeSlotPicker } from "@/components/TimeSlotPicker";
+import { useConfig } from "@/components/ConfigProvider";
+import { isFeatureOn } from "@/lib/features";
 
 /** API ส่ง checkin มาด้วยจริง (ใช้จัดกลุ่มบ้านเดียวกัน/นัดเดียวกัน) แต่ type Booking กลางไม่มีฟิลด์นี้ */
 type BookingRow = Booking & { checkin?: string; arrivalTime?: string };
@@ -32,6 +34,9 @@ function BookingsContent() {
   const [checkin, setCheckin] = useState("");
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const scrolledRef = useRef(false);
+  const { config } = useConfig();
+  // นัดเข้าพักให้เลือกเวลามาส่งก่อนยืนยัน — เว้นร้านปิด "ให้ลูกค้าเลือกเวลาส่ง-รับน้อง"
+  const asksTime = (b: BookingRow) => b.service === "room" && isFeatureOn(config, "checkinTime");
 
   const load = useCallback(async () => {
     if (!profile?.lineUserId) return;
@@ -58,7 +63,7 @@ function BookingsContent() {
     if (!group) return;
     const primary = group[0];
     scrolledRef.current = true;
-    if (primary.status === "pending" && primary.service === "room") {
+    if (primary.status === "pending" && asksTime(primary)) {
       setPickId(primary.id);
       setCheckin(savedArrival(primary));
     }
@@ -85,7 +90,7 @@ function BookingsContent() {
           action: ids.length > 1 ? "confirm_group" : "confirm",
           // ต้องส่ง lineUserId ไปด้วย ไม่งั้นฝั่งเซิร์ฟเวอร์เช็คว่า "นัดนี้เป็นของเราไหม" ไม่ผ่าน → 401
           lineUserId: profile?.lineUserId,
-          checkinTime: primary.service === "room" ? checkin : undefined,
+          checkinTime: asksTime(primary) ? checkin : undefined,
         }),
       });
 
@@ -193,7 +198,7 @@ function BookingsContent() {
                 {/* นัดที่ร้านสร้างให้ → ลูกค้ากดยืนยันเข้าร่วม (ตอบรับ) ได้ตามเดิม */}
                 {primary.status === "pending" && !primary.selfBooked && (
                   <div className="mt-3">
-                    {primary.service === "room" && pickId === primary.id && (
+                    {asksTime(primary) && pickId === primary.id && (
                       <div className="mb-3 rounded-petflow-sm bg-paper p-3">
                         <p className="mb-2 flex items-center gap-1.5 text-xs font-bold text-brown">
                           <Icon name="clock" size={14} />
@@ -206,10 +211,10 @@ function BookingsContent() {
                       type="button"
                       disabled={
                         confirmingId === primary.id ||
-                        (primary.service === "room" && pickId === primary.id && !checkin)
+                        (asksTime(primary) && pickId === primary.id && !checkin)
                       }
                       onClick={() => {
-                        if (primary.service === "room" && pickId !== primary.id) {
+                        if (asksTime(primary) && pickId !== primary.id) {
                           setPickId(primary.id);
                           setCheckin(savedArrival(primary));
                         } else {
@@ -240,7 +245,7 @@ function BookingsContent() {
                     <p className="mt-3 flex items-center gap-1.5 pl-[52px] text-xs font-semibold text-ok">
                       <Icon name="clock" size={14} />
                       เวลามาส่งน้อง {savedArrival(primary)} น.
-                      {primary.status === "confirmed" && (
+                      {primary.status === "confirmed" && asksTime(primary) && (
                         <a
                           href={`/app/booking-time?id=${primary.id}&type=checkin`}
                           className="ml-auto inline-flex min-h-[44px] items-center px-1 font-bold text-brown-soft underline"

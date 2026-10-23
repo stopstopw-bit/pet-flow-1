@@ -3476,11 +3476,14 @@ export default function CustomersPage() {
         <div className="mt-6">
           <SectionLabel>Add &amp; sell · เพิ่มแต้ม / ขายคอร์ส / เติมเครดิต</SectionLabel>
           <div ref={setToolsSlot} />
-          <MemberTopupSection
-            customerId={c.id}
-            memberCredit={c.memberCredit}
-            onDone={() => open(c.id)}
-          />
+          {/* ร้านปิดเครดิต Member ในตั้งค่า › เปิด/ปิดฟีเจอร์ — เติมใหม่ไม่ได้ (ยอดเดิมยังหักจ่ายได้) */}
+          {isFeatureOn(config, "memberCredit") && (
+            <MemberTopupSection
+              customerId={c.id}
+              memberCredit={c.memberCredit}
+              onDone={() => open(c.id)}
+            />
+          )}
         </div>
       </div>
     );

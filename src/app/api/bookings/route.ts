@@ -57,6 +57,7 @@ import {
   getIntakeStatus,
 } from "@/lib/customers-store";
 import { getSiteConfig } from "@/lib/config-store";
+import { cardOn, CARD_FEATURE, featureLabel } from "@/lib/features";
 import { cleanTransport, hasTransport, transportLabel, type BookingTransport } from "@/lib/transport";
 import { DEFAULT_MESSAGES, renderTemplate } from "@/lib/messages";
 import { listInvoices, updateInvoice, invoiceCatNames, findOpenInvoiceForBooking } from "@/lib/invoices-store";
@@ -314,6 +315,15 @@ async function handlePatch(req: NextRequest, admin: boolean) {
     }
   }
 
+  // ร้านปิดการ์ดเรื่องนี้ในตั้งค่า › เปิด/ปิดฟีเจอร์ — กันที่ API ด้วย ไม่ใช่แค่ซ่อนปุ่ม
+  const singlePart = singleCardPart(action, body.kind, b);
+  if (singlePart && !cardOn(await getSiteConfig(), singlePart)) {
+    return NextResponse.json(
+      { error: `ร้านปิด "${featureLabel(CARD_FEATURE[singlePart])}" ไว้ในตั้งค่า › เปิด/ปิดฟีเจอร์` },
+      { status: 403 }
+    );
+  }
+
   let notifyError: string | undefined;
   if (action === "confirm") {
     // ต้องเช็คสถานะ "ก่อน" อัปเดต — กันส่งข้อความซ้ำถ้ากดยืนยันซ้ำ/ลูกค้ากดยืนยันหลังร้านยืนยันไปแล้ว
@@ -469,6 +479,28 @@ const defaultInfoKind = (b: StoredBooking): InfoKind => (b.service === "room" ? 
 /** ร้านเลือกเองได้ว่าจะถามแบบไหน (ทุกนัดส่งได้ทั้งสองแบบ) — ไม่ส่งมา = ตามบริการของนัด */
 const pickInfoKind = (raw: unknown, b: StoredBooking): InfoKind =>
   raw === "stay" || raw === "groom" ? raw : defaultInfoKind(b);
+/** ปุ่มส่งการ์ดเดี่ยว → หัวข้อการ์ด (ใช้เช็คสวิตช์ฟีเจอร์) · null = ไม่ใช่การ์ดที่ปิดได้ */
+function singleCardPart(action: unknown, kind: unknown, b: StoredBooking): string | null {
+  switch (action) {
+    case "send_groom_info":
+    case "send_groom_info_group":
+      return pickInfoKind(kind, b) === "stay" ? "stayInfo" : "groomInfo";
+    case "send_vaccine_request":
+      return "vaccine";
+    case "send_idcard_request":
+      return "idcard";
+    case "send_consent":
+      return "consent";
+    case "send_prestay":
+      return "prestay";
+    case "send_checkin_reminder":
+      return "checkin";
+    case "send_checkout_reminder":
+      return "checkout";
+    default:
+      return null;
+  }
+}
 /** เคยกรอกฟอร์มแบบนี้ไว้แล้วหรือยัง (ผูกกับตัวน้อง ข้ามนัดก็ยังจำได้) */
 const infoAlreadyFilled = (to: string, catName: string, kind: InfoKind) =>
   kind === "stay" ? getCatStayInfo(to, catName) : getCatGroomInfo(to, catName);
@@ -698,11 +730,18 @@ function groomInfoCardFor(
       return NextResponse.json({ error: NO_LINE_ERROR }, { status: 400 });
     }
     // เรื่องขอข้อมูลหลายเรื่องรวมเป็นการ์ดใบเดียว จึงเลือกได้เกิน 5 หัวข้อ — นับ 5 ใบที่ตัวการ์ดจริงตอนท้าย
-    const parts: string[] = (Array.isArray(body.parts) ? body.parts : []).map(String).slice(0, 20);
-    if (parts.length === 0) {
-      return NextResponse.json({ error: "เลือกอย่างน้อย 1 การ์ด" }, { status: 400 });
-    }
     const cfg = await getSiteConfig();
+    // ตัดการ์ดที่ร้านปิดในตั้งค่า › เปิด/ปิดฟีเจอร์ออก (การ์ดรวมขอข้อมูลก็ขอเฉพาะเรื่องที่เปิดอยู่)
+    const parts: string[] = (Array.isArray(body.parts) ? body.parts : [])
+      .map(String)
+      .filter((p: string) => cardOn(cfg, p))
+      .slice(0, 20);
+    if (parts.length === 0) {
+      return NextResponse.json(
+        { error: intakeAlways ? "ร้านปิดการ์ดขอข้อมูลทุกเรื่องไว้ในตั้งค่า › เปิด/ปิดฟีเจอร์" : "เลือกอย่างน้อย 1 การ์ด" },
+        { status: 400 }
+      );
+    }
     const messages: object[] = [];
     /** การ์ดที่ระบบข้ามให้ พร้อมเหตุผล — ส่งกลับไปบอกพนักงานที่หน้าจอ */
     const skipped: string[] = [];
