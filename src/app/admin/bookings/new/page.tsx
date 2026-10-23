@@ -484,6 +484,8 @@ export default function NewBookingPage() {
   const [addGroomProgram, setAddGroomProgram] = useState("");
   const withGroom = service === "room" && alsoGroom && groomOn;
   const clashes = useGroomClashes(withGroom ? addGroomDate : "", addGroomTime);
+  /** นัดอาบน้ำก่อนกลับที่เพิ่งบันทึกไปพร้อมการเข้าพัก — โชว์ในแผงจองสำเร็จ */
+  const [lastBath, setLastBath] = useState<{ date: string; time: string } | null>(null);
   // วันอาบน้ำตั้งต้นเป็นวันออก (อาบก่อนกลับบ้าน) — เลื่อนวันเข้า/ออกแล้วตามไปด้วยจนกว่าจะแก้เอง
   const [groomDateTouched, setGroomDateTouched] = useState(false);
   const stayOut = checkoutDate || appointmentDate;
@@ -801,6 +803,11 @@ export default function NewBookingPage() {
     if (created.length > 0) {
       setSaved(true);
       setLastBookings(created);
+      setLastBath(
+        created.some((x) => x.service === "groom") && created.some((x) => x.service === "room")
+          ? { date: addGroomDate, time: addGroomTime }
+          : null
+      );
       setCustomerId("");
       setPickedCustomer(null);
       setCustomerName("");
@@ -847,9 +854,7 @@ export default function NewBookingPage() {
               {/* เข้าพัก + อาบน้ำด้วย = น้องตัวเดียวมีสองนัด → นับตัว ไม่ใช่นับนัด */}
               <p className="text-sm font-extrabold text-ok">
                 จองแล้ว {new Set(lastBookings.map((b) => b.catName)).size} ตัว
-                {lastBookings.some((b) => b.service === "room") && lastBookings.some((b) => b.service === "groom")
-                  ? " · เข้าพัก + อาบน้ำ"
-                  : ""}
+                {lastBath ? " · เข้าพัก + อาบน้ำ" : ""}
               </p>
               <p className="truncate text-xs text-brown-soft">
                 {Array.from(new Set(lastBookings.map((b) => b.catName))).join(", ")}
@@ -857,7 +862,10 @@ export default function NewBookingPage() {
             </div>
             <button
               type="button"
-              onClick={() => setLastBookings([])}
+              onClick={() => {
+                setLastBookings([]);
+                setLastBath(null);
+              }}
               className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full bg-card px-3.5 text-xs font-bold text-brown shadow-petflow-sm"
             >
               <Icon name="plus" size={16} />
@@ -865,31 +873,33 @@ export default function NewBookingPage() {
             </button>
           </div>
           {/* จองหลายตัวในครั้งเดียว = บ้านเดียวกัน → บิลเดียว ส่ง LINE ชุดเดียว (การ์ดรวมชื่อทุกตัว)
-              เข้าพัก + อาบน้ำด้วย = สองนัด แยกการ์ดละบริการ (การ์ด/บิลของแต่ละบริการไม่ปนกัน) */}
-          {(["room", "groom"] as const).map((svc) => {
-            const list = lastBookings.filter((x) => x.service === svc);
-            if (list.length === 0) return null;
+              เข้าพัก + อาบน้ำก่อนกลับ = นัดเดียวกัน: การ์ดเดียว บิลเดียว (คิวอาบน้ำกันเวลาช่างไว้ข้างหลัง) */}
+          {(() => {
+            const stays = lastBookings.filter((x) => x.service === "room");
+            const list = stays.length > 0 ? stays : lastBookings;
             const b = list[0];
             const many = list.length > 1;
-            const both = list.length < lastBookings.length;
             return (
-              <div key={svc} className="rounded-petflow-sm border border-sage/30 bg-card p-3">
+              <div className="rounded-petflow-sm border border-sage/30 bg-card p-3">
                 <div className="flex items-center justify-between gap-2">
                   <p className="flex min-w-0 items-center gap-1.5 text-sm font-extrabold text-petflow-chocolate">
-                    <Icon name={both ? (svc === "room" ? "bed" : "bath") : "paw"} size={16} className="shrink-0 text-brown-soft" />
-                    <span className="truncate">
-                      {both ? (svc === "room" ? "เข้าพัก · " : "อาบน้ำ · ") : ""}
-                      {many ? "ทั้งบ้าน" : b.catName}
-                    </span>
+                    <Icon name="paw" size={16} className="shrink-0 text-brown-soft" />
+                    <span className="truncate">{many ? "ทั้งบ้าน" : b.catName}</span>
                   </p>
                   <Link
                     href={`/admin/billing?bookingId=${b.id}`}
                     className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full bg-petflow-chocolate px-3.5 text-xs font-extrabold text-card"
                   >
                     <Icon name="receipt" size={16} />
-                    {many ? "ออกบิลรวม" : "ออกบิลเลย"}
+                    {many || lastBath ? "ออกบิลรวม" : "ออกบิลเลย"}
                   </Link>
                 </div>
+                {lastBath && (
+                  <p className="mt-1.5 flex items-center gap-1.5 text-xs font-bold text-brown-soft">
+                    <Icon name="bath" size={14} />
+                    อาบน้ำก่อนกลับ {lastBath.date} · {lastBath.time} น. (รวมในบิลเดียวกัน)
+                  </p>
+                )}
                 <div className="mt-2 border-t border-petflow-line pt-2">
                   <CustomerSendButtons
                     bookingId={b.id}
@@ -902,7 +912,7 @@ export default function NewBookingPage() {
                 </div>
               </div>
             );
-          })}
+          })()}
         </div>
       )}
       {appointmentDate && (
@@ -1402,7 +1412,7 @@ export default function NewBookingPage() {
                     </select>
                   </label>
                   <p className="text-[10px] text-brown-faint">
-                    บันทึกแล้วระบบสร้างนัดอาบน้ำให้อีกนัด น้องทุกตัวที่เลือก · ขอแค่ประวัติก่อนอาบน้ำ ไม่ถามเรื่องเข้าพักซ้ำ
+                    รวมเป็นนัดเดียวกับการเข้าพัก บิลใบเดียว · ระบบจองคิวอาบน้ำวันนั้นให้น้องทุกตัวที่เลือก (กันเวลาช่าง) ไม่ส่งยืนยันนัดอาบน้ำแยก
                   </p>
                 </div>
               )}

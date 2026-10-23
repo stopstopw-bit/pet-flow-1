@@ -12,7 +12,7 @@ import { InvoiceActionButtons } from "@/components/InvoiceActionButtons";
 import { bookingOnDate } from "@/lib/booking-customer-match";
 import { toast } from "@/components/Toast";
 import { PreviewSendModal } from "@/components/PreviewSendModal";
-import { groupBookings } from "@/lib/booking-group";
+import { groupBookings, stayForGroom } from "@/lib/booking-group";
 import {
   attachClosures,
   buildRoomBoard,
@@ -2174,6 +2174,32 @@ export function BookingCalendar() {
                         · {bookingWhen(b)}
                       </span>
                     </p>
+                    {/* อาบน้ำก่อนกลับ = ส่วนหนึ่งของการเข้าพัก (บิลเดียวกัน) — โชว์ทั้งสองฝั่งให้เห็นว่าเป็นนัดเดียวกัน */}
+                    {(() => {
+                      if (b.service === "room") {
+                        const ids = new Set(group.map((x) => x.id));
+                        const baths = liveBookings.filter((x) => {
+                          const st = stayForGroom(x, liveBookings);
+                          return !!st && ids.has(st.id);
+                        });
+                        if (baths.length === 0) return null;
+                        return (
+                          <p className="mt-0.5 flex items-center gap-1 text-xs font-bold text-petflow-chocolate">
+                            <Icon name="bath" size={13} />
+                            อาบน้ำก่อนกลับ {baths[0].date} · {baths[0].time || "ยังไม่ระบุเวลา"}
+                            {new Set(baths.map((x) => x.catName)).size < new Set(group.map((x) => x.catName)).size
+                              ? ` (${Array.from(new Set(baths.map((x) => x.catName))).join(", ")})`
+                              : ""}
+                          </p>
+                        );
+                      }
+                      return stayForGroom(b, liveBookings) ? (
+                        <p className="mt-0.5 flex items-center gap-1 text-[11px] font-bold text-latte-deep">
+                          <Icon name="bed" size={12} />
+                          อาบก่อนกลับ · อยู่ในการเข้าพัก (บิลรวมกับค่าห้อง)
+                        </p>
+                      ) : null;
+                    })()}
                     {moves.length > 0 && (
                       <div className="mt-1.5 flex flex-wrap gap-1.5">
                         {moves.map((x) => (
