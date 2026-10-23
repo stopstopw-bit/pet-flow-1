@@ -19,7 +19,7 @@ import {
 import { calcPromoDiscount, recordAdminPromoClaim } from "./promos-store";
 import { getCoupon, redeemCoupon, unredeemCoupon, findCouponByInvoice } from "./coupons-store";
 import { addPoints } from "./points-store";
-import { getSupabase } from "./supabase/server";
+import { getSupabase, selectAllRows } from "./supabase/server";
 import { requireTenantId } from "./tenant-context";
 import { summarizeInvoiceItems } from "./invoice-item-label";
 import { bangkokToday } from "./bangkok-date";
@@ -197,14 +197,14 @@ export async function listInvoices(customerId?: string) {
   const sb = getSupabase();
   let list: InvoiceRecord[];
   if (sb) {
-    let q = sb
-      .from("invoices")
-      .select("*")
-      .eq("tenant_id", requireTenantId())
-      .order("created_at", { ascending: false });
-    if (customerId) q = q.eq("customer_id", customerId);
-    const { data } = await q;
-    list = ((data as InvoiceRow[] | null) || []).map(rowToInvoice);
+    const tenantId = requireTenantId();
+    const data = await selectAllRows<InvoiceRow>((from, to) => {
+      let q = sb.from("invoices").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false })
+        .order("id");
+      if (customerId) q = q.eq("customer_id", customerId);
+      return q.range(from, to);
+    });
+    list = data.map(rowToInvoice);
   } else {
     list = customerId ? mem.filter((i) => i.customerId === customerId) : [...mem];
     list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -593,6 +593,8 @@ export async function deleteInvoice(id: string) {
   }
 
   await deleteFinanceByInvoice(id);
+  // ลบบิลแล้วต้องหายจากประวัติใช้บริการด้วย — เดิมเหลือแถวค้าง (บิลซ้ำที่ลบไปยังโผล่ในประวัติ)
+  await deleteServiceRecordByInvoice(id);
 
   // สินค้าหน้าร้านในบิล → คืนเข้าสต็อก
   const { syncBillStock } = await import("./pos-store");
