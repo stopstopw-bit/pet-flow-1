@@ -38,7 +38,6 @@ export type FeatureKey =
   | "birthdays"
   | "followUp"
   | "lineCards"
-  | "articles"
   | "exportSheets"
   | "guide";
 
@@ -270,13 +269,6 @@ export const FEATURES: FeatureDef[] = [
     label: "ทักลูกค้าที่หายไปทาง LINE",
     hint: "ปุ่มการ์ด \"คิดถึงน้อง\" ในหน้าลูกค้า และการส่งอัตโนมัติ",
     group: "การตลาด",
-  },
-  {
-    key: "articles",
-    label: "บทความหน้าเว็บ",
-    hint: "เมนูเขียนบทความ",
-    group: "การตลาด",
-    adminHrefs: ["/admin/articles"],
   },
   // ── หลังร้าน ──
   {
