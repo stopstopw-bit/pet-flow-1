@@ -1,12 +1,12 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLiff } from "@/components/LiffProvider";
 import { useConfig } from "@/components/ConfigProvider";
 import { resolveGroomForm, type GroomField } from "@/lib/groom-form";
 import { resolveStayForm } from "@/lib/stay-form";
-import { petKindOf } from "@/lib/pet-kind";
+import { normalizeSpecies, petKindOf, petWords, speciesWords } from "@/lib/pet-kind";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { BTN_PRIMARY, PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/ui";
@@ -17,6 +17,10 @@ type Answers = Record<string, string | string[]>;
 type CatForm = {
   id: string;
   catName: string;
+  /** คำถามของน้องตัวนี้ — หมากับแมวคนละชุด (หมาไม่ถามเรื่องทราย) */
+  fields: GroomField[];
+  /** อีโมจิของน้องตัวนี้ 🐶 / 🐱 */
+  emoji: string;
   answers: Answers;
   /** ติ๊ก "ไม่ทราบน้ำหนัก" */
   weightUnknown: boolean;
@@ -58,9 +62,9 @@ function GroomInfoContent() {
   const { config } = useConfig();
 
   // คำถามทั้งหมด — ก่อนอาบน้ำ: ตามที่ร้านตั้งไว้ในหลังบ้าน · ก่อนเข้าพัก: ชุดการกิน/การดูแล (stay-form)
-  const groomFields = useMemo(() => resolveGroomForm(config.groomForm), [config.groomForm]);
+  // เลือกชุดตามชนิดของน้องแต่ละตัว (หมา/แมว) · ไม่รู้ชนิด = ชนิดที่ร้านรับ
   const petKind = petKindOf(config);
-  const stayFields = useMemo(() => resolveStayForm(undefined, petKind), [petKind]);
+  const groomForm = config.groomForm;
 
   const [forms, setForms] = useState<CatForm[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,7 +77,6 @@ function GroomInfoContent() {
   // นัดเข้าพัก / ลิงก์ kind=stay → ฟอร์มก่อนเข้าพัก (คนละชุดคำถามกับก่อนอาบน้ำ)
   const kindParam = params.get("kind") || "";
   const [isStay, setIsStay] = useState(kindParam === "stay");
-  const fields = isStay ? stayFields : groomFields;
 
   useEffect(() => {
     if (ids.length === 0) {
@@ -101,13 +104,17 @@ function GroomInfoContent() {
         if (!anyFound && results.some((d) => d?.unauthorized)) {
           setLoadError("ระบบยังยืนยันบัญชี LINE ไม่สำเร็จ — ปิดหน้านี้แล้วเปิดลิงก์จากแชท LINE ใหม่อีกครั้งนะคะ");
         }
-        const fs = stay ? stayFields : groomFields;
         results.forEach((d, i) => {
           if (!d?.found) return;
           const info = d.info || null;
+          const species = normalizeSpecies(d.species);
+          const kind = species ?? petKind;
+          const fs = stay ? resolveStayForm(undefined, kind) : resolveGroomForm(groomForm, kind);
           loaded.push({
             id: ids[i],
             catName: d.booking?.catName || "น้อง",
+            fields: fs,
+            emoji: speciesWords(species, config).emoji,
             answers: loadAnswers(fs, info),
             weightUnknown: info?.weight === "unknown",
             skip: stay && d.knownMedical ? ["medical"] : [],
@@ -117,7 +124,7 @@ function GroomInfoContent() {
       })
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.toString(), groomFields, stayFields, profile?.lineUserId]);
+  }, [params.toString(), groomForm, petKind, profile?.lineUserId]);
 
   const setAnswer = (idx: number, key: string, value: string | string[]) =>
     setForms((prev) =>
@@ -145,7 +152,7 @@ function GroomInfoContent() {
 
   /** คำถามที่บังคับตอบแล้วยังว่างอยู่ */
   const missingKeys = (f: CatForm) =>
-    fields
+    f.fields
       .filter((fd) => {
         if (!fd.required || f.skip.includes(fd.key)) return false;
         if (fd.key === "weight" && f.weightUnknown) return false;
@@ -234,7 +241,7 @@ function GroomInfoContent() {
           ขอบคุณที่แจ้งประวัติน้องนะคะ!
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-brown-soft">
-          เราจะดูแล{forms.map((f) => f.catName).join(", ") || "น้อง"}อย่างระมัดระวังที่สุด 🐱
+          เราจะดูแล{forms.map((f) => f.catName).join(", ") || "น้อง"}อย่างระมัดระวังที่สุด {petWords(config).emoji}
           <br />
           กลับไปที่แชท LINE ได้เลยค่ะ
         </p>
@@ -283,7 +290,7 @@ function GroomInfoContent() {
               >
                 <p className="flex items-center gap-2 text-sm font-extrabold text-petflow-chocolate">
                   <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-honey/25">
-                    <Icon name="paw" size={16} />
+                    <span aria-hidden className="text-base">{f.emoji}</span>
                   </span>
                   {f.catName}
                 </p>
@@ -293,7 +300,7 @@ function GroomInfoContent() {
                   </p>
                 )}
 
-                {fields.filter((fd) => !f.skip.includes(fd.key)).map((fd) => {
+                {f.fields.filter((fd) => !f.skip.includes(fd.key)).map((fd) => {
                   const isMissing = attempted && missing.includes(fd.key);
                   const value = f.answers[fd.key];
                   return (
