@@ -66,7 +66,7 @@ import { DEFAULT_MESSAGES, consentDates, consentTextFor, renderTemplate } from "
 import { listInvoices, updateInvoice, invoiceCatNames, findOpenInvoiceForBooking } from "@/lib/invoices-store";
 import { getPaymentConfig } from "@/lib/payment-config";
 import {
-  buildDepositReminderText,
+  buildDepositReminderCard,
   buildPrestayFlexData,
   buildCheckinBodyText,
   buildCheckoutBodyText,
@@ -1221,7 +1221,7 @@ function groomInfoCardFor(
       }
     }
 
-    let text: string | null = null;
+    let card: object | null = null;
     {
       // send_deposit_reminder — หาใบแจ้งหนี้ที่มีมัดจำและยังค้างยอด
       const invoices = await listInvoices();
@@ -1234,8 +1234,8 @@ function groomInfoCardFor(
           { status: 400 }
         );
       }
-      text = buildDepositReminderText(gb, inv, cfg);
-      if (!text) {
+      card = buildDepositReminderCard(gb, inv, cfg);
+      if (!card) {
         return NextResponse.json(
           { error: "ไม่มียอดคงเหลือที่ต้องโอนแล้ว" },
           { status: 400 }
@@ -1244,9 +1244,9 @@ function groomInfoCardFor(
     }
 
     try {
-      const textMsg = [{ type: "text", text }];
-      if (preview) return NextResponse.json({ ok: true, preview: textMsg });
-      await pushLineMessage(to, textMsg);
+      // การ์ดแจ้งยอดคงเหลือ (เมื่อก่อนเป็นข้อความตัวหนังสือ) — แก้ข้อความได้ที่ /admin/cards
+      if (preview) return NextResponse.json({ ok: true, preview: [card] });
+      await pushLineMessage(to, [card]);
       return NextResponse.json({ ok: true });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);

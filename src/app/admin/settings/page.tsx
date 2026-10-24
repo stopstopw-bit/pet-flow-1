@@ -1132,14 +1132,11 @@ function MessagesTab({
             onChange={(v) => setMsgs({ ...msgs, depositTerms: lines(v) })}
             rows={5}
           />
-          {sub("เตือนยอดคงเหลือ (7 วันก่อนเข้าพัก)")}
-          <TextAreaField
-            label="ข้อความ"
-            hint="ใช้ได้: {shop} {cat} {checkin} {deposit} {remaining} {bank} {accountNumber} {accountName}"
-            value={msgs?.depositReminder || ""}
-            onChange={(v) => setMsgs({ ...msgs, depositReminder: v })}
-            rows={7}
-          />
+          {sub("เตือนยอดคงเหลือก่อนเข้าพัก")}
+          <p className="text-[11px] font-bold text-brown-soft">
+            ปกติยอดคงเหลืออยู่ในการ์ดเตรียมตัวก่อนเข้าพักใบเดียวกัน (ส่งแยกเฉพาะเมื่อปิดการ์ดเตรียมตัว) — แก้ข้อความการ์ดแยกได้ที่{" "}
+            <a href="/admin/cards?card=depositReminder" className="text-latte-deep underline">ปรับแต่งการ์ด › แจ้งยอดก่อนเข้าพัก</a>
+          </p>
         </>
       )}
 
