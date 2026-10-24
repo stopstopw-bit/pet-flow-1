@@ -252,9 +252,9 @@ async function runForTenant() {
     if (!primary.lineUserId) continue;
     try {
       const catLabel = groupCatNames(group);
-      // เข้าพักที่ลูกค้าเลือกเวลามาส่งแล้ว = ยืนยันกับเราแล้ว และได้การ์ดเตรียมตัว (วัน/ห้อง) ไปก่อนหน้านี้แล้ว
-      // ไม่ต้องส่งการ์ด "กำหนดการนัด" ซ้ำอีกใบ
-      const skipConfirmCard = primary.service === "room" && group.every((x) => x.arrivalTime);
+      // เข้าพัก: ไม่ส่งการ์ด "กำหนดการนัด" วันก่อนเข้าพัก — การ์ดเตรียมตัว (วัน/ห้อง/เลือกเวลา) ส่งไปก่อนหน้านี้แล้ว
+      // (เจ้าของร้านเลือกไม่ส่งเลย 2026-10-24) · นัดอาบน้ำยังส่งตามเดิม
+      const skipConfirmCard = primary.service === "room";
       // รวมการ์ดของวันนี้ไว้ใน push เดียว (เตือนนัด + ขอประวัติ ถ้าจำเป็น) — นับ 1 ข้อความ LINE
       const dayMessages: object[] = skipConfirmCard ? [] : [
         await buildBookingConfirmFlex({
