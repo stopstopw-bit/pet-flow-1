@@ -1134,7 +1134,7 @@ function MessagesTab({
           />
           {sub("เตือนยอดคงเหลือก่อนเข้าพัก")}
           <p className="text-[11px] font-bold text-brown-soft">
-            ส่งเป็นการ์ดแล้ว — แก้ข้อความได้ที่{" "}
+            ปกติยอดคงเหลืออยู่ในการ์ดเตรียมตัวก่อนเข้าพักใบเดียวกัน (ส่งแยกเฉพาะเมื่อปิดการ์ดเตรียมตัว) — แก้ข้อความการ์ดแยกได้ที่{" "}
             <a href="/admin/cards?card=depositReminder" className="text-latte-deep underline">ปรับแต่งการ์ด › แจ้งยอดก่อนเข้าพัก</a>
           </p>
         </>

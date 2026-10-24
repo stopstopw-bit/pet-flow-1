@@ -243,12 +243,12 @@ export function buildDepositReminderCard(
 }
 
 /**
- * ยอดคงเหลือส่งรอบไหน — ส่งรอบเดียวพอ ไม่งั้นลูกค้าได้บัญชีโอนซ้ำ 2 วันติด
- * "deposit" = รอบเตือนยอดคงเหลือของมันเอง (N วันก่อน) · "prestay" = แนบไปกับชุดก่อนเข้าพัก
- * (เมื่อรอบเตือนยอดปิดอยู่ หรือตรงวันเดียวกับชุดก่อนเข้าพัก — รวมเป็น push เดียว)
+ * ยอดคงเหลือส่งรอบไหน — ส่งรอบเดียวพอ ไม่งั้นลูกค้าได้บัญชีโอนซ้ำ
+ * "prestay" = อยู่ในการ์ดเตรียมตัวก่อนเข้าพักใบเดียวกัน (ค่าตั้งต้น — ลูกค้าได้ข้อความน้อยที่สุด)
+ * "deposit" = แยกส่งรอบของมันเอง เฉพาะเมื่อปิดชุดก่อนเข้าพัก หรือตั้งให้เตือนยอดหลังชุดก่อนเข้าพัก
  */
 export function balanceReminderSender(
-  group: Pick<StoredBooking, "autoOff" | "checkin" | "date" | "createdAt">[],
+  group: Pick<StoredBooking, "autoOff">[],
   cfg: SiteConfig
 ): "deposit" | "prestay" | null {
   if (group.length === 0) return null;
@@ -258,16 +258,8 @@ export function balanceReminderSender(
   const prestayOn = auto?.prestayReminderEnabled !== false && !muted("prestay");
   const depositDays = auto?.depositReminderDays ?? 7;
   const prestayDays = auto?.prestayReminderDays ?? 3;
-  if (depositOn && prestayOn && depositDays === prestayDays) return "prestay";
-  if (depositOn && prestayOn && depositDays > prestayDays) {
-    // จองหลังรอบเตือนยอดผ่านไปแล้ว — รอบนั้นไม่ได้ส่ง ให้ชุดก่อนเข้าพักแนบแทน
-    const checkin = group[0].checkin || group[0].date || "";
-    const depositAt = Date.parse(`${shiftDate(checkin, -depositDays)}T12:00:00+07:00`);
-    const created = Math.min(...group.map((x) => Date.parse(x.createdAt) || 0));
-    if (checkin && created >= depositAt) return "prestay";
-  }
+  if (prestayOn && (!depositOn || depositDays >= prestayDays)) return "prestay";
   if (depositOn) return "deposit";
-  if (prestayOn) return "prestay";
   return null;
 }
 

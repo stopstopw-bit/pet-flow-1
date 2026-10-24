@@ -398,6 +398,9 @@ const CARDS: CardMeta[] = [
       },
       { key: "confirmButton", label: "คำในปุ่มยืนยันเข้าพัก", placeholder: "🧡 อ่านรายละเอียด & ยืนยันการเข้าพัก" },
       { key: "timeButton", label: "ปุ่ม: เลือกเวลาส่งน้อง (ส่งอัตโนมัติ)", placeholder: "🕒 เลือกเวลาส่งน้อง" },
+      { key: "intakeTitle", label: "หัวข้อ: ข้อมูลที่ยังต้องส่ง", placeholder: "📋 ข้อมูลที่ยังต้องส่งให้ร้าน" },
+      { key: "balanceLabel", label: "ป้าย: ยอดคงเหลือ", placeholder: "💳 ยอดคงเหลือที่ต้องโอน" },
+      { key: "copyButton", label: "ปุ่ม: คัดลอกเลขบัญชี", placeholder: "📋 คัดลอกเลขบัญชี" },
     ],
     closingLabel: "ข้อความปิดท้ายการ์ด (ไม่บังคับ)",
     hasTitleSize: true,
@@ -1114,9 +1117,25 @@ function Preview({
           {show("care") && (
             <p className="rounded-lg bg-[#FBF0F1] px-2.5 py-1.5 text-[10px] text-[#7A6A5A]">💗 มีอะไรที่ต้องดูแลพิเศษ แจ้งได้เลยนะคะ</p>
           )}
+          <p className="pt-1 text-xs font-extrabold" style={{ color: c("headerColor", "#5C4033") }}>
+            {t("intakeTitle", "📋 ข้อมูลที่ยังต้องส่งให้ร้าน")}
+          </p>
+          <div className="space-y-1 rounded-lg bg-[#FBF7F0] px-2.5 py-2 text-[10px]">
+            <p>1. 📸 แนบสมุดวัคซีน</p>
+            <p>2. 📋 อ่านกฎ + กดยินยอม</p>
+          </div>
+          <div className="rounded-xl bg-[#FBF4E9] px-3 py-2.5 text-center">
+            <p className="text-[10px] text-[#A2907E]">{t("balanceLabel", "💳 ยอดคงเหลือที่ต้องโอน")}</p>
+            <p className="text-lg font-extrabold text-[#C4956A]">1,496 บาท</p>
+            <p className="text-[9px] text-[#A2907E]">มัดจำที่ชำระแล้ว 641 บาท</p>
+            <p className="pt-1 font-extrabold">กรุงไทย · <span className="text-[#4A7348]">664-4-43446-0</span></p>
+          </div>
+          <p className="text-[9px] text-[#A2907E]">ข้อมูลที่ยังขาด / ยอดคงเหลือ จะขึ้นเฉพาะลูกค้าที่ยังไม่ได้ส่ง/ยังค้างยอด</p>
           {st.closing && <p className="whitespace-pre-line text-[10px] text-[#A2907E]">{st.closing}</p>}
         </div>
+        {btn(c("buttonColor", "#bd3a6a"), "📋 เริ่มกรอกข้อมูล")}
         {btn(c("buttonColor", "#bd3a6a"), t("timeButton", "🕒 เลือกเวลาส่งน้อง"))}
+        {btn("#8C7B6B", t("copyButton", "📋 คัดลอกเลขบัญชี"))}
       </div>
     );
   }

@@ -1227,8 +1227,19 @@ export function buildPrestayFlex(data: {
   /** ปุ่มเลือกเวลามาส่งน้อง — ใส่ในการ์ดนี้เลยแทนการส่งการ์ดเลือกเวลาแยกอีกใบ */
   timeUrl?: string;
   timeLabel?: string;
+  /** เรื่องที่ยังขาด (ประวัติ/วัคซีน/บัตร/กฎ) — ปุ่มเดียวในการ์ดนี้ แทนการ์ดขอข้อมูลแยก */
+  intake?: { url: string; label: string; steps: string[]; consent?: boolean };
+  /** ยอดคงเหลือที่ต้องโอนก่อนเข้าพัก — กล่องยอด + บัญชีในการ์ดนี้ แทนการ์ดแจ้งยอดแยก */
+  balance?: {
+    deposit: number;
+    remaining: number;
+    bankName: string;
+    accountNumber: string;
+    accountName: string;
+  };
 }, style?: CardStyleConfig) {
   const show = (k: string) => style?.show?.[k] !== false;
+  const t = (k: string, fb: string) => style?.texts?.[k]?.trim() || fb;
   const body: Record<string, unknown>[] = [
     // ชื่อน้อง + ร้าน
     {
@@ -1431,8 +1442,68 @@ export function buildPrestayFlex(data: {
     });
   }
 
-  // มีปุ่มยืนยันการเข้าพัก → แจ้งว่าไม่ตอบ = ยอมรับโดยปริยาย
-  if (data.consentUrl) body.push(deemedConsentBox());
+  // เรื่องที่ยังต้องส่งให้ร้าน — กดปุ่มเดียวด้านล่าง ระบบพาไปทีละขั้น
+  if (data.intake) {
+    body.push({ type: "separator", margin: "xl" });
+    body.push({
+      type: "text",
+      text: t("intakeTitle", "📋 ข้อมูลที่ยังต้องส่งให้ร้าน"),
+      weight: "bold",
+      size: "md",
+      color: style?.headerColor || "#5C4033",
+      margin: "lg",
+    });
+    body.push({
+      type: "box",
+      layout: "vertical",
+      margin: "md",
+      paddingAll: "12px",
+      backgroundColor: "#FBF7F0",
+      cornerRadius: "10px",
+      spacing: "sm",
+      contents: data.intake.steps.map((x, i) => ({
+        type: "text",
+        text: data.intake!.steps.length > 1 ? `${i + 1}. ${x}` : x,
+        size: "sm",
+        color: "#4E3E32",
+        wrap: true,
+      })),
+    });
+  }
+
+  // ยอดคงเหลือก่อนเข้าพัก + บัญชีโอน
+  if (data.balance && data.balance.remaining > 0) {
+    const b = data.balance;
+    const R = DEPOSIT_REMINDER_DEFAULTS;
+    body.push({ type: "separator", margin: "xl" });
+    body.push({
+      type: "box",
+      layout: "vertical",
+      margin: "lg",
+      paddingAll: "14px",
+      backgroundColor: "#FBF4E9",
+      cornerRadius: "12px",
+      spacing: "xs",
+      contents: [
+        { type: "text", text: t("balanceLabel", `💳 ${R.amountLabel}`), size: "sm", color: "#A2907E", align: "center", wrap: true },
+        { type: "text", text: `${b.remaining.toLocaleString()} บาท`, weight: "bold", size: "xxl", color: "#C4956A", align: "center" },
+        ...(b.deposit > 0
+          ? [{ type: "text", text: `${R.depositPaidLabel} ${b.deposit.toLocaleString()} บาท`, size: "xs", color: "#A2907E", align: "center", wrap: true }]
+          : []),
+        ...(b.accountNumber
+          ? [
+              { type: "separator", margin: "md" },
+              { type: "text", text: b.bankName || "-", weight: "bold", size: "sm", color: "#5C4033", margin: "md", align: "center", wrap: true },
+              { type: "text", text: b.accountNumber, weight: "bold", size: "lg", color: "#4A7348", align: "center", wrap: true },
+              { type: "text", text: `${R.accountNameLabel} ${b.accountName}`, size: "xs", color: "#A2907E", align: "center", wrap: true },
+            ]
+          : []),
+      ],
+    });
+  }
+
+  // มีปุ่มยืนยันการเข้าพัก / ขั้นกดยอมรับกฎ → แจ้งว่าไม่ตอบ = ยอมรับโดยปริยาย
+  if (data.consentUrl || data.intake?.consent) body.push(deemedConsentBox());
 
   if (style?.closing) {
     body.push({
@@ -1473,6 +1544,15 @@ export function buildPrestayFlex(data: {
   };
 
   const footer: Record<string, unknown>[] = [];
+  if (data.intake) {
+    footer.push({
+      type: "button",
+      style: "primary",
+      color: style?.buttonColor || BRAND_ACTION,
+      height: "sm",
+      action: { type: "uri", label: data.intake.label.slice(0, 40), uri: data.intake.url },
+    });
+  }
   if (data.timeUrl) {
     footer.push({
       type: "button",
@@ -1499,6 +1579,18 @@ export function buildPrestayFlex(data: {
           style?.texts?.confirmButton ||
           "🧡 อ่านรายละเอียด & ยืนยันการเข้าพัก",
         uri: data.consentUrl,
+      },
+    });
+  }
+  if (data.balance && data.balance.remaining > 0 && data.balance.accountNumber) {
+    footer.push({
+      type: "button",
+      style: "secondary",
+      height: "sm",
+      action: {
+        type: "clipboard",
+        label: t("copyButton", DEPOSIT_REMINDER_DEFAULTS.copyButton).slice(0, 40),
+        clipboardText: data.balance.accountNumber,
       },
     });
   }
@@ -2011,6 +2103,54 @@ export function mergeIntakeCards(
       style
     ),
   ];
+}
+
+/**
+ * ลิงก์ปุ่มเดียวของเรื่องที่ยังขาด — ใช้ฝังเป็นปุ่มในการ์ดใบอื่น (เช่น การ์ดเตรียมตัวก่อนเข้าพัก)
+ * แทนการส่งการ์ดขอข้อมูลแยกอีกใบ · คืน null ถ้าทำเป็นปุ่มเดียวไม่ได้ (ไม่มี LIFF ID / ฟอร์มปนกัน)
+ */
+export function intakeStartLink(
+  entries: IntakeEntry[],
+  ctx: { flow?: { liffId: string; by: FlowBy } },
+  style?: CardStyleConfig
+): { url: string; label: string; steps: string[]; consent: boolean } | null {
+  const steps = [...entries]
+    .filter((e) => e.kind !== "deposit")
+    .sort((a, b) => INTAKE_ORDER.indexOf(a.kind) - INTAKE_ORDER.indexOf(b.kind));
+  if (steps.length === 0) return null;
+  const t = (k: keyof typeof INTAKE_CARD_DEFAULTS) => style?.texts?.[k]?.trim() || INTAKE_CARD_DEFAULTS[k];
+  const label: Record<IntakeButtonKind, string> = {
+    stayInfo: t("stayInfoButton"),
+    info: t("infoButton"),
+    vaccine: t("vaccineButton"),
+    idcard: t("idcardButton"),
+    consent: t("consentButton"),
+  };
+  const names = steps.map((e) => {
+    const l = label[e.kind as IntakeButtonKind];
+    return e.count && e.count > 1 ? `${l} (${e.count} ตัว)` : l;
+  });
+  const consent = steps.some((e) => e.kind === "consent");
+  if (steps.length === 1) {
+    return steps[0].url ? { url: steps[0].url, label: names[0], steps: names, consent } : null;
+  }
+  const hasStay = steps.some((e) => e.kind === "stayInfo");
+  if (!ctx.flow || (hasStay && steps.some((e) => e.kind === "info"))) return null;
+  const tokens: FlowToken[] = steps.map((e) => ({
+    step: e.kind === "stayInfo" || e.kind === "info" ? "info" : (e.kind as FlowStep),
+    ids: e.ids || [],
+  }));
+  return {
+    url: buildLiffUrl(ctx.flow.liffId, {
+      path: "intake",
+      flow: encodeFlow(tokens),
+      by: ctx.flow.by,
+      kind: hasStay ? "stay" : "groom",
+    }),
+    label: t("startButton"),
+    steps: names,
+    consent,
+  };
 }
 
 /** การ์ดเรียกเก็บมัดจำ — ชัดๆ ว่าต้องโอนเท่าไหร่ (ส่งก่อนลูกค้าโอน) */
