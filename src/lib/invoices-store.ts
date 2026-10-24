@@ -539,16 +539,18 @@ export async function updateInvoice(
   inv.discount = discount;
   inv.total = total;
   inv.deposit = deposit;
-  inv.promoId = promoId;
+  inv.promoId = promoId || undefined; // "" = เอาโปรออก
   inv.promoLabel = label;
 
   const sb = getSupabase();
   if (sb) {
-    await sb
+    // บันทึกไม่ลง ต้องบอกหน้าเว็บ — เมื่อก่อนเงียบแล้วขึ้น "แก้ไขบิลแล้ว" ทั้งที่บิลไม่เปลี่ยน
+    const { error } = await sb
       .from("invoices")
       .update(invoiceToRow(inv))
       .eq("id", id)
       .eq("tenant_id", requireTenantId());
+    if (error) return { ok: false as const, error: "save_failed", message: error.message };
   }
   await syncBillStock(id, before, items);
   return { ok: true as const, invoice: inv };
