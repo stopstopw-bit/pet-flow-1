@@ -448,6 +448,8 @@ export function CustomerSendButtons({
         id: bookingId,
         action: "send_bundle",
         parts: bundleParts,
+        // เปิดจากหน้าบิล — ให้เซิร์ฟเวอร์ใช้บิลนี้ตรงๆ (บิลที่ไม่ได้ผูก bookingId หาจากนัดไม่เจอ)
+        invoiceId: invId || undefined,
         depositAmount: depositAmount || undefined,
         lineUserId,
         // บ้านเดียวกัน จองพร้อมกันหลายตัว — ให้การ์ด "แจ้งเตือนนัด" ในชุดรวมชื่อทุกตัวด้วย
