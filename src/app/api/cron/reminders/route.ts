@@ -12,18 +12,17 @@ import {
   buildTimePickerFlex,
   buildReviewRequestFlex,
   buildGroomInfoFlex,
-  buildBillSummaryFlex,
   buildConsentFlex,
   buildDocRequestFlex,
   mergeIntakeCards,
   politeCat,
   type IntakeEntry,
 } from "@/lib/line";
-import { getPaymentConfig } from "@/lib/payment-config";
 import { getLineCredentials } from "@/lib/line-config";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import {
-  buildDepositReminderText,
+  buildDepositReminderCard,
+  balanceReminderSender,
   buildPrestayFlexData,
   buildCheckinBodyText,
   buildGroomInfoBody,
@@ -253,8 +252,11 @@ async function runForTenant() {
     if (!primary.lineUserId) continue;
     try {
       const catLabel = groupCatNames(group);
+      // เข้าพักที่ลูกค้าเลือกเวลามาส่งแล้ว = ยืนยันกับเราแล้ว และได้การ์ดเตรียมตัว (วัน/ห้อง) ไปก่อนหน้านี้แล้ว
+      // ไม่ต้องส่งการ์ด "กำหนดการนัด" ซ้ำอีกใบ
+      const skipConfirmCard = primary.service === "room" && group.every((x) => x.arrivalTime);
       // รวมการ์ดของวันนี้ไว้ใน push เดียว (เตือนนัด + ขอประวัติ ถ้าจำเป็น) — นับ 1 ข้อความ LINE
-      const dayMessages: object[] = [
+      const dayMessages: object[] = skipConfirmCard ? [] : [
         await buildBookingConfirmFlex({
           id: primary.id,
           catName: catLabel,
@@ -389,6 +391,7 @@ async function runForTenant() {
         )
       );
 
+      if (dayMessages.length === 0) continue;
       await pushInChunks(primary.lineUserId, dayMessages);
       sent++;
     } catch (e) {
@@ -424,19 +427,16 @@ async function runForTenant() {
     const groupMuted = (topic: string) => group.every((x) => autoMuted(x, topic));
 
     // #1 — แจ้งยอดคงเหลือ N วันก่อนเข้าพัก (ถ้ามีมัดจำ + ยังค้าง)
-    if (
-      auto?.depositReminderEnabled !== false &&
-      !groupMuted("deposit") &&
-      b.checkin === in7
-    ) {
+    // ตรงวันเดียวกับชุดก่อนเข้าพัก → แนบในชุดนั้นแทน (ไม่ส่งแยกอีกข้อความ)
+    if (b.checkin === in7 && balanceReminderSender(group, cfg) === "deposit") {
       const inv = allInvoices.find(
         (i) => i.bookingId && ids.includes(i.bookingId) && i.status === "pending" && (i.deposit || 0) > 0
       );
       if (inv) {
-        const text = buildDepositReminderText(b, inv, cfg);
-        if (text) {
+        const card = buildDepositReminderCard(b, inv, cfg);
+        if (card) {
           try {
-            await pushLineMessage(to, [{ type: "text", text }]);
+            await pushLineMessage(to, [card]);
             depositReminders++;
           } catch (e) {
             errors.push(`deposit ${b.id}: ${String(e)}`);
@@ -446,7 +446,7 @@ async function runForTenant() {
         const remaining = inv.total - (inv.deposit || 0);
         if (remaining > 0) {
           await sendTelegram(
-            formatBookingTelegram("💰 เตือนเก็บยอดคงเหลือ (เข้าพักอีก 7 วัน)", {
+            formatBookingTelegram(`💰 เตือนเก็บยอดคงเหลือ (เข้าพักอีก ${auto?.depositReminderDays ?? 7} วัน)`, {
               ลูกค้า: b.customerName,
               น้องแมว: String(b.catName),
               เข้าพัก: b.checkin || b.date || "",
@@ -457,19 +457,28 @@ async function runForTenant() {
       }
     }
 
-    // #4 — ชุดก่อนเข้าพัก N วัน: เตรียมตัว+เงื่อนไข + ยอดคงเหลือ (ถ้ามี) + เลือกเวลาเช็คอิน
+    // #4 — ชุดก่อนเข้าพัก N วัน: การ์ดเตรียมตัว (มีปุ่มเลือกเวลาส่งน้องในใบเดียวกัน)
+    // + การ์ดขอข้อมูลที่ยังขาด + ยอดคงเหลือ (เฉพาะเมื่อไม่ได้ส่งไปแล้วในรอบเตือนยอด)
     // รวมทั้งหมดใน push เดียว = นับ 1 ข้อความ LINE — ลิงก์ยอมรับชี้ที่นัดนี้เท่านั้น
     if (
       auto?.prestayReminderEnabled !== false &&
       !groupMuted("prestay") &&
       b.checkin === in3
     ) {
-      const prestayBundle: object[] = cardOn(cfg, "prestay")
+      // ปุ่มเลือกเวลาเช็คอินอยู่ในการ์ดเตรียมตัวเลย ไม่ส่งการ์ดเลือกเวลาแยกอีกใบ
+      // (ข้ามถ้าเลือกเวลาแล้ว หรือ cron เตือนเช็คอินเป็นคนส่งแทน — บ้านหนึ่งได้ปุ่มนี้รอบเดียว)
+      const timeUrl =
+        checkinPickerSender(group, cfg) === "prestay"
+          ? await getBookingTimeUrl(b.id, "checkin")
+          : "";
+      const prestayOn = cardOn(cfg, "prestay");
+      const prestayBundle: object[] = prestayOn
         ? [
             // การ์ดเตรียมตัว (ไม่มีลิงก์เซ็นแล้ว) + การ์ดเงื่อนไข/ลายเซ็น แยกกันคนละใบ
             buildPrestayFlex({
               ...buildPrestayFlexData(b, cfg),
               consentUrl: undefined,
+              timeUrl: timeUrl || undefined,
             }, cfg.cards?.prestay),
           ]
         : [];
@@ -491,45 +500,24 @@ async function runForTenant() {
           cfg.cards?.intake
         )
       );
-      // มีบิลค้าง + มัดจำแล้ว → แนบการ์ดยอดคงเหลือที่ต้องโอนก่อนเข้าพัก
-      const pendingInv = allInvoices.find(
-        (i) => i.bookingId && ids.includes(i.bookingId) && i.status === "pending" && (i.deposit || 0) > 0
-      );
-      if (pendingInv && pendingInv.total - (pendingInv.deposit || 0) > 0) {
-        const payment = await getPaymentConfig();
-        prestayBundle.push(
-          buildBillSummaryFlex({
-            mode: "remaining",
-            title: "แจ้งยอดคงเหลือที่ต้องโอนก่อนเข้าพัก",
-            closing: "",
-            customerName: pendingInv.customerName,
-            catName: pendingInv.catName,
-            scheduleText: bookingScheduleText(b),
-            items: pendingInv.items,
-            subtotal: pendingInv.subtotal,
-            discount: pendingInv.discount,
-            promoLabel: pendingInv.promoLabel,
-            total: pendingInv.total,
-            deposit: pendingInv.deposit || 0,
-            remaining: Math.max(0, pendingInv.total - (pendingInv.deposit || 0)),
-            bankName: payment.bankName,
-            accountNumber: payment.accountNumber,
-            accountName: payment.accountName,
-          }, cfg.cards?.billSummary)
-        );
-      }
-      // แนบการ์ดเลือกเวลาเช็คอินไปเลย — ไม่ต้องรอส่งแยกอีกวัน
-      // (ข้ามถ้าเลือกเวลาแล้ว หรือ cron เตือนเช็คอินเป็นคนส่งแทน — บ้านหนึ่งได้การ์ดนี้ใบเดียว)
-      if (checkinPickerSender(group, cfg) === "prestay") {
-        const checkinUrl = await getBookingTimeUrl(b.id, "checkin");
+      // ร้านปิดการ์ดเตรียมตัว → ปุ่มเลือกเวลาไม่มีที่อยู่ ส่งการ์ดเลือกเวลาแยกเหมือนเดิม
+      if (!prestayOn && timeUrl) {
         prestayBundle.push(
           buildTimePickerFlex({
             title: "🕒 เลือกเวลาเข้าพัก",
             body: buildCheckinBodyText(b, cfg),
-            url: checkinUrl || undefined,
+            url: timeUrl,
             label: "🕒 เลือกเวลาส่งน้อง",
           }, cfg.cards?.timePicker)
         );
+      }
+      // มีบิลค้าง + มัดจำแล้ว → แนบการ์ดยอดคงเหลือ เฉพาะเมื่อรอบเตือนยอดไม่ได้ส่งไปแล้ว
+      if (balanceReminderSender(group, cfg) === "prestay") {
+        const pendingInv = allInvoices.find(
+          (i) => i.bookingId && ids.includes(i.bookingId) && i.status === "pending" && (i.deposit || 0) > 0
+        );
+        const card = pendingInv ? buildDepositReminderCard(b, pendingInv, cfg) : null;
+        if (card) prestayBundle.push(card);
       }
       // ร้านปิดการ์ดเตรียมตัว และบ้านนี้ไม่มีเรื่องอื่นต้องส่ง — ไม่ส่งอะไร
       if (prestayBundle.length > 0) {

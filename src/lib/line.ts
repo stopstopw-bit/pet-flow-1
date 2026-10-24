@@ -9,7 +9,7 @@ import { getLineCredentials } from "./line-config";
 import { DEEMED_CONSENT_NOTICE, DEEMED_GROOM_CONSENT_NOTICE } from "./messages";
 import type { CardStyleConfig } from "./config-types";
 import { MISS_YOU_DEFAULT_TITLE } from "./miss-you-card";
-import { DOC_REQUEST_DEFAULTS, INTAKE_CARD_DEFAULTS } from "./line-card-defaults";
+import { DEPOSIT_REMINDER_DEFAULTS, DOC_REQUEST_DEFAULTS, INTAKE_CARD_DEFAULTS } from "./line-card-defaults";
 import { encodeFlow, type FlowBy, type FlowStep, type FlowToken } from "./intake-flow";
 import { buildLiffUrl } from "./liff-urls";
 import { splitDiscountTag } from "./line-discount";
@@ -1224,6 +1224,9 @@ export function buildPrestayFlex(data: {
   litterNote?: string;
   consentUrl?: string;
   consentLabel?: string;
+  /** ปุ่มเลือกเวลามาส่งน้อง — ใส่ในการ์ดนี้เลยแทนการส่งการ์ดเลือกเวลาแยกอีกใบ */
+  timeUrl?: string;
+  timeLabel?: string;
 }, style?: CardStyleConfig) {
   const show = (k: string) => style?.show?.[k] !== false;
   const body: Record<string, unknown>[] = [
@@ -1469,27 +1472,43 @@ export function buildPrestayFlex(data: {
     },
   };
 
+  const footer: Record<string, unknown>[] = [];
+  if (data.timeUrl) {
+    footer.push({
+      type: "button",
+      style: "primary",
+      color: style?.buttonColor || BRAND_ACTION,
+      height: "sm",
+      action: {
+        type: "uri",
+        label: data.timeLabel || style?.texts?.timeButton?.trim() || "🕒 เลือกเวลาส่งน้อง",
+        uri: data.timeUrl,
+      },
+    });
+  }
   if (data.consentUrl) {
+    footer.push({
+      type: "button",
+      style: footer.length ? "secondary" : "primary",
+      ...(footer.length ? {} : { color: style?.buttonColor || BRAND_ACTION }),
+      height: "sm",
+      action: {
+        type: "uri",
+        label:
+          data.consentLabel ||
+          style?.texts?.confirmButton ||
+          "🧡 อ่านรายละเอียด & ยืนยันการเข้าพัก",
+        uri: data.consentUrl,
+      },
+    });
+  }
+  if (footer.length) {
     bubble.footer = {
       type: "box",
       layout: "vertical",
       paddingAll: "12px",
-      contents: [
-        {
-          type: "button",
-          style: "primary",
-          color: style?.buttonColor || BRAND_ACTION,
-          height: "sm",
-          action: {
-            type: "uri",
-            label:
-              data.consentLabel ||
-              style?.texts?.confirmButton ||
-              "🧡 อ่านรายละเอียด & ยืนยันการเข้าพัก",
-            uri: data.consentUrl,
-          },
-        },
-      ],
+      spacing: "sm",
+      contents: footer,
     };
   }
 
@@ -2096,6 +2115,136 @@ export function buildDepositRequestFlex(data: {
           }
         : {}),
     },
+  };
+}
+
+/**
+ * การ์ดแจ้งยอดคงเหลือก่อนเข้าพัก (เคยส่งเป็นข้อความตัวหนังสือ) — แถบหัวเขียวแบบเดียวกับการ์ดเข้าพักอื่นๆ
+ * ยอดคงเหลือตัวใหญ่ + มัดจำที่จ่ายแล้ว + บัญชีโอน + ปุ่มคัดลอกเลขบัญชี · ข้อความแก้ได้ที่ /admin/cards
+ */
+export function buildDepositReminderFlex(data: {
+  /** เนื้อความที่แทนค่าแล้ว */
+  body: string;
+  catName: string;
+  scheduleText?: string;
+  deposit: number;
+  remaining: number;
+  bankName: string;
+  accountNumber: string;
+  accountName: string;
+}, style?: CardStyleConfig) {
+  const st = style || {};
+  const show = (k: string) => st.show?.[k] !== false;
+  const t = (k: keyof typeof DEPOSIT_REMINDER_DEFAULTS) =>
+    st.texts?.[k]?.trim() || DEPOSIT_REMINDER_DEFAULTS[k];
+  const money = (n: number) => `${n.toLocaleString()} บาท`;
+  const body: Record<string, unknown>[] = [
+    { type: "text", text: data.body, size: "sm", color: "#4E3E32", wrap: true },
+  ];
+  if (data.scheduleText && show("schedule")) {
+    body.push({
+      type: "text",
+      text: data.scheduleText,
+      size: "sm",
+      weight: "bold",
+      color: "#4A7348",
+      margin: "md",
+      wrap: true,
+    });
+  }
+  body.push({
+    type: "box",
+    layout: "vertical",
+    margin: "lg",
+    paddingAll: "14px",
+    backgroundColor: "#FBF4E9",
+    cornerRadius: "12px",
+    spacing: "xs",
+    contents: [
+      { type: "text", text: t("amountLabel"), size: "sm", color: "#A2907E", align: "center", wrap: true },
+      {
+        type: "text",
+        text: money(data.remaining),
+        weight: "bold",
+        size: "3xl",
+        color: st.accentColor || "#C4956A",
+        align: "center",
+      },
+      ...(data.deposit > 0 && show("deposit")
+        ? [
+            {
+              type: "text",
+              text: `${t("depositPaidLabel")} ${money(data.deposit)}`,
+              size: "xs",
+              color: "#A2907E",
+              align: "center",
+              wrap: true,
+            },
+          ]
+        : []),
+    ],
+  });
+  const showBank = show("bank") && !!data.accountNumber;
+  if (showBank) {
+    body.push({
+      type: "box",
+      layout: "vertical",
+      margin: "lg",
+      spacing: "xs",
+      paddingAll: "12px",
+      backgroundColor: "#F4ECE0",
+      cornerRadius: "10px",
+      contents: [
+        { type: "text", text: data.bankName || "-", weight: "bold", size: "md", color: "#5C4033", wrap: true },
+        { type: "text", text: data.accountNumber, weight: "bold", size: "xl", color: "#4A7348", wrap: true },
+        { type: "text", text: `${t("accountNameLabel")} ${data.accountName}`, size: "sm", color: "#A2907E", wrap: true },
+      ],
+    });
+  }
+  if (st.closing) {
+    body.push({ type: "text", text: st.closing, size: "xs", color: "#A2907E", margin: "lg", wrap: true });
+  }
+  const bubble: Record<string, unknown> = {
+    type: "bubble",
+    size: "mega",
+    header: {
+      type: "box",
+      layout: "vertical",
+      backgroundColor: st.headerColor || BRAND_HEADER,
+      paddingAll: "16px",
+      contents: [
+        {
+          type: "text",
+          text: t("header"),
+          color: st.headerTextColor || "#FFFFFF",
+          weight: "bold",
+          size: st.titleSize || "sm",
+          wrap: true,
+        },
+      ],
+    },
+    body: { type: "box", layout: "vertical", paddingAll: "16px", contents: body },
+  };
+  if (showBank) {
+    bubble.footer = {
+      type: "box",
+      layout: "vertical",
+      paddingAll: "12px",
+      contents: [
+        {
+          type: "button",
+          style: "primary",
+          color: st.buttonColor || BRAND_ACTION,
+          height: "sm",
+          action: { type: "clipboard", label: t("copyButton"), clipboardText: data.accountNumber },
+        },
+      ],
+    };
+  }
+  return {
+    type: "flex",
+    altText: `แจ้งยอดคงเหลือก่อนเข้าพัก ${money(data.remaining)} · ${politeCat(data.catName)}`,
+    contents: bubble,
   };
 }
 

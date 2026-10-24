@@ -15,7 +15,7 @@ import { toast } from "@/components/Toast";
 import { useConfig } from "@/components/ConfigProvider";
 import { Icon } from "@/components/Icon";
 import { brandColorsFor } from "@/lib/card-brand";
-import { DOC_REQUEST_DEFAULTS, INTAKE_CARD_DEFAULTS } from "@/lib/line-card-defaults";
+import { DEPOSIT_REMINDER_DEFAULTS, DOC_REQUEST_DEFAULTS, INTAKE_CARD_DEFAULTS } from "@/lib/line-card-defaults";
 
 /**
  * ปรับแต่งการ์ด LINE — สี ขนาดตัวอักษร ข้อความ เงื่อนไข และส่วนประกอบของการ์ดแต่ละใบ
@@ -397,8 +397,41 @@ const CARDS: CardMeta[] = [
         multiline: true,
       },
       { key: "confirmButton", label: "คำในปุ่มยืนยันเข้าพัก", placeholder: "🧡 อ่านรายละเอียด & ยืนยันการเข้าพัก" },
+      { key: "timeButton", label: "ปุ่ม: เลือกเวลาส่งน้อง (ส่งอัตโนมัติ)", placeholder: "🕒 เลือกเวลาส่งน้อง" },
     ],
     closingLabel: "ข้อความปิดท้ายการ์ด (ไม่บังคับ)",
+    hasTitleSize: true,
+  },
+  {
+    key: "depositReminder",
+    name: "แจ้งยอดก่อนเข้าพัก",
+    desc: "ส่งอัตโนมัติก่อนวันเข้าพัก (ตามวันที่ตั้งในตั้งค่า) — ยอดคงเหลือ + บัญชีโอน · ส่งรอบเดียว ไม่แนบซ้ำในการ์ดเตรียมตัว",
+    colors: [
+      { key: "headerColor", label: "สีแถบหัว", fallback: "#6e2f48" },
+      { key: "headerTextColor", label: "สีตัวหนังสือหัว", fallback: "#FFFFFF" },
+      { key: "accentColor", label: "สียอดคงเหลือ", fallback: "#C4956A" },
+      { key: "buttonColor", label: "สีปุ่มคัดลอกบัญชี", fallback: "#bd3a6a" },
+    ],
+    fields: [
+      { key: "schedule", label: "วันเข้าพัก" },
+      { key: "deposit", label: "บรรทัดมัดจำที่ชำระแล้ว" },
+      { key: "bank", label: "กล่องเลขบัญชี + ปุ่มคัดลอก" },
+    ],
+    texts: [],
+    styleTexts: [
+      { key: "header", label: "ข้อความบนแถบหัว", placeholder: DEPOSIT_REMINDER_DEFAULTS.header },
+      {
+        key: "body",
+        label: "เนื้อความ (ใช้ได้: {shop} {cat} {days} {checkin} {deposit} {remaining})",
+        placeholder: DEPOSIT_REMINDER_DEFAULTS.body,
+        multiline: true,
+      },
+      { key: "amountLabel", label: "ป้าย: ยอดคงเหลือ", placeholder: DEPOSIT_REMINDER_DEFAULTS.amountLabel },
+      { key: "depositPaidLabel", label: "ป้าย: มัดจำที่ชำระแล้ว", placeholder: DEPOSIT_REMINDER_DEFAULTS.depositPaidLabel },
+      { key: "accountNameLabel", label: "ป้าย: ชื่อบัญชี", placeholder: DEPOSIT_REMINDER_DEFAULTS.accountNameLabel },
+      { key: "copyButton", label: "ปุ่ม: คัดลอกเลขบัญชี", placeholder: DEPOSIT_REMINDER_DEFAULTS.copyButton },
+    ],
+    closingLabel: "ข้อความปิดท้าย (ไม่บังคับ)",
     hasTitleSize: true,
   },
   {
@@ -1083,7 +1116,42 @@ function Preview({
           )}
           {st.closing && <p className="whitespace-pre-line text-[10px] text-[#A2907E]">{st.closing}</p>}
         </div>
-        {btn(c("buttonColor", "#bd3a6a"), "🧡 อ่านรายละเอียด & ยืนยันการเข้าพัก")}
+        {btn(c("buttonColor", "#bd3a6a"), t("timeButton", "🕒 เลือกเวลาส่งน้อง"))}
+      </div>
+    );
+  }
+
+  if (meta.key === "depositReminder") {
+    const D = DEPOSIT_REMINDER_DEFAULTS;
+    return (
+      <div className={bubble}>
+        <div className="px-4 py-3" style={{ background: c("headerColor", "#6e2f48") }}>
+          <p className={`${titleCls} font-extrabold`} style={{ color: c("headerTextColor", "#FFFFFF") }}>
+            {t("header", D.header)}
+          </p>
+        </div>
+        <div className="space-y-2 px-4 py-3 text-[11px] text-[#4E3E32]">
+          <p className="whitespace-pre-line">
+            {(st.texts?.body?.trim() || D.body)
+              .replace(/\{days\}/g, "7").replace(/\{cat\}/g, "น้องโมจิ").replace(/\{shop\}/g, shop)
+              .replace(/\{checkin\}/g, "20 ก.ค. 69").replace(/\{deposit\}/g, "641").replace(/\{remaining\}/g, "1,496")}
+          </p>
+          {show("schedule") && <p className="font-bold text-[#4A7348]">🏠 เข้าพัก: 20 ก.ค. 69 → 26 ก.ค. 69</p>}
+          <div className="rounded-xl bg-[#FBF4E9] px-3 py-3 text-center">
+            <p className="text-[10px] text-[#A2907E]">{t("amountLabel", D.amountLabel)}</p>
+            <p className="text-2xl font-extrabold" style={{ color: c("accentColor", "#C4956A") }}>1,496 บาท</p>
+            {show("deposit") && <p className="text-[10px] text-[#A2907E]">{t("depositPaidLabel", D.depositPaidLabel)} 641 บาท</p>}
+          </div>
+          {show("bank") && (
+            <div className="rounded-lg bg-[#F4ECE0] px-2.5 py-2">
+              <p className="font-extrabold">กรุงไทย</p>
+              <p className="text-sm font-extrabold text-[#4A7348]">664-4-43446-0</p>
+              <p className="text-[10px] text-[#A2907E]">{t("accountNameLabel", D.accountNameLabel)} {shop}</p>
+            </div>
+          )}
+          {st.closing && <p className="whitespace-pre-line text-[10px] text-[#A2907E]">{st.closing}</p>}
+        </div>
+        {show("bank") && btn(c("buttonColor", "#bd3a6a"), t("copyButton", D.copyButton))}
       </div>
     );
   }

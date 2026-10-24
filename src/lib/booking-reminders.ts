@@ -1,5 +1,6 @@
 import { getLineCredentials } from "./line-config";
-import { politeCat } from "./line";
+import { politeCat, buildDepositReminderFlex } from "./line";
+import { DEPOSIT_REMINDER_DEFAULTS } from "./line-card-defaults";
 import { buildConsentUrl, buildBookingTimeUrl, buildGroomInfoUrl, buildPetDocsUrl } from "./liff-urls";
 import { renderTemplate, DEFAULT_MESSAGES, DEEMED_CONSENT_NOTICE } from "./messages";
 import { formatThaiDateShort } from "./format-thai-date";
@@ -192,25 +193,82 @@ export function buildCheckoutBodyText(
   );
 }
 
-/** ข้อความเตือนยอดคงเหลือ/มัดจำ — คืน null ถ้าไม่มียอดต้องโอน */
-export function buildDepositReminderText(
-  b: Pick<StoredBooking, "catName" | "checkin" | "date">,
+/** จำนวนวันจากวันนี้ (เวลาไทย) ถึงวันที่ yyyy-mm-dd */
+export function daysUntil(date: string, now = new Date()): number {
+  const today = new Date(now.getTime() + 7 * 3600_000).toISOString().slice(0, 10);
+  return Math.round(
+    (Date.parse(`${date}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86400000
+  );
+}
+
+/**
+ * การ์ดแจ้งยอดคงเหลือก่อนเข้าพัก (เมื่อก่อนเป็นข้อความตัวหนังสือ) — คืน null ถ้าไม่มียอดต้องโอน
+ * ใช้ทั้ง cron และปุ่มกดส่งเอง · ข้อความแก้ได้ที่ /admin/cards › แจ้งยอดก่อนเข้าพัก
+ */
+export function buildDepositReminderCard(
+  b: Pick<StoredBooking, "catName" | "checkin" | "checkout" | "date" | "service">,
   inv: InvoiceRecord,
-  cfg: SiteConfig
-): string | null {
+  cfg: SiteConfig,
+  now = new Date()
+): object | null {
   const deposit = inv.deposit || 0;
   const remaining = inv.total - deposit;
   if (remaining <= 0) return null;
-  return renderTemplate(cfg.messages.depositReminder, {
+  const style = cfg.cards?.depositReminder;
+  const checkin = b.checkin || b.date || "";
+  const days = checkin ? Math.max(0, daysUntil(checkin, now)) : 0;
+  let body = renderTemplate(style?.texts?.body?.trim() || DEPOSIT_REMINDER_DEFAULTS.body, {
     shop: cfg.business.name,
     cat: politeCat(b.catName),
-    checkin: b.checkin || b.date || "",
+    days,
+    checkin: checkin ? formatThaiDateShort(checkin) : "",
     deposit: deposit.toLocaleString(),
     remaining: remaining.toLocaleString(),
-    bank: cfg.payment.bankName,
-    accountNumber: cfg.payment.accountNumber,
-    accountName: cfg.payment.accountName,
   });
+  // ส่งวันเข้าพักพอดี/ส่งเองช้ากว่ากำหนด — "อีก 0 วัน" อ่านแปลก
+  if (days === 0) body = body.replace(/อีก\s*0\s*วันถึง/g, "วันนี้เป็น");
+  return buildDepositReminderFlex(
+    {
+      body,
+      catName: String(b.catName),
+      scheduleText: bookingScheduleText(b),
+      deposit,
+      remaining,
+      bankName: cfg.payment.bankName,
+      accountNumber: cfg.payment.accountNumber,
+      accountName: cfg.payment.accountName,
+    },
+    style
+  );
+}
+
+/**
+ * ยอดคงเหลือส่งรอบไหน — ส่งรอบเดียวพอ ไม่งั้นลูกค้าได้บัญชีโอนซ้ำ 2 วันติด
+ * "deposit" = รอบเตือนยอดคงเหลือของมันเอง (N วันก่อน) · "prestay" = แนบไปกับชุดก่อนเข้าพัก
+ * (เมื่อรอบเตือนยอดปิดอยู่ หรือตรงวันเดียวกับชุดก่อนเข้าพัก — รวมเป็น push เดียว)
+ */
+export function balanceReminderSender(
+  group: Pick<StoredBooking, "autoOff" | "checkin" | "date" | "createdAt">[],
+  cfg: SiteConfig
+): "deposit" | "prestay" | null {
+  if (group.length === 0) return null;
+  const auto = cfg.automation;
+  const muted = (topic: string) => group.every((x) => autoMuted(x, topic));
+  const depositOn = auto?.depositReminderEnabled !== false && !muted("deposit");
+  const prestayOn = auto?.prestayReminderEnabled !== false && !muted("prestay");
+  const depositDays = auto?.depositReminderDays ?? 7;
+  const prestayDays = auto?.prestayReminderDays ?? 3;
+  if (depositOn && prestayOn && depositDays === prestayDays) return "prestay";
+  if (depositOn && prestayOn && depositDays > prestayDays) {
+    // จองหลังรอบเตือนยอดผ่านไปแล้ว — รอบนั้นไม่ได้ส่ง ให้ชุดก่อนเข้าพักแนบแทน
+    const checkin = group[0].checkin || group[0].date || "";
+    const depositAt = Date.parse(`${shiftDate(checkin, -depositDays)}T12:00:00+07:00`);
+    const created = Math.min(...group.map((x) => Date.parse(x.createdAt) || 0));
+    if (checkin && created >= depositAt) return "prestay";
+  }
+  if (depositOn) return "deposit";
+  if (prestayOn) return "prestay";
+  return null;
 }
 
 /** ข้อความชวนกดยอมรับข้อตกลง (แนบลิงก์) — คืน "" ถ้ายังไม่มีลิงก์ */
