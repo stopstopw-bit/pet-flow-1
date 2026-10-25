@@ -13,7 +13,7 @@ import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { parseGroomInfo, groomInfoSummary } from "@/lib/groom-info";
 import { getSiteConfig } from "@/lib/config-store";
 import { isFeatureOn } from "@/lib/features";
-import { intakeFields } from "@/lib/intake-rules";
+import { intakeFields, sanitizeIntakeInfo } from "@/lib/intake-rules";
 import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 import { petKindOf, speciesOf } from "@/lib/pet-kind";
 import { BATH_SHARED_WITH_STAY } from "@/lib/stay-form";
@@ -123,7 +123,7 @@ async function postHandler(req: NextRequest) {
   // ชุดคำถามตามชนิดของน้องตัวนี้ — ต้องตรงกับที่หน้าฟอร์มถาม ไม่งั้นคำตอบข้อของหมาจะหาย
   const kind = speciesOf(t.cat, cfg) ?? petKindOf(cfg);
   const fields = intakeFields(t.kind, kind, cfg);
-  const payload = sanitizeInfo(fields, info);
+  const payload = sanitizeIntakeInfo(fields, info);
   // ฟอร์มรวม เข้าพัก + อาบก่อนกลับ — ส่วนอาบน้ำเก็บเป็นประวัติอาบน้ำของน้องด้วย
   // ข้อที่ซ้ำกับฟอร์มเข้าพัก (key เดียวกัน หรือใน BATH_SHARED_WITH_STAY) ใช้คำตอบฝั่งเข้าพัก
   const groomFields = intakeFields("groom", kind, cfg);
@@ -133,7 +133,7 @@ async function postHandler(req: NextRequest) {
   };
   const groomPayload =
     t.kind === "stay" && body.groomInfo && typeof body.groomInfo === "object" && (await needsBathPart(t, session.lineUserId, cfg))
-      ? sanitizeInfo(groomFields, {
+      ? sanitizeIntakeInfo(groomFields, {
           ...body.groomInfo,
           ...Object.fromEntries(
             Object.entries(shared)
@@ -179,25 +179,6 @@ async function postHandler(req: NextRequest) {
 
   return NextResponse.json({ ok: res.ok, needSql: !res.ok && res.error === "need_sql" });
 }
-
-/** เก็บตามคำถามที่ร้านตั้งไว้จริง — sanitize ตามชนิดของคำถาม */
-function sanitizeInfo(fields: { key: string; type: string }[], info: unknown): Record<string, unknown> {
-  const payload: Record<string, unknown> = { submittedAt: new Date().toISOString() };
-  for (const f of fields) {
-    const raw = (info as Record<string, unknown>)[f.key];
-    if (f.type === "multi") {
-      payload[f.key] = Array.isArray(raw)
-        ? raw.map((v) => String(v).slice(0, 120))
-        : raw
-          ? [String(raw).slice(0, 120)] // ข้อมูลเก่าที่เคยเก็บเป็น string เดี่ยว
-          : [];
-    } else {
-      payload[f.key] = String(raw ?? "").trim().slice(0, 500);
-    }
-  }
-  return payload;
-}
-
 
 // R1/R3: resolve ร้านจาก request (header/cookie) ก่อนเข้า handler
 export function GET(req: NextRequest) { return withResolvedTenant(req, () => getHandler(req)); }

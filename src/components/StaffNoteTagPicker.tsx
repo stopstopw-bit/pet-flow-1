@@ -21,10 +21,13 @@ export function StaffNoteTagPicker({
   medicalValue,
   noteValue,
   onChange,
+  label = "เรื่องที่ช่างต้องรู้",
 }: {
   medicalValue: string;
   noteValue: string;
   onChange: (medical: string, note: string) => void;
+  /** หัวข้อบนปุ่ม — ฟอร์มสมัครใช้ "โรคประจำตัว / เรื่องที่ช่างต้องรู้" ให้ลูกค้ารู้ว่าตอบโรคประจำตัวตรงนี้ */
+  label?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -95,7 +98,7 @@ export function StaffNoteTagPicker({
         </span>
         <span className="min-w-0 flex-1">
           <span className="block text-[10px] font-bold text-brown-soft">
-            เรื่องที่ช่างต้องรู้
+            {label}
           </span>
           <span
             className={`block truncate ${hasValue ? "text-brown" : "text-brown-faint"}`}
