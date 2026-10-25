@@ -7,6 +7,7 @@ import { createHash } from "crypto";
 import { applyBrandCardDefaults, stripBrandCardDefaults } from "./card-brand";
 import { latestShopIntakeAnswers } from "./shop-intake-store";
 import { petKindFromIntake, speciesOfBreed, type PetKind } from "./pet-kind";
+import { withDogShopDefaults } from "./defaults/pet-format";
 
 /**
  * ร้านที่ยังไม่ได้ตั้ง business.petKind แต่เคยตอบแบบสอบถามเปิดร้านว่าเป็นร้านหมา (เช่น ร้านที่ตอบก่อนมีค่านี้)
@@ -219,11 +220,11 @@ async function getRawSiteConfig(): Promise<SiteConfig> {
         const kind = (await petKindFromShopIntake(tenant)) || petKindFromBreeds(stored.options?.catBreeds);
         if (kind) merged.business = { ...merged.business, petKind: kind };
       }
-      return withShopNameInTexts(merged);
+      return withDogShopDefaults(withShopNameInTexts(merged));
     }
   }
 
-  if (memConfig) return withShopNameInTexts(memConfig);
+  if (memConfig) return withDogShopDefaults(withShopNameInTexts(memConfig));
   return defaults;
 }
 

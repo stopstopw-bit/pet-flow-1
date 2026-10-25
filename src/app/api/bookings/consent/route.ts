@@ -58,7 +58,7 @@ async function postHandler(req: NextRequest) {
       const groom = b.service === "groom";
       await sendTelegram(
         formatBookingTelegram(groom ? "✅ ลูกค้ายอมรับข้อตกลงก่อนอาบน้ำแล้ว" : "✅ ลูกค้ายอมรับข้อตกลงก่อนเข้าพักแล้ว", {
-          น้องแมว: b.catName,
+          น้อง: b.catName,
           ลูกค้า: b.customerName,
           ...(groom
             ? { นัดอาบน้ำ: `${b.date || "-"}${b.time ? ` ${b.time}` : ""}` }

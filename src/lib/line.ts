@@ -316,7 +316,7 @@ export function buildAppointmentConfirmFlex(booking: {
                       type: "text" as const,
                       text:
                         st.texts?.groomPrepNote ||
-                        "🍬 อย่าลืมพกขนม/แมวเลียมาด้วยอย่างน้อย 1-2 ซองนะคะ\n🧺 และให้น้องอยู่ในตะกร้า/กระเป๋าทุกครั้งที่มาใช้บริการด้วยค่ะ",
+                        "🍬 อย่าลืมพกขนมที่น้องชอบมาด้วยนะคะ\n🧺 และให้น้องอยู่ในตะกร้า/กระเป๋า หรือใส่สายจูงทุกครั้งที่มาใช้บริการด้วยค่ะ",
                       size: "xs" as const,
                       color: "#B4553B",
                       weight: "bold" as const,
@@ -441,7 +441,7 @@ export function buildConsentFlex(data: {
   businessName: string;
   title: string;
   catName: string;
-  /** อีโมจิน้องตามชนิดที่ร้านรับ (petWords(cfg).emoji) — ไม่ส่ง = 🐱 */
+  /** อีโมจิน้องตามชนิดที่ร้านรับ (petWords(cfg).emoji) — ไม่ส่ง = 🐾 */
   petEmoji?: string;
   checkin?: string;
   checkout?: string;
@@ -475,7 +475,7 @@ export function buildConsentFlex(data: {
     },
     {
       type: "text",
-      text: `${data.businessName} · ${data.petEmoji || "🐱"} ${politeCat(data.catName)}`,
+      text: `${data.businessName} · ${data.petEmoji || "🐾"} ${politeCat(data.catName)}`,
       size: "xs",
       color: "#A2907E",
       margin: "md",
@@ -1212,7 +1212,7 @@ export function buildBillSummaryFlex(data: {
 export function buildPrestayFlex(data: {
   businessName: string;
   catName: string;
-  /** อีโมจิน้องตามชนิดที่ร้านรับ (petWords(cfg).emoji) — ไม่ส่ง = 🐱 */
+  /** อีโมจิน้องตามชนิดที่ร้านรับ (petWords(cfg).emoji) — ไม่ส่ง = 🐾 */
   petEmoji?: string;
   /** ช่วงวันเข้าพัก จัดรูปแล้ว เช่น "12 ก.ค. 2569 → 17 ก.ค. 2569" */
   dateText: string;
@@ -1244,7 +1244,7 @@ export function buildPrestayFlex(data: {
     // ชื่อน้อง + ร้าน
     {
       type: "text",
-      text: `${data.petEmoji || "🐱"} ${politeCat(data.catName)}`,
+      text: `${data.petEmoji || "🐾"} ${politeCat(data.catName)}`,
       weight: "bold",
       size: style?.titleSize || "xl",
       color: style?.accentColor || "#5C4033",
@@ -1693,7 +1693,7 @@ export function buildTimePickerFlex(data: {
 /** การ์ดสอบถามประวัติน้องก่อนอาบน้ำ — ข้อความ + ปุ่มไปกรอกแบบฟอร์มใน LIFF */
 export function buildGroomInfoFlex(data: {
   catName: string;
-  /** อีโมจิน้องตามชนิดที่ร้านรับ (petWords(cfg).emoji) — ไม่ส่ง = 🐱 */
+  /** อีโมจิน้องตามชนิดที่ร้านรับ (petWords(cfg).emoji) — ไม่ส่ง = 🐾 */
   petEmoji?: string;
   dateText?: string;
   body: string;
@@ -1705,7 +1705,7 @@ export function buildGroomInfoFlex(data: {
   const contents: Record<string, unknown>[] = [
     {
       type: "text",
-      text: `${data.petEmoji || "🐱"} ${politeCat(data.catName)}`,
+      text: `${data.petEmoji || "🐾"} ${politeCat(data.catName)}`,
       weight: "bold",
       size: st.titleSize || "lg",
       color: st.accentColor || "#5C4033",
@@ -1792,7 +1792,7 @@ export function buildDocRequestFlex(data: {
   kind: "vaccine" | "idcard";
   businessName: string;
   catName: string;
-  /** อีโมจิน้องตามชนิดที่ร้านรับ (petWords(cfg).emoji) — ไม่ส่ง = 🐱 */
+  /** อีโมจิน้องตามชนิดที่ร้านรับ (petWords(cfg).emoji) — ไม่ส่ง = 🐾 */
   petEmoji?: string;
   dateText?: string;
   url: string;
@@ -1805,7 +1805,7 @@ export function buildDocRequestFlex(data: {
   const contents: Record<string, unknown>[] = [
     {
       type: "text",
-      text: `${data.petEmoji || "🐱"} ${politeCat(data.catName)}`,
+      text: `${data.petEmoji || "🐾"} ${politeCat(data.catName)}`,
       weight: "bold",
       size: st.titleSize || "lg",
       color: st.accentColor || "#5C4033",
@@ -1878,7 +1878,7 @@ export type IntakeDeposit = {
 export function buildIntakeFlex(data: {
   service: "stay" | "groom";
   catName: string;
-  /** อีโมจิน้องตามชนิดที่ร้านรับ (petWords(cfg).emoji) — ไม่ส่ง = 🐱 */
+  /** อีโมจิน้องตามชนิดที่ร้านรับ (petWords(cfg).emoji) — ไม่ส่ง = 🐾 */
   petEmoji?: string;
   businessName: string;
   dateText?: string;
@@ -1892,7 +1892,7 @@ export function buildIntakeFlex(data: {
   const header = data.service === "stay" ? t("headerStay") : t("headerGroom");
   const cat = politeCat(data.catName);
   const contents: Record<string, unknown>[] = [
-    { type: "text", text: `${data.petEmoji || "🐱"} ${cat}`, weight: "bold", size: st.titleSize || "lg", color: st.accentColor || "#5C4033", wrap: true },
+    { type: "text", text: `${data.petEmoji || "🐾"} ${cat}`, weight: "bold", size: st.titleSize || "lg", color: st.accentColor || "#5C4033", wrap: true },
     {
       type: "text",
       text: data.dateText ? `${data.businessName} · ${data.dateText}` : data.businessName,
@@ -2552,7 +2552,7 @@ export function buildReceiptFlex(data: {
       layout: "vertical",
       paddingAll: "18px",
       contents: [
-        flexDetailRow("🐱", st.texts?.customerLabel || "ลูกค้า", `${politeCat(data.catName)} · ${politeName(data.customerName)}`),
+        flexDetailRow("🐾", st.texts?.customerLabel || "ลูกค้า", `${politeCat(data.catName)} · ${politeName(data.customerName)}`),
         ...(show("invoiceNo")
           ? [flexDetailRow("🔖", st.texts?.invoiceNoLabel || "เลขที่", data.invoiceId)]
           : []),

@@ -94,8 +94,8 @@ function BookingTimeContent() {
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-brown-soft">
           {isCheckin
-            ? `เราจะเตรียมห้องรอต้อนรับ${bk?.catName || "น้อง"}ตอน ${saved} นะคะ 🐱`
-            : `เราจะเตรียม${bk?.catName || "น้อง"}ให้พร้อมก่อนกลับบ้านตอน ${saved} นะคะ 🐱`}
+            ? `เราจะเตรียมห้องรอต้อนรับ${bk?.catName || "น้อง"}ตอน ${saved} นะคะ 🐾`
+            : `เราจะเตรียม${bk?.catName || "น้อง"}ให้พร้อมก่อนกลับบ้านตอน ${saved} นะคะ 🐾`}
           <br />
           กลับไปที่แชท LINE ได้เลยค่ะ
         </p>

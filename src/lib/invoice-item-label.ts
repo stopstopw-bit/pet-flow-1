@@ -10,7 +10,7 @@ import { stripDiscountTag } from "./line-discount";
  */
 export function shortItemLabel(label: string): string {
   return stripDiscountTag(label)
-    .replace(/^🐱 .+? · /, "")
+    .replace(/^(?:🐱|🐶|🐾) .+? · /, "")
     .replace(/^🎁 /, "")
     .split(" · ")[0]
     .replace(/ × \d+$/, "")
@@ -45,5 +45,5 @@ export function stripEmoji(text: string): string {
  */
 export function formalItemLabel(label: string): string {
   // ส่วนลดรายการมีคอลัมน์ "ส่วนลด" บนเอกสารอยู่แล้ว — ไม่ต้องซ้ำในชื่อ
-  return stripEmoji(stripDiscountTag(label).replace(/^🐱 .+? · /, ""));
+  return stripEmoji(stripDiscountTag(label).replace(/^(?:🐱|🐶|🐾) .+? · /, ""));
 }

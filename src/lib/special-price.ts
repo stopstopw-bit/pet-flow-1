@@ -35,7 +35,7 @@ export function priceSignature(label: string): string {
 /** ชื่อรายการแบบที่โชว์ให้พนักงานอ่าน — ตัดเหมือน priceSignature แต่ไม่ลดตัวพิมพ์ */
 export function priceLabel(label: string): string {
   return label
-    .replace(/^🐱[^·]*·\s*/u, "")
+    .replace(/^(?:🐱|🐶|🐾)[^·]*·\s*/u, "")
     .replace(DISCOUNT_TAG, "")
     .replace(/\s*×\s*\d+(\s*คืน)?\s*$/u, "")
     .normalize("NFC")
@@ -132,13 +132,13 @@ export function pastPriceList(invoices: PastInvoice[], customerId?: string): Pas
       const sig = priceSignature(it.label);
       if (!sig) continue;
       // แยกรายตัว — น้องสองตัวในบ้านเดียวกันอาจได้ราคาไม่เท่ากัน
-      const pet = (it.catName || it.label.match(/^🐱([^·]*)·/u)?.[1] || "").trim();
+      const pet = (it.catName || it.label.match(/^(?:🐱|🐶|🐾)([^·]*)·/u)?.[1] || "").trim();
       const signature = pet ? `${pet.toLowerCase()}|${sig}` : sig;
       const hit = bySig.get(signature);
       if (!hit) {
         bySig.set(signature, {
           signature,
-          label: pet ? `🐱 ${pet} · ${priceLabel(it.label)}` : priceLabel(it.label),
+          label: pet ? `🐾 ${pet} · ${priceLabel(it.label)}` : priceLabel(it.label),
           unitAmount: unit,
           when: inv.createdAt,
           times: 1,

@@ -263,7 +263,7 @@ function computeLineBase(
 } {
   const cat = joinCatNames(parseCatNames(it.catName));
   /** ใส่ชื่อน้องนำหน้า ให้เจ้าของอ่านบิลแล้วรู้ทันทีว่าตัวไหนใช้อะไร */
-  const withCat = (label: string) => (cat ? `🐱 ${cat} · ${label}` : label);
+  const withCat = (label: string) => (cat ? `🐾 ${cat} · ${label}` : label);
   const qty = Math.max(1, Math.round(it.qty || 1));
 
   if (it.kind === "grooming") {
@@ -371,7 +371,6 @@ const KIND_OPTIONS: { id: ItemKind; label: string }[] = [
 
 const FREEBIE_PRESETS = [
   "กล้องวงจรปิด (CCTV)",
-  "น้ำพุแมว",
   "รับ-ส่ง",
   "ขนม/ทรีท",
 ];
@@ -552,7 +551,18 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
         pricing: roomPricing(r),
       }))
     );
-    setGroomPrograms(resolveGroomPrograms(config?.groomPricePrograms));
+    const progs = resolveGroomPrograms(config?.groomPricePrograms);
+    setGroomPrograms(progs);
+    // รายการอาบน้ำที่สร้างไว้ก่อนโหลดค่าร้านเสร็จ ใช้โปรแกรม/พันธุ์ตั้งต้นของระบบ (ร้านแมว)
+    // — ถ้าไม่ตรงกับของร้าน เปลี่ยนเป็นตัวแรกของร้าน (ร้านหมาเคยเห็น "แมวไทย" ในบิล)
+    setItems((cur) =>
+      cur.map((it) => {
+        if (it.kind !== "grooming") return it;
+        const prog = progs.find((x) => x.id === it.program) || progs[0];
+        if (prog.id === it.program && prog.breeds.some((x) => x.breed === it.breed)) return it;
+        return { ...it, program: prog.id, breed: prog.breeds[0].breed };
+      })
+    );
     setGroomSizeLabels(config?.groomSizeLabels || {});
     if (config?.payment) setPay(config.payment);
     if (config?.business?.name) setShopName(config.business.name);
@@ -860,7 +870,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
           : billMsg.summaryBookingTitle
     );
     L.push("");
-    if (selected) L.push(`ลูกค้า: ${selected.name} · 🐱 ${catName}`);
+    if (selected) L.push(`ลูกค้า: ${selected.name} · 🐾 ${catName}`);
     L.push("— รายการ —");
     for (const l of lines) {
       if (!l.label.trim()) continue;
@@ -1348,7 +1358,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
         };
         const qty = Math.max(1, Math.round(it.qty || 1));
         if (it.amount > 0 && isRoomLine(it)) {
-          const { base, note } = splitRoomLabel(it.label.replace(/^🐱 .+? · /, ""));
+          const { base, note } = splitRoomLabel(it.label.replace(/^(?:🐱|🐶|🐾) .+? · /, ""));
           return {
             ...newGrooming(undefined, groomPrograms),
             kind: "custom" as const,
@@ -1364,7 +1374,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
             ...newGrooming(undefined, groomPrograms),
             kind: "product" as const,
             productId: it.productId,
-            label: it.label.replace(/^🐱 .+? · /, "").replace(/ × \d+$/, ""),
+            label: it.label.replace(/^(?:🐱|🐶|🐾) .+? · /, "").replace(/ × \d+$/, ""),
             catName: it.catName,
             qty,
             amount: it.unitAmount ?? Math.round(it.amount / qty),
@@ -1375,7 +1385,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
           kind: it.amount > 0 ? ("custom" as const) : ("freebie" as const),
           // ถอดคำนำหน้าชื่อน้อง/ตัวคูณออก แล้วเก็บกลับเป็นฟิลด์ — กันชื่อน้องซ้อนกันตอนบันทึกใหม่
           label: it.label
-            .replace(/^🐱 .+? · /, "")
+            .replace(/^(?:🐱|🐶|🐾) .+? · /, "")
             .replace(/ × \d+$/, "")
             .replace(/^🎁 /, "")
             .replace(/ \(ฟรี\)$/, ""),

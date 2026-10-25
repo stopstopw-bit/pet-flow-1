@@ -76,7 +76,7 @@ async function postHandler(req: NextRequest) {
       formatBookingTelegram(
         type === "checkin" ? "🕒 ลูกค้าเลือกเวลาส่งน้อง" : "🕒 ลูกค้าเลือกเวลารับน้อง",
         {
-          น้องแมว: b.catName,
+          น้อง: b.catName,
           ลูกค้า: b.customerName,
           เวลา: time,
           วันที่: type === "checkin" ? b.checkin || b.date || "-" : b.checkout || "-",

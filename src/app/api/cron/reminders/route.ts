@@ -449,7 +449,7 @@ async function runForTenant() {
           await sendTelegram(
             formatBookingTelegram(`💰 เตือนเก็บยอดคงเหลือ (เข้าพักอีก ${auto?.depositReminderDays ?? 7} วัน)`, {
               ลูกค้า: b.customerName,
-              น้องแมว: String(b.catName),
+              น้อง: String(b.catName),
               เข้าพัก: b.checkin || b.date || "",
               ยอดคงเหลือ: `${remaining.toLocaleString()} บาท`,
             })

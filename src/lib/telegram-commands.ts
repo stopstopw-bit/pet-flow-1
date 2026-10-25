@@ -130,7 +130,7 @@ export async function buildTomorrowPrepMessage(tomorrow: string) {
 export async function buildMorningSummaryMessage(today: string) {
   return buildDayScheduleMessage(today, {
     heading: `☀️ สรุปเช้า — งานวันนี้ (${today})`,
-    emptyText: "วันนี้ยังไม่มีนัด/เข้าพัก-ออกพักในระบบค่ะ พักผ่อนได้เต็มที่ 🐱",
+    emptyText: "วันนี้ยังไม่มีนัด/เข้าพัก-ออกพักในระบบค่ะ พักผ่อนได้เต็มที่ 🐾",
     // แจ้งตัวที่ยังพักอยู่ (ไม่ใช่แค่วันเข้า/วันออก) ทุกเช้า จะได้เห็นโน้ต/สถานะเซ็นเงื่อนไข
     // ของทุกตัวที่ยังอยู่กับร้าน ไม่ใช่แค่วันแรกกับวันสุดท้ายของการพัก
     includeOngoingStays: true,
@@ -183,7 +183,7 @@ export async function handleTelegramCommand(
         `<b>เพิ่มนัด</b>\n` +
         `<code>/book อาบ น้องส้ม 2026-07-15 12:30</code>\n` +
         `<code>/book ห้อง น้องมิว 2026-07-15 2026-07-20</code>\n\n` +
-        `<b>สรุปลูกค้า</b> <code>/summary ชื่อแมว</code>\n` +
+        `<b>สรุปลูกค้า</b> <code>/summary ชื่อน้อง</code>\n` +
         `<b>ส่งยืนยันนัด</b> <code>/confirm รหัสนัด</code>\n` +
         `<b>ค้นหา</b> <code>/search ชื่อ</code>`,
     };
@@ -302,7 +302,7 @@ export async function handleTelegramCommand(
 
   if (command === "/search") {
     const q = payload?.trim() || "";
-    if (!q) return { message: "พิมพ์ /search ชื่อลูกค้าหรือชื่อแมว" };
+    if (!q) return { message: "พิมพ์ /search ชื่อลูกค้าหรือชื่อน้อง" };
     const found = await searchCustomers(q);
     if (!found.length) return { message: `ไม่พบ "${q}"` };
     return {
@@ -311,7 +311,7 @@ export async function handleTelegramCommand(
         .map(
           (c, i) =>
             `${i + 1}. ${c.name}${c.isMember ? " 💎" : ""}\n` +
-            `   แมว: ${c.cats.map((cat) => cat.name).join(", ")}\n` +
+            `   น้อง: ${c.cats.map((cat) => cat.name).join(", ")}\n` +
             `   เครดิต: ${c.memberCredit} บาท`
         )
         .join("\n\n"),

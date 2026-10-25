@@ -72,7 +72,7 @@ async function handlePost(req: NextRequest) {
   }
   if (!name || !phone || cats.filter((c: { name: string }) => c.name.trim()).length === 0) {
     return NextResponse.json(
-      { error: "กรอกชื่อ เบอร์โทร และชื่อน้องแมวอย่างน้อย 1 ตัว" },
+      { error: "กรอกชื่อ เบอร์โทร และชื่อน้องอย่างน้อย 1 ตัว" },
       { status: 400 }
     );
   }

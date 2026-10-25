@@ -266,7 +266,7 @@ async function handlePost(req: NextRequest) {
   await sendTelegram(
     formatBookingTelegram("📌 จองใหม่", {
       ลูกค้า: customer.name,
-      น้องแมว: body.catName,
+      น้อง: body.catName,
       บริการ: body.service === "room" ? "ห้องพัก" : "อาบน้ำ",
       ...(hasTransport(booking.transport) ? { รับส่ง: transportLabel(booking.transport) } : {}),
       วันที่: `${body.date || body.checkin}${body.time ? ` ${body.time}` : ""}`,
@@ -375,7 +375,7 @@ async function handlePatch(req: NextRequest, admin: boolean) {
     await sendTelegram(
       formatBookingTelegram("✅ ลูกค้ายืนยันแล้ว", {
         ลูกค้า: String(b.customerName),
-        น้องแมว: String(b.catName),
+        น้อง: String(b.catName),
         วันที่: String(b.date || b.checkin),
       })
     );
@@ -421,7 +421,7 @@ async function handlePatch(req: NextRequest, admin: boolean) {
     await sendTelegram(
       formatBookingTelegram("✅ ลูกค้ายืนยันแล้ว", {
         ลูกค้า: String(first.customerName),
-        น้องแมว: confirmed.map((x) => x!.catName).join(", "),
+        น้อง: confirmed.map((x) => x!.catName).join(", "),
         วันที่: String(first.date || first.checkin),
       })
     );
@@ -1277,7 +1277,7 @@ function groomInfoCardFor(
     await sendTelegram(
       formatBookingTelegram(h?.service === "room" ? "📅 เลื่อนวัน/ต่อคืน" : "📅 เลื่อนนัด", {
         ลูกค้า: String(h?.customerName || ""),
-        น้องแมว: res.updated.map((u) => u.catName).join(", "),
+        น้อง: res.updated.map((u) => u.catName).join(", "),
         วันที่:
           h?.service === "room"
             ? `${h?.checkin || "-"} → ${h?.checkout || "-"}`
@@ -1344,7 +1344,7 @@ function groomInfoCardFor(
     if (!body.silent) await sendTelegram(
       formatBookingTelegram("✏️ แก้ไขนัด", {
         ลูกค้า: String(updated.customerName),
-        น้องแมว: String(updated.catName),
+        น้อง: String(updated.catName),
         วันที่: String(updated.date || updated.checkin),
         เวลา: String(updated.time || "-"),
       })
@@ -1408,7 +1408,7 @@ function groomInfoCardFor(
             : "🚫 ลูกค้าไม่มาตามนัด",
         {
           ลูกค้า: String(b.customerName),
-          น้องแมว: String(gb.catName),
+          น้อง: String(gb.catName),
           บริการ: b.service === "room" ? "ห้องพัก" : "อาบน้ำ",
           ...(status === "ready" ? { แจ้งลูกค้า: sent ? "ส่งแล้ว" : "ไม่ได้ส่ง" } : {}),
         }
@@ -1434,7 +1434,7 @@ function groomInfoCardFor(
     await sendTelegram(
       formatBookingTelegram("❌ ยกเลิกนัด", {
         ลูกค้า: String(b.customerName),
-        น้องแมว: String(b.catName),
+        น้อง: String(b.catName),
         วันที่: String(b.date || b.checkin),
       })
     );

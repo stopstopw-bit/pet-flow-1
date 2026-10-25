@@ -191,3 +191,103 @@ export function applyPetFormat(config: SiteConfig, kind: PetKind): SiteConfig {
   };
   return config;
 }
+
+// ── ร้านหมาที่ยังมีค่าของร้านแมวค้างอยู่ ────────────────────────────────────────────
+// ร้านที่สร้างก่อนมี "แบบร้าน" (เช่น Back Home) และข้อความตั้งต้นของระบบ (ข้อตกลง, ข้อความ LINE ฯลฯ)
+// เขียนไว้สำหรับร้านแมว — ร้านหมาต้องไม่เห็นคำว่าแมวเลย จึงแปลงตอนอ่านค่าร้าน
+// (ร้านกดบันทึกหน้าตั้งค่าเมื่อไร ค่าที่แปลงแล้วก็ถูกบันทึกเป็นของร้านไปด้วย)
+
+/** ห้องตัวอย่างของร้านแมว (ค่าตั้งต้นเดิม) — ร้านหมาที่ยังไม่ได้แก้ห้องเองจะได้ห้องแบบร้านหมาแทน */
+const CAT_SAMPLE_ROOM_IDS = new Set(["mini-meow", "mid-cozy", "catflix", "mini-duo", "cozy-duo", "cat-tower"]);
+const CAT_GROOM_BREED = /แมว|แรคดอล|เมนคูน/;
+
+/** คำของร้านแมว → คำของร้านหมา (เรียงคำยาวก่อน ไม่งั้น "น้ำพุแมว" จะกลายเป็น "น้ำพุหมา") */
+const DOG_WORDS: [RegExp, string][] = [
+  [/เกรดแมวประกวด/g, "เกรดประกวด"],
+  [/ขนม\/แมวเลีย/g, "ขนม"],
+  [/แมวเลีย/g, "ขนม"],
+  [/น้ำพุแมว/g, "น้ำพุ"],
+  [/ทรายแมว/g, "แผ่นรองซับ"],
+  [/กระบะทราย/g, "ที่ขับถ่าย"],
+  [/ลูกแมว/g, "ลูกหมา"],
+  [/แมว/g, "หมา"],
+  [/🐱|😺|😸|😻/g, "🐶"],
+  [/🐈/g, "🐕"],
+  [/\bKittens?\b/g, "Puppy"],
+  [/\bkittens?\b/g, "puppy"],
+  [/\bCats\b/g, "Dogs"],
+  [/\bcats\b/g, "dogs"],
+  [/\bCat\b/g, "Dog"],
+  [/\bcat\b/g, "dog"],
+];
+
+/** ไม่แตะ: id ห้อง/ลิงก์/รูป และรายชื่อสายพันธุ์ (มีตัวแปลงของตัวเองใน pet-kind.ts) */
+const KEEP_KEYS = new Set(["id", "typeId", "image", "poster", "logoUrl", "catBreeds", "petKind", "url", "href"]);
+
+export function dogWords(text: string): string {
+  if (!text || /^(https?:|data:|\/|#)/.test(text.trim())) return text;
+  // ห้ามแตะตัวแปรในข้อความ เช่น {cat} {cats} — ระบบใช้แทนชื่อน้อง
+  return text
+    .split(/(\{[^}]*\})/)
+    .map((part) => (part.startsWith("{") ? part : DOG_WORDS.reduce((s, [re, to]) => s.replace(re, to), part)))
+    .join("");
+}
+
+function dogWordsDeep(v: unknown): unknown {
+  if (typeof v === "string") return dogWords(v);
+  if (Array.isArray(v)) return v.map(dogWordsDeep);
+  if (v && typeof v === "object") {
+    return Object.fromEntries(
+      Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, KEEP_KEYS.has(k) ? x : dogWordsDeep(x)])
+    );
+  }
+  return v;
+}
+
+/** ร้านหมา: เปลี่ยนค่าร้านแมวที่ค้างอยู่เป็นของร้านหมา (ร้านแมว / หมาและแมว คืนค่าเดิม) */
+export function withDogShopDefaults(config: SiteConfig): SiteConfig {
+  if (config.business?.petKind !== "dog") return config;
+  const f = FORMAT.dog;
+  const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
+  const out = { ...config };
+
+  const rooms = config.rooms || [];
+  if (
+    rooms.length > 0 &&
+    rooms.every((r) => CAT_SAMPLE_ROOM_IDS.has(r.id) && (!r.image || r.image.startsWith("/catalog/rooms/")))
+  ) {
+    out.rooms = clone(f.rooms);
+    out.roomInventory = inventoryOf(f.rooms);
+  }
+  const programs = config.groomPricePrograms || [];
+  if (!programs.length || programs.every((p) => p.breeds.every((b) => CAT_GROOM_BREED.test(b.breed)))) {
+    out.groomPricePrograms = clone(f.groomPrograms);
+  }
+  const sizes = config.groomSizeLabels;
+  if (!sizes || Object.values(sizes).some((s) => s && /แมว/.test(s))) out.groomSizeLabels = { ...SIZE_LABELS_DOG };
+  if (config.options) {
+    out.options = {
+      ...config.options,
+      freebies: (config.options.freebies || []).filter((x) => !/แมว|ทราย/.test(x)),
+      servicePresets: (config.options.servicePresets || []).map((p) =>
+        p.label === "น้ำพุแมว" ? { ...f.presetSwap } : p
+      ),
+    };
+  }
+  out.pointsRewards = (config.pointsRewards || []).map((r) =>
+    r.id === "treat" && /แมว/.test(r.reward?.th || "") ? { ...r, reward: { ...f.treat } } : r
+  );
+  const cards = config.cards || {};
+  out.cards = {
+    ...cards,
+    bookingConfirm: {
+      ...cards.bookingConfirm,
+      texts: { ...cards.bookingConfirm?.texts, groomPrepNote: cards.bookingConfirm?.texts?.groomPrepNote || f.groomPrepNote },
+    },
+    review: {
+      ...cards.review,
+      texts: { ...cards.review?.texts, bodyGroom: cards.review?.texts?.bodyGroom || f.reviewGroom },
+    },
+  };
+  return dogWordsDeep(out) as SiteConfig;
+}

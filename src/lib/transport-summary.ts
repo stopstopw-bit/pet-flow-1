@@ -134,7 +134,7 @@ export async function buildTransportSummaryMessage(
     const phone = phoneOf(first);
     const out = [
       `\n<b>${i + 1}. ${label}</b> · ${esc(trip.timeText)}`,
-      `   🐱 ${esc(groupCatNames(trip.group))} · ${esc(first.customerName)} (${service})`,
+      `   🐾 ${esc(groupCatNames(trip.group))} · ${esc(first.customerName)} (${service})`,
     ];
     if (phone) out.push(`   📞 ${esc(phone)}`);
     if (t?.mapUrl) out.push(`   📍 <a href="${escAttr(t.mapUrl)}">เปิด Google Maps</a>`);
