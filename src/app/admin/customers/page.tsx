@@ -286,7 +286,7 @@ function CustomerAppointmentsSection({
       )
     );
     if (results.every((r) => r.ok)) {
-      alert("ยกเลิกนัดแล้ว");
+      toast("ยกเลิกนัดแล้ว", "success");
     } else {
       alert("ยกเลิกไม่สำเร็จบางตัว — ลองใหม่อีกครั้ง");
     }

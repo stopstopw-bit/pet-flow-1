@@ -1,5 +1,6 @@
 "use client";
 
+import { savedPopup } from "@/components/Toast";
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLiff } from "@/components/LiffProvider";
@@ -220,6 +221,7 @@ function VaccineSection({ target }: { target: VaccineTarget }) {
       setSentCount(data.count ?? sentCount + photos.length);
       setPhotos([]);
       setDone(true);
+      savedPopup("ส่งรูปสมุดวัคซีนสำเร็จ", ["ร้านได้รับรูปแล้วค่ะ"]);
     } catch {
       alert("ส่งรูปไม่สำเร็จ ลองใหม่อีกครั้งนะคะ");
     } finally {

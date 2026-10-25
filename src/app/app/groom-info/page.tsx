@@ -1,5 +1,6 @@
 "use client";
 
+import { savedPopup } from "@/components/Toast";
 import { IntakeFlowBar } from "@/components/IntakeFlowBar";
 import { flowProgress } from "@/lib/intake-flow";
 import { Suspense, useEffect, useState } from "react";
@@ -224,6 +225,7 @@ function GroomInfoContent() {
       }
       // มาจากการ์ดรวมขอข้อมูล → ไปขั้นต่อไปเลย (สมุดวัคซีน / บัตร / กฎ) ไม่ปิดหน้า
       if (nextStep) {
+        savedPopup("บันทึกข้อมูลน้องสำเร็จ", ["ไปขั้นต่อไปกันเลยค่ะ"], { afterNav: true });
         window.location.href = nextStep.href;
         return;
       }
@@ -237,6 +239,7 @@ function GroomInfoContent() {
         /* เปิดนอก LINE — โชว์หน้าจอเสร็จแทน */
       }
       setDone(true);
+      savedPopup("บันทึกข้อมูลน้องสำเร็จ");
     } catch {
       setSaveError("บันทึกไม่สำเร็จ — ลองใหม่อีกครั้ง หรือแจ้งพนักงานที่ร้านได้เลยค่ะ");
     } finally {
