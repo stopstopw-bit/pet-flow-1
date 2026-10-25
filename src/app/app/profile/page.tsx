@@ -9,6 +9,7 @@ import { asksSpecies, breedOptionsFor, breedOptionsForSpecies, petWords, species
 import { SpeciesPicker } from "@/components/SpeciesPicker";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { StaffNoteTagPicker } from "@/components/StaffNoteTagPicker";
+import { BirthdayPicker } from "@/components/BirthdayPicker";
 import { BTN_PRIMARY, PageHeader } from "@/components/PageHeader";
 import { EmptyState, SectionLabel } from "@/components/ui";
 import { Icon } from "@/components/Icon";
@@ -484,10 +485,17 @@ export default function ProfilePage() {
                     className={`${sub} mt-0.5`}
                   />
                 </label>
-                <label className="block text-[11px] font-bold text-brown-soft">
+                <div className="text-[11px] font-bold text-brown-soft">
                   วันเกิดน้อง <span className="font-normal text-brown-faint">(ถ้าทราบ)</span>
-                  <input type="date" value={cat.birthday} onChange={(e) => updateCat(idx, { birthday: e.target.value })} className={`${sub} mt-0.5`} />
-                </label>
+                  <div className="mt-0.5">
+                    <BirthdayPicker
+                      value={cat.birthday}
+                      onChange={(iso) => updateCat(idx, { birthday: iso })}
+                      yearsBack={25}
+                      allowUnknown
+                    />
+                  </div>
+                </div>
                 <StaffNoteTagPicker
                   label="โรคประจำตัว / เรื่องที่ช่างต้องรู้"
                   medicalValue={cat.medical}
