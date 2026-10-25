@@ -9,6 +9,7 @@ import {
 } from "@/components/LineSetupSection";
 import { TelegramSetupSection } from "@/components/TelegramSetupSection";
 import { Icon } from "@/components/Icon";
+import { HealthCheckSection } from "@/components/HealthCheckSection";
 
 type Status = {
   supabaseUrl: boolean;
@@ -77,6 +78,8 @@ export default function SetupPage() {
       <p className="mb-4 mt-0.5 text-xs text-brown-soft">
         ทำครั้งเดียว — วาง JSON / ลิงก์ แล้วกดบันทึก ไม่ต้องไล่ใส่ Vercel ทีละตัว
       </p>
+
+      <HealthCheckSection />
 
       <GoogleSetupSection adminCode={adminCode} />
       <LiffSetupSection adminCode={adminCode} />

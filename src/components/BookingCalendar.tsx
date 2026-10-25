@@ -252,6 +252,113 @@ function MiniEntry({
   );
 }
 
+/** จัดการนัดของบ้านที่มาหลายตัว — เลือกทำทั้งบ้าน หรือแก้/ยกเลิกทีละตัว */
+function GroupManageSheet({
+  group,
+  onClose,
+  onEdit,
+  onMove,
+  onExtend,
+  onAddCat,
+  onCancel,
+}: {
+  group: CalendarDay[];
+  onClose: () => void;
+  onEdit: (b: CalendarDay) => void;
+  onMove: () => void;
+  onExtend?: () => void;
+  onAddCat: () => void;
+  onCancel: (list: CalendarDay[]) => void;
+}) {
+  const b = group[0];
+  const isStay = b.service === "room" || !!b.checkin;
+  const whole: { label: string; icon: string; run: () => void }[] = [
+    { label: isStay ? "เลื่อนวันเข้าพัก" : "เลื่อนนัด", icon: "calendar", run: onMove },
+    ...(onExtend ? [{ label: "ต่อคืน", icon: "bed", run: onExtend }] : []),
+    { label: "เพิ่มน้อง", icon: "plus", run: onAddCat },
+  ];
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-end justify-center bg-petflow-chocolate/40 backdrop-blur-[2px] sm:items-center sm:p-4"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-[28px] bg-card px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 shadow-petflow sm:rounded-petflow sm:p-5"
+      >
+        <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-petflow-line sm:hidden" />
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Manage</p>
+            <h2 className="truncate text-lg font-extrabold text-petflow-chocolate">
+              {b.customerName} · {group.length} ตัว
+            </h2>
+          </div>
+          <button
+            type="button"
+            aria-label="ปิด"
+            onClick={onClose}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-paper text-brown"
+          >
+            <Icon name="x" size={18} />
+          </button>
+        </div>
+
+        <p className="mb-2 text-xs font-bold text-brown-soft">ทั้งบ้าน</p>
+        <div className={`mb-5 grid gap-2 ${whole.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
+          {whole.map((a) => (
+            <button
+              key={a.label}
+              type="button"
+              onClick={a.run}
+              className="flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-petflow-sm bg-paper px-2 text-xs font-bold text-petflow-chocolate"
+            >
+              <Icon name={a.icon} size={18} />
+              {a.label}
+            </button>
+          ))}
+        </div>
+
+        <p className="mb-2 text-xs font-bold text-brown-soft">รายตัว</p>
+        <ul className="mb-4 divide-y divide-petflow-line overflow-hidden rounded-petflow-sm border border-petflow-line">
+          {group.map((x) => (
+            <li key={x.id} className="flex items-center gap-2 bg-card py-1.5 pl-3 pr-1.5">
+              <span className="min-w-0 flex-1 truncate text-sm font-bold text-brown">{x.catName}</span>
+              <button
+                type="button"
+                onClick={() => onEdit(x)}
+                className="flex min-h-[40px] items-center gap-1 rounded-full bg-paper px-3 text-xs font-bold text-petflow-chocolate"
+              >
+                <Icon name="edit" size={14} />
+                แก้ไข
+              </button>
+              <button
+                type="button"
+                aria-label={`ยกเลิก ${x.catName}`}
+                onClick={() => onCancel([x])}
+                className="flex h-10 w-10 items-center justify-center rounded-full text-red-600"
+              >
+                <Icon name="trash" size={16} />
+              </button>
+            </li>
+          ))}
+        </ul>
+
+        <button
+          type="button"
+          onClick={() => onCancel(group)}
+          className="flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-full text-sm font-bold text-red-600"
+        >
+          <Icon name="trash" size={16} />
+          ยกเลิกทั้งบ้าน
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /**
  * ห้องว่างทั้งเดือน — ดูทีเดียวว่าวันไหนยังรับได้ แตะวันเพื่อดูผังห้องของวันนั้น
  * มุม "รายห้อง" = ตารางห้อง × วัน เห็นทีละห้องว่ามีแมวอยู่ช่วงไหน
@@ -628,6 +735,8 @@ export function BookingCalendar() {
   // "เลื่อนวันให้ทุกตัว" ในโมดัลด้วย ไม่ต้องไล่แก้ทีละตัว
   const openEdit = (b: CalendarDay, group?: CalendarDay[]) =>
     setEditing({ b, group: group && group.length > 1 ? group : [b] });
+  // บ้านที่มาหลายตัว — รวมแก้ไข/ยกเลิกทั้งบ้านหรือรายตัวไว้ในแผ่นเดียว แทนเมนูยาวทีละตัว
+  const [managing, setManaging] = useState<CalendarDay[] | null>(null);
   const [zoomSignature, setZoomSignature] = useState<string | null>(null);
   // นัดที่บิลจ่ายจบแล้ว (รายงานขึ้นมาจาก BillButton) — ติดป้าย "จบเคส" ให้เห็นชัดทั้งการ์ด
   const [paidCases, setPaidCases] = useState<Record<string, boolean>>({});
@@ -1384,6 +1493,36 @@ export function BookingCalendar() {
           }
         />
       )}
+      {managing && (
+        <GroupManageSheet
+          group={managing}
+          onClose={() => setManaging(null)}
+          onEdit={(x) => {
+            setManaging(null);
+            openEdit(x, managing);
+          }}
+          onMove={() => {
+            setManaging(null);
+            openMove(managing);
+          }}
+          onExtend={
+            managing[0].checkout
+              ? () => {
+                  setManaging(null);
+                  extendStay(managing);
+                }
+              : undefined
+          }
+          onAddCat={() => {
+            setManaging(null);
+            addCatToGroup(managing);
+          }}
+          onCancel={(list) => {
+            setManaging(null);
+            cancelGroup(list);
+          }}
+        />
+      )}
       {editing && (
         <BookingEditModal
           booking={editing.b}
@@ -2084,18 +2223,15 @@ export function BookingCalendar() {
                 return l;
               };
               const menu: { label: string; icon?: string; onClick: () => void; danger?: boolean }[] = [
-                {
-                  label: uniq(many ? "แก้ไขนัดทั้งบ้าน" : "แก้ไขนัด"),
-                  icon: "edit",
-                  onClick: () => openEdit(b, group),
-                },
                 ...(many
-                  ? [{ label: uniq("เลื่อนนัดทั้งบ้าน"), icon: "calendar", onClick: () => openMove(group) }]
-                  : []),
-                ...((b.service === "room" || !!b.checkout) && b.checkout
-                  ? [{ label: uniq("ต่อคืน"), icon: "bed", onClick: () => extendStay(group) }]
-                  : []),
-                { label: uniq("เพิ่มน้องในนัดนี้"), icon: "plus", onClick: () => addCatToGroup(group) },
+                  ? [{ label: uniq("แก้ไข / ยกเลิก"), icon: "edit", onClick: () => setManaging(group) }]
+                  : [
+                      { label: uniq("แก้ไขนัด"), icon: "edit", onClick: () => openEdit(b, group) },
+                      ...((b.service === "room" || !!b.checkout) && b.checkout
+                        ? [{ label: uniq("ต่อคืน"), icon: "bed", onClick: () => extendStay(group) }]
+                        : []),
+                      { label: uniq("เพิ่มน้องในนัดนี้"), icon: "plus", onClick: () => addCatToGroup(group) },
+                    ]),
                 ...(b.customerId
                   ? [
                       {
@@ -2115,21 +2251,10 @@ export function BookingCalendar() {
                 ...(stage !== "done" && stage !== "no_show"
                   ? [{ label: uniq("ไม่มาตามนัด"), icon: "x", onClick: () => setStageFor(group, "set_no_show") }]
                   : []),
-                // บ้านที่มาหลายตัว — ยกเลิกทีละตัวได้ เผื่อน้องตัวใดตัวหนึ่งมาไม่ได้
+                // บ้านที่มาหลายตัว ยกเลิกทั้งบ้าน/รายตัวอยู่ในแผ่น "แก้ไข / ยกเลิก"
                 ...(many
-                  ? group.map((x) => ({
-                      label: uniq(`ยกเลิก ${x.catName}`),
-                      icon: "trash",
-                      danger: true,
-                      onClick: () => cancelGroup([x]),
-                    }))
-                  : []),
-                {
-                  label: uniq(many ? "ยกเลิกทั้งบ้าน" : "ยกเลิกนัด"),
-                  icon: "trash",
-                  danger: true,
-                  onClick: () => cancelGroup(group),
-                },
+                  ? []
+                  : [{ label: uniq("ยกเลิกนัด"), icon: "trash", danger: true, onClick: () => cancelGroup(group) }]),
               ];
 
               return (
