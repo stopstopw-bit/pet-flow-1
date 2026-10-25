@@ -441,6 +441,8 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
   const [freebiePresets, setFreebiePresets] = useState<string[]>(FREEBIE_PRESETS);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [bookingId, setBookingId] = useState<string | undefined>(undefined);
+  /** น้องที่มาจริงในนัดที่ดึงมาออกบิล — ใช้ตั้งชื่อน้องบนบิล (ไม่ใช่ตัวแรกของบ้าน) */
+  const [bookingCats, setBookingCats] = useState<string[]>([]);
   const [showBookings, setShowBookings] = useState(false);
 
   const [customerId, setCustomerId] = useState("");
@@ -686,7 +688,10 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
           return perItem.length ? perItem : [i.catName];
         })
       );
-      return group.filter((b) => !billedCats.has(b.catName));
+      // นัดที่บิลผูกไว้ตรงๆ ก็ถือว่าออกบิลแล้ว ไม่ว่าชื่อน้องบนบิลจะเป็นใคร
+      // (บิลเก่าตัวเดียวเคยลงชื่อเป็นน้องตัวแรกของบ้าน แล้วนัดเดิมโผล่ให้ออกบิลซ้ำ)
+      const billedIds = new Set(billedForGroup.map((i) => i.bookingId));
+      return group.filter((b) => !billedCats.has(b.catName) && !billedIds.has(b.id));
     })
     .filter((group) => group.length > 0)
     // เรียงตามวันนัด ไม่ใช่วันที่กดจอง: วันนี้/ที่ผ่านมาแล้ว (ใกล้วันนี้ก่อน) ขึ้นบนสุด
@@ -994,6 +999,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
     setPromoId("");
     setSuggestedPromo(null);
     setBookingId(undefined);
+    setBookingCats([]);
     setShowList(true);
   };
 
@@ -1012,6 +1018,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
   const pickBooking = async (group: Booking[]) => {
     const bk = group[0];
     setBookingId(bk.id);
+    setBookingCats(Array.from(new Set(group.map((g) => g.catName).filter(Boolean))));
     setShowBookings(false);
     const cust = customers.find((c) => c.id === bk.customerId);
     if (cust) await pickCustomer(cust);
@@ -1054,7 +1061,8 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
       // ห้องที่ล็อกเลขไว้ = ห้องตามเลขนั้น · ไม่ได้ล็อก = จัดเต็มห้องละ cap ตัวตามที่ระบบจัดห้องทำ
       const units = new Map<string, Booking[]>();
       for (const g of stayPart) {
-        const k = `${g.room || ""}#${g.roomUnit ?? "auto"}`;
+        // วันเข้า/ออกต่างกัน (บ้านเดียวกันแต่ต่อคืนไม่เท่ากัน) = คนละบรรทัด คืนของใครของมัน
+        const k = `${g.checkin || ""}|${g.checkout || ""}|${g.room || ""}#${g.roomUnit ?? "auto"}`;
         units.set(k, [...(units.get(k) || []), g]);
       }
       const lines: Booking[][] = [];
@@ -1216,6 +1224,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
     setBillDeposit("");
     setBillDepPct(null);
     setBookingId(undefined);
+    setBookingCats([]);
     setEditingId(null);
   };
 
@@ -1246,7 +1255,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
       new Set(items.flatMap((it) => parseCatNames(it.catName)))
     );
     const cat =
-      billedCatNames.join(CAT_SEP) || cust?.cats[0]?.name || "น้อง";
+      billedCatNames.join(CAT_SEP) || bookingCats.join(CAT_SEP) || cust?.cats[0]?.name || "น้อง";
     // เก็บของแถม (ฟรี) ด้วย — label มี แต่ยอด 0
     // โปรแกรมอาบน้ำติดไปกับรายการ — ให้เซิร์ฟเวอร์เช็คคอร์สที่ผูกโปรแกรมได้
     const payloadItems = items
@@ -1812,14 +1821,25 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
             {editingId ? "แก้ไขบิล" : "คิดเงิน · ออกบิล"}
           </h1>
         </div>
-        {/* เรียกดูใบเสร็จ / ใบกำกับภาษี / ใบเสนอราคา ที่เคยออกไปแล้ว */}
-        <a
-          href="/admin/billing/docs"
-          className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full border border-petflow-line bg-card px-3.5 text-xs font-extrabold text-petflow-chocolate shadow-petflow-sm"
-        >
-          <Icon name="doc" size={15} />
-          เอกสารที่ออกแล้ว
-        </a>
+        <div className="flex shrink-0 items-center gap-2">
+          {/* ตรวจบิลเทียบนัดทั้งร้าน — หาบิลซ้ำ/คิดคืนเกิน */}
+          <a
+            href="/admin/billing/check"
+            aria-label="ตรวจบิลซ้ำ"
+            title="ตรวจบิลซ้ำ"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-petflow-line bg-card text-petflow-chocolate shadow-petflow-sm"
+          >
+            <Icon name="search" size={16} />
+          </a>
+          {/* เรียกดูใบเสร็จ / ใบกำกับภาษี / ใบเสนอราคา ที่เคยออกไปแล้ว */}
+          <a
+            href="/admin/billing/docs"
+            className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full border border-petflow-line bg-card px-3.5 text-xs font-extrabold text-petflow-chocolate shadow-petflow-sm"
+          >
+            <Icon name="doc" size={15} />
+            เอกสารที่ออกแล้ว
+          </a>
+        </div>
       </div>
       {tabs}
 
