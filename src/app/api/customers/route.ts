@@ -1,5 +1,5 @@
 import { cleanPetName } from "@/lib/pet-name";
-import { renameCatAfterUpdate } from "@/lib/cat-rename";
+import { findUnlinkedCatNames, relinkCatName, renameCatAfterUpdate } from "@/lib/cat-rename";
 import { NextRequest, NextResponse } from "next/server";
 import { parseTaxInvoiceBody } from "@/lib/tax-invoice";
 import {
@@ -77,6 +77,13 @@ async function handleGet(req: NextRequest) {
 
   if (req.nextUrl.searchParams.get("trash") === "1") {
     return NextResponse.json({ customers: await listTrashedCustomers() });
+  }
+
+  if (id && req.nextUrl.searchParams.get("unlinked") === "1") {
+    // ชื่อน้องในนัด/บิลที่ไม่ตรงกับน้องตัวไหนในบ้าน (ชื่อชั่วคราว/ชื่อเก่า) — ให้ร้านจับคู่
+    const c = await getCustomer(id);
+    if (!c) return NextResponse.json({ error: "not found" }, { status: 404 });
+    return NextResponse.json({ names: await findUnlinkedCatNames(c) });
   }
 
   if (id) {
@@ -241,6 +248,13 @@ async function handlePatch(req: NextRequest) {
     // เปลี่ยนชื่อน้อง → นัด/บิล/ประวัติที่ผูกด้วยชื่อเดิม เปลี่ยนตามให้ครบ
     await renameCatAfterUpdate(c, body.catId, oldName);
     return NextResponse.json({ ok: true, customer: c });
+  }
+
+  // จับคู่ชื่อในนัด/บิล (ชื่อชั่วคราว/ชื่อเก่า) เข้ากับน้องตัวจริง — เปลี่ยนชื่อทุกที่ให้ตรง
+  if (action === "relink_cat_name") {
+    const res = await relinkCatName(id, String(body.from || ""), String(body.catId || ""));
+    if (!res) return NextResponse.json({ error: "not found" }, { status: 404 });
+    return NextResponse.json({ ok: true, ...res });
   }
 
   // พนักงานแนบ / ลบรูปสมุดวัคซีนที่ตัวน้องเอง (ไม่ต้องมีนัด)
