@@ -41,6 +41,8 @@ export type CatRecord = {
   color?: string;
   /** ทำหมันแล้ว (true) / ยังไม่ทำ (false) / ไม่ได้ระบุ (undefined) */
   neutered?: boolean;
+  /** ได้รับวัคซีนครบแล้ว (true) / ยังไม่ครบ (false) / ไม่ได้ระบุ (undefined) — ถามตอนสมัครสมาชิก */
+  vaccinated?: boolean;
   /** ประวัติการชัก/ช็อค — ถามตอนสมัครสมาชิก (ไม่บังคับ) */
   seizureHistory?: string;
   /** ประวัติการแพ้ (อาหาร/ยา/แชมพู) — ถามตอนสมัครสมาชิก (ไม่บังคับ) */
@@ -185,6 +187,7 @@ type CatRow = {
   fur_length?: string | null;
   color?: string | null;
   neutered?: boolean | null;
+  vaccinated?: boolean | null;
   seizure_history?: string | null;
   allergy?: string | null;
   weight_kg?: number | string | null;
@@ -343,6 +346,7 @@ function mapCustomer(row: CustomerRow): CustomerRecord {
       furLength: (c.fur_length as "short" | "long" | undefined) ?? undefined,
       color: c.color ?? undefined,
       neutered: c.neutered ?? undefined,
+      vaccinated: c.vaccinated ?? undefined,
       seizureHistory: c.seizure_history ?? undefined,
       allergy: c.allergy ?? undefined,
       weightKg: c.weight_kg != null && c.weight_kg !== "" ? Number(c.weight_kg) : undefined,
@@ -1295,7 +1299,7 @@ export async function updateCat(
       | "seizureHistory"
       | "allergy"
     >
-  > & { weightKg?: number | null; neutered?: boolean | null }
+  > & { weightKg?: number | null; neutered?: boolean | null; vaccinated?: boolean | null }
 ) {
   const c = await getCustomer(customerId);
   if (!c) return null;
@@ -1313,12 +1317,14 @@ export async function updateCat(
     };
   }
 
-  const { weightKg, neutered, ...rest } = patch;
+  const { weightKg, neutered, vaccinated, ...rest } = patch;
   Object.assign(cat, rest);
   if (typeof rest.name === "string") cat.name = cleanPetName(rest.name);
   // null = ล้างคำตอบ (ไม่ระบุ), ไม่ส่งมา = คงค่าเดิม
   const neuteredChanged = "neutered" in patch;
   if (neuteredChanged) cat.neutered = typeof neutered === "boolean" ? neutered : undefined;
+  const vaccinatedChanged = "vaccinated" in patch;
+  if (vaccinatedChanged) cat.vaccinated = typeof vaccinated === "boolean" ? vaccinated : undefined;
   const historyChanged = "seizureHistory" in patch || "allergy" in patch;
   if ("seizureHistory" in patch) cat.seizureHistory = patch.seizureHistory?.trim() || undefined;
   if ("allergy" in patch) cat.allergy = patch.allergy?.trim() || undefined;
@@ -1371,6 +1377,18 @@ export async function updateCat(
       await sb
         .from("cats")
         .update({ weight_kg: cat.weightKg ?? null })
+        .eq("id", catId)
+        .eq("tenant_id", requireTenantId())
+        .then(
+          () => {},
+          () => {}
+        );
+    }
+    if (vaccinatedChanged) {
+      // คอลัมน์ใหม่ (cats.vaccinated) — แยกเขียนเผื่อยังไม่ได้รัน migration
+      await sb
+        .from("cats")
+        .update({ vaccinated: cat.vaccinated ?? null })
         .eq("id", catId)
         .eq("tenant_id", requireTenantId())
         .then(
@@ -1520,6 +1538,7 @@ export async function addCat(
     furLength?: "short" | "long";
     color?: string;
     neutered?: boolean;
+    vaccinated?: boolean;
     seizureHistory?: string;
     allergy?: string;
     weightKg?: number;
@@ -1551,6 +1570,7 @@ export async function addCat(
     furLength: data.furLength,
     color: data.color?.trim() || undefined,
     neutered: typeof data.neutered === "boolean" ? data.neutered : undefined,
+    vaccinated: typeof data.vaccinated === "boolean" ? data.vaccinated : undefined,
     seizureHistory: data.seizureHistory?.trim() || undefined,
     allergy: data.allergy?.trim() || undefined,
     weightKg: normalizeWeightKg(data.weightKg),
@@ -1591,6 +1611,17 @@ export async function addCat(
         );
     }
     if (cat.species) await writeCatSpecies(catId, cat.species);
+    if (cat.vaccinated != null) {
+      await sb
+        .from("cats")
+        .update({ vaccinated: cat.vaccinated })
+        .eq("id", catId)
+        .eq("tenant_id", requireTenantId())
+        .then(
+          () => {},
+          () => {}
+        );
+    }
     if (cat.neutered != null) {
       await sb
         .from("cats")
@@ -2615,6 +2646,7 @@ export async function registerCustomerFromLine(data: {
     furLength?: "short" | "long";
     color?: string;
     neutered?: boolean;
+    vaccinated?: boolean;
     seizureHistory?: string;
     allergy?: string;
     weightKg?: number;
@@ -2637,6 +2669,7 @@ export async function registerCustomerFromLine(data: {
       furLength: c.furLength,
       color: c.color?.trim(),
       neutered: c.neutered,
+      vaccinated: c.vaccinated,
       seizureHistory: c.seizureHistory?.trim(),
       allergy: c.allergy?.trim(),
       weightKg: c.weightKg,

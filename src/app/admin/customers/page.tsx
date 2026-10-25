@@ -3180,6 +3180,7 @@ export default function CustomersPage() {
       breed?: string;
       furLength?: "short" | "long";
       neutered?: boolean;
+      vaccinated?: boolean;
       color?: string;
       ageValue?: number;
       ageUnit?: "year" | "month";
@@ -3383,6 +3384,16 @@ export default function CustomersPage() {
                     options={[
                       { id: "yes", label: "ทำหมันแล้ว" },
                       { id: "no", label: "ยังไม่ทำ" },
+                    ]}
+                  />
+                  <Segmented
+                    value={cat.vaccinated === true ? "yes" : cat.vaccinated === false ? "no" : ""}
+                    onChange={(v) => {
+                      if (v) saveCat(cat.id, { vaccinated: v === "yes" });
+                    }}
+                    options={[
+                      { id: "yes", label: "วัคซีนครบ" },
+                      { id: "no", label: "ยังไม่ครบ" },
                     ]}
                   />
                 </div>

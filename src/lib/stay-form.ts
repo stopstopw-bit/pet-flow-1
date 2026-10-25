@@ -111,35 +111,20 @@ const text = (key: string, label: string, placeholder: string, required = false)
   options: [],
 });
 
-const MEDICAL = STAY_FORM_DEFAULTS.find((d) => d.key === "medical")!;
 const WITH_OTHERS = STAY_FORM_DEFAULTS.find((d) => d.key === "withOthers")!;
 
 /**
  * ฟอร์มทำประวัติน้องหมาก่อนเข้าพัก — ชุดของตัวเอง เรียงตามแบบฟอร์มที่ร้านใช้จริง (เจ้าของ → สุนัข → การดูแล)
- * ชื่อ-นามสกุล เบอร์หลัก ชื่อน้อง เพศ พันธุ์ อายุ ถามไปแล้วตอนสมัครสมาชิก ไม่ถามซ้ำ
- * โรคประจำตัว ("medical") ข้ามให้ถ้าตอบไว้ตอนสมัคร · key ที่ใช้ร่วมกับแมว (food/likes/withOthers/note) คงไว้ให้ข้อมูลเก่าอ่านได้
+ * ชื่อ-นามสกุล เบอร์หลัก ชื่อน้อง เพศ พันธุ์ อายุ โรคประจำตัว การชัก การแพ้ ทำหมัน ถามไปแล้วตอนสมัครสมาชิก ไม่ถามซ้ำ
+ * key ที่ใช้ร่วมกับแมว (food/likes/withOthers/note) คงไว้ให้ข้อมูลเก่าอ่านได้
  */
 const DOG_FORM: GroomField[] = [
   // ประวัติเจ้าของ
   text("ownerNickname", "ชื่อเล่นเจ้าของ", "เช่น พี่ส้ม", true),
   text("emergencyContact", "เบอร์ฉุกเฉินและความเกี่ยวข้อง", "เช่น 081-234-5678 (คุณแม่)", true),
   // ประวัติสุนัข
-  { ...MEDICAL, label: "โรคประจำตัว (ถ้าไม่มีเว้นว่างได้)", placeholder: "เช่น โรคหัวใจ ต้องกินยาเช้า-เย็น" },
-  text("seizure", "ประวัติการชัก / ช็อค", "เช่น ไม่เคย · หรือ เคยชักตอนตกใจ ครั้งล่าสุด ม.ค.", true),
-  text("allergy", "ประวัติการแพ้ (อาหาร / ยา / แชมพู)", "เช่น ไม่มี · หรือ แพ้ไก่", true),
   text("temperament", "นิสัยส่วนตัว", "เช่น ขี้อ้อน ตื่นคนแปลกหน้านิดหน่อย", true),
   text("likes", "สิ่งที่ชอบและไม่ชอบ", "เช่น ชอบลูกบอล ไม่ชอบให้จับเท้า"),
-  {
-    key: "neutered",
-    type: "single",
-    label: "ทำหมันแล้วหรือยังคะ",
-    required: true,
-    enabled: true,
-    options: [
-      { key: "yes", label: "✅ ทำหมันแล้ว" },
-      { key: "no", label: "❌ ยังไม่ทำหมัน" },
-    ],
-  },
   text("fleaLast", "กำจัดเห็บหมัดครั้งล่าสุดเมื่อไหร่", "เช่น ต้นเดือนนี้", true),
   {
     key: "fleaMethod",
@@ -189,12 +174,8 @@ const LITTER_BOTH: Pick<GroomField, "label" | "placeholder"> = {
 const DOG_SECTIONS: Record<string, GroomField["section"]> = {
   ownerNickname: "owner",
   emergencyContact: "owner",
-  medical: "pet",
-  seizure: "pet",
-  allergy: "pet",
   temperament: "pet",
   likes: "pet",
-  neutered: "pet",
   fleaLast: "pet",
   fleaMethod: "pet",
 };
