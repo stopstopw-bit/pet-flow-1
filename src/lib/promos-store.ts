@@ -1,4 +1,5 @@
 import {
+  countCustomerVisitsExcluding,
   customerSummary,
   findCustomerByLine,
   getCustomer,
@@ -298,6 +299,23 @@ export function checkPromoEligibility(
   return { eligible: true };
 }
 
+/** โปรสำหรับลูกค้าใหม่ = ตั้งกลุ่มลูกค้า "ลูกค้าใหม่" หรือจำกัด "ครั้งแรกเท่านั้น" */
+export function isNewCustomerPromo(p: Pick<PromoRecord, "tiers" | "restriction">) {
+  return p.restriction === "first_visit" || (p.tiers || []).includes("new");
+}
+
+/**
+ * ลูกค้าใหม่ไหม (ตอนออกบิล) = ยังไม่เคยมาใช้บริการจริง
+ * คือไม่มีบิลที่ปิดแล้ว และไม่มีนัดที่ปิดงานแล้ว — ไม่นับนัดที่กำลังออกบิลอยู่
+ * (ระดับลูกค้าที่ร้านตั้งเป็น "new" เอง ก็ถือเป็นลูกค้าใหม่)
+ */
+export async function isNewCustomerForBill(customerId: string, excludeBookingIds: string[] = []) {
+  const customer = await getCustomer(customerId);
+  if (!customer) return false;
+  if (customer.tier === "new") return true;
+  return (await countCustomerVisitsExcluding(customerId, excludeBookingIds)) === 0;
+}
+
 /**
  * หาโปรส่วนลดที่ดีที่สุดที่ลูกค้าคนนี้ใช้ได้ (สำหรับหน้าคิดเงิน — ตัดอัตโนมัติ)
  * คืน null ถ้าไม่มีโปรที่ใช้ได้
@@ -305,7 +323,8 @@ export function checkPromoEligibility(
 export async function getBestPromoForCustomer(
   customerId: string,
   subtotal: number,
-  now = new Date()
+  now = new Date(),
+  opts: { excludeBookingIds?: string[]; onlyNewCustomer?: boolean } = {}
 ): Promise<{
   id: string;
   label: string;
@@ -316,9 +335,10 @@ export async function getBestPromoForCustomer(
   const customer = await getCustomer(customerId);
   if (!customer) return null;
 
-  const summary = await customerSummary(customerId);
-  const visits = summary?.visits ?? 0;
-  const promos = await getActivePromos(now);
+  const visits = await countCustomerVisitsExcluding(customerId, opts.excludeBookingIds);
+  const promos = (await getActivePromos(now)).filter(
+    (p) => !opts.onlyNewCustomer || isNewCustomerPromo(p)
+  );
 
   let best: {
     id: string;
@@ -366,11 +386,12 @@ export async function getBestPromoForCustomer(
  */
 export async function promoBlockReasons(
   customerId: string,
-  now = new Date()
+  now = new Date(),
+  excludeBookingIds: string[] = []
 ): Promise<Record<string, string>> {
   const customer = await getCustomer(customerId);
   if (!customer) return {};
-  const visits = (await customerSummary(customerId))?.visits ?? 0;
+  const visits = await countCustomerVisitsExcluding(customerId, excludeBookingIds);
   const out: Record<string, string> = {};
   for (const promo of await listPromos()) {
     const claim = await getClaimForCustomer(promo.id, customerId);

@@ -11,6 +11,7 @@ import {
   deletePromo,
   listPromoClaims,
   getBestPromoForCustomer,
+  isNewCustomerForBill,
   promoBlockReasons,
   type PromoKind,
   claimCustomerPromo,
@@ -54,17 +55,35 @@ async function handlePublicGet(req: NextRequest, admin: boolean) {
     if (lineUserId) return NextResponse.json({ promos: await getCustomerPromos(lineUserId) });
   }
 
+  // นัดที่กำลังออกบิลอยู่ — ไม่นับเป็น "เคยมาแล้ว" ตอนตัดสินลูกค้าใหม่
+  const exclude = (req.nextUrl.searchParams.get("exclude") || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
   const blockedFor = req.nextUrl.searchParams.get("blockedFor");
   // ข้อมูลลูกค้า (ลูกค้าใหม่/ใช้โปรแล้ว) — เฉพาะหลังบ้าน
   if (blockedFor && admin) {
-    return NextResponse.json({ blocked: await promoBlockReasons(blockedFor) });
+    return NextResponse.json({
+      blocked: await promoBlockReasons(blockedFor, new Date(), exclude),
+    });
   }
 
   const autoFor = req.nextUrl.searchParams.get("autoFor");
   if (autoFor && admin) {
     const subtotal = Number(req.nextUrl.searchParams.get("subtotal")) || 0;
+    const opts = { excludeBookingIds: exclude };
+    const newCustomer = await isNewCustomerForBill(autoFor, exclude);
     return NextResponse.json({
-      promo: await getBestPromoForCustomer(autoFor, subtotal),
+      promo: await getBestPromoForCustomer(autoFor, subtotal, new Date(), opts),
+      newCustomer,
+      // ลูกค้าใหม่ → หน้าออกบิลเลือกโปรลูกค้าใหม่ให้เอง
+      newCustomerPromo: newCustomer
+        ? await getBestPromoForCustomer(autoFor, subtotal, new Date(), {
+            ...opts,
+            onlyNewCustomer: true,
+          })
+        : null,
     });
   }
 
