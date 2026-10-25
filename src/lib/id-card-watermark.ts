@@ -33,18 +33,18 @@ export async function watermarkIdCard(file: File, maxSize = 1400, shopName?: str
     // เอียงไม่เกิน 30° — รูปแนวตั้ง (แคปหน้าจอ/ถ่ายบัตรแนวตั้ง) เดิมเอียงตามเส้นทแยงมุมจนชันมาก
     // ข้อความหลักเลยล้นขอบรูปขาดหาย
     const tilt = Math.min(Math.atan2(h, w), Math.PI / 6);
-    const font = (px: number) =>
-      `bold ${px}px "Sukhumvit Set", "Noto Sans Thai", "Thonburi", Tahoma, sans-serif`;
+    const font = (px: number, weight = "bold") =>
+      `${weight} ${px}px "Sukhumvit Set", "Noto Sans Thai", "Thonburi", Tahoma, sans-serif`;
     ctx.save();
     ctx.translate(w / 2, h / 2);
     ctx.rotate(-tilt);
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
-    // ข้อความจางซ้ำทั่วรูป
+    // ข้อความจางซ้ำทั่วรูป — จางมากและตัวบาง ให้ยังอ่านตัวหนังสือบนบัตรได้
     const small = Math.max(14, Math.round(diag / 45));
-    ctx.font = font(small);
-    ctx.fillStyle = "rgba(200, 30, 30, 0.22)";
+    ctx.font = font(small, "normal");
+    ctx.fillStyle = "rgba(200, 30, 30, 0.1)";
     for (let y = -diag / 2; y <= diag / 2; y += small * 3.2) {
       ctx.fillText(Array(4).fill(ID_CARD_PURPOSE).join("   "), 0, y);
     }
@@ -53,9 +53,10 @@ export async function watermarkIdCard(file: File, maxSize = 1400, shopName?: str
     const { lines, size: big } = fitPurposeText(ctx, font, ID_CARD_PURPOSE, w, h, tilt);
     const lineH = big * 1.25;
     const gap = (lines.length * lineH) / 2 + big * 0.35;
-    ctx.font = font(big);
-    ctx.strokeStyle = "rgba(200, 20, 20, 0.85)";
-    ctx.lineWidth = Math.max(2, big / 7);
+    // ข้อความหลักและเส้นขีดคู่แบบโปร่ง (ไม่มีขอบขาว) เห็นตัวหนังสือบนบัตรลอดผ่านได้
+    ctx.font = font(big, "600");
+    ctx.strokeStyle = "rgba(200, 20, 20, 0.45)";
+    ctx.lineWidth = Math.max(1.5, big / 12);
     for (const y of [-gap, gap]) {
       ctx.beginPath();
       ctx.moveTo(-diag / 2, y);
@@ -64,10 +65,7 @@ export async function watermarkIdCard(file: File, maxSize = 1400, shopName?: str
     }
     lines.forEach((line, i) => {
       const y = (i - (lines.length - 1) / 2) * lineH;
-      ctx.lineWidth = Math.max(3, big / 4);
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
-      ctx.strokeText(line, 0, y);
-      ctx.fillStyle = "rgba(200, 20, 20, 0.95)";
+      ctx.fillStyle = "rgba(200, 20, 20, 0.5)";
       ctx.fillText(line, 0, y);
     });
     ctx.restore();
