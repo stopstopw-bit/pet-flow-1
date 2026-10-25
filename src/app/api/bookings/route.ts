@@ -460,10 +460,14 @@ async function handlePatch(req: NextRequest, admin: boolean) {
   }
 
 type InfoKind = "stay" | "groom";
-const defaultInfoKind = (b: StoredBooking): InfoKind => (b.service === "room" ? "stay" : "groom");
+function defaultInfoKind(b: StoredBooking): InfoKind {
+  return b.service === "room" ? "stay" : "groom";
+}
 /** ร้านเลือกเองได้ว่าจะถามแบบไหน (ทุกนัดส่งได้ทั้งสองแบบ) — ไม่ส่งมา = ตามบริการของนัด */
-const pickInfoKind = (raw: unknown, b: StoredBooking): InfoKind =>
-  raw === "stay" || raw === "groom" ? raw : defaultInfoKind(b);
+// function (ไม่ใช่ const) — singleCardPart ถูกเรียกก่อนบรรทัดนี้ ถ้าเป็น const จะ error "before initialization"
+function pickInfoKind(raw: unknown, b: StoredBooking): InfoKind {
+  return raw === "stay" || raw === "groom" ? raw : defaultInfoKind(b);
+}
 /** ปุ่มส่งการ์ดเดี่ยว → หัวข้อการ์ด (ใช้เช็คสวิตช์ฟีเจอร์) · null = ไม่ใช่การ์ดที่ปิดได้ */
 function singleCardPart(action: unknown, kind: unknown, b: StoredBooking): string | null {
   switch (action) {
