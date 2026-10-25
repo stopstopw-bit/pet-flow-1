@@ -2093,6 +2093,15 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
                                   ? picked.filter((n) => catKey(n) !== key)
                                   : [...picked, c.name];
                                 const next = { ...item, catName: joinCatNames(names) };
+                                // ห้องพัก: ค่าตัวที่เกินคิด "ต่อคืน" — ติ๊กเพิ่ม/เอาออกแล้วราคาต่อคืนต้องตามจำนวนน้องทันที
+                                // (เมื่อก่อนคิดใหม่เฉพาะตอนเปลี่ยนห้อง ร้านต้องพิมพ์ค่าตัวที่เกินเองแล้วกลายเป็นราคาพิเศษ)
+                                if (item.kind === "room") {
+                                  const r = rooms.find((x) => x.label === item.roomLabel);
+                                  if (r) {
+                                    next.roomPrice = roomNightPrice(r.amount, r.pricing, Math.max(1, names.length));
+                                    if (next.priceOverride === next.roomPrice) next.priceOverride = undefined;
+                                  }
+                                }
                                 // เลือกน้องตัวเดียว → เติมขน/ไซส์ตามที่ตัวนั้นเคยอาบ (โปรแกรมที่เลือกไว้แล้วไม่เปลี่ยน)
                                 updateItem(
                                   i,
@@ -2332,7 +2341,12 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
                       </span>
                     ) : (
                       <div className="flex shrink-0 items-center gap-1.5">
-                        {(item.qty || 1) > 1 || item.kind === "room" ? (
+                        {item.kind === "room" ? (
+                          // ราคาในช่องคือ "ต่อคืน" (รวมค่าตัวที่เกินแล้ว) — ยอดคือ ราคาต่อคืน × จำนวนคืน ก่อนส่วนลด
+                          <span className="text-[10px] text-brown-faint">
+                            × {line.qty} คืน = {(line.unitAmount * line.qty).toLocaleString()} ฿
+                          </span>
+                        ) : (item.qty || 1) > 1 ? (
                           <span className="text-[10px] text-brown-faint">
                             = {line.amount.toLocaleString()} ฿
                           </span>
