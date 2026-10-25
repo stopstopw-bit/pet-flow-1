@@ -92,10 +92,17 @@ function buildRows(h: Health): { rows: Row[]; failCount: number } {
         label: "ยังไม่ได้ตั้ง LINE Webhook",
         hint: "กดปุ่ม “ตั้ง Webhook อัตโนมัติ” ในการ์ด LINE Messaging",
       });
+    } else if (h.line.webhook.matchesShop) {
+      // URL ถูกแล้ว แต่สวิตช์ "Use webhook" ใน LINE ยังปิด — LINE ไม่มี API ให้เปิดสวิตช์นี้ กดปุ่มซ้ำไม่ช่วย
+      rows.push({
+        level: "fail",
+        label: "LINE Webhook ปิดอยู่ (URL ถูกแล้ว)",
+        hint: "เปิดสวิตช์ “Use webhook” ใน LINE Developers → แชนแนลของร้าน → แท็บ Messaging API (หรือ LINE OA Manager → ตั้งค่า → การตอบกลับ → Webhook) แล้วกดตรวจใหม่",
+      });
     } else {
       rows.push({
         level: "fail",
-        label: h.line.webhook.matchesShop ? "LINE Webhook ปิดอยู่" : "LINE Webhook ชี้ไปที่อื่น (ไม่ใช่ร้านนี้)",
+        label: "LINE Webhook ชี้ไปที่อื่น (ไม่ใช่ร้านนี้)",
         hint: `ตอนนี้ชี้ไป ${h.line.webhook.url || "—"} ควรเป็น ${h.line.expectedWebhook} — กด “ตั้ง Webhook อัตโนมัติ” อีกครั้งเพื่อแก้`,
       });
     }
