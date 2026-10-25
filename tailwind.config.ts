@@ -43,6 +43,10 @@ export default {
         lavender: { DEFAULT: "#ece3fb", deep: "#6b46c1" },
       },
       borderRadius: { petflow: "24px", "petflow-sm": "16px" },
+      keyframes: {
+        pop: { "0%": { opacity: "0", transform: "scale(0.9)" }, "100%": { opacity: "1", transform: "scale(1)" } },
+      },
+      animation: { pop: "pop 160ms ease-out" },
       fontFamily: {
         sans: [
           "Sukhumvit Set",

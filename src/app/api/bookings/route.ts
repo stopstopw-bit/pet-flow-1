@@ -28,7 +28,7 @@ import { bookingMatchesCustomer } from "@/lib/booking-customer-match";
 import { groomProgram, resolveGroomPrograms } from "@/lib/grooming-prices";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { withResolvedTenant, withTenant } from "@/lib/tenant-context";
-import { requireCustomerSession } from "@/lib/customer-session";
+import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 import { listCustomers, resolveCustomerForBooking } from "@/lib/customers-store";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import {
@@ -65,10 +65,10 @@ import { getLineCredentials } from "@/lib/line-config";
 import { cardOn, CARD_FEATURE, featureLabel } from "@/lib/features";
 import { cleanTransport, hasTransport, transportLabel } from "@/lib/transport";
 import { DEFAULT_MESSAGES, consentDates, consentTextFor, renderTemplate } from "@/lib/messages";
-import { listInvoices, updateInvoice, invoiceCatNames, findOpenInvoiceForBooking } from "@/lib/invoices-store";
+import { listInvoices, getInvoice, updateInvoice, invoiceCatNames, findOpenInvoiceForBooking } from "@/lib/invoices-store";
 import { getPaymentConfig } from "@/lib/payment-config";
 import {
-  buildDepositReminderText,
+  buildDepositReminderCard,
   buildPrestayFlexData,
   buildCheckinBodyText,
   buildCheckoutBodyText,
@@ -134,7 +134,7 @@ export async function GET(req: NextRequest) {
     const customer = await requireCustomerSession(req);
     const lineUserId = customer?.lineUserId;
     if (!lineUserId) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return noCustomerSessionResponse();
     }
     return handleGet(lineUserId);
   });
@@ -765,6 +765,18 @@ function groomInfoCardFor(
       if (intakeAt < 0) intakeAt = messages.length;
       intake.push(e);
     };
+    // เปิดจากหน้าบิล ส่ง invoiceId มาด้วย — บิลที่ไม่ได้ผูก bookingId (ออกบิลเอง แล้วหน้าบิลจับคู่นัดจากชื่อลูกค้า+น้อง)
+    // หาด้วย bookingId ไม่เจอ ใบเสร็จ/ขอรีวิว/สรุปบิลเลยไม่ออกสักใบ → ใช้บิลที่ส่งมาก่อน ไม่งั้นค่อยหาจากนัดทั้งบ้าน
+    const pinnedInv = body.invoiceId ? await getInvoice(String(body.invoiceId)) : null;
+    const invoiceFor = async (prefer: "paid" | "open") => {
+      if (pinnedInv) return pinnedInv;
+      const all = await listInvoices();
+      const ids = new Set([b.id, ...household.map((x) => x.id)]);
+      const mine = all.filter((i) => !!i.bookingId && ids.has(i.bookingId));
+      const direct = mine.filter((i) => i.bookingId === b.id);
+      const want = (i: (typeof all)[number]) => (prefer === "paid" ? i.status === "paid" : i.status !== "paid");
+      return direct.find(want) || mine.find(want) || direct[0] || mine[0];
+    };
 
     for (const part of parts) {
       if (part === "reminder") {
@@ -815,10 +827,9 @@ function groomInfoCardFor(
           }, cfg.cards?.prestay)
         );
       } else if (part === "receipt" || part === "depositThanks") {
-        const all = await listInvoices();
-        const inv =
-          all.find((i) => i.bookingId === b.id && i.status === "paid") ||
-          all.find((i) => i.bookingId === b.id);
+        const inv = await invoiceFor("paid");
+        if (!inv) skipped.push("หาบิลของนัดนี้ไม่เจอ — ข้าม" + (part === "receipt" ? "ใบเสร็จ" : "การ์ดขอบคุณมัดจำ"));
+        else if (part === "receipt" && inv.status !== "paid") skipped.push("บิลยังไม่ปิด — ข้ามใบเสร็จ");
         if (inv && part === "receipt" && inv.status === "paid") {
           const paidByCredit = inv.paymentMethod === "member_credit";
           // เครดิตปัจจุบัน = ยอดหลังหักบิลนี้ไปแล้ว (บิลถูกปิดไปก่อนถึงจะส่งใบเสร็จได้)
@@ -861,10 +872,8 @@ function groomInfoCardFor(
           );
         }
       } else if (part === "summary" || part === "review") {
-        const all = await listInvoices();
-        const inv =
-          all.find((i) => i.bookingId === b.id && i.status !== "paid") ||
-          all.find((i) => i.bookingId === b.id);
+        const inv = await invoiceFor("open");
+        if (!inv) skipped.push("หาบิลของนัดนี้ไม่เจอ — ข้าม" + (part === "review" ? "การ์ดขอรีวิว" : "สรุปการจอง"));
         if (inv && part === "summary") {
           const payment = await getPaymentConfig();
           messages.push(
@@ -906,7 +915,7 @@ function groomInfoCardFor(
                 reviewLabel: cfg.business.reviewButtonText,
               }, cfg.cards?.review)
             );
-          }
+          } else skipped.push("ยังไม่ได้ใส่ลิงก์รีวิว/Google Maps ในตั้งค่าร้าน — ข้ามการ์ดขอรีวิว");
         }
       } else if (part === "groomInfo" || part === "stayInfo") {
         // stayInfo = ฟอร์มข้อมูลก่อนเข้าพัก · groomInfo = ประวัติก่อนอาบน้ำ (ชุดเดียวกับหน้าข้อมูลลูกค้า)
@@ -1047,10 +1056,8 @@ function groomInfoCardFor(
           });
         }
       } else if (part === "payment") {
-        const all = await listInvoices();
-        const inv =
-          all.find((i) => i.bookingId === b.id && i.status !== "paid") ||
-          all.find((i) => i.bookingId === b.id);
+        const inv = await invoiceFor("open");
+        if (!inv) skipped.push("หาบิลของนัดนี้ไม่เจอ — ข้ามการ์ดแจ้งยอด");
         if (inv) {
           const payment = await getPaymentConfig();
           const deposit = inv.deposit || 0;
@@ -1198,7 +1205,7 @@ function groomInfoCardFor(
       }
     }
 
-    let text: string | null = null;
+    let card: object | null = null;
     {
       // send_deposit_reminder — หาใบแจ้งหนี้ที่มีมัดจำและยังค้างยอด
       const invoices = await listInvoices();
@@ -1211,8 +1218,8 @@ function groomInfoCardFor(
           { status: 400 }
         );
       }
-      text = buildDepositReminderText(gb, inv, cfg);
-      if (!text) {
+      card = buildDepositReminderCard(gb, inv, cfg);
+      if (!card) {
         return NextResponse.json(
           { error: "ไม่มียอดคงเหลือที่ต้องโอนแล้ว" },
           { status: 400 }
@@ -1221,9 +1228,9 @@ function groomInfoCardFor(
     }
 
     try {
-      const textMsg = [{ type: "text", text }];
-      if (preview) return NextResponse.json({ ok: true, preview: textMsg });
-      await pushLineMessage(to, textMsg);
+      // การ์ดแจ้งยอดคงเหลือ (เมื่อก่อนเป็นข้อความตัวหนังสือ) — แก้ข้อความได้ที่ /admin/cards
+      if (preview) return NextResponse.json({ ok: true, preview: [card] });
+      await pushLineMessage(to, [card]);
       return NextResponse.json({ ok: true });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);

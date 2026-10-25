@@ -82,6 +82,10 @@ export async function buildDayScheduleMessage(
         const flags = [
           notes?.privateNote ? `🔒 ${notes.privateNote}` : "",
           notes?.medical && notes.medical !== "ไม่มี" ? `💊 ${notes.medical}` : "",
+          notes?.seizureHistory && notes.seizureHistory !== "ไม่มี" && notes.seizureHistory !== "ไม่เคย"
+            ? `⚡ ชัก/ช็อค: ${notes.seizureHistory}`
+            : "",
+          notes?.allergy && notes.allergy !== "ไม่มี" ? `🚫 แพ้: ${notes.allergy}` : "",
           b.notes ? `📝 ${b.notes}` : "",
         ].filter(Boolean);
         return flags.length ? `${base}\n   ⚠️ ${flags.join(" · ")}` : base;

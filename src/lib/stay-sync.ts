@@ -22,6 +22,7 @@ import {
   type InvoiceRecord,
 } from "./invoices-store";
 import { addDaysIso, extensionNote, isRoomLine, roomLineLabel, splitRoomLabel } from "./stay-line";
+import { normalizeLineDiscount, stripDiscountTag } from "./line-discount";
 
 export type DatePatch = {
   date?: string;
@@ -66,20 +67,30 @@ function billedNights(inv: InvoiceRecord): number {
  * เปลี่ยนจำนวนคืนของบรรทัดห้องพัก — ราคาต่อคืนเดิม แก้ "× N คืน" ในชื่อรายการให้ตรง
  * note = ช่วงวันที่ของบิลนี้ (บิลพักต่อ) — ไม่ใส่ = ไม่มีหมายเหตุ
  */
-function withNights(items: InvoiceItem[], nights: number, note?: string): InvoiceItem[] {
+function withNights(
+  items: InvoiceItem[],
+  nights: number,
+  note?: string,
+  /** บิลใหม่สำหรับคืนที่เพิ่ม — ไม่ยกส่วนลดแบบบาทของบิลเดิมมา (ส่วนลด % ยังคิดต่อ) */
+  newBill = false
+): InvoiceItem[] {
   return items.map((it) => {
     if (!isRoomLine(it)) return it;
     const qty = Math.max(1, Math.round(Number(it.qty) || 1));
+    // บรรทัดที่มีส่วนลด: unitAmount = ราคาก่อนลดอยู่แล้ว (บิลเก่าไม่มี unitAmount ถึงจะถอดจากยอด)
     const unit = Math.round(Number(it.unitAmount ?? it.amount / qty) || 0);
-    const { base } = splitRoomLabel(it.label);
-    return {
+    const { base } = splitRoomLabel(stripDiscountTag(it.label));
+    // ส่วนลดเฉพาะบรรทัดติดไปด้วย — เมื่อก่อนคิดใหม่เป็นราคาเต็ม ส่วนลดหายตอนเลื่อนวัน/ต่อคืน
+    const discount = newBill ? undefined : (it.discount ?? (it.discountPercent ? undefined : unit * qty - it.amount));
+    return normalizeLineDiscount({
       ...it,
       kind: "room" as const,
       qty: nights,
       unitAmount: unit,
       amount: unit * nights,
+      discount: discount && discount > 0 ? discount : undefined,
       label: roomLineLabel(base, nights, note),
-    };
+    });
   });
 }
 
@@ -129,7 +140,7 @@ export async function syncStayInvoice(
       lineUserId: last.lineUserId,
       customerName: last.customerName,
       catName: last.catName,
-      items: withNights(last.items.filter(isRoomLine), extra, extensionNote(extendFrom!, checkout)),
+      items: withNights(last.items.filter(isRoomLine), extra, extensionNote(extendFrom!, checkout), true),
       bookingId: last.bookingId,
     });
     return { kind: "created_extra", invoiceId: created.id, nights: extra, total: created.total };
@@ -161,7 +172,7 @@ export async function syncStayInvoice(
         message: `บิลที่ปิดแล้วคิดไปครบ ${paidNights} คืนแล้ว แต่ยังมีบิลค้างอีกใบ — เช็กว่าควรลบบิลค้างไหม`,
       };
     }
-    const sameLabel = open.items.filter(isRoomLine).every((it) => !note || it.label.endsWith(note));
+    const sameLabel = open.items.filter(isRoomLine).every((it) => !note || stripDiscountTag(it.label).endsWith(note));
     if (billedNights(open) === stillDue && sameLabel) return { kind: "none" };
     const res = await updateInvoice(open.id, {
       items: withNights(open.items, stillDue, note),
@@ -187,7 +198,7 @@ export async function syncStayInvoice(
     lineUserId: last.lineUserId,
     customerName: last.customerName,
     catName: last.catName,
-    items: withNights(roomItems, stillDue, note),
+    items: withNights(roomItems, stillDue, note, true),
     bookingId: last.bookingId,
   });
   return { kind: "created_extra", invoiceId: created.id, nights: stillDue, total: created.total };

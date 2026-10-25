@@ -9,9 +9,10 @@ import { getLineCredentials } from "./line-config";
 import { DEEMED_CONSENT_NOTICE, DEEMED_GROOM_CONSENT_NOTICE } from "./messages";
 import type { CardStyleConfig } from "./config-types";
 import { MISS_YOU_DEFAULT_TITLE } from "./miss-you-card";
-import { DOC_REQUEST_DEFAULTS, INTAKE_CARD_DEFAULTS } from "./line-card-defaults";
+import { DEPOSIT_REMINDER_DEFAULTS, DOC_REQUEST_DEFAULTS, INTAKE_CARD_DEFAULTS } from "./line-card-defaults";
 import { encodeFlow, type FlowBy, type FlowStep, type FlowToken } from "./intake-flow";
 import { buildLiffUrl } from "./liff-urls";
+import { splitDiscountTag } from "./line-discount";
 
 export { DOC_REQUEST_DEFAULTS, INTAKE_CARD_DEFAULTS };
 
@@ -794,7 +795,7 @@ export function buildPaymentFlex(data: {
                       text: data.accountNumber,
                       weight: "bold",
                       size: "xl",
-                      color: "#4A7348",
+                      color: "#2E7D4F",
                       wrap: true,
                     },
                     {
@@ -942,28 +943,46 @@ export function buildBillSummaryFlex(data: {
       layout: "vertical",
       margin: "lg",
       spacing: "xs",
-      contents: paidItems.map((i) => ({
-        type: "box",
-        layout: "horizontal",
-        contents: [
+      contents: paidItems.flatMap((i) => {
+        // ส่วนลดเฉพาะรายการ → บรรทัดสีเขียว "ส่วนลด …" ใต้รายการ ให้ลูกค้าเห็นชัดว่าลดแล้ว
+        const { label, tag } = splitDiscountTag(i.label);
+        return [
           {
-            type: "text",
-            text: i.label,
-            size: "sm",
-            color: "#4E3E32",
-            flex: 4,
-            wrap: true,
+            type: "box",
+            layout: "horizontal",
+            contents: [
+              {
+                type: "text",
+                text: label,
+                size: "sm",
+                color: "#4E3E32",
+                flex: 4,
+                wrap: true,
+              },
+              {
+                type: "text",
+                text: money(i.amount),
+                size: "sm",
+                color: "#4E3E32",
+                align: "end",
+                flex: 3,
+              },
+            ],
           },
-          {
-            type: "text",
-            text: money(i.amount),
-            size: "sm",
-            color: "#4E3E32",
-            align: "end",
-            flex: 3,
-          },
-        ],
-      })),
+          ...(tag
+            ? [
+                {
+                  type: "text",
+                  text: `↳ ${tag}`,
+                  size: "xs",
+                  weight: "bold",
+                  color: "#2E7D4F",
+                  wrap: true,
+                },
+              ]
+            : []),
+        ];
+      }),
     },
   ];
 
@@ -1087,7 +1106,7 @@ export function buildBillSummaryFlex(data: {
               text: money(deposit),
               size: "sm",
               weight: "bold",
-              color: "#4A7348",
+              color: "#2E7D4F",
               align: "end",
               flex: 4,
             },
@@ -1131,7 +1150,7 @@ export function buildBillSummaryFlex(data: {
           text: data.accountNumber || "",
           weight: "bold",
           size: "xl",
-          color: "#4A7348",
+          color: "#2E7D4F",
           wrap: true,
         },
         {
@@ -1205,8 +1224,22 @@ export function buildPrestayFlex(data: {
   litterNote?: string;
   consentUrl?: string;
   consentLabel?: string;
+  /** ปุ่มเลือกเวลามาส่งน้อง — ใส่ในการ์ดนี้เลยแทนการส่งการ์ดเลือกเวลาแยกอีกใบ */
+  timeUrl?: string;
+  timeLabel?: string;
+  /** เรื่องที่ยังขาด (ประวัติ/วัคซีน/บัตร/กฎ) — ปุ่มเดียวในการ์ดนี้ แทนการ์ดขอข้อมูลแยก */
+  intake?: { url: string; label: string; steps: string[]; consent?: boolean };
+  /** ยอดคงเหลือที่ต้องโอนก่อนเข้าพัก — กล่องยอด + บัญชีในการ์ดนี้ แทนการ์ดแจ้งยอดแยก */
+  balance?: {
+    deposit: number;
+    remaining: number;
+    bankName: string;
+    accountNumber: string;
+    accountName: string;
+  };
 }, style?: CardStyleConfig) {
   const show = (k: string) => style?.show?.[k] !== false;
+  const t = (k: string, fb: string) => style?.texts?.[k]?.trim() || fb;
   const body: Record<string, unknown>[] = [
     // ชื่อน้อง + ร้าน
     {
@@ -1254,7 +1287,7 @@ export function buildPrestayFlex(data: {
               text: data.dateText,
               size: "sm",
               weight: "bold",
-              color: "#4A7348",
+              color: "#2E7D4F",
               wrap: true,
               margin: "xs",
             },
@@ -1409,8 +1442,68 @@ export function buildPrestayFlex(data: {
     });
   }
 
-  // มีปุ่มยืนยันการเข้าพัก → แจ้งว่าไม่ตอบ = ยอมรับโดยปริยาย
-  if (data.consentUrl) body.push(deemedConsentBox());
+  // เรื่องที่ยังต้องส่งให้ร้าน — กดปุ่มเดียวด้านล่าง ระบบพาไปทีละขั้น
+  if (data.intake) {
+    body.push({ type: "separator", margin: "xl" });
+    body.push({
+      type: "text",
+      text: t("intakeTitle", "📋 ข้อมูลที่ยังต้องส่งให้ร้าน"),
+      weight: "bold",
+      size: "md",
+      color: style?.headerColor || "#5C4033",
+      margin: "lg",
+    });
+    body.push({
+      type: "box",
+      layout: "vertical",
+      margin: "md",
+      paddingAll: "12px",
+      backgroundColor: "#FBF7F0",
+      cornerRadius: "10px",
+      spacing: "sm",
+      contents: data.intake.steps.map((x, i) => ({
+        type: "text",
+        text: data.intake!.steps.length > 1 ? `${i + 1}. ${x}` : x,
+        size: "sm",
+        color: "#4E3E32",
+        wrap: true,
+      })),
+    });
+  }
+
+  // ยอดคงเหลือก่อนเข้าพัก + บัญชีโอน
+  if (data.balance && data.balance.remaining > 0) {
+    const b = data.balance;
+    const R = DEPOSIT_REMINDER_DEFAULTS;
+    body.push({ type: "separator", margin: "xl" });
+    body.push({
+      type: "box",
+      layout: "vertical",
+      margin: "lg",
+      paddingAll: "14px",
+      backgroundColor: "#FBF4E9",
+      cornerRadius: "12px",
+      spacing: "xs",
+      contents: [
+        { type: "text", text: t("balanceLabel", `💳 ${R.amountLabel}`), size: "sm", color: "#A2907E", align: "center", wrap: true },
+        { type: "text", text: `${b.remaining.toLocaleString()} บาท`, weight: "bold", size: "xxl", color: "#C4956A", align: "center" },
+        ...(b.deposit > 0
+          ? [{ type: "text", text: `${R.depositPaidLabel} ${b.deposit.toLocaleString()} บาท`, size: "xs", color: "#A2907E", align: "center", wrap: true }]
+          : []),
+        ...(b.accountNumber
+          ? [
+              { type: "separator", margin: "md" },
+              { type: "text", text: b.bankName || "-", weight: "bold", size: "sm", color: "#5C4033", margin: "md", align: "center", wrap: true },
+              { type: "text", text: b.accountNumber, weight: "bold", size: "lg", color: "#4A7348", align: "center", wrap: true },
+              { type: "text", text: `${R.accountNameLabel} ${b.accountName}`, size: "xs", color: "#A2907E", align: "center", wrap: true },
+            ]
+          : []),
+      ],
+    });
+  }
+
+  // มีปุ่มยืนยันการเข้าพัก / ขั้นกดยอมรับกฎ → แจ้งว่าไม่ตอบ = ยอมรับโดยปริยาย
+  if (data.consentUrl || data.intake?.consent) body.push(deemedConsentBox());
 
   if (style?.closing) {
     body.push({
@@ -1450,27 +1543,64 @@ export function buildPrestayFlex(data: {
     },
   };
 
+  const footer: Record<string, unknown>[] = [];
+  if (data.intake) {
+    footer.push({
+      type: "button",
+      style: "primary",
+      color: style?.buttonColor || BRAND_ACTION,
+      height: "sm",
+      action: { type: "uri", label: data.intake.label.slice(0, 40), uri: data.intake.url },
+    });
+  }
+  if (data.timeUrl) {
+    footer.push({
+      type: "button",
+      style: "primary",
+      color: style?.buttonColor || BRAND_ACTION,
+      height: "sm",
+      action: {
+        type: "uri",
+        label: data.timeLabel || style?.texts?.timeButton?.trim() || "🕒 เลือกเวลาส่งน้อง",
+        uri: data.timeUrl,
+      },
+    });
+  }
   if (data.consentUrl) {
+    footer.push({
+      type: "button",
+      style: footer.length ? "secondary" : "primary",
+      ...(footer.length ? {} : { color: style?.buttonColor || BRAND_ACTION }),
+      height: "sm",
+      action: {
+        type: "uri",
+        label:
+          data.consentLabel ||
+          style?.texts?.confirmButton ||
+          "🧡 อ่านรายละเอียด & ยืนยันการเข้าพัก",
+        uri: data.consentUrl,
+      },
+    });
+  }
+  if (data.balance && data.balance.remaining > 0 && data.balance.accountNumber) {
+    footer.push({
+      type: "button",
+      style: "secondary",
+      height: "sm",
+      action: {
+        type: "clipboard",
+        label: t("copyButton", DEPOSIT_REMINDER_DEFAULTS.copyButton).slice(0, 40),
+        clipboardText: data.balance.accountNumber,
+      },
+    });
+  }
+  if (footer.length) {
     bubble.footer = {
       type: "box",
       layout: "vertical",
       paddingAll: "12px",
-      contents: [
-        {
-          type: "button",
-          style: "primary",
-          color: style?.buttonColor || BRAND_ACTION,
-          height: "sm",
-          action: {
-            type: "uri",
-            label:
-              data.consentLabel ||
-              style?.texts?.confirmButton ||
-              "🧡 อ่านรายละเอียด & ยืนยันการเข้าพัก",
-            uri: data.consentUrl,
-          },
-        },
-      ],
+      spacing: "sm",
+      contents: footer,
     };
   }
 
@@ -1975,6 +2105,54 @@ export function mergeIntakeCards(
   ];
 }
 
+/**
+ * ลิงก์ปุ่มเดียวของเรื่องที่ยังขาด — ใช้ฝังเป็นปุ่มในการ์ดใบอื่น (เช่น การ์ดเตรียมตัวก่อนเข้าพัก)
+ * แทนการส่งการ์ดขอข้อมูลแยกอีกใบ · คืน null ถ้าทำเป็นปุ่มเดียวไม่ได้ (ไม่มี LIFF ID / ฟอร์มปนกัน)
+ */
+export function intakeStartLink(
+  entries: IntakeEntry[],
+  ctx: { flow?: { liffId: string; by: FlowBy } },
+  style?: CardStyleConfig
+): { url: string; label: string; steps: string[]; consent: boolean } | null {
+  const steps = [...entries]
+    .filter((e) => e.kind !== "deposit")
+    .sort((a, b) => INTAKE_ORDER.indexOf(a.kind) - INTAKE_ORDER.indexOf(b.kind));
+  if (steps.length === 0) return null;
+  const t = (k: keyof typeof INTAKE_CARD_DEFAULTS) => style?.texts?.[k]?.trim() || INTAKE_CARD_DEFAULTS[k];
+  const label: Record<IntakeButtonKind, string> = {
+    stayInfo: t("stayInfoButton"),
+    info: t("infoButton"),
+    vaccine: t("vaccineButton"),
+    idcard: t("idcardButton"),
+    consent: t("consentButton"),
+  };
+  const names = steps.map((e) => {
+    const l = label[e.kind as IntakeButtonKind];
+    return e.count && e.count > 1 ? `${l} (${e.count} ตัว)` : l;
+  });
+  const consent = steps.some((e) => e.kind === "consent");
+  if (steps.length === 1) {
+    return steps[0].url ? { url: steps[0].url, label: names[0], steps: names, consent } : null;
+  }
+  const hasStay = steps.some((e) => e.kind === "stayInfo");
+  if (!ctx.flow || (hasStay && steps.some((e) => e.kind === "info"))) return null;
+  const tokens: FlowToken[] = steps.map((e) => ({
+    step: e.kind === "stayInfo" || e.kind === "info" ? "info" : (e.kind as FlowStep),
+    ids: e.ids || [],
+  }));
+  return {
+    url: buildLiffUrl(ctx.flow.liffId, {
+      path: "intake",
+      flow: encodeFlow(tokens),
+      by: ctx.flow.by,
+      kind: hasStay ? "stay" : "groom",
+    }),
+    label: t("startButton"),
+    steps: names,
+    consent,
+  };
+}
+
 /** การ์ดเรียกเก็บมัดจำ — ชัดๆ ว่าต้องโอนเท่าไหร่ (ส่งก่อนลูกค้าโอน) */
 export function buildDepositRequestFlex(data: {
   title: string;
@@ -2039,7 +2217,7 @@ export function buildDepositRequestFlex(data: {
       cornerRadius: "10px",
       contents: [
         ...(data.bankName ? [{ type: "text", text: data.bankName, weight: "bold", size: "md", color: "#5C4033" }] : []),
-        { type: "text", text: data.accountNumber, weight: "bold", size: "xl", color: "#4A7348", wrap: true },
+        { type: "text", text: data.accountNumber, weight: "bold", size: "xl", color: "#2E7D4F", wrap: true },
         { type: "text", text: `${st.texts?.accountNameLabel || "ชื่อบัญชี:"} ${data.accountName}`, size: "sm", color: "#A2907E", wrap: true },
       ],
     });
@@ -2077,6 +2255,136 @@ export function buildDepositRequestFlex(data: {
           }
         : {}),
     },
+  };
+}
+
+/**
+ * การ์ดแจ้งยอดคงเหลือก่อนเข้าพัก (เคยส่งเป็นข้อความตัวหนังสือ) — แถบหัวเขียวแบบเดียวกับการ์ดเข้าพักอื่นๆ
+ * ยอดคงเหลือตัวใหญ่ + มัดจำที่จ่ายแล้ว + บัญชีโอน + ปุ่มคัดลอกเลขบัญชี · ข้อความแก้ได้ที่ /admin/cards
+ */
+export function buildDepositReminderFlex(data: {
+  /** เนื้อความที่แทนค่าแล้ว */
+  body: string;
+  catName: string;
+  scheduleText?: string;
+  deposit: number;
+  remaining: number;
+  bankName: string;
+  accountNumber: string;
+  accountName: string;
+}, style?: CardStyleConfig) {
+  const st = style || {};
+  const show = (k: string) => st.show?.[k] !== false;
+  const t = (k: keyof typeof DEPOSIT_REMINDER_DEFAULTS) =>
+    st.texts?.[k]?.trim() || DEPOSIT_REMINDER_DEFAULTS[k];
+  const money = (n: number) => `${n.toLocaleString()} บาท`;
+  const body: Record<string, unknown>[] = [
+    { type: "text", text: data.body, size: "sm", color: "#4E3E32", wrap: true },
+  ];
+  if (data.scheduleText && show("schedule")) {
+    body.push({
+      type: "text",
+      text: data.scheduleText,
+      size: "sm",
+      weight: "bold",
+      color: "#4A7348",
+      margin: "md",
+      wrap: true,
+    });
+  }
+  body.push({
+    type: "box",
+    layout: "vertical",
+    margin: "lg",
+    paddingAll: "14px",
+    backgroundColor: "#FBF4E9",
+    cornerRadius: "12px",
+    spacing: "xs",
+    contents: [
+      { type: "text", text: t("amountLabel"), size: "sm", color: "#A2907E", align: "center", wrap: true },
+      {
+        type: "text",
+        text: money(data.remaining),
+        weight: "bold",
+        size: "3xl",
+        color: st.accentColor || "#C4956A",
+        align: "center",
+      },
+      ...(data.deposit > 0 && show("deposit")
+        ? [
+            {
+              type: "text",
+              text: `${t("depositPaidLabel")} ${money(data.deposit)}`,
+              size: "xs",
+              color: "#A2907E",
+              align: "center",
+              wrap: true,
+            },
+          ]
+        : []),
+    ],
+  });
+  const showBank = show("bank") && !!data.accountNumber;
+  if (showBank) {
+    body.push({
+      type: "box",
+      layout: "vertical",
+      margin: "lg",
+      spacing: "xs",
+      paddingAll: "12px",
+      backgroundColor: "#F4ECE0",
+      cornerRadius: "10px",
+      contents: [
+        { type: "text", text: data.bankName || "-", weight: "bold", size: "md", color: "#5C4033", wrap: true },
+        { type: "text", text: data.accountNumber, weight: "bold", size: "xl", color: "#4A7348", wrap: true },
+        { type: "text", text: `${t("accountNameLabel")} ${data.accountName}`, size: "sm", color: "#A2907E", wrap: true },
+      ],
+    });
+  }
+  if (st.closing) {
+    body.push({ type: "text", text: st.closing, size: "xs", color: "#A2907E", margin: "lg", wrap: true });
+  }
+  const bubble: Record<string, unknown> = {
+    type: "bubble",
+    size: "mega",
+    header: {
+      type: "box",
+      layout: "vertical",
+      backgroundColor: st.headerColor || BRAND_HEADER,
+      paddingAll: "16px",
+      contents: [
+        {
+          type: "text",
+          text: t("header"),
+          color: st.headerTextColor || "#FFFFFF",
+          weight: "bold",
+          size: st.titleSize || "sm",
+          wrap: true,
+        },
+      ],
+    },
+    body: { type: "box", layout: "vertical", paddingAll: "16px", contents: body },
+  };
+  if (showBank) {
+    bubble.footer = {
+      type: "box",
+      layout: "vertical",
+      paddingAll: "12px",
+      contents: [
+        {
+          type: "button",
+          style: "primary",
+          color: st.buttonColor || BRAND_ACTION,
+          height: "sm",
+          action: { type: "clipboard", label: t("copyButton"), clipboardText: data.accountNumber },
+        },
+      ],
+    };
+  }
+  return {
+    type: "flex",
+    altText: `แจ้งยอดคงเหลือก่อนเข้าพัก ${money(data.remaining)} · ${politeCat(data.catName)}`,
+    contents: bubble,
   };
 }
 
@@ -2358,7 +2666,7 @@ export function buildReceiptFlex(data: {
                               text: `${data.memberCreditLeft.toLocaleString()} ฿`,
                               weight: "bold",
                               size: "sm",
-                              color: "#4A7348",
+                              color: "#2E7D4F",
                               align: "end",
                               flex: 2,
                             },
@@ -2385,7 +2693,7 @@ export function buildReceiptFlex(data: {
                               text: `${data.packageLeft.toLocaleString()} ${data.packageUnitLabel || "ครั้ง"}`,
                               weight: "bold",
                               size: "sm",
-                              color: "#4A7348",
+                              color: "#2E7D4F",
                               align: "end",
                               flex: 2,
                             },

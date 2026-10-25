@@ -72,6 +72,8 @@ const SCHEMA_CHECKS: { table: string; column: string; feature: string }[] = [
   { table: "customers", column: "consent_accepted_at", feature: "ยอมรับข้อตกลงจากหน้าลูกค้า" },
   { table: "cats", column: "species", feature: "น้องแต่ละตัวเป็นหมาหรือแมว" },
   { table: "member_topups", column: "source_invoice_id", feature: "ยกเลิกนัด เก็บยอดเป็นเครดิต" },
+  { table: "cats", column: "neutered", feature: "ทำหมันแล้ว/ยังไม่ทำ" },
+  { table: "cats", column: "seizure_history", feature: "ประวัติการชัก/ช็อค และการแพ้" },
 ];
 
 export type SchemaCheckRow = {
@@ -671,6 +673,17 @@ where staff_note like '%🎁%';`,
         add column if not exists consent_flea_tick boolean,
         add column if not exists consent_care_note text;
     `,
+  },
+  {
+    // ทำหมันแล้ว (true) / ยังไม่ทำ (false) / ยังไม่ได้ถาม (null) — ถามตอนสมัครสมาชิก
+    // เพิ่มคอลัมน์อย่างเดียว แถวเดิมได้ null ไม่แก้ข้อมูลเก่า
+    name: "cats.neutered",
+    sql: "alter table cats add column if not exists neutered boolean;",
+  },
+  {
+    // ประวัติการชัก/ช็อค + ประวัติการแพ้ — ถามตอนสมัครสมาชิก (ไม่บังคับ) · เพิ่มคอลัมน์อย่างเดียว
+    name: "cats.seizure_allergy",
+    sql: "alter table cats add column if not exists seizure_history text, add column if not exists allergy text;",
   },
   {
     // 🔁 เครดิตจากบิลที่ยกเลิกนัด — เงินเข้าร้านไปแล้วตอนจ่ายบิลเดิม จึงไม่ลงรายรับ/ไม่ให้แต้มซ้ำ

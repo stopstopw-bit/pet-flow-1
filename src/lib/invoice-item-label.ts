@@ -1,3 +1,5 @@
+import { stripDiscountTag } from "./line-discount";
+
 /**
  * ย่อรายการในบิลให้อ่านง่าย — ใช้ร่วมกันทุกที่ที่เอารายการบิลไปโชว์เป็นสรุปสั้นๆ
  * (ประวัติเครดิต Member, รายการรายรับ-รายจ่าย ฯลฯ)
@@ -7,7 +9,7 @@
  * และบรรทัดหมวดหมู่) ฟังก์ชันนี้ตัดชื่อน้อง/พันธุ์/ไซส์/ตัวคูณที่ห้อยท้ายออก เหลือแค่ชื่อรายการ
  */
 export function shortItemLabel(label: string): string {
-  return label
+  return stripDiscountTag(label)
     .replace(/^🐱 .+? · /, "")
     .replace(/^🎁 /, "")
     .split(" · ")[0]
@@ -42,5 +44,6 @@ export function stripEmoji(text: string): string {
  * อิโมจิหรือชื่อน้องบนเอกสาร จึงตัด "🐱 ชื่อน้อง · " ข้างหน้า แล้วล้างอิโมจิที่เหลือ (เช่น 🎁)
  */
 export function formalItemLabel(label: string): string {
-  return stripEmoji(label.replace(/^🐱 .+? · /, ""));
+  // ส่วนลดรายการมีคอลัมน์ "ส่วนลด" บนเอกสารอยู่แล้ว — ไม่ต้องซ้ำในชื่อ
+  return stripEmoji(stripDiscountTag(label).replace(/^🐱 .+? · /, ""));
 }
