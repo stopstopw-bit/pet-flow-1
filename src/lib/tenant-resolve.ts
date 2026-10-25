@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
-import { getSupabase } from "./supabase/server";
-import { getBootstrapTenantId } from "./auth";
+import { isTenantOpen, tenantGateById, tenantGateBySlug } from "./tenant-billing";
+import { getBootstrapTenantId, getSessionFrom } from "./auth";
 
 /**
  * แปลง "request ของลูกค้า" → tenant_id (ร้านไหน) สำหรับ path-based routing
@@ -15,9 +15,8 @@ import { getBootstrapTenantId } from "./auth";
 
 export const TENANT_SLUG_HEADER = "x-tenant-slug";
 export const TENANT_COOKIE = "pf_tenant";
-
-/** cache slug→id ใน process (รีเซ็ตเมื่อ deploy ใหม่) — กัน query ตาราง tenants ทุก request */
-const slugToId = new Map<string, string>();
+/** ร้าน PetFlow ของเจ้าของระบบเอง — ลิงก์ /app เปล่า ๆ และค่า LINE/Telegram/Google ใน env เป็นของร้านนี้ */
+export const MAIN_SHOP_SLUG = "petflow";
 
 /** อ่าน slug ร้านจาก request — header (middleware ใส่) ก่อน แล้วค่อย cookie */
 export function getTenantSlugFromRequest(req: NextRequest): string | null {
@@ -28,41 +27,52 @@ export function getTenantSlugFromRequest(req: NextRequest): string | null {
   return null;
 }
 
-/** slug → tenant_id (เฉพาะร้าน trial/active) — null ถ้าไม่พบ */
+/** slug → tenant_id (เฉพาะร้าน trial/active ที่ยังไม่เลยวันครบกำหนดจ่าย) — null ถ้าไม่พบ */
 export async function tenantIdForSlug(slug: string): Promise<string | null> {
   const key = slug.trim().toLowerCase();
   if (!key) return null;
-  const cached = slugToId.get(key);
-  if (cached) return cached;
+  const gate = await tenantGateBySlug(key).catch(() => null);
+  return gate && isTenantOpen(gate) ? gate.id : null;
+}
 
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data } = await sb
-    .from("tenants")
-    .select("id, status")
-    .eq("slug", key)
-    .in("status", ["trial", "active"])
-    .limit(1)
-    .maybeSingle();
-
-  const id = (data as { id?: string } | null)?.id;
-  if (!id) return null;
-  slugToId.set(key, id);
-  return id;
+/**
+ * ร้าน PetFlow (slug "petflow") — เจ้าของลิงก์ /app เปล่า ๆ และค่าใน env (LINE/Telegram/Google/บัญชี)
+ * ไม่ใช้ TENANT_ID ตรง ๆ: TENANT_ID คือร้านแรกที่ระบบสร้าง ซึ่งหลังสลับลิงก์ (fix-swapped-shops)
+ * กลายเป็นร้าน Back Home — ถ้าใช้ TENANT_ID ลูกค้า LINE PetFlow จะไปโผล่หน้า Back Home
+ * ยังไม่มีร้าน petflow (ระบบร้านเดียว) → ใช้ TENANT_ID
+ */
+export async function mainShopTenantId(): Promise<string | null> {
+  const gate = await tenantGateBySlug(MAIN_SHOP_SLUG).catch(() => null);
+  return gate?.id || getBootstrapTenantId();
 }
 
 /**
  * request → tenant_id ที่ต้องใช้กรอง query
  * ลำดับ: slug (header/cookie) → ร้าน bootstrap (env TENANT_ID) → throw
+ *
+ * ถ้ามี slug แต่หาร้านไม่เจอ (พิมพ์ผิด/ร้านถูกระงับ) ต้อง throw — ห้ามตกไปร้าน bootstrap
+ * ไม่งั้นลูกค้าของร้านที่ถูกระงับจะไปสมัคร/จองลงในร้าน bootstrap แทน
  */
 export async function resolveTenantId(req: NextRequest): Promise<string> {
+  // หน้าหลังบ้านแบบลิงก์ /admin เปล่า ๆ เรียก API ฝั่งลูกค้า (เช่น ลิงก์เชิญ LINE, ช่องว่างคิว) —
+  // ไม่มีชื่อร้านใน header ต้องใช้ร้านที่ล็อกอินอยู่ ห้ามเดาจากคุกกี้ "ร้านที่เปิดล่าสุด"
+  // ไม่งั้นลิงก์เชิญของร้านหนึ่งจะออกเป็น LINE ของอีกร้าน (หน้าแอปลูกค้าไม่มีคุกกี้หลังบ้านติดมา middleware ตัดให้แล้ว)
+  if (!req.headers.get(TENANT_SLUG_HEADER)?.trim()) {
+    const session = await getSessionFrom(req).catch(() => null);
+    if (session?.tenantId) {
+      const gate = await tenantGateById(session.tenantId).catch(() => null);
+      if (!gate || isTenantOpen(gate)) return session.tenantId;
+      throw new Error("ร้านนี้ปิดใช้งานอยู่");
+    }
+  }
   const slug = getTenantSlugFromRequest(req);
   if (slug) {
     const id = await tenantIdForSlug(slug);
     if (id) return id;
+    throw new Error(`ไม่พบร้าน "${slug}" หรือร้านนี้ปิดใช้งานอยู่`);
   }
-  const bootstrap = getBootstrapTenantId();
-  if (bootstrap) return bootstrap;
+  const main = await mainShopTenantId();
+  if (main) return main;
   throw new Error(
     "ไม่รู้ว่าเป็นร้านไหน — ไม่มี slug (x-tenant-slug/cookie pf_tenant) และไม่ได้ตั้ง TENANT_ID"
   );

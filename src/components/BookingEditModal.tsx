@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Booking } from "@/lib/business";
 import { relevantAutoMessageTopics } from "@/lib/auto-messages";
-import { toast } from "@/components/Toast";
+import { savedPopup, toast } from "@/components/Toast";
 import { Icon } from "@/components/Icon";
 import { GroomClashNote, confirmClashes, useGroomClashes } from "@/components/GroomClashNote";
 import { Segmented } from "@/components/ui";
@@ -13,6 +13,8 @@ import { isUnknownCat, pickableCatNames } from "@/lib/unknown-cat";
 import { GROOM_PROGRAMS, type GroomProgram } from "@/lib/grooming-prices";
 import { freeUnitsForRange, roomCapacity, compositionOf, type BoardBooking, type RoomClosure } from "@/lib/room-board";
 import { DEPOSIT_STATUS_LABEL, type DepositStatus } from "@/lib/booking-deposit";
+import { useConfig, usePetWords } from "@/components/ConfigProvider";
+import { cardOn } from "@/lib/features";
 
 export type EditableBooking = Booking & {
   lineUserId?: string;
@@ -222,6 +224,8 @@ export function BookingEditModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { config: siteConfig } = useConfig();
+  const pw = usePetWords();
   const [service, setService] = useState<"groom" | "room">(
     booking.service || (booking.roomType || booking.checkin ? "room" : "groom")
   );
@@ -447,16 +451,18 @@ export function BookingEditModal({
       | { kind: "updated" | "created_extra"; nights: number; total: number }
       | { kind: "warn"; message: string }
       | undefined;
-    if (count > 1) toast(`เลื่อนให้ทั้งบ้านแล้ว (${count} ตัว)`, "success");
+    // ปุ่มบันทึกอยู่ท้ายฟอร์มยาว — แจ้งผลเป็นป๊อปอัปกลางจอ รวมรายละเอียดไว้ในใบเดียว
+    const lines: string[] = [];
+    if (count > 1) lines.push(`เลื่อนให้ทั้งบ้านแล้ว (${count} ตัว)`);
     if (inv?.kind === "updated") {
-      toast(`แก้บิลเดิมเป็น ${inv.nights} คืน · ${inv.total.toLocaleString()} บาท`, "success");
+      lines.push(`แก้บิลเดิมเป็น ${inv.nights} คืน · ${inv.total.toLocaleString()} บาท`);
     } else if (inv?.kind === "created_extra") {
-      toast(
-        `บิลเดิมปิดไปแล้ว — ออกบิลพักต่อ ${inv.nights} คืน · ${inv.total.toLocaleString()} บาท ไว้ในหน้าบิล`,
-        "info"
-      );
-    } else if (inv?.kind === "warn") {
+      lines.push(`บิลเดิมปิดไปแล้ว — ออกบิลพักต่อ ${inv.nights} คืน · ${inv.total.toLocaleString()} บาท ไว้ในหน้าบิล`);
+    }
+    if (inv?.kind === "warn") {
       alert(`⚠️ ${inv.message}`);
+    } else {
+      savedPopup("บันทึกการแก้ไขแล้ว", lines);
     }
 
     setSaving(false);
@@ -506,7 +512,7 @@ export function BookingEditModal({
           {!household && (
           <div>
               <label className="block text-xs font-bold text-brown-soft">
-                ชื่อน้องแมว
+                ชื่อน้อง{pw.th}
                 <input
                   name="cat"
                   value={catName}
@@ -522,7 +528,7 @@ export function BookingEditModal({
                   }`}
                 >
                   <p className="mb-2 text-[11px] font-bold text-brown-soft">
-                    {placeholderCat ? "ลูกค้าบันทึกแมวไว้แล้ว · แตะเลือกตัวที่ใช่" : "แมวของลูกค้า · แตะเพื่อเลือก"}
+                    {placeholderCat ? `ลูกค้าบันทึกน้องไว้แล้ว · แตะเลือกตัวที่ใช่` : `น้อง${pw.th}ของลูกค้า · แตะเพื่อเลือก`}
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {catChoices.map((n) => {
@@ -704,7 +710,7 @@ export function BookingEditModal({
           {household ? (
             <div className="space-y-2">
               <p className="text-xs font-extrabold text-petflow-chocolate">
-                🐱 น้องในนัดนี้ ({siblings.length + 1} ตัว)
+                {pw.emoji} น้องในนัดนี้ ({siblings.length + 1} ตัว)
               </p>
               {[{ id: booking.id, catName: booking.catName, notes: booking.notes }, ...siblings].map(
                 (x) => {
@@ -715,7 +721,7 @@ export function BookingEditModal({
                       className="space-y-2 rounded-petflow-sm border border-petflow-line bg-paper/50 p-3"
                     >
                       <EditField
-                        label="ชื่อน้องแมว"
+                        label={`ชื่อน้อง${pw.th}`}
                         name={main ? "cat" : `cat_${x.id}`}
                         defaultValue={x.catName}
                         required
@@ -766,7 +772,7 @@ export function BookingEditModal({
               ติ๊กหัวข้อที่ไม่อยากให้ระบบส่งหาลูกค้ารายนี้ · ไม่กระทบนัดอื่น
             </p>
             <div>
-              {relevantAutoMessageTopics(service).map((t) => (
+              {relevantAutoMessageTopics(service).filter((t) => cardOn(siteConfig, t.id)).map((t) => (
                 <label key={t.id} className="flex min-h-[40px] items-center gap-2.5 text-xs font-bold text-brown-soft">
                   <input
                     type="checkbox"

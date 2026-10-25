@@ -698,7 +698,7 @@ function ProductSheet({ product, onClose, onSaved }: { product: PosProduct | nul
         </datalist>
         <label className="flex min-h-[44px] items-center justify-between rounded-petflow-sm bg-paper px-3 text-sm font-bold text-brown">
           นับสต็อก
-          <input type="checkbox" checked={f.trackStock} onChange={(e) => setF({ ...f, trackStock: e.target.checked })} className="h-5 w-5 accent-[#6b4a3a]" />
+          <input type="checkbox" checked={f.trackStock} onChange={(e) => setF({ ...f, trackStock: e.target.checked })} className="h-5 w-5 accent-latte-deep" />
         </label>
         {f.trackStock && (
           <div className="grid grid-cols-2 gap-2">
@@ -714,7 +714,7 @@ function ProductSheet({ product, onClose, onSaved }: { product: PosProduct | nul
         {product && (
           <label className="flex min-h-[44px] items-center justify-between rounded-petflow-sm bg-paper px-3 text-sm font-bold text-brown">
             เปิดขาย
-            <input type="checkbox" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} className="h-5 w-5 accent-[#6b4a3a]" />
+            <input type="checkbox" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} className="h-5 w-5 accent-latte-deep" />
           </label>
         )}
         <button type="button" disabled={busy || !f.name.trim()} onClick={save} className={BTN_PRIMARY}>

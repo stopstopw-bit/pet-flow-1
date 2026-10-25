@@ -6,14 +6,23 @@ import { useLiff } from "@/components/LiffProvider";
 import { useConfig } from "@/components/ConfigProvider";
 import type { Booking } from "@/lib/business";
 
-import { DEFAULT_MESSAGES, DEEMED_CONSENT_NOTICE } from "@/lib/messages";
+import {
+  DEEMED_CONSENT_NOTICE,
+  DEEMED_GROOM_CONSENT_NOTICE,
+  GROOM_CONSENT_CONFIRM,
+  consentTextFor,
+} from "@/lib/messages";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { toJpegDataUrl } from "@/lib/image-convert";
 import { BTN_PRIMARY, PageHeader } from "@/components/PageHeader";
+import { IntakeFlowBar } from "@/components/IntakeFlowBar";
 import { SectionLabel } from "@/components/ui";
 import { Icon } from "@/components/Icon";
 import { MAX_VACCINE_PHOTOS } from "@/lib/vaccine-photos";
-import { ID_CARD_PURPOSE, watermarkIdCard } from "@/lib/id-card-watermark";
+import { idCardPurpose, watermarkIdCard } from "@/lib/id-card-watermark";
+import { isFeatureOn } from "@/lib/features";
+import { customerFetch } from "@/lib/customer-fetch";
+import { bookingGroupKey, groupCatNames } from "@/lib/booking-group";
 
 type StayBooking = Booking & {
   checkin?: string;
@@ -108,12 +117,28 @@ function SignaturePad({
   );
 }
 
+/** "หัวข้อ — เนื้อหา" → หัวข้อตัวหนาบรรทัดแรก (ข้อตกลงที่ไม่มีหัวข้อโชว์ตามเดิม) */
+function TermText({ term }: { term: string }) {
+  const m = term.match(/^(.{2,60}?) — ([\s\S]+)$/);
+  if (!m) return <span className="min-w-0">{term}</span>;
+  return (
+    <span className="min-w-0">
+      <span className="block font-extrabold text-petflow-chocolate">{m[1]}</span>
+      {m[2]}
+    </span>
+  );
+}
+
 function ConsentContent() {
   const params = useSearchParams();
   const bookingIdParam = params.get("id") || "";
+  // ลิงก์จากหน้าข้อมูลลูกค้า (ยังไม่มีนัด) — ยอมรับแล้วเก็บไว้ที่ลูกค้า ไม่ผูกนัด
+  const customerMode = params.get("mode") === "customer";
   const { profile, ready } = useLiff();
   const { config } = useConfig();
   const [booking, setBooking] = useState<StayBooking | null>(null);
+  /** ชื่อน้องทุกตัวในนัดเดียวกัน — กดยอมรับครั้งเดียวได้ทั้งบ้าน */
+  const [catLabel, setCatLabel] = useState("");
   const [loading, setLoading] = useState(true);
   const [accepted, setAccepted] = useState(false);
   const [checked, setChecked] = useState(false);
@@ -121,8 +146,10 @@ function ConsentContent() {
   const [careNote, setCareNote] = useState("");
   const [signature, setSignature] = useState("");
   const [signError, setSignError] = useState(false);
-  const [vaccinePhotos, setVaccinePhotos] = useState<string[]>([]);
-  const [vaccineUploading, setVaccineUploading] = useState(false);
+  /** น้องทุกตัวในนัดเดียวกัน — สมุดวัคซีนแนบแยกทีละตัว (เมื่อก่อนชุดเดียวไปติดตัวแรก) */
+  const [groupCats, setGroupCats] = useState<{ id: string; catName: string }[]>([]);
+  const [vaccineByCat, setVaccineByCat] = useState<Record<string, string[]>>({});
+  const [vaccineUploading, setVaccineUploading] = useState("");
   const [fleaTickTreated, setFleaTickTreated] = useState(false);
   const [idCardUrl, setIdCardUrl] = useState("");
   // เคยแนบบัตรไว้แล้วจากรอบก่อน → ไม่ถามซ้ำ (ขอครั้งเดียวพอ)
@@ -130,14 +157,16 @@ function ConsentContent() {
   const [idCardBusy, setIdCardBusy] = useState(false);
   const [fleaError, setFleaError] = useState(false);
 
-  const terms =
-    config.messages?.consentTerms?.length
-      ? config.messages.consentTerms
-      : DEFAULT_MESSAGES.consentTerms;
-  const consentTitle = config.messages?.consentTitle || DEFAULT_MESSAGES.consentTitle;
+  // นัดอาบน้ำใช้ข้อตกลงอาบน้ำ (แยกจากกฎเข้าพัก) — ไม่มีบัตรประชาชน/ยาเห็บหมัดก่อนเข้าพัก
+  const isGroom = booking?.service === "groom";
+  const { title: consentTitle, terms } = consentTextFor(config.messages, booking?.service);
 
   useEffect(() => {
     if (!profile?.lineUserId) return;
+    if (customerMode) {
+      setLoading(false);
+      return;
+    }
     const q = new URLSearchParams({ lineUserId: profile.lineUserId });
     fetch(`/api/bookings?${q}`)
       .then((r) => r.json())
@@ -151,18 +180,27 @@ function ConsentContent() {
               .filter((b) => b.service === "room" && b.status !== "cancelled")
               .sort((a, b) => (a.checkin || a.date).localeCompare(b.checkin || b.date))[0] || null;
         setBooking(stay);
+        if (stay) {
+          const key = bookingGroupKey(stay);
+          const group = list.filter((b) => bookingGroupKey(b) === key && b.status !== "cancelled");
+          setCatLabel(groupCatNames(group));
+          // ตัวที่ลิงก์ชี้มาก่อน แล้วตามด้วยตัวอื่นในบ้าน
+          setGroupCats(
+            [stay, ...group.filter((b) => b.id !== stay.id)].map((b) => ({ id: b.id, catName: b.catName }))
+          );
+        }
         if (stay?.consentAcceptedAt) setAccepted(true);
         if (stay?.careNote) setCareNote(stay.careNote);
       })
       .catch(() => setBooking(null))
       .finally(() => setLoading(false));
-  }, [profile?.lineUserId, bookingIdParam]);
+  }, [profile?.lineUserId, bookingIdParam, customerMode]);
 
   // บัตรประชาชนผูกกับลูกค้า — เคยแนบไว้แล้วก็โชว์ ไม่ต้องแนบซ้ำทุกรอบ
   useEffect(() => {
     if (!profile?.lineUserId) return;
     const q = new URLSearchParams({ lineUserId: profile.lineUserId });
-    fetch(`/api/customers/self?${q}`)
+    customerFetch(`/api/customers/self?${q}`)
       .then((r) => r.json())
       .then((d) => {
         const url = d?.customer?.idCardUrl || "";
@@ -174,33 +212,39 @@ function ConsentContent() {
 
   // ขีดทับบนเครื่องลูกค้าก่อน แล้วค่อยส่งขึ้นระบบ — รูปบัตรแบบไม่มีข้อความไม่เคยออกจากมือถือ
   const uploadIdCard = async (file: File) => {
-    if (!profile?.lineUserId) return;
+    // เดิมเงียบไปเฉยๆ ถ้ายังไม่รู้ว่าเป็นใคร — ลูกค้าเลยคิดว่ากดแล้วไม่เกิดอะไร
+    if (!profile?.lineUserId) {
+      alert("ยังเชื่อมบัญชี LINE ไม่เสร็จ — ปิดหน้านี้แล้วเปิดลิงก์จากแชท LINE ใหม่อีกครั้งนะคะ");
+      return;
+    }
     setIdCardBusy(true);
     try {
-      const image = await watermarkIdCard(file);
-      const res = await fetch("/api/customers/id-card", {
+      const image = await watermarkIdCard(file, undefined, config.business.name);
+      const res = await customerFetch("/api/customers/id-card", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lineUserId: profile.lineUserId, image }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.url) throw new Error();
+      if (!res.ok || !data.url) throw new Error(`upload ${res.status}`);
       setIdCardUrl(data.url);
-    } catch {
-      alert("แนบรูปบัตรไม่สำเร็จ ลองใหม่อีกครั้งนะคะ");
+    } catch (e) {
+      // ข้อความจาก watermarkIdCard (เช่น เปิดไฟล์ไม่ได้) บอกลูกค้าได้ตรงกว่า — ที่เหลือใช้ข้อความกลาง
+      const msg = e instanceof Error && !e.message.startsWith("upload") ? e.message : "";
+      alert(msg || "แนบรูปบัตรไม่สำเร็จ ลองใหม่อีกครั้งนะคะ");
     } finally {
       setIdCardBusy(false);
     }
   };
 
   const submit = async () => {
-    if (!booking || !profile?.lineUserId) return;
+    if ((!booking && !customerMode) || !profile?.lineUserId) return;
     let hasError = false;
     if (!signature) {
       setSignError(true);
       hasError = true;
     }
-    if (!fleaTickTreated) {
+    if (!fleaTickTreated && !isGroom) {
       setFleaError(true);
       hasError = true;
     }
@@ -209,15 +253,16 @@ function ConsentContent() {
     setFleaError(false);
     setSaving(true);
     try {
-      const res = await fetch("/api/bookings/consent", {
+      const res = await fetch(customerMode ? "/api/customers/consent" : "/api/bookings/consent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          bookingId: booking.id,
+          bookingId: booking?.id,
           lineUserId: profile.lineUserId,
           careNote: careNote.trim(),
           signature,
-          vaccinePhotos,
+          vaccinePhotos: booking ? vaccineByCat[booking.id] || [] : [],
+          vaccinePhotosByBooking: vaccineByCat,
           fleaTickTreated,
         }),
       });
@@ -234,10 +279,10 @@ function ConsentContent() {
   };
 
   // สมุดวัคซีนมักมีหลายหน้า → เลือกได้ทีละหลายรูป และกดเพิ่มต่อได้จนครบ MAX_VACCINE_PHOTOS
-  const addVaccinePhotos = async (files: FileList) => {
-    setVaccineUploading(true);
+  const addVaccinePhotos = async (catId: string, files: FileList) => {
+    setVaccineUploading(catId);
     try {
-      const room = MAX_VACCINE_PHOTOS - vaccinePhotos.length;
+      const room = MAX_VACCINE_PHOTOS - (vaccineByCat[catId]?.length || 0);
       const picked = Array.from(files).slice(0, Math.max(0, room));
       const urls: string[] = [];
       for (const f of picked) {
@@ -247,22 +292,31 @@ function ConsentContent() {
           /* แปลงรูปไหนไม่สำเร็จก็ข้ามรูปนั้นไป */
         }
       }
-      setVaccinePhotos((prev) => [...prev, ...urls].slice(0, MAX_VACCINE_PHOTOS));
+      setVaccineByCat((prev) => ({
+        ...prev,
+        [catId]: [...(prev[catId] || []), ...urls].slice(0, MAX_VACCINE_PHOTOS),
+      }));
     } finally {
-      setVaccineUploading(false);
+      setVaccineUploading("");
     }
   };
 
   return (
     <div className="px-4 pb-6 pt-5">
       <PageHeader
-        eyebrow="Boarding agreement"
-        title={consentTitle}
-        subtitle={`${config.business.name} — กรุณาอ่านและกดยอมรับก่อนวันเข้าพักของน้อง`}
+        // ลิงก์เจาะจงนัด: รู้ว่าเป็นนัดอาบน้ำหรือเข้าพักหลังโหลดนัดเสร็จ — ระหว่างนั้นไม่โชว์หัวข้อผิดชุด
+        eyebrow={loading && bookingIdParam ? "Agreement" : isGroom ? "Grooming agreement" : "Boarding agreement"}
+        title={loading && bookingIdParam ? "ข้อตกลงและเงื่อนไข" : consentTitle}
+        subtitle={
+          isGroom
+            ? `${config.business.name} — เพื่อความปลอดภัยและสุขภาพที่ดีของน้อง กรุณาอ่านและยอมรับเงื่อนไขก่อนเข้ารับบริการ`
+            : `${config.business.name} — กรุณาอ่านและกดยอมรับก่อนวันเข้าพักของน้อง`
+        }
         back="/app"
         backLabel="กลับหน้าแรก"
         showLang={false}
       />
+      <IntakeFlowBar mode="progress" />
 
       {!ready || loading ? (
         <LoadingScreen />
@@ -271,14 +325,25 @@ function ConsentContent() {
           {booking && (
             <div className="flex items-center gap-3 rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-honey/25 text-petflow-chocolate">
-                <Icon name="bed" size={20} />
+                <Icon name={isGroom ? "bath" : "bed"} size={20} />
               </span>
               <div className="min-w-0">
-                <p className="truncate text-sm font-extrabold text-petflow-chocolate">{booking.catName}</p>
+                <p className="truncate text-sm font-extrabold text-petflow-chocolate">{catLabel || booking.catName}</p>
                 <p className="text-xs text-brown-soft">
-                  เข้าพัก: {booking.checkin || booking.date}
-                  {booking.checkout ? ` → ${booking.checkout}` : ""}
-                  {booking.room ? ` · ห้อง ${booking.room}` : ""}
+                  {isGroom ? (
+                    <>
+                      นัดอาบน้ำ: {booking.date}
+                      {booking.time ? ` ${booking.time} น.` : ""}
+                    </>
+                  ) : (
+                    <>
+                      เข้าพัก: {booking.checkin || booking.date}
+                      {booking.checkout ? ` → ${booking.checkout}` : ""}
+                      {booking.room
+                        ? ` · ห้อง ${config.rooms.find((r) => r.id === booking.room)?.name || booking.room}`
+                        : ""}
+                    </>
+                  )}
                 </p>
               </div>
             </div>
@@ -292,12 +357,12 @@ function ConsentContent() {
                   <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-honey/30 text-[11px] font-extrabold text-petflow-chocolate">
                     {i + 1}
                   </span>
-                  <span className="min-w-0">{term}</span>
+                  <TermText term={term} />
                 </li>
               ))}
             </ol>
             <p className="mt-2 rounded-petflow border border-petflow-line bg-cream px-3 py-2.5 text-[11px] leading-relaxed text-brown">
-              {DEEMED_CONSENT_NOTICE}
+              {isGroom ? DEEMED_GROOM_CONSENT_NOTICE : DEEMED_CONSENT_NOTICE}
             </p>
           </section>
 
@@ -307,7 +372,9 @@ function ConsentContent() {
               แจ้งการดูแลเพิ่มเติม (ไม่บังคับ)
             </label>
             <p className="mb-1.5 text-[11px] text-brown-faint">
-              เช่น อาหารที่กินประจำ/ปริมาณ · ยาที่ต้องให้ · นิสัย/สิ่งที่กลัว · โรคประจำตัว
+              {isGroom
+                ? "เช่น โรคประจำตัว · แพ้ยา/แพ้แชมพู · จุดที่ไม่ชอบให้จับ · นิสัยตอนอาบน้ำ"
+                : "เช่น อาหารที่กินประจำ/ปริมาณ · ยาที่ต้องให้ · นิสัย/สิ่งที่กลัว · โรคประจำตัว"}
             </p>
             <textarea
               value={careNote}
@@ -328,6 +395,7 @@ function ConsentContent() {
               <p className="mt-1 text-xs text-brown-soft">
                 ขอบคุณค่ะ ทางเราพร้อมดูแลน้องอย่างดีที่สุด 🧡
               </p>
+              <IntakeFlowBar mode="next" />
             </div>
           ) : (
             <>
@@ -352,14 +420,14 @@ function ConsentContent() {
                 )}
               </section>
 
-              {!idCardOnFile && (
+              {!idCardOnFile && !isGroom && isFeatureOn(config, "idCard") && (
               <section className="mt-4 rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm">
                 <label className="flex items-center gap-1.5 text-xs font-bold text-petflow-chocolate">
                   <Icon name="user" size={14} />
                   บัตรประชาชนผู้ปกครอง
                 </label>
                 <p className="mb-1.5 text-[11px] text-brown-faint">
-                  ระบบจะพิมพ์ข้อความขีดทับลงในรูปให้อัตโนมัติก่อนส่ง: &quot;{ID_CARD_PURPOSE}&quot;
+                  ระบบจะพิมพ์ข้อความขีดทับลงในรูปให้อัตโนมัติก่อนส่ง: &quot;{idCardPurpose(config.business.name)}&quot;
                   แนบครั้งเดียวพอ รอบต่อไปไม่ต้องแนบอีก
                 </p>
                 {idCardUrl && (
@@ -395,6 +463,8 @@ function ConsentContent() {
               </section>
               )}
 
+              {/* ลิงก์จากหน้าข้อมูลลูกค้า: สมุดวัคซีนมีการ์ดขอแยกต่างหาก (เก็บที่ตัวน้อง) ไม่ถามซ้ำตรงนี้ */}
+              {!customerMode && isFeatureOn(config, "vaccine") && (
               <section className="mt-4 rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm">
                 <label className="flex items-center gap-1.5 text-xs font-bold text-petflow-chocolate">
                   <Icon name="image" size={14} />
@@ -410,54 +480,78 @@ function ConsentContent() {
                     รวมถึงความเสี่ยงจากการที่ทางร้านไม่ได้ตรวจสอบประวัติวัคซีนของน้อง
                   </span>
                 </p>
-                {vaccinePhotos.length > 0 && (
-                  <div className="mb-2 grid grid-cols-3 gap-2">
-                    {vaccinePhotos.map((src, i) => (
-                      <div key={i} className="relative">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={src}
-                          alt={`สมุดวัคซีน ${i + 1}`}
-                          className="aspect-square w-full rounded-lg object-cover"
-                        />
-                        <button
-                          type="button"
-                          aria-label="ลบรูปนี้"
-                          onClick={() => setVaccinePhotos((prev) => prev.filter((_, j) => j !== i))}
-                          className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white"
-                        >
-                          <Icon name="x" size={14} />
-                        </button>
+                {(groupCats.length ? groupCats : booking ? [{ id: booking.id, catName: booking.catName }] : []).map(
+                  (cat) => {
+                    const photos = vaccineByCat[cat.id] || [];
+                    return (
+                      <div key={cat.id} className={groupCats.length > 1 ? "mt-3 first:mt-0" : ""}>
+                        {groupCats.length > 1 && (
+                          <p className="mb-1.5 flex items-center gap-1 text-xs font-extrabold text-petflow-chocolate">
+                            <Icon name="paw" size={13} className="text-brown-soft" />
+                            {cat.catName}
+                          </p>
+                        )}
+                        {photos.length > 0 && (
+                          <div className="mb-2 grid grid-cols-3 gap-2">
+                            {photos.map((src, i) => (
+                              <div key={i} className="relative">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={src}
+                                  alt={`สมุดวัคซีน ${cat.catName} ${i + 1}`}
+                                  className="aspect-square w-full rounded-lg object-cover"
+                                />
+                                <button
+                                  type="button"
+                                  aria-label="ลบรูปนี้"
+                                  onClick={() =>
+                                    setVaccineByCat((prev) => ({
+                                      ...prev,
+                                      [cat.id]: (prev[cat.id] || []).filter((_, j) => j !== i),
+                                    }))
+                                  }
+                                  className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white"
+                                >
+                                  <Icon name="x" size={14} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {photos.length < MAX_VACCINE_PHOTOS && (
+                          <label className="flex min-h-[56px] cursor-pointer items-center gap-3 rounded-petflow-sm border border-dashed border-petflow-line bg-paper px-3 py-3">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              className="hidden"
+                              onChange={(e) => {
+                                if (e.target.files?.length) addVaccinePhotos(cat.id, e.target.files);
+                                e.target.value = "";
+                              }}
+                            />
+                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-card text-brown-soft">
+                              <Icon name={photos.length ? "plus" : "image"} size={20} />
+                            </span>
+                            <span className="text-xs font-bold text-brown-soft">
+                              {vaccineUploading === cat.id
+                                ? "กำลังแนบรูป…"
+                                : photos.length
+                                  ? `เพิ่มรูปอีก (แนบได้สูงสุด ${MAX_VACCINE_PHOTOS} รูป)`
+                                  : groupCats.length > 1
+                                    ? `แตะเพื่อแนบสมุดวัคซีนของ${cat.catName}`
+                                    : "แตะเพื่อแนบภาพสมุดวัคซีน (เลือกได้หลายรูป)"}
+                            </span>
+                          </label>
+                        )}
                       </div>
-                    ))}
-                  </div>
-                )}
-                {vaccinePhotos.length < MAX_VACCINE_PHOTOS && (
-                  <label className="flex min-h-[56px] cursor-pointer items-center gap-3 rounded-petflow-sm border border-dashed border-petflow-line bg-paper px-3 py-3">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      className="hidden"
-                      onChange={(e) => {
-                        if (e.target.files?.length) addVaccinePhotos(e.target.files);
-                        e.target.value = "";
-                      }}
-                    />
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-card text-brown-soft">
-                      <Icon name={vaccinePhotos.length ? "plus" : "image"} size={20} />
-                    </span>
-                    <span className="text-xs font-bold text-brown-soft">
-                      {vaccineUploading
-                        ? "กำลังแนบรูป…"
-                        : vaccinePhotos.length
-                          ? `เพิ่มรูปอีก (แนบได้สูงสุด ${MAX_VACCINE_PHOTOS} รูป)`
-                          : "แตะเพื่อแนบภาพสมุดวัคซีน (เลือกได้หลายรูป)"}
-                    </span>
-                  </label>
+                    );
+                  }
                 )}
               </section>
+              )}
 
+              {!isGroom && (
               <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-petflow border border-honey-deep/40 bg-honey/10 p-4 text-xs leading-relaxed text-brown">
                 <input
                   type="checkbox"
@@ -466,14 +560,15 @@ function ConsentContent() {
                     setFleaTickTreated(e.target.checked);
                     if (e.target.checked) setFleaError(false);
                   }}
-                  className="mt-0.5 h-5 w-5 flex-none accent-[#4A7348]"
+                  className="mt-0.5 h-5 w-5 flex-none accent-latte-deep"
                 />
                 <span>
                   ข้าพเจ้ายืนยันว่าได้หยดยากันเห็บหมัดให้น้องแล้ว ภายในระยะเวลาที่กำหนด
                   ก่อนเข้าพักครั้งนี้
                 </span>
               </label>
-              {fleaError && (
+              )}
+              {fleaError && !isGroom && (
                 <p className="mt-1 text-[11px] font-bold text-wait">
                   กรุณาติ๊กยืนยันเรื่องหยดยาเห็บหมัดก่อนกดยอมรับข้อตกลง
                 </p>
@@ -484,23 +579,27 @@ function ConsentContent() {
                   type="checkbox"
                   checked={checked}
                   onChange={(e) => setChecked(e.target.checked)}
-                  className="mt-0.5 h-5 w-5 flex-none accent-[#4A7348]"
+                  className="mt-0.5 h-5 w-5 flex-none accent-latte-deep"
                 />
-                <span>
-                  ข้าพเจ้าขอรับรองว่าข้อมูลทั้งหมดที่กรอกและแนบมาข้างต้น
-                  (รวมถึงประวัติวัคซีนและการหยดยาเห็บหมัด) เป็นความจริงทุกประการ
-                  และร้านสามารถใช้ข้อมูลนี้เป็นหลักฐานได้หากเกิดปัญหาที่เกี่ยวข้อง
-                </span>
+                {isGroom ? (
+                  <span>{GROOM_CONSENT_CONFIRM}</span>
+                ) : (
+                  <span>
+                    ข้าพเจ้าขอรับรองว่าข้อมูลทั้งหมดที่กรอกและแนบมาข้างต้น
+                    (รวมถึงประวัติวัคซีนและการหยดยาเห็บหมัด) เป็นความจริงทุกประการ
+                    และร้านสามารถใช้ข้อมูลนี้เป็นหลักฐานได้หากเกิดปัญหาที่เกี่ยวข้อง
+                  </span>
+                )}
               </label>
               <button
                 type="button"
-                disabled={!checked || saving || !booking}
+                disabled={!checked || saving || (!booking && !customerMode)}
                 onClick={submit}
                 className={`mt-5 ${BTN_PRIMARY}`}
               >
                 {saving ? "กำลังบันทึก…" : "ยอมรับข้อตกลง"}
               </button>
-              {!booking && (
+              {!booking && !customerMode && (
                 <p className="mt-2 text-center text-[11px] text-brown-faint">
                   ยังไม่พบการจองห้องพักของคุณ
                 </p>

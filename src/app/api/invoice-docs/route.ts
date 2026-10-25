@@ -5,7 +5,7 @@ import { getSiteConfig } from "@/lib/config-store";
 import { pushLineMessage } from "@/lib/line";
 import { docShareUrl } from "@/lib/doc-share";
 import { getAppUrlFromEnv as getAppUrl } from "@/lib/line-config";
-import { buildDocPayload } from "@/lib/invoice-docs-payload";
+import { autoBuyerFor, buildDocPayload } from "@/lib/invoice-docs-payload";
 import {
   getInvoiceDoc,
   issueDocNumber,
@@ -139,11 +139,19 @@ async function handlePost(req: NextRequest) {
       return NextResponse.json({ error: "not_paid" }, { status: 400 });
     }
 
+    const customer = invoice.customerId ? await getCustomer(invoice.customerId) : undefined;
     let to = "";
     if (body.send) {
-      const customer = invoice.customerId ? await getCustomer(invoice.customerId) : undefined;
       to = invoice.lineUserId || customer?.lineUserId || "";
       if (!to) return NextResponse.json({ error: "no_line" }, { status: 400 });
+    }
+
+    // ออกเลขที่ครั้งแรก: ถ้าลูกค้ากรอกข้อมูลออกบิล (นิติบุคคล/บุคคลธรรมดา) ไว้ ให้บันทึกติดเอกสารเลย
+    // เอกสารที่ออกแล้วจะคงชื่อนี้ แม้ลูกค้าแก้ข้อมูลทีหลัง
+    const autoBuyer = autoBuyerFor(await getInvoiceDoc(invoiceId), customer?.taxInvoice);
+    if (autoBuyer) {
+      const saved = await saveBuyer(invoiceId, invoice.customerId, autoBuyer);
+      if (!saved.ok) return NextResponse.json({ error: saved.error }, { status: 500 });
     }
 
     const res = await issueDocNumber(invoiceId, invoice.customerId, kind);

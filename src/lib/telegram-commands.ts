@@ -10,6 +10,7 @@ import {
 } from "@/lib/telegram-actions";
 
 import { parseTelegramCommand } from "@/lib/telegram";
+import { buildTransportSummaryMessage } from "@/lib/transport-summary";
 
 /**
  * สร้างข้อความตารางงานของวันหนึ่ง — อาบน้ำ + เช็คอิน + เช็คเอาท์
@@ -24,9 +25,22 @@ export async function buildDayScheduleMessage(
   const all = await listBookings();
   // ยกเลิก/ไม่มา ไม่ต้องขึ้นตารางงาน — ไม่มีอะไรให้ทำแล้ว
   const live = all.filter((b) => b.status !== "cancelled" && b.status !== "no_show");
-  const groom = live.filter((b) => b.service === "groom" && b.date === date);
-  const checkin = live.filter((b) => b.service === "room" && b.checkin === date);
-  const checkout = live.filter((b) => b.service === "room" && b.checkout === date);
+  // เรียงตามเวลา ให้อ่านเป็นไทม์ไลน์ของวัน — ยังไม่แจ้งเวลาไว้ท้าย
+  const byTime = (pick: (b: (typeof live)[number]) => string | undefined) =>
+    (a: (typeof live)[number], b: (typeof live)[number]) =>
+      (pick(a) || "99").localeCompare(pick(b) || "99");
+  const groom = live
+    .filter((b) => b.service === "groom" && b.date === date)
+    .sort(byTime((b) => b.time));
+  const checkin = live
+    .filter((b) => b.service === "room" && b.checkin === date)
+    .sort(byTime((b) => b.arrivalTime));
+  const checkout = live
+    .filter((b) => b.service === "room" && b.checkout === date)
+    .sort(byTime((b) => b.pickupTime));
+  // คำเดียวกับปฏิทินร้าน: "มาส่ง 09:00" / "มารับ 17:00" / "ยังไม่แจ้งเวลา"
+  const moveText = (word: string, time?: string) =>
+    time ? `${word} ${time} น.` : `${word} · ยังไม่แจ้งเวลา`;
   // ยังพักอยู่วันนี้ แต่ไม่ใช่วันเข้า/ออก — ไม่งั้นแจ้งแค่วันแรกกับวันสุดท้าย ตัวที่พักยาว
   // หลายคืนตรงกลางจะไม่มีใครเห็นโน้ต/เงื่อนไขที่ลูกค้าเซ็นไว้เลยจนกว่าจะถึงวันออก
   const ongoing = opts?.includeOngoingStays
@@ -68,6 +82,10 @@ export async function buildDayScheduleMessage(
         const flags = [
           notes?.privateNote ? `🔒 ${notes.privateNote}` : "",
           notes?.medical && notes.medical !== "ไม่มี" ? `💊 ${notes.medical}` : "",
+          notes?.seizureHistory && notes.seizureHistory !== "ไม่มี" && notes.seizureHistory !== "ไม่เคย"
+            ? `⚡ ชัก/ช็อค: ${notes.seizureHistory}`
+            : "",
+          notes?.allergy && notes.allergy !== "ไม่มี" ? `🚫 แพ้: ${notes.allergy}` : "",
           b.notes ? `📝 ${b.notes}` : "",
         ].filter(Boolean);
         return flags.length ? `${base}\n   ⚠️ ${flags.join(" · ")}` : base;
@@ -81,7 +99,7 @@ export async function buildDayScheduleMessage(
         checkin
           .map(
             (b, i) =>
-              `${i + 1}. ${b.catName} · ${b.customerName} — ห้อง ${b.room || "-"}${b.arrivalTime ? ` · แจ้งเวลา ${b.arrivalTime}` : ""}`
+              `${i + 1}. ${moveText("มาส่ง", b.arrivalTime)} — ${b.catName} · ${b.customerName} · ห้อง ${b.room || "-"}`
           )
           .join("\n")
     );
@@ -92,7 +110,7 @@ export async function buildDayScheduleMessage(
         checkout
           .map(
             (b, i) =>
-              `${i + 1}. ${b.catName} · ${b.customerName} — ห้อง ${b.room || "-"}${b.pickupTime ? ` · แจ้งเวลา ${b.pickupTime}` : ""}`
+              `${i + 1}. ${moveText("มารับ", b.pickupTime)} — ${b.catName} · ${b.customerName} · ห้อง ${b.room || "-"}`
           )
           .join("\n")
     );
@@ -112,7 +130,7 @@ export async function buildTomorrowPrepMessage(tomorrow: string) {
 export async function buildMorningSummaryMessage(today: string) {
   return buildDayScheduleMessage(today, {
     heading: `☀️ สรุปเช้า — งานวันนี้ (${today})`,
-    emptyText: "วันนี้ยังไม่มีนัด/เข้าพัก-ออกพักในระบบค่ะ พักผ่อนได้เต็มที่ 🐱",
+    emptyText: "วันนี้ยังไม่มีนัด/เข้าพัก-ออกพักในระบบค่ะ พักผ่อนได้เต็มที่ 🐾",
     // แจ้งตัวที่ยังพักอยู่ (ไม่ใช่แค่วันเข้า/วันออก) ทุกเช้า จะได้เห็นโน้ต/สถานะเซ็นเงื่อนไข
     // ของทุกตัวที่ยังอยู่กับร้าน ไม่ใช่แค่วันแรกกับวันสุดท้ายของการพัก
     includeOngoingStays: true,
@@ -155,16 +173,17 @@ export async function handleTelegramCommand(
     return {
       html: true,
       message:
-        `🐱 <b>วิธีใช้ PetFlow Bot</b>\n\n` +
+        `🐾 <b>วิธีใช้บอทของร้าน</b>\n\n` +
         `👇 กดปุ่มเมนูด้านล่างได้เลย\n` +
         `📅 นัดวันนี้ · 🌅 เตรียมตัวพรุ่งนี้\n` +
         `⏳ คิวรอยืนยัน · 🗓️ ตารางเดือน\n` +
+        `🚗 รับ-ส่งน้อง (วันนี้ + พรุ่งนี้ พร้อมลิงก์แผนที่)\n` +
         `💰 ยอดขาย · 📒 การเงิน\n` +
         `➕ เพิ่มนัด · 📋 สรุปลูกค้า · ✅ ส่งยืนยันนัด\n\n` +
         `<b>เพิ่มนัด</b>\n` +
         `<code>/book อาบ น้องส้ม 2026-07-15 12:30</code>\n` +
         `<code>/book ห้อง น้องมิว 2026-07-15 2026-07-20</code>\n\n` +
-        `<b>สรุปลูกค้า</b> <code>/summary ชื่อแมว</code>\n` +
+        `<b>สรุปลูกค้า</b> <code>/summary ชื่อน้อง</code>\n` +
         `<b>ส่งยืนยันนัด</b> <code>/confirm รหัสนัด</code>\n` +
         `<b>ค้นหา</b> <code>/search ชื่อ</code>`,
     };
@@ -191,6 +210,22 @@ export async function handleTelegramCommand(
     tomorrow.setDate(tomorrow.getDate() + 1);
     const message = await buildTomorrowPrepMessage(tomorrow.toISOString().slice(0, 10));
     return { message };
+  }
+
+  if (command === "/transport") {
+    const tomorrow = new Date(`${today}T12:00:00`);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const [t1, t2] = await Promise.all([
+      buildTransportSummaryMessage(today, {
+        heading: `🚗 รับ-ส่งวันนี้ (${today})`,
+        emptyText: "วันนี้ไม่มีรับ-ส่งค่ะ",
+      }),
+      buildTransportSummaryMessage(tomorrow.toISOString().slice(0, 10), {
+        heading: `🚗 รับ-ส่งพรุ่งนี้ (${tomorrow.toISOString().slice(0, 10)})`,
+        emptyText: "พรุ่งนี้ไม่มีรับ-ส่งค่ะ",
+      }),
+    ]);
+    return { html: true, message: `${t1}\n\n${t2}` };
   }
 
   if (command === "/month") {
@@ -267,7 +302,7 @@ export async function handleTelegramCommand(
 
   if (command === "/search") {
     const q = payload?.trim() || "";
-    if (!q) return { message: "พิมพ์ /search ชื่อลูกค้าหรือชื่อแมว" };
+    if (!q) return { message: "พิมพ์ /search ชื่อลูกค้าหรือชื่อน้อง" };
     const found = await searchCustomers(q);
     if (!found.length) return { message: `ไม่พบ "${q}"` };
     return {
@@ -276,7 +311,7 @@ export async function handleTelegramCommand(
         .map(
           (c, i) =>
             `${i + 1}. ${c.name}${c.isMember ? " 💎" : ""}\n` +
-            `   แมว: ${c.cats.map((cat) => cat.name).join(", ")}\n` +
+            `   น้อง: ${c.cats.map((cat) => cat.name).join(", ")}\n` +
             `   เครดิต: ${c.memberCredit} บาท`
         )
         .join("\n\n"),

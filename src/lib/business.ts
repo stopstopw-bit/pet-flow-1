@@ -8,23 +8,24 @@ import { roomPricing } from "./room-board";
 export const BUSINESS = {
   name: "PetFlow",
   tagline: { th: "โรงแรมแมว · อาบน้ำ & กรูมมิ่ง", en: "Cat Hotel · Grooming & Spa" },
-  lineOa: "@petflow",
-  phones: ["02-123-4567"],
+  // ช่องติดต่อทั้งหมดเป็นของแต่ละร้าน — เริ่มว่างเสมอ ร้านใหม่ต้องไม่ได้ LINE/เบอร์/ลิงก์ของร้านอื่นติดมา
+  lineOa: "",
+  phones: [] as string[],
   address: "",
-  maps: "https://www.google.com/maps",
-  facebook: "petflow",
+  maps: "",
+  facebook: "",
   /** โซเชียลมีเดีย — ใส่ลิงก์ทางการของร้าน */
   social: {
-    line: "https://line.me/R/ti/p/@petflow",
-    instagram: "https://www.instagram.com/",
-    tiktok: "https://www.tiktok.com/",
-    facebook: "https://www.facebook.com/",
+    line: "",
+    instagram: "",
+    tiktok: "",
+    facebook: "",
   },
-  reviewUrl: "https://www.google.com/maps",
+  reviewUrl: "",
   reviewButtonText: "⭐ รีวิวให้เราหน่อยนะคะ",
   location: {
-    th: "กรุงเทพฯ",
-    en: "Bangkok",
+    th: "",
+    en: "",
   },
   pointsRate: 100, // บาท = 1 แต้ม
   // จ่ายด้วยเครดิต Member ไม่ได้แต้ม — ได้ส่วนลดตอนซื้อเครดิตไปแล้ว
@@ -76,6 +77,8 @@ export type RoomType = {
   config?: { th: string; en: string };
   note?: { th: string; en: string };
   image: string;
+  /** สีประจำห้องในปฏิทินเดือน (#rrggbb) — ไม่ตั้ง = ไล่ตามลำดับ (ดู room-colors.ts) */
+  color?: string;
   amenities: { th: string[]; en: string[] };
 };
 
@@ -285,15 +288,15 @@ export const ROOM_AMENITIES = {
 export const TRANSPORT = {
   th: [
     "≤ 1 กม. ฟรีรับ-ส่ง",
-    "≤ 5 กม. 100 บาท",
-    "≤ 10 กม. 150 บาท",
-    "> 10 กม. 150 บาท + 10 บาท/กม.",
+    "≤ 5 กม. เที่ยวละ 100 บาท",
+    "≤ 10 กม. เที่ยวละ 150 บาท",
+    "> 10 กม. เที่ยวละ 150 บาท + 10 บาท/กม.",
   ],
   en: [
     "≤ 1 km free",
-    "≤ 5 km 100 THB",
-    "≤ 10 km 150 THB",
-    "> 10 km 150 THB + 10 THB/km",
+    "≤ 5 km 100 THB per trip",
+    "≤ 10 km 150 THB per trip",
+    "> 10 km 150 THB per trip + 10 THB/km",
   ],
 } as const;
 

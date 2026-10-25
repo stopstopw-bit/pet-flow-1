@@ -5,17 +5,23 @@ import {
   DEFAULT_TIER_RULES,
   type CustomerTier,
 } from "./customer-tier";
-import { listBookings } from "./bookings-store";
+import { listBookings, type StoredBooking } from "./bookings-store";
 import { getAccount, getPointsHistory } from "./points-store";
 import { getSupabase } from "./supabase/server";
 import { seedEnabled } from "./demo-seed";
-import { uploadDataUrlToStorage } from "./supabase/storage";
+import { uploadPrivateDataUrl } from "./supabase/storage";
 import { getSiteConfig } from "./config-store";
 import { requireTenantId } from "./tenant-context";
+import { ensureMigration } from "./migrations";
+import { normalizeSpecies, type PetSpecies } from "./pet-kind";
+import { taxInvoiceFromRow, type CustomerTaxInvoice } from "./tax-invoice";
+import { MAX_VACCINE_PHOTOS, joinVaccinePhotos, splitVaccinePhotos } from "./vaccine-photos";
+import { stayInfoDone } from "./intake-rules";
 
 export type { CustomerTier } from "./customer-tier";
 
 export type CatGender = "male" | "female";
+export { normalizeSpecies, type PetSpecies } from "./pet-kind";
 
 export type CatRecord = {
   id: string;
@@ -30,14 +36,28 @@ export type CatRecord = {
   medical?: string;
   /** ขนสั้น/ขนยาว — ถามพร้อมสายพันธุ์ตอนสมัครสมาชิก */
   furLength?: "short" | "long";
-  /** สี/ลักษณะเด่น — ถามตอนสมัครสมาชิก */
+  /** สี/ลักษณะเด่น — ถามตอนสมัครสมาชิก (ไม่บังคับ) */
   color?: string;
+  /** ทำหมันแล้ว (true) / ยังไม่ทำ (false) / ไม่ได้ระบุ (undefined) */
+  neutered?: boolean;
+  /** ประวัติการชัก/ช็อค — ถามตอนสมัครสมาชิก (ไม่บังคับ) */
+  seizureHistory?: string;
+  /** ประวัติการแพ้ (อาหาร/ยา/แชมพู) — ถามตอนสมัครสมาชิก (ไม่บังคับ) */
+  allergy?: string;
+  /** น้ำหนักตัว (กก.) — ถามตอนสมัครสมาชิก แก้ได้ทั้งลูกค้าและหลังบ้าน */
+  weightKg?: number;
+  /** หมาหรือแมว — ไม่ได้ระบุ = ชนิดที่ร้านรับ (ดู speciesOf ใน pet-kind.ts) */
+  species?: PetSpecies;
   photoDataUrl?: string;
   staffNote?: string;
   /** โน้ตลับของร้าน — ซ่อนจากลูกค้า (ต้องรัน OVERNIGHT_SQL.md ก่อนถึงจะเซฟได้) */
   staffPrivateNote?: string;
   /** ประวัติน้องก่อนอาบน้ำ (JSON) — เก็บถาวรที่แมว ถามครั้งแรกครั้งเดียว */
   groomHealthInfo?: string;
+  /** รูปสมุดวัคซีนที่เก็บไว้ที่ตัวน้อง (ขอได้จากหน้าลูกค้าโดยไม่ต้องมีนัด) — คั่นบรรทัด เหมือน bookings.vaccine_photo_url */
+  vaccinePhotos?: string;
+  /** ข้อมูลน้องก่อนเข้าพัก (JSON ตามคำถามใน stay-form) — อาหาร/ชอบ-ไม่ชอบ/การดูแล เก็บถาวรที่ตัวน้อง */
+  stayInfo?: string;
   /** อัลบั้มรูป/วิดีโออ้างอิงหน้าตา-นิสัยแมว — เก็บหลังบ้านเท่านั้น ลูกค้าไม่เห็น (ต้องรัน migration cats.media ก่อน) */
   media?: CatMediaItem[];
 };
@@ -74,8 +94,18 @@ export type CustomerRecord = {
   addressMapUrl?: string;
   /** รหัสไปรษณีย์ — ไว้ดูว่าลูกค้าส่วนใหญ่อยู่แถวไหนสำหรับทำการตลาด */
   postalCode?: string;
-  /** รูปบัตรประชาชนผู้ปกครอง (มีข้อความขีดทับ "ใช้ลงทะเบียน PetFlow" ฝังในรูปแล้ว) */
+  /** ขอบิล/ใบกำกับภาษีเต็มรูป (นิติบุคคลหรือบุคคลธรรมดา) — ไม่มี = ออกในชื่อลูกค้าตามปกติ */
+  taxInvoice?: CustomerTaxInvoice;
+  /** รูปบัตรประชาชนผู้ปกครอง (มีข้อความขีดทับ "ใช้ลงทะเบียนที่ร้าน" ฝังในรูปแล้ว) */
   idCardUrl?: string;
+  /** ลูกค้ากดยอมรับข้อตกลงของร้านล่าสุด (ส่งจากหน้าลูกค้า ยังไม่ต้องมีนัด) */
+  consentAcceptedAt?: string;
+  /** ลายเซ็นตอนยอมรับข้อตกลงล่าสุด (ไฟล์ส่วนตัว /api/files) */
+  consentSignature?: string;
+  /** ลูกค้ายืนยันหยดยาเห็บหมัดตอนยอมรับข้อตกลงล่าสุด */
+  consentFleaTick?: boolean;
+  /** "แจ้งการดูแลเพิ่มเติม" ที่ลูกค้ากรอกตอนยอมรับข้อตกลงล่าสุด */
+  consentCareNote?: string;
   /** รหัสชวนเพื่อนของลูกค้าคนนี้ (แชร์ให้เพื่อนสมัคร) */
   referralCode?: string;
   /** ถูกชวนมาโดยลูกค้ารหัสนี้ (กันออกคูปองซ้ำ) */
@@ -120,6 +150,13 @@ export type MemberTopupRecord = {
   createdAt: string;
   /** ยอดยกมาจากระบบเก่า — เติมเครดิตให้ลูกค้าจริง แต่ไม่ใช่รายรับของร้านเดือนนี้ */
   isLegacy?: boolean;
+  /**
+   * 🔁 ยกเลิกนัดแล้วเก็บยอดบิลเป็นเครดิต — เงินเข้าร้านไปแล้วตอนจ่ายบิลเดิม
+   * (ลงรายรับ + ให้แต้มไปแล้วตอนนั้น) จึงไม่ลงรายรับและไม่ให้แต้มซ้ำอีกรอบ
+   */
+  isCancelCredit?: boolean;
+  /** เลขบิลเดิมที่แปลงมาเป็นเครดิต (เฉพาะ isCancelCredit) */
+  sourceInvoiceId?: string;
 };
 
 /** รายการใช้เครดิต Member จ่ายบิล */
@@ -146,10 +183,17 @@ type CatRow = {
   medical: string | null;
   fur_length?: string | null;
   color?: string | null;
+  neutered?: boolean | null;
+  seizure_history?: string | null;
+  allergy?: string | null;
+  weight_kg?: number | string | null;
+  species?: string | null;
   photo_data_url: string | null;
   staff_note: string | null;
   staff_private_note?: string | null;
   groom_health_info?: string | null;
+  vaccine_photos?: string | null;
+  stay_info?: string | null;
   media?: CatMediaItem[] | null;
 };
 
@@ -167,7 +211,12 @@ type CustomerRow = {
   address?: string | null;
   address_map_url?: string | null;
   postal_code?: string | null;
+  tax_invoice?: unknown;
   id_card_url?: string | null;
+  consent_accepted_at?: string | null;
+  consent_signature?: string | null;
+  consent_flea_tick?: boolean | null;
+  consent_care_note?: string | null;
   referral_code?: string | null;
   referred_by?: string | null;
   is_member: boolean;
@@ -205,7 +254,25 @@ type MemberTopupRow = {
   note: string | null;
   created_at: string;
   is_legacy?: boolean | null;
+  is_cancel_credit?: boolean | null;
+  source_invoice_id?: string | null;
 };
+
+function rowToTopup(r: MemberTopupRow): MemberTopupRecord {
+  return {
+    id: r.id,
+    customerId: r.customer_id,
+    paidAmount: Number(r.paid_amount),
+    bonusAmount: Number(r.bonus_amount),
+    creditAdded: Number(r.credit_added),
+    balanceAfter: Number(r.balance_after),
+    note: r.note ?? undefined,
+    createdAt: r.created_at,
+    isLegacy: r.is_legacy ?? false,
+    isCancelCredit: r.is_cancel_credit ?? false,
+    sourceInvoiceId: r.source_invoice_id ?? undefined,
+  };
+}
 
 const memCustomers = new Map<string, CustomerRecord>();
 const memServices: ServiceRecord[] = [];
@@ -245,7 +312,12 @@ function mapCustomer(row: CustomerRow): CustomerRecord {
     address: row.address ?? undefined,
     addressMapUrl: row.address_map_url ?? undefined,
     postalCode: row.postal_code ?? undefined,
+    taxInvoice: taxInvoiceFromRow(row.tax_invoice),
     idCardUrl: row.id_card_url ?? undefined,
+    consentAcceptedAt: row.consent_accepted_at ?? undefined,
+    consentSignature: row.consent_signature ?? undefined,
+    consentFleaTick: row.consent_flea_tick ?? undefined,
+    consentCareNote: row.consent_care_note ?? undefined,
     referralCode: row.referral_code ?? undefined,
     referredBy: row.referred_by ?? undefined,
     isMember: row.is_member,
@@ -269,10 +341,17 @@ function mapCustomer(row: CustomerRow): CustomerRecord {
       medical: c.medical ?? undefined,
       furLength: (c.fur_length as "short" | "long" | undefined) ?? undefined,
       color: c.color ?? undefined,
+      neutered: c.neutered ?? undefined,
+      seizureHistory: c.seizure_history ?? undefined,
+      allergy: c.allergy ?? undefined,
+      weightKg: c.weight_kg != null && c.weight_kg !== "" ? Number(c.weight_kg) : undefined,
+      species: normalizeSpecies(c.species),
       photoDataUrl: c.photo_data_url ?? undefined,
       staffNote: c.staff_note ?? undefined,
       staffPrivateNote: c.staff_private_note ?? undefined,
       groomHealthInfo: c.groom_health_info ?? undefined,
+      vaccinePhotos: c.vaccine_photos ?? undefined,
+      stayInfo: c.stay_info ?? undefined,
       media: Array.isArray(c.media) ? c.media : undefined,
     })),
   };
@@ -423,15 +502,14 @@ export async function setReferredBy(customerId: string, referrerId: string) {
   c.referredBy = referrerId;
   const sb = getSupabase();
   if (sb) {
-    try {
-      await sb
-        .from("customers")
-        .update({ referred_by: referrerId })
-        .eq("id", customerId)
-        .eq("tenant_id", requireTenantId());
-    } catch {
-      /* ยังไม่ได้ migrate — ข้าม */
-    }
+    // supabase ไม่ throw แต่คืน error มา — เดิมกลืนเงียบ ถ้ายังไม่ได้ migrate คอลัมน์ referred_by
+    // สมัครผ่านลิงก์เพื่อนจะ "ดูเหมือนสำเร็จ" แต่ไม่มีใครได้คูปองตอนมาใช้บริการ
+    const { error } = await sb
+      .from("customers")
+      .update({ referred_by: referrerId })
+      .eq("id", customerId)
+      .eq("tenant_id", requireTenantId());
+    if (error) throw new Error(`บันทึกคนชวนไม่สำเร็จ (ยังไม่ได้ migrate customers.referral_code?): ${error.message}`);
   } else {
     memCustomers.set(customerId, c);
   }
@@ -1071,12 +1149,13 @@ export async function updateCustomer(
       | "tier"
       | "lastFollowUpAt"
     >
-  >
+  > & { taxInvoice?: CustomerTaxInvoice | null }
 ) {
   const c = await getCustomer(id);
   if (!c) return null;
 
   Object.assign(c, patch);
+  if (patch.taxInvoice === null) c.taxInvoice = undefined;
   if (patch.isMember && !c.memberSince) {
     c.memberSince = new Date().toISOString().slice(0, 10);
   }
@@ -1124,6 +1203,17 @@ export async function updateCustomer(
           () => {}
         );
     }
+    if (patch.taxInvoice !== undefined) {
+      // คอลัมน์ใหม่ — แยกเขียนเผื่อยังไม่ได้รัน migration จะได้ไม่ทำให้ช่องอื่นเซฟไม่ติด
+      const write = () =>
+        sb
+          .from("customers")
+          .update({ tax_invoice: c.taxInvoice ?? null })
+          .eq("id", id)
+          .eq("tenant_id", requireTenantId());
+      const { error } = await write();
+      if (error && (await ensureMigration("customers.tax_invoice"))) await write();
+    }
   } else {
     memCustomers.set(id, c);
   }
@@ -1161,6 +1251,28 @@ export async function adjustDepositCredit(customerId: string, delta: number) {
   return { ok: true as const, balance: next };
 }
 
+/** น้ำหนัก (กก.) ที่รับได้ — ตัดค่าที่ไม่ใช่ตัวเลข/ติดลบ/เกินจริงทิ้ง และปัดเหลือทศนิยม 2 ตำแหน่ง */
+export function normalizeWeightKg(v: unknown): number | undefined {
+  if (v == null || v === "") return undefined;
+  const n = Number(v);
+  if (!isFinite(n) || n <= 0 || n > 200) return undefined;
+  return Math.round(n * 100) / 100;
+}
+
+/** เขียนชนิดน้อง (หมา/แมว) — คอลัมน์ใหม่ ถ้ายังไม่มีให้อัปเดตฐานข้อมูลแล้วลองอีกครั้ง · พังก็ไม่ทำให้ช่องอื่นเซฟไม่ติด */
+async function writeCatSpecies(catId: string, species: PetSpecies) {
+  const sb = getSupabase();
+  if (!sb) return;
+  const write = () =>
+    sb.from("cats").update({ species }).eq("id", catId).eq("tenant_id", requireTenantId());
+  try {
+    const { error } = await write();
+    if (error && (await ensureMigration("cats.species"))) await write();
+  } catch {
+    /* ข้าม */
+  }
+}
+
 export async function updateCat(
   customerId: string,
   catId: string,
@@ -1178,8 +1290,11 @@ export async function updateCat(
       | "medical"
       | "furLength"
       | "color"
+      | "species"
+      | "seizureHistory"
+      | "allergy"
     >
-  >
+  > & { weightKg?: number | null; neutered?: boolean | null }
 ) {
   const c = await getCustomer(customerId);
   if (!c) return null;
@@ -1190,14 +1305,24 @@ export async function updateCat(
   if (patch.photoDataUrl?.startsWith("data:")) {
     patch = {
       ...patch,
-      photoDataUrl: await uploadDataUrlToStorage(
+      photoDataUrl: await uploadPrivateDataUrl(
         `cats/${catId}/profile-${Date.now()}`,
         patch.photoDataUrl
       ),
     };
   }
 
-  Object.assign(cat, patch);
+  const { weightKg, neutered, ...rest } = patch;
+  Object.assign(cat, rest);
+  // null = ล้างคำตอบ (ไม่ระบุ), ไม่ส่งมา = คงค่าเดิม
+  const neuteredChanged = "neutered" in patch;
+  if (neuteredChanged) cat.neutered = typeof neutered === "boolean" ? neutered : undefined;
+  const historyChanged = "seizureHistory" in patch || "allergy" in patch;
+  if ("seizureHistory" in patch) cat.seizureHistory = patch.seizureHistory?.trim() || undefined;
+  if ("allergy" in patch) cat.allergy = patch.allergy?.trim() || undefined;
+  // null = ลบน้ำหนักออก, ไม่ส่งมา = คงค่าเดิม
+  const weightChanged = "weightKg" in patch;
+  if (weightChanged) cat.weightKg = normalizeWeightKg(weightKg);
   // ถ้าแก้อายุ → อัปเดตวันที่อ้างอิงอายุเป็นวันนี้ (ไว้คำนวณอายุปัจจุบัน)
   if (patch.ageValue != null) {
     cat.ageAsOf = new Date().toISOString().slice(0, 10);
@@ -1234,6 +1359,46 @@ export async function updateCat(
         .eq("tenant_id", requireTenantId());
     } catch {
       /* ยังไม่ได้ migrate คอลัมน์เพิ่ม — ข้าม (ชื่อ/โน้ตยังบันทึกได้) */
+    }
+    if (patch.species) {
+      // คอลัมน์ใหม่ — best-effort เผื่อยังไม่ได้รัน migration
+      await writeCatSpecies(catId, patch.species);
+    }
+    if (weightChanged) {
+      // คอลัมน์ใหม่ — แยกเขียนเผื่อยังไม่ได้รัน migration จะได้ไม่ทำให้ช่องอื่นเซฟไม่ติด
+      await sb
+        .from("cats")
+        .update({ weight_kg: cat.weightKg ?? null })
+        .eq("id", catId)
+        .eq("tenant_id", requireTenantId())
+        .then(
+          () => {},
+          () => {}
+        );
+    }
+    if (neuteredChanged) {
+      // คอลัมน์ใหม่ (cats.neutered) — แยกเขียนเผื่อยังไม่ได้รัน migration
+      await sb
+        .from("cats")
+        .update({ neutered: cat.neutered ?? null })
+        .eq("id", catId)
+        .eq("tenant_id", requireTenantId())
+        .then(
+          () => {},
+          () => {}
+        );
+    }
+    if (historyChanged) {
+      // คอลัมน์ใหม่ (cats.seizure_history / cats.allergy) — แยกเขียนเผื่อยังไม่ได้รัน migration
+      await sb
+        .from("cats")
+        .update({ seizure_history: cat.seizureHistory ?? null, allergy: cat.allergy ?? null })
+        .eq("id", catId)
+        .eq("tenant_id", requireTenantId())
+        .then(
+          () => {},
+          () => {}
+        );
     }
   } else {
     memCustomers.set(customerId, c);
@@ -1277,6 +1442,28 @@ export async function getCatGroomInfo(lineUserId: string, catName?: string) {
 }
 
 /**
+ * ลูกค้าส่งข้อมูลก่อนรับน้องอะไรมาแล้วบ้าง (ใช้ตัดการ์ดที่ไม่ต้องถามซ้ำตอนส่งอัตโนมัติ)
+ * ไม่เจอลูกค้า/น้อง = ถือว่ายังไม่มีอะไรเลย
+ */
+export async function getIntakeStatus(lineUserId: string, catName?: string) {
+  const c = await findCustomerByLine(lineUserId);
+  const key = catName ? catKey(catName) : "";
+  const cat = c?.cats.find((x) => !key || catKey(x.name) === key);
+  return {
+    stayInfo: stayInfoDone(cat?.stayInfo),
+    groomInfo: Boolean(cat?.groomHealthInfo),
+    vaccine: splitVaccinePhotos(cat?.vaccinePhotos).length > 0,
+    idCard: Boolean(c?.idCardUrl),
+  };
+}
+
+/** ข้อมูลน้องก่อนเข้าพักที่ลูกค้าเคยกรอกไว้ (อาหาร/นิสัย/การดูแล) */
+export async function getCatStayInfo(lineUserId: string, catName?: string) {
+  const r = await resolveCatByLine(lineUserId, catName);
+  return r?.cat.stayInfo;
+}
+
+/**
  * โน้ตที่ช่างควรรู้ก่อนจับน้อง — นิสัยที่ลูกค้าบอก + โน้ตลับร้าน (เช่น "กัด ระวังตอนอาบ")
  * ใช้เติมในบรีฟก่อนอาบน้ำทาง Telegram ซึ่งเห็นเฉพาะพนักงาน ลูกค้าไม่เห็น
  */
@@ -1287,6 +1474,8 @@ export async function getCatStaffNotes(lineUserId: string, catName?: string) {
     staffNote: r.cat.staffNote?.trim() || undefined,
     privateNote: r.cat.staffPrivateNote?.trim() || undefined,
     medical: r.cat.medical?.trim() || undefined,
+    seizureHistory: r.cat.seizureHistory?.trim() || undefined,
+    allergy: r.cat.allergy?.trim() || undefined,
   };
 }
 
@@ -1328,6 +1517,11 @@ export async function addCat(
     medical?: string;
     furLength?: "short" | "long";
     color?: string;
+    neutered?: boolean;
+    seizureHistory?: string;
+    allergy?: string;
+    weightKg?: number;
+    species?: PetSpecies;
     staffNote?: string;
   }
 ) {
@@ -1340,7 +1534,8 @@ export async function addCat(
   const hasAge = data.ageValue != null && !isNaN(data.ageValue);
   const today = new Date().toISOString().slice(0, 10);
 
-  const catId = `CAT${Date.now()}`;
+  // ต่อท้ายสุ่ม — เพิ่มหลายตัวติดกันในคำขอเดียว (สมัคร/ร้านเพิ่มลูกค้าเอง) อาจได้ Date.now() เดียวกัน
+  const catId = `CAT${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
   const cat: CatRecord = {
     id: catId,
     name,
@@ -1353,6 +1548,11 @@ export async function addCat(
     medical: data.medical?.trim() || undefined,
     furLength: data.furLength,
     color: data.color?.trim() || undefined,
+    neutered: typeof data.neutered === "boolean" ? data.neutered : undefined,
+    seizureHistory: data.seizureHistory?.trim() || undefined,
+    allergy: data.allergy?.trim() || undefined,
+    weightKg: normalizeWeightKg(data.weightKg),
+    species: normalizeSpecies(data.species),
     staffNote: data.staffNote?.trim() || undefined,
   };
 
@@ -1381,6 +1581,40 @@ export async function addCat(
       await sb
         .from("cats")
         .update({ fur_length: cat.furLength || null, color: cat.color || null })
+        .eq("id", catId)
+        .eq("tenant_id", requireTenantId())
+        .then(
+          () => {},
+          () => {}
+        );
+    }
+    if (cat.species) await writeCatSpecies(catId, cat.species);
+    if (cat.neutered != null) {
+      await sb
+        .from("cats")
+        .update({ neutered: cat.neutered })
+        .eq("id", catId)
+        .eq("tenant_id", requireTenantId())
+        .then(
+          () => {},
+          () => {}
+        );
+    }
+    if (cat.seizureHistory || cat.allergy) {
+      await sb
+        .from("cats")
+        .update({ seizure_history: cat.seizureHistory ?? null, allergy: cat.allergy ?? null })
+        .eq("id", catId)
+        .eq("tenant_id", requireTenantId())
+        .then(
+          () => {},
+          () => {}
+        );
+    }
+    if (cat.weightKg != null) {
+      await sb
+        .from("cats")
+        .update({ weight_kg: cat.weightKg })
         .eq("id", catId)
         .eq("tenant_id", requireTenantId())
         .then(
@@ -1555,6 +1789,18 @@ export async function mergeCustomers(sourceId: string, targetId: string) {
     } catch {
       /* ยังไม่มีคอลัมน์ line_user_ids */
     }
+    if (!target.taxInvoice && source.taxInvoice) {
+      // ข้อมูลออกบิล — คอลัมน์ใหม่ เขียนแยกเผื่อยังไม่ได้ migrate
+      await sb
+        .from("customers")
+        .update({ tax_invoice: source.taxInvoice })
+        .eq("id", targetId)
+        .eq("tenant_id", tenantId)
+        .then(
+          () => {},
+          () => {}
+        );
+    }
   } else {
     // mem — ย้ายเท่าที่เก็บใน map นี้ได้ (dev)
     const t = memCustomers.get(targetId);
@@ -1570,6 +1816,7 @@ export async function mergeCustomers(sourceId: string, targetId: string) {
       t.address = t.address || s.address;
       t.addressMapUrl = t.addressMapUrl || s.addressMapUrl;
       t.postalCode = t.postalCode || s.postalCode;
+      t.taxInvoice = t.taxInvoice || s.taxInvoice;
       t.referralSource = t.referralSource || s.referralSource;
       t.lineDisplayName = t.lineDisplayName || s.lineDisplayName;
       if (!t.lineUserId && s.lineUserId) t.lineUserId = s.lineUserId;
@@ -1673,7 +1920,7 @@ export async function updateCatMedia(
   media = await Promise.all(
     media.map(async (m) =>
       m.dataUrl.startsWith("data:")
-        ? { ...m, dataUrl: await uploadDataUrlToStorage(`cats/${catId}/media-${m.id}`, m.dataUrl) }
+        ? { ...m, dataUrl: await uploadPrivateDataUrl(`cats/${catId}/media-${m.id}`, m.dataUrl) }
         : m
     )
   );
@@ -1740,20 +1987,7 @@ export async function cancelMemberTopup(topupId: string) {
       .eq("id", topupId)
       .eq("tenant_id", requireTenantId())
       .maybeSingle();
-    if (data) {
-      const r = data as MemberTopupRow;
-      topup = {
-        id: r.id,
-        customerId: r.customer_id,
-        paidAmount: Number(r.paid_amount),
-        bonusAmount: Number(r.bonus_amount),
-        creditAdded: Number(r.credit_added),
-        balanceAfter: Number(r.balance_after),
-        note: r.note ?? undefined,
-        createdAt: r.created_at,
-        isLegacy: r.is_legacy ?? false,
-      };
-    }
+    if (data) topup = rowToTopup(data as MemberTopupRow);
   } else {
     topup = memMemberTopups.find((t) => t.id === topupId);
   }
@@ -1773,8 +2007,9 @@ export async function cancelMemberTopup(topupId: string) {
   const nextCredit = c.memberCredit - topup.creditAdded;
   await updateCustomer(topup.customerId, { memberCredit: nextCredit });
 
-  // ลบรายรับที่ลงคู่กับการเติมครั้งนี้ — ยอดยกมาไม่เคยลงรายรับ จึงไม่ต้องหา
-  if (!topup.isLegacy && topup.paidAmount > 0) {
+  // ลบรายรับที่ลงคู่กับการเติมครั้งนี้ — ยอดยกมา / 🔁 เครดิตจากบิลยกเลิกนัด ไม่เคยลงรายรับ จึงไม่ต้องหา
+  // (ถ้าไปหา จะไปลบรายรับของการเติมจริงที่ยอดเท่ากันวันเดียวกันผิดตัว)
+  if (!topup.isLegacy && !topup.isCancelCredit && topup.paidAmount > 0) {
     const { listFinance, deleteFinanceEntry } = await import("./finance-store");
     const all = await listFinance();
     const match = all.find(
@@ -1805,10 +2040,20 @@ export async function cancelMemberTopup(topupId: string) {
 
 export async function topupMemberCredit(
   customerId: string,
-  data: { paidAmount: number; bonusAmount?: number; note?: string; isLegacy?: boolean }
+  data: {
+    paidAmount: number;
+    bonusAmount?: number;
+    note?: string;
+    isLegacy?: boolean;
+    /** 🔁 ยอดจากบิลที่ยกเลิกนัด — ไม่ลงรายรับ ไม่ให้แต้ม (ได้ไปแล้วตอนจ่ายบิลเดิม) */
+    isCancelCredit?: boolean;
+    sourceInvoiceId?: string;
+  }
 ) {
+  const isCancelCredit = Boolean(data.isCancelCredit);
   const paid = Math.max(0, Number(data.paidAmount) || 0);
-  const bonus = Math.max(0, Number(data.bonusAmount) || 0);
+  // เครดิตจากบิลยกเลิกนัด = ยอดบิลเดิมเป๊ะ ไม่มีแถม
+  const bonus = isCancelCredit ? 0 : Math.max(0, Number(data.bonusAmount) || 0);
   const creditAdded = paid + bonus;
   if (creditAdded <= 0) return null;
 
@@ -1826,7 +2071,8 @@ export async function topupMemberCredit(
   });
   if (!updated) return null;
 
-  const isLegacy = Boolean(data.isLegacy);
+  const isLegacy = !isCancelCredit && Boolean(data.isLegacy);
+  const sourceInvoiceId = isCancelCredit ? data.sourceInvoiceId?.trim() || undefined : undefined;
   const topup: MemberTopupRecord = {
     id: `MT${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
     customerId,
@@ -1837,6 +2083,8 @@ export async function topupMemberCredit(
     note: data.note?.trim() || undefined,
     createdAt: new Date().toISOString(),
     isLegacy,
+    isCancelCredit,
+    sourceInvoiceId,
   };
 
   const sb = getSupabase();
@@ -1852,11 +2100,35 @@ export async function topupMemberCredit(
       note: topup.note || null,
       created_at: topup.createdAt,
     };
-    // is_legacy เพิ่งเพิ่มมาทีหลัง — ลองใส่ก่อน ถ้าเครื่องยังไม่อัปเดตฐานข้อมูล
+    // is_legacy / is_cancel_credit เพิ่งเพิ่มมาทีหลัง — ลองใส่ก่อน ถ้าเครื่องยังไม่อัปเดตฐานข้อมูล
     // (คอลัมน์ไม่มี) ให้ตกไปเขียนแบบเดิม กันบันทึกไม่สำเร็จทั้งก้อน
-    const { error } = await sb
-      .from("member_topups")
-      .insert({ ...row, is_legacy: isLegacy });
+    let { error } = await sb.from("member_topups").insert(
+      isCancelCredit
+        ? { ...row, is_legacy: false, is_cancel_credit: true, source_invoice_id: sourceInvoiceId || null }
+        : { ...row, is_legacy: isLegacy }
+    );
+    if (error && isCancelCredit) {
+      // ยังไม่มีคอลัมน์ 🔁 → เพิ่มคอลัมน์ให้เองแล้วลองใหม่
+      const { ensureMigration } = await import("./migrations");
+      if (await ensureMigration("member_topups.cancel_credit")) {
+        ({ error } = await sb.from("member_topups").insert({
+          ...row,
+          is_legacy: false,
+          is_cancel_credit: true,
+          source_invoice_id: sourceInvoiceId || null,
+        }));
+      }
+      // ยังไม่ได้อีก → เก็บเป็น "ไม่นับรายรับ" (is_legacy) ไว้ก่อน + จดเลขบิลไว้ในโน้ต
+      // อย่างน้อยตอนกดยกเลิกรายการนี้จะไม่ไปลบรายรับของการเติมอื่นผิดตัว
+      if (error) {
+        const label = `🔁 ยกเลิกนัด${sourceInvoiceId ? ` · บิล ${sourceInvoiceId}` : ""}`;
+        ({ error } = await sb.from("member_topups").insert({
+          ...row,
+          note: row.note ? `${label} · ${row.note}` : label,
+          is_legacy: true,
+        }));
+      }
+    }
     if (error) {
       await sb.from("member_topups").insert(row);
     }
@@ -1866,7 +2138,8 @@ export async function topupMemberCredit(
 
   // ยอดยกมาจากระบบเก่า: เครดิตลูกค้าต้องได้เพิ่มจริง แต่ไม่ใช่เงินที่รับเข้าร้านเดือนนี้
   // ไม่บันทึกรายรับ กันยอดขายบวมจากเงินที่ไม่ได้รับจริงในเดือนนี้
-  if (paid > 0 && !isLegacy) {
+  // 🔁 เครดิตจากบิลยกเลิกนัดก็ไม่ลง — เงินก้อนนี้ลงรายรับไปแล้วตอนจ่ายบิลเดิม
+  if (paid > 0 && !isLegacy && !isCancelCredit) {
     const { addFinanceEntry } = await import("./finance-store");
     const bonusLabel =
       bonus > 0 ? ` (แถม ${bonus.toLocaleString()} บาท)` : "";
@@ -1883,8 +2156,9 @@ export async function topupMemberCredit(
   // ให้แต้มตอนเติมเครดิต — คิดจากยอดที่จ่ายจริงเท่านั้น ไม่รวมเครดิตแถม
   // (ยอดยกมาจากระบบเก่าไม่ให้ เพราะไม่ใช่การจ่ายเงินรอบนี้)
   // คู่กับ noPointsOnMemberCredit ที่ปิดแต้มตอนตัดใช้ → ได้แต้มรอบเดียว ไม่เบิ้ล
+  // 🔁 เครดิตจากบิลยกเลิกนัดไม่ให้ — แต้มของเงินก้อนนี้ได้ไปแล้วตอนจ่ายบิลเดิม
   let pointsEarned = 0;
-  if (paid > 0 && !isLegacy && updated.lineUserId) {
+  if (paid > 0 && !isLegacy && !isCancelCredit && updated.lineUserId) {
     const { getSiteConfig } = await import("./config-store");
     const biz = (await getSiteConfig()).business;
     if (biz.pointsOnMemberTopup !== false) {
@@ -2042,19 +2316,40 @@ export async function listAllMemberTopups(): Promise<MemberTopupRecord[]> {
       .select("*")
       .eq("tenant_id", requireTenantId())
       .order("created_at", { ascending: false });
-    return ((data as MemberTopupRow[] | null) || []).map((r) => ({
-      id: r.id,
-      customerId: r.customer_id,
-      paidAmount: Number(r.paid_amount),
-      bonusAmount: Number(r.bonus_amount),
-      creditAdded: Number(r.credit_added),
-      balanceAfter: Number(r.balance_after),
-      note: r.note ?? undefined,
-      createdAt: r.created_at,
-      isLegacy: r.is_legacy ?? false,
-    }));
+    return ((data as MemberTopupRow[] | null) || []).map(rowToTopup);
   }
   return [...memMemberTopups];
+}
+
+/**
+ * รายการ 🔁 ที่แปลงมาจากบิลนี้ (ถ้ามี) — กันกดแปลงบิลเดียวกันซ้ำ และกันยกเลิกการชำระ/ลบบิล
+ * ที่ยอดถูกโอนเป็นเครดิตไปแล้ว (ไม่งั้นลูกค้าได้เครดิตฟรีทั้งที่รายรับถูกถอนออก)
+ */
+export async function findCancelCreditTopup(
+  invoiceId: string
+): Promise<MemberTopupRecord | undefined> {
+  const sb = getSupabase();
+  if (sb) {
+    const { data, error } = await sb
+      .from("member_topups")
+      .select("*")
+      .eq("source_invoice_id", invoiceId)
+      .eq("tenant_id", requireTenantId())
+      .limit(1);
+    const hit = !error ? (data as MemberTopupRow[] | null)?.[0] : undefined;
+    if (hit) return rowToTopup(hit);
+    // ยังไม่มีคอลัมน์ source_invoice_id → หาเลขบิลจากโน้ตแทน (ทางสำรองตอนบันทึก)
+    // + เมนูเดิม "โยกเป็นเครดิต (ลูกค้าไม่มา)" จดไว้ในโน้ตว่า "โยกเป็นเครดิตจากบิล X (ไม่มาใช้บริการ)"
+    const { data: byNote } = await sb
+      .from("member_topups")
+      .select("*")
+      .eq("tenant_id", requireTenantId())
+      .like("note", error ? `%บิล ${invoiceId}%` : `%จากบิล ${invoiceId} (%`)
+      .limit(1);
+    const r = (byNote as MemberTopupRow[] | null)?.[0];
+    return r ? rowToTopup(r) : undefined;
+  }
+  return memMemberTopups.find((t) => t.sourceInvoiceId === invoiceId);
 }
 
 async function listMemberTopups(customerId: string): Promise<MemberTopupRecord[]> {
@@ -2066,17 +2361,7 @@ async function listMemberTopups(customerId: string): Promise<MemberTopupRecord[]
       .eq("customer_id", customerId)
       .eq("tenant_id", requireTenantId())
       .order("created_at", { ascending: false });
-    return ((data as MemberTopupRow[] | null) || []).map((r) => ({
-      id: r.id,
-      customerId: r.customer_id,
-      paidAmount: Number(r.paid_amount),
-      bonusAmount: Number(r.bonus_amount),
-      creditAdded: Number(r.credit_added),
-      balanceAfter: Number(r.balance_after),
-      note: r.note ?? undefined,
-      createdAt: r.created_at,
-      isLegacy: r.is_legacy ?? false,
-    }));
+    return ((data as MemberTopupRow[] | null) || []).map(rowToTopup);
   }
   return memMemberTopups.filter((t) => t.customerId === customerId);
 }
@@ -2127,6 +2412,32 @@ async function listPackageUsage(customerId: string): Promise<PackageUsageRecord[
     .sort((a, b) => b.at.localeCompare(a.at));
 }
 
+/** บิลแบบย่อ (เฉพาะบรรทัดอาบน้ำ/ห้องพัก) — ให้ประวัติรายตัวใช้โปรแกรม/ห้องตามที่ออกบิลจริง */
+export type ServiceBill = {
+  id: string;
+  bookingId?: string;
+  catName: string;
+  date: string;
+  items: { kind?: string; program?: string; label: string; catName?: string; qty?: number }[];
+};
+
+async function listServiceBills(customerId: string): Promise<ServiceBill[]> {
+  const { listInvoices } = await import("./invoices-store");
+  const { isRoomLine } = await import("./stay-line");
+  const invoices = await listInvoices(customerId);
+  return invoices
+    .map((i) => ({
+      id: i.id,
+      bookingId: i.bookingId,
+      catName: i.catName,
+      date: (i.paidAt || i.createdAt || "").slice(0, 10),
+      items: (i.items || [])
+        .filter((it) => it.kind === "grooming" || isRoomLine(it))
+        .map((it) => ({ kind: it.kind, program: it.program, label: it.label, catName: it.catName, qty: it.qty })),
+    }))
+    .filter((b) => b.items.length > 0);
+}
+
 export async function getCustomerHistory(customerId: string) {
   const c = await getCustomer(customerId);
   const allBookings = await listBookings();
@@ -2140,6 +2451,7 @@ export async function getCustomerHistory(customerId: string) {
   const memberTopups = await listMemberTopups(customerId);
   const memberCreditUsage = await listMemberCreditUsage(customerId);
   const packageUsage = await listPackageUsage(customerId);
+  const serviceBills = await listServiceBills(customerId);
   return {
     bookings,
     upcomingBookings,
@@ -2149,6 +2461,7 @@ export async function getCustomerHistory(customerId: string) {
     memberTopups,
     memberCreditUsage,
     packageUsage,
+    serviceBills,
   };
 }
 
@@ -2270,6 +2583,7 @@ export async function registerCustomerFromLine(data: {
   address?: string;
   addressMapUrl?: string;
   postalCode?: string;
+  taxInvoice?: CustomerTaxInvoice;
   marketingConsent?: boolean;
   cats: {
     name: string;
@@ -2281,6 +2595,11 @@ export async function registerCustomerFromLine(data: {
     medical?: string;
     furLength?: "short" | "long";
     color?: string;
+    neutered?: boolean;
+    seizureHistory?: string;
+    allergy?: string;
+    weightKg?: number;
+    species?: PetSpecies;
     staffNote?: string;
   }[];
 }) {
@@ -2298,6 +2617,11 @@ export async function registerCustomerFromLine(data: {
       medical: c.medical?.trim(),
       furLength: c.furLength,
       color: c.color?.trim(),
+      neutered: c.neutered,
+      seizureHistory: c.seizureHistory?.trim(),
+      allergy: c.allergy?.trim(),
+      weightKg: c.weightKg,
+      species: c.species,
       staffNote: c.staffNote?.trim(),
     }))
     .filter((c) => c.name);
@@ -2354,6 +2678,8 @@ export async function registerCustomerFromLine(data: {
     addressMapUrl: data.addressMapUrl?.trim() || undefined,
     postalCode: data.postalCode?.trim() || undefined,
     marketingConsent: data.marketingConsent ?? true,
+    // ไม่ติ๊กตอนสมัคร = ไม่แตะค่าเดิม (เผื่อร้านกรอกไว้ให้ก่อนแล้ว)
+    ...(data.taxInvoice ? { taxInvoice: data.taxInvoice } : {}),
   });
 
   for (const cat of cats) {
@@ -2383,5 +2709,166 @@ export async function setCustomerIdCard(customerId: string, url: string) {
   }
   const { error } = await sb.from("customers").update({ id_card_url: url }).eq("id", customerId).eq("tenant_id", requireTenantId());
   if (error) return { ok: false as const, error: "need_sql" as const, message: error.message };
+  return { ok: true as const };
+}
+
+const CUSTOMER_DOCS_MIGRATION = "cats.vaccine_photos+customers.consent";
+
+/**
+ * รูปสมุดวัคซีนที่ตัวน้อง (ไม่ผูกนัด) — ต่อท้ายรูปเดิม เก็บได้สูงสุด MAX_VACCINE_PHOTOS รูป
+ * รูปเข้า bucket ส่วนตัว prefix cat-vaccine/ (เปิดได้แค่หลังบ้าน ไม่ใช่ cats/ ที่ลูกค้าเปิดได้)
+ * ต้องรัน migration cats.vaccine_photos ก่อน ไม่งั้นคืน need_sql
+ */
+export async function addCatVaccinePhotos(customerId: string, catId: string, photos: string[]) {
+  const c = await getCustomer(customerId);
+  const cat = c?.cats.find((x) => x.id === catId);
+  if (!c || !cat) return { ok: false as const, error: "not_found" as const };
+  const added: string[] = [];
+  for (const [i, raw] of photos.slice(0, MAX_VACCINE_PHOTOS).entries()) {
+    const v = raw.trim();
+    if (!v.startsWith("data:image/")) continue;
+    added.push(await uploadPrivateDataUrl(`cat-vaccine/${catId}-${Date.now()}-${i}`, v));
+  }
+  if (added.length === 0) return { ok: false as const, error: "no_photo" as const };
+  const urls = [...splitVaccinePhotos(cat.vaccinePhotos), ...added].slice(-MAX_VACCINE_PHOTOS);
+  const res = await setCatVaccinePhotos(customerId, catId, urls);
+  return res.ok ? { ok: true as const, urls, added: added.length, cat, customer: c } : res;
+}
+
+/** เขียนรายการรูปสมุดวัคซีนของน้องทับทั้งชุด (ใช้ตอนลบรูปทีละรูป) */
+export async function setCatVaccinePhotos(customerId: string, catId: string, urls: string[]) {
+  const value = joinVaccinePhotos(urls);
+  const sb = getSupabase();
+  if (sb) {
+    const write = () =>
+      sb
+        .from("cats")
+        .update({ vaccine_photos: value || null })
+        .eq("id", catId)
+        .eq("customer_id", customerId)
+        .eq("tenant_id", requireTenantId());
+    let { error } = await write();
+    // ยังไม่มีคอลัมน์ → ลองอัปเดตฐานข้อมูลให้เองแล้วเขียนใหม่
+    if (error && (await ensureMigration(CUSTOMER_DOCS_MIGRATION))) ({ error } = await write());
+    if (error) return { ok: false as const, error: "need_sql" as const };
+  } else {
+    const cat = memCustomers.get(customerId)?.cats.find((x) => x.id === catId);
+    if (cat) cat.vaccinePhotos = value || undefined;
+  }
+  await touchCustomer(customerId);
+  return { ok: true as const };
+}
+
+/** ลูกค้ายอมรับข้อตกลงของร้าน (จากลิงก์หน้าลูกค้า ยังไม่ต้องมีนัด) — เก็บครั้งล่าสุดไว้ที่ลูกค้า */
+export async function setCustomerConsent(
+  customerId: string,
+  data: { signature: string; careNote?: string; fleaTick: boolean; at?: string }
+) {
+  const now = data.at || new Date().toISOString();
+  let sig = data.signature.trim();
+  if (sig.startsWith("data:")) {
+    sig = await uploadPrivateDataUrl(`consent-signatures/customer-${customerId}-${Date.now()}`, sig);
+  }
+  const patch = {
+    consent_accepted_at: now,
+    consent_signature: sig || null,
+    consent_flea_tick: data.fleaTick,
+    consent_care_note: data.careNote?.trim() || null,
+  };
+  const sb = getSupabase();
+  if (sb) {
+    const write = () => sb.from("customers").update(patch).eq("id", customerId).eq("tenant_id", requireTenantId());
+    let { error } = await write();
+    if (error && (await ensureMigration(CUSTOMER_DOCS_MIGRATION))) ({ error } = await write());
+    if (error) return { ok: false as const, error: "need_sql" as const };
+  } else {
+    const c = memCustomers.get(customerId);
+    if (c) {
+      c.consentAcceptedAt = now;
+      c.consentSignature = sig || undefined;
+      c.consentFleaTick = data.fleaTick;
+      c.consentCareNote = patch.consent_care_note || undefined;
+    }
+  }
+  return { ok: true as const, acceptedAt: now };
+}
+
+/**
+ * สมุดวัคซีน + ข้อตกลงที่ลูกค้าส่งผ่านนัด (หน้ายอมรับข้อตกลง / ลิงก์ขอสมุดวัคซีนของนัด) เก็บไว้ที่นัด
+ * → ยกขึ้นตัวน้อง/ลูกค้าด้วย ไม่งั้นหน้าข้อมูลลูกค้าขึ้น "ยังไม่ได้รับ" และรอบหน้าขอซ้ำ
+ * newPhotos = รูปที่เพิ่งแนบเข้านัด (ต่อท้ายที่ตัวน้อง) · ไม่ใส่ = ยกรูปของนัดขึ้นเฉพาะตอนตัวน้องยังไม่มีรูปเลย
+ * (กันรูปที่พนักงานลบออกจากตัวน้องแล้วเด้งกลับมา)
+ */
+export async function copyBookingDocsToCustomer(
+  b: StoredBooking,
+  opts: { customer?: CustomerRecord; newPhotos?: string[] } = {}
+) {
+  const c = opts.customer || (await findCustomerForBooking(b));
+  if (!c) return false;
+  let changed = false;
+  const key = catKey(String(b.catName || ""));
+  const cat = c.cats.find((x) => catKey(x.name) === key);
+  if (cat) {
+    const have = splitVaccinePhotos(cat.vaccinePhotos);
+    const incoming = opts.newPhotos ?? (have.length ? [] : splitVaccinePhotos(b.vaccinePhotoUrl));
+    const add = incoming.filter((u) => u && !have.includes(u));
+    if (add.length) {
+      const urls = [...have, ...add].slice(-MAX_VACCINE_PHOTOS);
+      if ((await setCatVaccinePhotos(c.id, cat.id, urls)).ok) {
+        cat.vaccinePhotos = joinVaccinePhotos(urls);
+        changed = true;
+      }
+    }
+  }
+  // ข้อตกลงของนัดที่ใหม่กว่าครั้งล่าสุดที่ลูกค้า → ประทับที่ลูกค้าด้วย (ใช้เวลา/ลายเซ็นของนัดนั้น)
+  if (b.consentAcceptedAt && b.consentAcceptedAt > (c.consentAcceptedAt || "")) {
+    const res = await setCustomerConsent(c.id, {
+      signature: b.consentSignature || "",
+      careNote: b.careNote,
+      fleaTick: Boolean(b.fleaTickTreated),
+      at: b.consentAcceptedAt,
+    });
+    if (res.ok) {
+      c.consentAcceptedAt = b.consentAcceptedAt;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+/** ยกสมุดวัคซีน/ข้อตกลงจากทุกนัดของลูกค้าขึ้นตัวน้อง/ลูกค้า (ข้อมูลเก่าก่อนมีการยกอัตโนมัติ) */
+export async function syncCustomerDocsFromBookings(customerId: string) {
+  const c = await getCustomer(customerId);
+  if (!c) return false;
+  const all = await listBookings();
+  // เก่า → ใหม่ ให้ตัวน้องได้รูปจากนัดแรกที่มี และข้อตกลงล่าสุดทับทีหลัง
+  const mine = all
+    .filter((b) => b.status !== "cancelled" && bookingMatchesCustomer(b, c))
+    .filter((b) => b.vaccinePhotoUrl || b.consentAcceptedAt)
+    .sort((a, b) => (a.consentAcceptedAt || a.createdAt || "").localeCompare(b.consentAcceptedAt || b.createdAt || ""));
+  let changed = false;
+  for (const b of mine) if (await copyBookingDocsToCustomer(b, { customer: c })) changed = true;
+  return changed;
+}
+
+/** บันทึกข้อมูลน้องก่อนเข้าพักไว้ที่ตัวน้อง (ตอบครั้งเดียว รอบหน้าดึงคำตอบเดิมมาให้แก้) */
+export async function setCatStayInfo(customerId: string, catId: string, infoJson: string) {
+  const sb = getSupabase();
+  if (sb) {
+    const write = () =>
+      sb
+        .from("cats")
+        .update({ stay_info: infoJson })
+        .eq("id", catId)
+        .eq("customer_id", customerId)
+        .eq("tenant_id", requireTenantId());
+    let { error } = await write();
+    if (error && (await ensureMigration(CUSTOMER_DOCS_MIGRATION))) ({ error } = await write());
+    if (error) return { ok: false as const, error: "need_sql" as const };
+  } else {
+    const cat = memCustomers.get(customerId)?.cats.find((x) => x.id === catId);
+    if (cat) cat.stayInfo = infoJson;
+  }
+  await touchCustomer(customerId);
   return { ok: true as const };
 }

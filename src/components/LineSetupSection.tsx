@@ -61,7 +61,7 @@ export function RegistrationQrSection({ compact }: { compact?: boolean }) {
         QR ลงทะเบียนลูกค้า
       </h2>
       <p className="mb-3 text-[10px] text-brown-soft">
-        ตั้งที่เคาน์เตอร์ — ลูกค้าสแกนแล้วกรอกชื่อ เบอร์ และน้องแมว
+        ตั้งที่เคาน์เตอร์ — ลูกค้าสแกนแล้วกรอกชื่อ เบอร์ และข้อมูลน้อง
       </p>
       {qrUrl ? (
         <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start">
@@ -109,7 +109,10 @@ export function LiffSetupSection({ adminCode }: { adminCode?: string }) {
 
   const endpointUrl = useMemo(() => {
     if (status?.endpointUrl) return status.endpointUrl;
-    if (typeof window !== "undefined") return `${window.location.origin}/app`;
+    if (typeof window !== "undefined") {
+      const shop = window.location.pathname.match(/^\/s\/[a-z0-9-]+/i)?.[0] || "";
+      return `${window.location.origin}${shop}/app`;
+    }
     return "https://petflow.example.com/app";
   }, [status?.endpointUrl]);
 
@@ -301,6 +304,17 @@ export function LineMessagingSetupSection({ adminCode }: { adminCode?: string })
     setSaving(false);
   };
 
+  const clearLine = async () => {
+    if (!window.confirm("ลบค่า LINE (Token, Secret, LIFF ID) ของร้านนี้ทั้งหมด?\nลูกค้าจะต่อ LINE ร้านนี้ไม่ได้จนกว่าจะตั้งใหม่")) return;
+    setSaving(true);
+    setMsg("");
+    const res = await fetch("/api/setup/line", { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    setMsg(data.message || data.error || "");
+    if (data.ok) window.location.reload();
+    setSaving(false);
+  };
+
   const setWebhook = async () => {
     setSaving(true);
     setMsg("");
@@ -408,6 +422,17 @@ export function LineMessagingSetupSection({ adminCode }: { adminCode?: string })
       >
         {saving ? "กำลังบันทึก…" : "บันทึก LINE Token"}
       </button>
+
+      {status?.source === "database" && (
+        <button
+          type="button"
+          disabled={saving}
+          onClick={clearLine}
+          className="w-full rounded-petflow-sm border border-red-200 py-2 text-xs font-bold text-red-600 disabled:opacity-50"
+        >
+          ลบค่า LINE ของร้านนี้ (ถ้าเป็น LINE ของร้านอื่น)
+        </button>
+      )}
 
       <div className="border-t border-petflow-line pt-3">
         <p className="mb-2 text-xs font-bold text-brown">ระดับลูกค้า (อัตโนมัติ)</p>

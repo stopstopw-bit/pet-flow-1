@@ -8,6 +8,19 @@ import { Icon } from "@/components/Icon";
  * ชิ้นส่วน UI กลางที่ใช้ซ้ำทั้งระบบ — ให้ทุกหน้าค้นหา/เลือก/สลับแท็บ หน้าตาและการใช้งานเหมือนกัน
  */
 
+/** ช่องติ๊กเลือก (แสดงผลอย่างเดียว — ให้ปุ่ม/แถวที่ครอบเป็นตัวกด) */
+export function CheckBox({ on }: { on: boolean }) {
+  return (
+    <span
+      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 ${
+        on ? "border-petflow-chocolate bg-petflow-chocolate text-card" : "border-petflow-line bg-card"
+      }`}
+    >
+      {on && <Icon name="check" size={12} strokeWidth={3} />}
+    </span>
+  );
+}
+
 /** ช่องค้นหาแบบแคปซูล: ไอคอนแว่นขยาย + ปุ่มล้าง (โผล่เมื่อมีคำค้น) */
 export function SearchField({
   value,
@@ -24,7 +37,7 @@ export function SearchField({
 }) {
   return (
     <div
-      className={`flex items-center gap-2 rounded-full border border-petflow-line bg-paper px-4 py-2.5 focus-within:border-honey-deep ${className}`}
+      className={`flex min-w-0 items-center gap-2 rounded-full border border-petflow-line bg-paper px-4 py-2.5 focus-within:border-honey-deep ${className}`}
     >
       <Icon name="search" size={18} className="text-brown-soft" />
       <input

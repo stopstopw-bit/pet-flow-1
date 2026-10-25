@@ -288,7 +288,7 @@ export default function FinancePage() {
                 className={`${field} text-base font-bold`}
               />
               <input
-                placeholder="หมวด เช่น อาหารแมว, ค่าเช่า"
+                placeholder="หมวด เช่น อาหารสัตว์, ค่าเช่า"
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value })}
                 className={field}

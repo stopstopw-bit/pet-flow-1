@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
+import { useConfig } from "@/components/ConfigProvider";
+import { isFeatureOn } from "@/lib/features";
 
 /** คอลัมน์ลูกค้าที่เลือกส่งออกได้ (key ต้องตรงกับ lib/google-sheets-export.ts) */
 const CUSTOMER_COLUMN_OPTIONS: { key: string; label: string }[] = [
@@ -20,16 +22,16 @@ const CUSTOMER_COLUMN_OPTIONS: { key: string; label: string }[] = [
   { key: "credit", label: "เครดิตคงเหลือ" },
   { key: "depositCredit", label: "เครดิตมัดจำล่วงหน้า" },
   { key: "tier", label: "กลุ่มลูกค้า" },
-  { key: "catName", label: "ชื่อแมว" },
-  { key: "catGender", label: "เพศแมว" },
+  { key: "catName", label: "ชื่อน้อง" },
+  { key: "catGender", label: "เพศน้อง" },
   { key: "catBreed", label: "พันธุ์" },
   { key: "catFur", label: "ลักษณะขน" },
   { key: "catColor", label: "สี/ลักษณะเด่น" },
   { key: "catAge", label: "อายุ" },
-  { key: "catBirthday", label: "วันเกิดแมว" },
+  { key: "catBirthday", label: "วันเกิดน้อง" },
   { key: "catMedical", label: "โรคประจำตัว" },
   { key: "catGroomInfo", label: "ประวัติก่อนอาบน้ำ" },
-  { key: "catNote", label: "โน้ตแมว" },
+  { key: "catNote", label: "โน้ตน้อง" },
   { key: "catPrivateNote", label: "โน้ตลับร้าน" },
   { key: "createdAt", label: "วันที่สมัคร" },
   { key: "updatedAt", label: "อัปเดตล่าสุด" },
@@ -38,6 +40,7 @@ const CUSTOMER_COLUMN_OPTIONS: { key: string; label: string }[] = [
 const ALL_KEYS = CUSTOMER_COLUMN_OPTIONS.map((c) => c.key);
 
 export function ExportSheetsButton({ className = "" }: { className?: string }) {
+  const { config } = useConfig();
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
   const [url, setUrl] = useState("");
@@ -74,6 +77,9 @@ export function ExportSheetsButton({ className = "" }: { className?: string }) {
     }
     setLoading(false);
   };
+
+  // ร้านปิด "ส่งออกไป Google Sheets" ในตั้งค่า › เปิด/ปิดฟีเจอร์
+  if (!isFeatureOn(config, "exportSheets")) return null;
 
   return (
     <div className={className}>

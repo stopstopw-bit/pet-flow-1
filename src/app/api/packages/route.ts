@@ -13,6 +13,7 @@ import { getSiteConfig } from "@/lib/config-store";
 import { roomPlanOutstanding, createPackagePlan, viewRoomPlan } from "@/lib/room-plans-store";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { withResolvedTenant, withTenant } from "@/lib/tenant-context";
+import { requireCustomerSession } from "@/lib/customer-session";
 
 /** คอร์สของลูกค้า (หลังบ้าน: customerId · แอป: lineUserId) */
 export async function GET(req: NextRequest) {
@@ -46,12 +47,17 @@ async function handleGet(req: NextRequest, isStaff: boolean) {
   if (!lineUserId && !isStaff) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  // ลูกค้า: ใช้ LINE จากคุกกี้ที่ตรวจแล้วเท่านั้น (LINE ID เดียวกันอยู่ได้หลายร้าน ห้ามเชื่อค่าใน query)
+  const me = isStaff ? null : await requireCustomerSession(req);
+  if (!isStaff && !me) return NextResponse.json({ found: false, packages: [] });
   // หลังบ้านขอดูคอร์สทั้งร้าน (ใช้ในหน้าสรุปข้อมูล) — ลูกค้าขอแบบนี้ไม่ได้
   if (isStaff && req.nextUrl.searchParams.get("all") === "1") {
     return NextResponse.json({ found: true, packages: await listAllPackages() });
   }
 
-  const cust = lineUserId
+  const cust = me
+    ? await findCustomerByLine(me.lineUserId)
+    : lineUserId
     ? await findCustomerByLine(lineUserId)
     : customerId
       ? await getCustomer(customerId)
@@ -101,6 +107,7 @@ async function handlePost(req: NextRequest) {
     if (!notify || !cust.lineUserId) return NextResponse.json({ ok: true, preview: [] });
     const n = Math.min(12, Math.max(1, Math.round(Number(body.installments) || 1)));
     if (n > 1 && !isLegacy) {
+      const planStyle = (await getSiteConfig()).cards?.roomPlan;
       const first = Math.min(price, Math.max(0, Math.round(Number(body.firstPayment) || 0)));
       const remaining = price - first;
       const left = remaining > 0 ? Math.max(1, n - (first > 0 ? 1 : 0)) : 0;
@@ -119,7 +126,7 @@ async function handlePost(req: NextRequest) {
             nextInstallment: left ? Math.ceil(remaining / left) : 0,
             thisPayment: first || undefined,
             installmentNo: first ? 1 : undefined,
-          }),
+          }, planStyle),
         ],
       });
     }
@@ -190,7 +197,7 @@ async function handlePost(req: NextRequest) {
             nextInstallment: view.nextInstallment,
             thisPayment: res.payment?.ok ? res.payment.amount : undefined,
             installmentNo: res.payment?.ok ? 1 : undefined,
-          }),
+          }, (await getSiteConfig()).cards?.roomPlan),
         ]);
       } catch (e) {
         notifyError = e instanceof Error ? e.message : String(e);

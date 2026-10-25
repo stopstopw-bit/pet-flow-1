@@ -1,23 +1,49 @@
-import { BUSINESS } from "@/lib/business";
 import { getAppUrlFromEnv } from "@/lib/line-config";
 import { buildLiffUrl } from "@/lib/liff-urls";
 import {
   BROADCAST_ACTIONS,
   BROADCAST_TEMPLATES,
+  COUPON_ACTION_PREFIX,
+  COUPON_BUTTON_LABEL,
+  broadcastActionLabel,
+  couponActionId,
+  isCouponAction,
+  parseBroadcastActions,
   type BroadcastAction,
   type BroadcastActionId,
   type BroadcastTemplate,
 } from "@/lib/broadcast-constants";
 
 export type { BroadcastAction, BroadcastActionId, BroadcastTemplate };
-export { BROADCAST_ACTIONS, BROADCAST_TEMPLATES };
+export {
+  BROADCAST_ACTIONS,
+  BROADCAST_TEMPLATES,
+  COUPON_ACTION_PREFIX,
+  COUPON_BUTTON_LABEL,
+  broadcastActionLabel,
+  couponActionId,
+  isCouponAction,
+  parseBroadcastActions,
+};
+
+type ShopContact = { lineOa?: string; maps?: string };
 
 export function resolveBroadcastActionUri(
   actionId: BroadcastActionId,
-  liffId?: string
+  liffId?: string,
+  shop: ShopContact = {},
+  /** ลิงก์ร้าน https://…/s/<slug> (shopAppBase) — ไม่ใส่ = /app เปล่า ซึ่งเป็นร้าน PetFlow */
+  shopBase?: string
 ): string {
-  const appBase = getAppUrlFromEnv() || "https://petflow.example.com";
+  const appBase = shopBase || getAppUrlFromEnv() || "https://petflow.example.com";
   const lid = liffId?.trim();
+
+  if (isCouponAction(actionId)) {
+    const offerId = actionId.slice(COUPON_ACTION_PREFIX.length);
+    return lid
+      ? buildLiffUrl(lid, { path: "claim-coupon", offer: offerId })
+      : `${appBase}/app/claim-coupon?offer=${encodeURIComponent(offerId)}`;
+  }
 
   switch (actionId) {
     case "promos":
@@ -36,10 +62,14 @@ export function resolveBroadcastActionUri(
       return lid
         ? buildLiffUrl(lid, { path: "bookings" })
         : `${appBase}/app/bookings`;
+    case "coupons":
+      return lid
+        ? buildLiffUrl(lid, { path: "coupons" })
+        : `${appBase}/app/coupons`;
     case "line_chat":
-      return `https://line.me/R/ti/p/${BUSINESS.lineOa}`;
+      return shop.lineOa ? `https://line.me/R/ti/p/${shop.lineOa}` : `${appBase}/app`;
     case "maps":
-      return BUSINESS.maps;
+      return shop.maps || `${appBase}/app`;
     default:
       return `${appBase}/app`;
   }
@@ -47,13 +77,12 @@ export function resolveBroadcastActionUri(
 
 export function buildBroadcastButtons(
   actionIds: BroadcastActionId[],
-  liffId?: string
+  liffId?: string,
+  shop: ShopContact = {},
+  shopBase?: string
 ) {
-  return actionIds.slice(0, 3).map((id) => {
-    const preset = BROADCAST_ACTIONS.find((a) => a.id === id);
-    return {
-      label: preset?.label || id,
-      uri: resolveBroadcastActionUri(id, liffId),
-    };
-  });
+  return actionIds.slice(0, 3).map((id) => ({
+    label: broadcastActionLabel(id),
+    uri: resolveBroadcastActionUri(id, liffId, shop, shopBase),
+  }));
 }

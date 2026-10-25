@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useLiff } from "@/components/LiffProvider";
 import { useConfig } from "@/components/ConfigProvider";
-import { BREED_OPTIONS, OTHER_BREED } from "@/lib/cat-breeds";
+import { OTHER_BREED } from "@/lib/cat-breeds";
+import { asksSpecies, breedOptionsFor, breedOptionsForSpecies, petWords, speciesOf, speciesWords, type PetSpecies } from "@/lib/pet-kind";
+import { SpeciesPicker } from "@/components/SpeciesPicker";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { StaffNoteTagPicker } from "@/components/StaffNoteTagPicker";
 import { BTN_PRIMARY, PageHeader } from "@/components/PageHeader";
@@ -12,6 +14,14 @@ import { EmptyState, SectionLabel } from "@/components/ui";
 import { Icon } from "@/components/Icon";
 import { CatPhoto } from "@/components/CatPhoto";
 import { toJpegDataUrl } from "@/lib/image-convert";
+import { TaxInvoiceFields } from "@/components/TaxInvoiceFields";
+import {
+  formToTaxInvoice,
+  taxInvoiceProblem,
+  taxInvoiceToForm,
+  type TaxInvoiceForm,
+} from "@/lib/tax-invoice";
+import { customerFetch } from "@/lib/customer-fetch";
 
 const REFERRAL_FALLBACK = [
   "Facebook",
@@ -25,20 +35,27 @@ const REFERRAL_FALLBACK = [
 type CatForm = {
   id: string;
   name: string;
+  /** หมา/แมว — ถามเฉพาะร้านที่รับทั้งสองแบบ */
+  species: PetSpecies | "";
   gender: "" | "male" | "female";
   breed: string;
   breedOther: string;
   ageValue: string;
   ageUnit: "year" | "month";
+  weightKg: string;
+  neutered: "" | "yes" | "no";
   birthday: string;
   medical: string;
+  seizureHistory: string;
+  allergy: string;
   note: string;
 };
 
 export default function ProfilePage() {
   const { ready, profile } = useLiff();
   const { config } = useConfig();
-  const breeds = config.options?.catBreeds?.length ? config.options.catBreeds : BREED_OPTIONS;
+  const breeds = breedOptionsFor(config);
+  const pw = petWords(config);
   const referrals = config.options?.referralOptions?.length
     ? config.options.referralOptions
     : REFERRAL_FALLBACK;
@@ -54,6 +71,8 @@ export default function ProfilePage() {
   const [addressMapUrl, setAddressMapUrl] = useState("");
   const [postalCode, setPostalCode] = useState("");
   const [consent, setConsent] = useState(true);
+  const [taxInvoice, setTaxInvoice] = useState<TaxInvoiceForm>(() => taxInvoiceToForm(null));
+  const [saveError, setSaveError] = useState("");
   const [cats, setCats] = useState<CatForm[]>([]);
   // รูปน้องแยกโหลด/อัปทีละตัว (ไม่ผูกกับปุ่มบันทึก) — อัปแล้วขึ้นทันที
   const [photos, setPhotos] = useState<Record<string, string | null>>({});
@@ -65,7 +84,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (!profile?.lineUserId) return;
-    fetch(`/api/customers/self?lineUserId=${profile.lineUserId}`)
+    customerFetch(`/api/customers/self?lineUserId=${profile.lineUserId}`)
       .then((r) => r.json())
       .then((d) => {
         if (!d.found) return;
@@ -80,6 +99,7 @@ export default function ProfilePage() {
         setAddressMapUrl(c.addressMapUrl || "");
         setPostalCode(c.postalCode || "");
         setConsent(c.marketingConsent !== false);
+        setTaxInvoice(taxInvoiceToForm(c.taxInvoice));
         setCats(
           (c.cats || []).map((x: Record<string, unknown>) => {
             const breedVal = String(x.breed || "");
@@ -87,13 +107,18 @@ export default function ProfilePage() {
             return {
               id: String(x.id),
               name: String(x.name || ""),
+              species: speciesOf({ species: x.species as string, breed: breedVal }, config) || "",
               gender: (x.gender as CatForm["gender"]) || "",
               breed: breedVal ? (known ? breedVal : OTHER_BREED) : "",
               breedOther: breedVal && !known ? breedVal : "",
               ageValue: x.ageValue != null ? String(x.ageValue) : "",
               ageUnit: (x.ageUnit as "year" | "month") || "year",
+              weightKg: x.weightKg != null ? String(x.weightKg) : "",
+              neutered: x.neutered === true ? "yes" : x.neutered === false ? "no" : "",
               birthday: String(x.birthday || ""),
               medical: String(x.medical || ""),
+              seizureHistory: String(x.seizureHistory || ""),
+              allergy: String(x.allergy || ""),
               note: String(x.note || ""),
             };
           })
@@ -103,7 +128,7 @@ export default function ProfilePage() {
   }, [profile?.lineUserId, reloadKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadPhotos = async (lineUserId: string) => {
-    const d = await fetch(`/api/customers/cat-photo?lineUserId=${encodeURIComponent(lineUserId)}`)
+    const d = await customerFetch(`/api/customers/cat-photo?lineUserId=${encodeURIComponent(lineUserId)}`)
       .then((r) => r.json())
       .catch(() => ({ cats: [] }));
     const map: Record<string, string | null> = {};
@@ -121,7 +146,7 @@ export default function ProfilePage() {
     setUploadingId(catId);
     try {
       const photoDataUrl = await toJpegDataUrl(file);
-      const res = await fetch("/api/customers/cat-photo", {
+      const res = await customerFetch("/api/customers/cat-photo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lineUserId: profile.lineUserId, catId, photoDataUrl }),
@@ -145,13 +170,18 @@ export default function ProfilePage() {
       {
         id: `new-${Date.now()}`,
         name: "",
+        species: "",
         gender: "",
         breed: "",
         breedOther: "",
         ageValue: "",
         ageUnit: "year",
+        weightKg: "",
+        neutered: "",
         birthday: "",
         medical: "",
+        seizureHistory: "",
+        allergy: "",
         note: "",
       },
     ]);
@@ -161,10 +191,17 @@ export default function ProfilePage() {
 
   const save = async () => {
     if (!profile?.lineUserId || !name.trim()) return;
+    if (asksSpecies(config) && cats.some((c) => c.name.trim() && !c.species)) {
+      setSaveError("เลือกว่าน้องแต่ละตัวเป็นหมาหรือแมวด้วยนะคะ");
+      return;
+    }
+    const taxProblem = taxInvoiceProblem(formToTaxInvoice(taxInvoice));
+    setSaveError(taxProblem);
+    if (taxProblem) return;
     setSaving(true);
     setSaved(false);
     try {
-      const res = await fetch("/api/customers/self", {
+      const res = await customerFetch("/api/customers/self", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -177,21 +214,31 @@ export default function ProfilePage() {
           address,
           addressMapUrl,
           postalCode,
+          taxInvoice: formToTaxInvoice(taxInvoice),
           marketingConsent: consent,
           cats: cats.map((c) => ({
             id: c.id,
             name: c.name,
+            species: c.species || undefined,
             gender: c.gender || undefined,
             breed:
               (c.breed === OTHER_BREED ? c.breedOther.trim() : c.breed) || undefined,
             ageValue: c.ageValue,
             ageUnit: c.ageUnit,
+            weightKg: c.weightKg,
+            neutered: c.neutered ? c.neutered === "yes" : null,
             birthday: c.birthday || undefined,
             medical: c.medical || undefined,
+            seizureHistory: c.seizureHistory.trim(),
+            allergy: c.allergy.trim(),
             note: c.note || undefined,
           })),
         }),
       });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setSaveError(d.error || "บันทึกไม่สำเร็จ ลองใหม่อีกครั้งนะคะ");
+      }
       if (res.ok) {
         setSaved(true);
         setTimeout(() => setSaved(false), 2500);
@@ -285,17 +332,25 @@ export default function ProfilePage() {
                 className={`${field} mt-1`}
               />
             </label>
+            <div className="border-t border-petflow-line pt-3 empty:hidden">
+              <TaxInvoiceFields
+                value={taxInvoice}
+                onChange={setTaxInvoice}
+                fieldClass={field}
+                prefill={{ name, phone, address }}
+              />
+            </div>
           </div>
 
           {/* ── น้องแมว ── */}
           <div className="mt-6 space-y-3">
-            <SectionLabel>My cats · น้องแมวของฉัน</SectionLabel>
+            <SectionLabel>{`My ${pw.enPlural} · น้อง${pw.th}ของฉัน`}</SectionLabel>
             {cats.map((cat, idx) => (
               <div key={cat.id} className="space-y-2.5 rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm">
                 {!cat.id.startsWith("new-") ? (
                   <CatPhoto
                     src={photos[cat.id]}
-                    name={cat.name || "น้องแมว"}
+                    name={cat.name || `น้อง${speciesWords(cat.species || undefined, config).th}`}
                     size={0}
                     onPick={(f) => uploadPhoto(cat.id, f)}
                     uploading={uploadingId === cat.id}
@@ -306,6 +361,19 @@ export default function ProfilePage() {
                     กดบันทึกก่อน แล้วจะเพิ่มรูปน้องตัวนี้ได้
                   </p>
                 )}
+                <SpeciesPicker
+                  value={cat.species}
+                  onChange={(species) =>
+                    updateCat(idx, {
+                      species,
+                      // สายพันธุ์เดิมที่ไม่ใช่ของชนิดนี้ต้องเลือกใหม่
+                      breed:
+                        cat.breed === OTHER_BREED || breedOptionsForSpecies(config, species).includes(cat.breed)
+                          ? cat.breed
+                          : "",
+                    })
+                  }
+                />
                 <label className="block text-xs font-bold text-brown-soft">
                   ชื่อน้อง
                   <input value={cat.name} onChange={(e) => updateCat(idx, { name: e.target.value })} className={`${sub} mt-1 font-bold text-brown`} />
@@ -329,7 +397,7 @@ export default function ProfilePage() {
                   className={`${sub} ${cat.breed ? "text-brown" : "text-brown-faint"}`}
                 >
                   <option value="">เลือกสายพันธุ์…</option>
-                  {breeds.map((b) => (
+                  {breedOptionsForSpecies(config, cat.species || undefined).map((b) => (
                     <option key={b} value={b} className="text-brown">{b}</option>
                   ))}
                   <option value={OTHER_BREED} className="text-brown">{OTHER_BREED}</option>
@@ -337,6 +405,19 @@ export default function ProfilePage() {
                 {cat.breed === OTHER_BREED && (
                   <input value={cat.breedOther} onChange={(e) => updateCat(idx, { breedOther: e.target.value })} placeholder="ระบุสายพันธุ์" className={sub} />
                 )}
+                <div className="flex gap-1 rounded-full bg-paper p-1">
+                  {([["yes", "ทำหมันแล้ว"], ["no", "ยังไม่ทำ"]] as const).map(([v, l]) => (
+                    <button
+                      key={v}
+                      type="button"
+                      aria-pressed={cat.neutered === v}
+                      onClick={() => updateCat(idx, { neutered: cat.neutered === v ? "" : v })}
+                      className={`min-h-[40px] flex-1 rounded-full text-sm font-bold transition ${cat.neutered === v ? "bg-card text-petflow-chocolate shadow-petflow-sm" : "text-brown-soft"}`}
+                    >
+                      {l}
+                    </button>
+                  ))}
+                </div>
                 <div className="flex gap-2">
                   <input
                     type="number"
@@ -357,14 +438,36 @@ export default function ProfilePage() {
                   </select>
                 </div>
                 <label className="block text-[11px] font-bold text-brown-soft">
+                  น้ำหนัก <span className="font-normal text-brown-faint">(กก. · ไม่บังคับ)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    inputMode="decimal"
+                    value={cat.weightKg}
+                    onChange={(e) => updateCat(idx, { weightKg: e.target.value })}
+                    placeholder="เช่น 4.5"
+                    className={`${sub} mt-0.5`}
+                  />
+                </label>
+                <label className="block text-[11px] font-bold text-brown-soft">
                   วันเกิดน้อง <span className="font-normal text-brown-faint">(ถ้าทราบ)</span>
                   <input type="date" value={cat.birthday} onChange={(e) => updateCat(idx, { birthday: e.target.value })} className={`${sub} mt-0.5`} />
                 </label>
                 <StaffNoteTagPicker
+                  label="โรคประจำตัว / เรื่องที่ช่างต้องรู้"
                   medicalValue={cat.medical}
                   noteValue={cat.note}
                   onChange={(medical, note) => updateCat(idx, { medical, note })}
                 />
+                <label className="block text-[11px] font-bold text-brown-soft">
+                  ประวัติการชัก/ช็อค <span className="font-normal text-brown-faint">(ไม่มีเว้นว่างได้)</span>
+                  <input value={cat.seizureHistory} onChange={(e) => updateCat(idx, { seizureHistory: e.target.value })} placeholder="เช่น ไม่เคย · หรือ เคยชักตอนตกใจ" className={`${sub} mt-0.5 font-normal text-brown`} />
+                </label>
+                <label className="block text-[11px] font-bold text-brown-soft">
+                  ประวัติการแพ้ <span className="font-normal text-brown-faint">(อาหาร / ยา / แชมพู)</span>
+                  <input value={cat.allergy} onChange={(e) => updateCat(idx, { allergy: e.target.value })} placeholder="เช่น ไม่มี · หรือ แพ้ไก่ แพ้แชมพูบางยี่ห้อ" className={`${sub} mt-0.5 font-normal text-brown`} />
+                </label>
                 {cat.id.startsWith("new-") && (
                   <button
                     type="button"
@@ -372,7 +475,7 @@ export default function ProfilePage() {
                     className="-ml-1 flex min-h-[44px] items-center gap-1.5 px-1 text-xs font-bold text-brown-soft"
                   >
                     <Icon name="trash" size={15} />
-                    ลบน้องแมวตัวนี้
+                    ลบน้อง{pw.th}ตัวนี้
                   </button>
                 )}
               </div>
@@ -393,7 +496,7 @@ export default function ProfilePage() {
                 <Icon name="plus" size={20} strokeWidth={2.4} />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-sm font-extrabold">เพิ่มน้องแมวอีกตัว</span>
+                <span className="block text-sm font-extrabold">เพิ่มน้อง{pw.th}อีกตัว</span>
                 <span className="block text-[11px] text-petflow-chocolate/70">มีหลายตัว เพิ่มได้ทุกตัวเลยค่ะ</span>
               </span>
               <Icon name="paw" size={22} className="text-petflow-chocolate/60" />
@@ -435,6 +538,9 @@ export default function ProfilePage() {
           >
             {saving ? "กำลังบันทึก…" : "บันทึกข้อมูล"}
           </button>
+          {saveError && (
+            <p className="mt-2 text-center text-sm font-bold text-red-700">{saveError}</p>
+          )}
           {saved && (
             <p className="mt-2 flex items-center justify-center gap-1.5 text-sm font-extrabold text-ok">
               <Icon name="check" size={16} strokeWidth={2.4} />

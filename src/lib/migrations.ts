@@ -1,4 +1,4 @@
-import { getSupabase } from "./supabase/server";
+import { getDirectoryDb } from "./supabase/server";
 
 /**
  * ระบบอัปเดตโครงสร้างฐานข้อมูลอัตโนมัติ (auto-migrate)
@@ -66,6 +66,14 @@ const SCHEMA_CHECKS: { table: string; column: string; feature: string }[] = [
   { table: "customer_packages", column: "groom_program", feature: "คอร์สอาบน้ำแยกตามโปรแกรม" },
   { table: "bookings", column: "transport", feature: "บริการรับ-ส่งในนัด" },
   { table: "bookings", column: "deposit_status", feature: "มัดจำ + สลิปตอนลูกค้าจองเอง" },
+  { table: "booking_ops", column: "care_checks", feature: "บอร์ดคิวอาบน้ำ + เช็คลิสต์ดูแลรายวัน" },
+  { table: "payroll_employees", column: "groom_commission_pct", feature: "เงินเดือน + ค่าคอมพนักงาน" },
+  { table: "cats", column: "vaccine_photos", feature: "สมุดวัคซีนที่ตัวน้อง (ขอก่อนมีนัด)" },
+  { table: "customers", column: "consent_accepted_at", feature: "ยอมรับข้อตกลงจากหน้าลูกค้า" },
+  { table: "cats", column: "species", feature: "น้องแต่ละตัวเป็นหมาหรือแมว" },
+  { table: "member_topups", column: "source_invoice_id", feature: "ยกเลิกนัด เก็บยอดเป็นเครดิต" },
+  { table: "cats", column: "neutered", feature: "ทำหมันแล้ว/ยังไม่ทำ" },
+  { table: "cats", column: "seizure_history", feature: "ประวัติการชัก/ช็อค และการแพ้" },
 ];
 
 export type SchemaCheckRow = {
@@ -82,7 +90,7 @@ export async function checkSchema(): Promise<{
   connected: boolean;
   rows: SchemaCheckRow[];
 }> {
-  const sb = getSupabase();
+  const sb = getDirectoryDb();
   if (!sb) return { ok: false, connected: false, rows: [] };
 
   const rows: SchemaCheckRow[] = [];
@@ -210,6 +218,11 @@ export const MIGRATIONS: { name: string; sql: string }[] = [
     sql: "alter table customers add column if not exists postal_code text;",
   },
   {
+    // ขอบิล/ใบกำกับภาษีเต็มรูป (นิติบุคคลหรือบุคคลธรรมดา) — ติ๊กตอนสมัคร / แก้ในหลังบ้าน
+    name: "customers.tax_invoice",
+    sql: "alter table customers add column if not exists tax_invoice jsonb;",
+  },
+  {
     name: "articles.table",
     sql: "create table if not exists articles (id text primary key, slug text not null, title text not null, description text, body text, cover_url text, emoji text, published boolean not null default true, date_published date, created_at timestamptz not null default now());",
   },
@@ -231,6 +244,16 @@ export const MIGRATIONS: { name: string; sql: string }[] = [
   {
     name: "cats.color",
     sql: "alter table cats add column if not exists color text;",
+  },
+  {
+    // น้ำหนักน้อง (กก.) — กรอกตอนสมัครสมาชิก / แก้ในหลังบ้าน
+    name: "cats.weight_kg",
+    sql: "alter table cats add column if not exists weight_kg numeric;",
+  },
+  {
+    // หมาหรือแมว ของน้องแต่ละตัว — ร้านที่รับทั้งสองแบบ
+    name: "cats.species",
+    sql: "alter table cats add column if not exists species text;",
   },
   {
     // รายชื่อข้อความอัตโนมัติที่ "นัดนี้" ไม่ต้องส่ง (ปิดเป็นรายเคส ไม่ใช่ปิดทั้งร้าน)
@@ -553,6 +576,122 @@ where staff_note like '%🎁%';`,
       end $$;
     `,
   },
+  {
+    // บอร์ดคิวอาบน้ำ (เริ่มทำ/ช่างที่รับ) + เช็คลิสต์ดูแลรายวันของน้องที่เข้าพัก — แยกจาก bookings
+    name: "booking_ops.setup",
+    sql: `
+      create table if not exists booking_ops (booking_id text primary key, tenant_id text not null, groom_started_at timestamptz, groomer text, care_checks jsonb not null default '{}'::jsonb, updated_at timestamptz not null default now());
+      alter table booking_ops add column if not exists tenant_id text;
+      create index if not exists booking_ops_tenant_idx on booking_ops (tenant_id);
+      alter table booking_ops enable row level security;
+    `,
+  },
+  {
+    // เงินเดือน + ค่าคอมพนักงาน — แยกตารางเพราะ site_config เปิดให้แอปลูกค้าอ่าน
+    name: "payroll_employees.setup",
+    sql: `
+      create table if not exists payroll_employees (id text primary key, tenant_id text not null, name text not null, base_salary numeric not null default 0, groom_commission_pct numeric not null default 0, groom_commission_per_cat numeric not null default 0, active boolean not null default true, created_at timestamptz not null default now());
+      alter table payroll_employees add column if not exists tenant_id text;
+      create index if not exists payroll_employees_tenant_idx on payroll_employees (tenant_id);
+      alter table payroll_employees enable row level security;
+    `,
+  },
+  {
+    // คำตอบแบบสอบถามเจ้าของร้านใหม่ (/shop-questions) — ระดับแพลตฟอร์ม ยังไม่ผูกกับร้านไหน
+    name: "shop_intake.setup",
+    sql: `
+      create table if not exists shop_intake (id text primary key, shop_name text, answers jsonb not null default '{}'::jsonb, text text, created_at timestamptz not null default now(), updated_at timestamptz not null default now());
+      create index if not exists shop_intake_updated_idx on shop_intake (updated_at desc);
+      alter table shop_intake add column if not exists tenant_id text;
+      alter table shop_intake enable row level security;
+    `,
+  },
+  {
+    // วันครบกำหนดจ่ายค่าบริการรายเดือนของร้าน — ถึงวันนี้แล้วยังไม่จ่าย = ร้านถูกระงับอัตโนมัติ
+    name: "tenants.due_date",
+    sql: "alter table tenants add column if not exists due_date date;",
+  },
+  {
+    // โดเมนของร้านเอง (เช่น catcha.com) — middleware ใช้หาร้านจากชื่อโดเมน ดู tenant-domain.ts
+    // ห้ามซ้ำ: โดเมนเดียวชี้ได้ร้านเดียวเท่านั้น
+    name: "tenants.custom_domain",
+    sql: `
+      alter table tenants add column if not exists custom_domain text;
+      create unique index if not exists tenants_custom_domain_key on tenants (custom_domain) where custom_domain is not null;
+    `,
+  },
+  {
+    // ค่าบริการ PetFlow — ราคา/บัญชีรับเงิน (platform_settings) + สลิปที่ร้านส่งมาให้อนุมัติ (tenant_payments)
+    name: "subscriptions.setup",
+    sql: `
+      alter table tenants add column if not exists due_date date;
+      create table if not exists platform_settings (key text primary key, value jsonb not null default '{}'::jsonb, updated_at timestamptz not null default now());
+      alter table platform_settings enable row level security;
+      create table if not exists tenant_payments (id text primary key, tenant_id text not null, plan text not null, amount numeric not null default 0, slip_url text, note text, status text not null default 'pending', due_before date, due_after date, decided_note text, created_at timestamptz not null default now(), decided_at timestamptz);
+      create index if not exists tenant_payments_status_idx on tenant_payments (status, created_at desc);
+      create index if not exists tenant_payments_tenant_idx on tenant_payments (tenant_id, created_at desc);
+      alter table tenant_payments enable row level security;
+    `,
+  },
+  {
+    // ทุกร้านแยกขาดจากกัน — username พนักงานห้ามซ้ำแค่ "ในร้านเดียวกัน" (เดิมห้ามซ้ำทั้งแพลตฟอร์ม
+    // ร้านหนึ่งตั้ง demo แล้วอีกร้านตั้ง demo ไม่ได้) ล็อกอินหาร้านจากลิงก์ /s/<slug>/admin/login แทน
+    name: "staff_users.username_per_shop",
+    sql: `
+      alter table staff_users drop constraint if exists staff_users_username_key;
+      drop index if exists staff_users_username_key;
+      create unique index if not exists staff_users_tenant_username_key on staff_users (tenant_id, username);
+    `,
+  },
+  {
+    // username เจ้าของร้านก็เหมือนกัน — ห้ามซ้ำในร้านตัวเองเท่านั้น (ร้านละคนอยู่แล้ว) ไม่บังคับข้ามร้าน
+    name: "tenants.owner_username_per_shop",
+    sql: `
+      alter table tenants drop constraint if exists tenants_owner_username_key;
+      drop index if exists tenants_owner_username_key;
+      create index if not exists tenants_owner_username_idx on tenants (owner_username);
+    `,
+  },
+  {
+    // ฐานที่สร้างจาก schema.sql รุ่นแรกยังบังคับ LINE ID ห้ามซ้ำทั้งแพลตฟอร์ม — ลูกค้าคนเดียวกัน
+    // สมัครสองร้านไม่ได้ เปลี่ยนเป็นห้ามซ้ำต่อร้าน
+    name: "customers.line_user_per_shop",
+    sql: `
+      create unique index if not exists customers_tenant_line_user_key on customers (tenant_id, line_user_id);
+      alter table customers drop constraint if exists customers_line_user_id_key;
+      drop index if exists customers_line_user_id_key;
+    `,
+  },
+  {
+    // ขอสมุดวัคซีน / ข้อตกลง จากหน้าข้อมูลลูกค้า ก่อนลงนัด — เก็บที่ตัวน้อง/ลูกค้า
+    name: "cats.vaccine_photos+customers.consent",
+    sql: `
+      alter table cats add column if not exists vaccine_photos text, add column if not exists stay_info text;
+      alter table customers
+        add column if not exists consent_accepted_at timestamptz,
+        add column if not exists consent_signature text,
+        add column if not exists consent_flea_tick boolean,
+        add column if not exists consent_care_note text;
+    `,
+  },
+  {
+    // ทำหมันแล้ว (true) / ยังไม่ทำ (false) / ยังไม่ได้ถาม (null) — ถามตอนสมัครสมาชิก
+    // เพิ่มคอลัมน์อย่างเดียว แถวเดิมได้ null ไม่แก้ข้อมูลเก่า
+    name: "cats.neutered",
+    sql: "alter table cats add column if not exists neutered boolean;",
+  },
+  {
+    // ประวัติการชัก/ช็อค + ประวัติการแพ้ — ถามตอนสมัครสมาชิก (ไม่บังคับ) · เพิ่มคอลัมน์อย่างเดียว
+    name: "cats.seizure_allergy",
+    sql: "alter table cats add column if not exists seizure_history text, add column if not exists allergy text;",
+  },
+  {
+    // 🔁 เครดิตจากบิลที่ยกเลิกนัด — เงินเข้าร้านไปแล้วตอนจ่ายบิลเดิม จึงไม่ลงรายรับ/ไม่ให้แต้มซ้ำ
+    // source_invoice_id = เลขบิลเดิม (ไว้โชว์ในประวัติเครดิต + กันแปลงบิลเดียวกันซ้ำ)
+    // เพิ่มคอลัมน์อย่างเดียว ไม่แก้ข้อมูลเดิม (แถวเก่าได้ค่าเริ่มต้น false / null)
+    name: "member_topups.cancel_credit",
+    sql: "alter table member_topups add column if not exists is_cancel_credit boolean not null default false, add column if not exists source_invoice_id text;",
+  },
 ];
 
 export type MigrateResult = {
@@ -575,7 +714,7 @@ function looksLikeMissingFunction(msg: string) {
  * คืน true ถ้าคอลัมน์พร้อมใช้ (idempotent — "add column if not exists")
  */
 export async function ensureMigration(name: string): Promise<boolean> {
-  const sb = getSupabase();
+  const sb = getDirectoryDb();
   if (!sb) return false;
   const m = MIGRATIONS.find((x) => x.name === name);
   if (!m) return false;
@@ -594,7 +733,7 @@ export async function ensureMigration(name: string): Promise<boolean> {
 
 /** รันทุก migration ผ่าน exec_sql (idempotent — ปลอดภัยรันซ้ำ) */
 export async function runMigrations(): Promise<MigrateResult> {
-  const sb = getSupabase();
+  const sb = getDirectoryDb();
   if (!sb) {
     return {
       ok: false,

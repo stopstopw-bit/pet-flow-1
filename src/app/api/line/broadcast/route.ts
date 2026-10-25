@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFrom } from "@/lib/auth";
 import { withTenant } from "@/lib/tenant-context";
-import { BUSINESS } from "@/lib/business";
 import { storeBroadcastImage } from "@/lib/broadcast-image-store";
 import { getBroadcastAudience, type CustomerTier, type CustomerRecord } from "@/lib/customers-store";
 import {
@@ -10,12 +9,9 @@ import {
   parseSegments,
   DEFAULT_REGULAR_MIN_VISITS,
 } from "@/lib/customer-segments";
-import {
-  buildBroadcastButtons,
-  type BroadcastActionId,
-} from "@/lib/line-broadcast";
+import { buildBroadcastButtons, parseBroadcastActions } from "@/lib/line-broadcast";
 import { buildPromoFlex, multicastLineMessage } from "@/lib/line";
-import { getLineCredentials, getAppUrlFromEnv } from "@/lib/line-config";
+import { getLineCredentials, getAppUrlFromEnv, shopAppBase } from "@/lib/line-config";
 import { TIER_LABELS } from "@/lib/customer-tier";
 import { getSiteConfig } from "@/lib/config-store";
 
@@ -40,7 +36,16 @@ type AudienceQuery = {
   inactiveDays: number;
   segments: ReturnType<typeof parseSegments>;
   regularMinVisits: number;
+  /** เจาะจงรายคน (มาจากกลุ่มในหน้าสรุปข้อมูล) — ว่าง = ไม่จำกัด */
+  customerIds: string[];
+  /** คนที่แอดมินติ๊กออกจากรายชื่อก่อนส่ง — ใช้ตอนส่งจริงเท่านั้น */
+  excludeIds: string[];
 };
+
+function readIds(v: unknown): string[] {
+  const raw = Array.isArray(v) ? v : String(v || "").split(",");
+  return raw.map((x) => String(x).trim()).filter(Boolean);
+}
 
 function readAudienceQuery(get: (k: string) => unknown): AudienceQuery {
   return {
@@ -49,6 +54,8 @@ function readAudienceQuery(get: (k: string) => unknown): AudienceQuery {
     inactiveDays: Number(get("inactiveDays")) || 0,
     segments: parseSegments(get("segments")),
     regularMinVisits: Number(get("regularMinVisits")) || DEFAULT_REGULAR_MIN_VISITS,
+    customerIds: readIds(get("customerIds")),
+    excludeIds: readIds(get("excludeIds")),
   };
 }
 
@@ -57,7 +64,16 @@ const daysSince = (d: string) =>
 
 /** กลุ่มผู้รับ = ระดับ + พันธุ์ + กลุ่มที่ติ๊ก + หายไปนาน (ต้องตรงทุกข้อ) */
 async function resolveAudience(q: AudienceQuery) {
-  const audience = await getBroadcastAudience(q.tier, { breed: q.breed });
+  const all = await getBroadcastAudience(q.tier, { breed: q.breed });
+  // รายชื่อเจาะจงกรองจากลูกค้าของร้านนี้เท่านั้น — id ร้านอื่นหลุดมาก็ไม่มีผล
+  const only = q.customerIds.length ? new Set(q.customerIds) : null;
+  const pick = (list: CustomerRecord[]) => (only ? list.filter((c) => only.has(c.id)) : list);
+  const audience = {
+    ...all,
+    recipients: pick(all.recipients),
+    skippedNoLine: pick(all.skippedNoLine),
+    skippedNoConsent: pick(all.skippedNoConsent),
+  };
   if (!q.segments.length && q.inactiveDays <= 0) return audience;
   const everyone = [
     ...audience.recipients,
@@ -75,6 +91,7 @@ async function resolveAudience(q: AudienceQuery) {
     return true;
   };
   return {
+    ...audience,
     recipients: audience.recipients.filter(keep),
     skippedNoLine: audience.skippedNoLine.filter(keep),
     skippedNoConsent: audience.skippedNoConsent.filter(keep),
@@ -96,9 +113,7 @@ async function handlePost(req: NextRequest) {
   const discountLabel = body.discountLabel
     ? String(body.discountLabel)
     : undefined;
-  const actions = Array.isArray(body.actions)
-    ? (body.actions as BroadcastActionId[])
-    : [];
+  const actions = parseBroadcastActions(body.actions);
 
   if (!title || !message) {
     return NextResponse.json(
@@ -107,12 +122,13 @@ async function handlePost(req: NextRequest) {
     );
   }
 
-  const customers = (await resolveAudience(query)).recipients;
+  const excluded = new Set(query.excludeIds);
+  const customers = (await resolveAudience(query)).recipients.filter((c) => !excluded.has(c.id));
   const lineIds = customers
     .map((c) => c.lineUserId)
     .filter((id): id is string => Boolean(id));
 
-  if (lineIds.length === 0) {
+  if (lineIds.length === 0 && !body.preview) {
     return NextResponse.json({
       ok: true,
       sent: 0,
@@ -121,10 +137,14 @@ async function handlePost(req: NextRequest) {
   }
 
   const creds = await getLineCredentials();
-  const base = getAppUrlFromEnv() || "";
+  const base = await shopAppBase();
   const promoUrl = `${base}/app/promos`;
-  const imageUrl = await resolveLineImageUrl(body);
-  const buttons = buildBroadcastButtons(actions, creds?.liffId);
+  // พรีวิว = ใช้รูป data: ตรง ๆ ไม่อัปโหลด ไม่ส่งจริง
+  const imageUrl = body.preview
+    ? body.imageData || body.imageUrl || undefined
+    : await resolveLineImageUrl(body);
+  const shopConfig = await getSiteConfig();
+  const buttons = buildBroadcastButtons(actions, creds?.liffId, shopConfig.business, base);
 
   try {
     const flex = buildPromoFlex({
@@ -134,7 +154,11 @@ async function handlePost(req: NextRequest) {
       promoUrl,
       discountLabel,
       buttons: buttons.length ? buttons : undefined,
-    }, (await getSiteConfig()).cards?.promo);
+      shopName: shopConfig.business.name,
+    }, shopConfig.cards?.promo);
+    if (body.preview) {
+      return NextResponse.json({ ok: true, preview: [flex], count: lineIds.length });
+    }
     const result = await multicastLineMessage(lineIds, [flex]);
     return NextResponse.json({
       ok: true,
@@ -142,7 +166,7 @@ async function handlePost(req: NextRequest) {
       // ลูกค้าที่ยังไม่มีบัญชี LINE จริงผูกอยู่ (สร้างตอน LIFF ยังไม่ตั้งค่า) — ไม่ได้รับข้อความนี้
       skipped: result.skipped,
       tier: query.tier === "all" ? "ทุกระดับ" : TIER_LABELS[query.tier],
-      maps: BUSINESS.maps,
+      maps: shopConfig.business.maps,
     });
   } catch (e) {
     return NextResponse.json(

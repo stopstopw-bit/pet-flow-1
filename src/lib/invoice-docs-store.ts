@@ -25,6 +25,8 @@ export type InvoiceDoc = {
   invoiceId: string;
   customerId?: string;
   buyer?: DocBuyer;
+  /** ร้านกด "ใช้ชื่อลูกค้า" ไว้ — ไม่ต้องเติมข้อมูลออกบิลของลูกค้าให้อัตโนมัติ */
+  buyerPersonal?: boolean;
   quoteNo?: string;
   quoteAt?: string;
   invoiceNo?: string;
@@ -37,7 +39,8 @@ export type InvoiceDoc = {
 type Row = {
   invoice_id: string;
   customer_id: string | null;
-  buyer: DocBuyer | null;
+  /** { personal: true } = ร้านเลือกออกในชื่อลูกค้า (กันระบบเติมข้อมูลออกบิลทับ) */
+  buyer: (DocBuyer & { personal?: boolean }) | null;
   quote_no: string | null;
   quote_at: string | null;
   invoice_no: string | null;
@@ -57,7 +60,8 @@ function fromRow(r: Row): InvoiceDoc {
   return {
     invoiceId: r.invoice_id,
     customerId: r.customer_id || undefined,
-    buyer: r.buyer || undefined,
+    buyer: r.buyer && !r.buyer.personal ? r.buyer : undefined,
+    buyerPersonal: !!r.buyer?.personal || undefined,
     quoteNo: r.quote_no || undefined,
     quoteAt: r.quote_at || undefined,
     invoiceNo: r.invoice_no || undefined,
@@ -113,10 +117,10 @@ export async function lastBuyerForCustomer(customerId: string): Promise<DocBuyer
       .eq("customer_id", customerId)
       .not("buyer", "is", null)
       .order("updated_at", { ascending: false })
-      .limit(1);
-    return { data: (r.data as { buyer: DocBuyer | null }[] | null) || [], error: r.error };
+      .limit(10);
+    return { data: (r.data as Pick<Row, "buyer">[] | null) || [], error: r.error };
   });
-  return data?.[0]?.buyer || undefined;
+  return data?.find((d) => d.buyer && !d.buyer.personal)?.buyer || undefined;
 }
 
 export async function saveBuyer(
@@ -129,7 +133,13 @@ export async function saveBuyer(
   const sb = getSupabase();
   if (!sb) {
     const cur = mem.get(invoiceId) || { invoiceId };
-    mem.set(invoiceId, { ...cur, customerId, buyer: clean || undefined, note: note ?? cur.note });
+    mem.set(invoiceId, {
+      ...cur,
+      customerId,
+      buyer: clean || undefined,
+      buyerPersonal: clean ? undefined : true,
+      note: note ?? cur.note,
+    });
     return { ok: true as const };
   }
   const { error } = await withTable(async () => {
@@ -138,7 +148,8 @@ export async function saveBuyer(
         tenant_id: requireTenantId(),
         invoice_id: invoiceId,
         customer_id: customerId || null,
-        buyer: clean,
+        // ไม่มีผู้ซื้อ = ร้านเลือกออกในชื่อลูกค้าเอง — จำไว้ ไม่ให้ระบบเติมข้อมูลออกบิลของลูกค้าทับ
+        buyer: clean || { name: "", personal: true },
         ...(note !== undefined ? { note: note.trim() || null } : {}),
         updated_at: new Date().toISOString(),
       },

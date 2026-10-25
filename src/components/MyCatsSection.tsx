@@ -3,17 +3,21 @@
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import { useLiff } from "@/components/LiffProvider";
+import { useConfig } from "@/components/ConfigProvider";
+import { petWords, speciesOf, speciesWords } from "@/lib/pet-kind";
 import { toJpegDataUrl } from "@/lib/image-convert";
+import { customerFetch } from "@/lib/customer-fetch";
 
 type MyCat = {
   id: string;
   name: string;
   photoDataUrl?: string | null;
   breed?: string | null;
+  species?: string | null;
 };
 
 const CHEERS = [
-  "น่ารักขึ้นอีก! 😻",
+  "น่ารักขึ้นอีก! 😍",
   "โปรไฟล์ปังมาก 🌟",
   "หล่อ/สวยเลย 🐾",
   "ถ่ายเก่งจัง 📸",
@@ -21,6 +25,8 @@ const CHEERS = [
 
 export function MyCatsSection() {
   const { profile } = useLiff();
+  const { config } = useConfig();
+  const pw = petWords(config);
   const [cats, setCats] = useState<MyCat[]>([]);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [cheer, setCheer] = useState("");
@@ -45,7 +51,7 @@ export function MyCatsSection() {
     setUploadingId(cat.id);
     try {
       const dataUrl = await toJpegDataUrl(file);
-      const res = await fetch("/api/customers/cat-photo", {
+      const res = await customerFetch("/api/customers/cat-photo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -74,7 +80,7 @@ export function MyCatsSection() {
     <section className="mb-5">
       <div className="mb-2 flex items-center justify-between">
         <h2 className="text-sm font-extrabold text-petflow-chocolate">
-          🐾 แมวของฉัน
+          🐾 {pw.noun}ของฉัน
         </h2>
         <span className="text-[10px] font-bold text-brown-faint">
           แตะรูปเพื่อเปลี่ยน 📸
@@ -105,7 +111,7 @@ export function MyCatsSection() {
                 />
               ) : (
                 <div className="flex h-full w-full flex-col items-center justify-center text-brown-faint">
-                  <span className="text-3xl">🐱</span>
+                  <span className="text-3xl">{speciesWords(speciesOf(cat, config), config).emoji}</span>
                   <span className="text-[9px] font-bold">แตะเพิ่มรูป</span>
                 </div>
               )}

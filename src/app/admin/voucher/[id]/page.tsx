@@ -25,7 +25,7 @@ const baht = (n: number) => n.toLocaleString("th-TH", { minimumFractionDigits: 2
 export default function VoucherPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [rec, setRec] = useState<Rec | null>(null);
-  const [shop, setShop] = useState({ name: "PetFlow", address: "", taxId: "", phone: "" });
+  const [shop, setShop] = useState({ name: "", address: "", taxId: "", phone: "" });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -38,7 +38,7 @@ export default function VoucherPage({ params }: { params: Promise<{ id: string }
       const b = cfg.config?.business;
       if (b) {
         setShop({
-          name: b.name || "PetFlow",
+          name: b.name || "",
           address: b.location?.th || "",
           taxId: b.taxId || "",
           phone: b.phones?.[0] || "",
@@ -126,7 +126,7 @@ export default function VoucherPage({ params }: { params: Promise<{ id: string }
           </p>
           {rec.catName && (
             <p>
-              <span className="text-brown-soft">น้องแมว:</span> <span className="font-bold">{rec.catName}</span>
+              <span className="text-brown-soft">น้อง:</span> <span className="font-bold">{rec.catName}</span>
             </p>
           )}
         </div>

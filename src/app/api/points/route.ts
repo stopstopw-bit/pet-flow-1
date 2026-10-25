@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { featureOff } from "@/lib/features-server";
 import { getAccount, redeemReward, addPoints, deletePointsHistoryEntry } from "@/lib/points-store";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { pushLineMessage, buildPointsAwardFlex } from "@/lib/line";
 import { getSiteConfig } from "@/lib/config-store";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { withResolvedTenant, withTenant } from "@/lib/tenant-context";
-import { requireCustomerSession } from "@/lib/customer-session";
+import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 import { logAudit } from "@/lib/audit-log";
 import { requireTenantId } from "@/lib/tenant-context";
 
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest) {
 async function handleCustomerGet(req: NextRequest) {
   const customerSession = await requireCustomerSession(req);
   if (!customerSession) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return noCustomerSessionResponse();
   }
   return handleGet(req, customerSession.lineUserId);
 }
@@ -60,6 +61,12 @@ export async function POST(req: NextRequest) {
 }
 
 async function handlePost(req: NextRequest, isAdmin: boolean) {
+  // ลูกค้าแลกแต้มเอง — ร้านปิดแต้มสะสม หรือปิดแค่ "แลกแต้มเป็นรางวัล" ก็แลกไม่ได้
+  // (pointsRedeem ขึ้นกับ points อยู่แล้ว · หลังบ้านยังจัดการแต้มเดิมได้)
+  if (!isAdmin) {
+    const blocked = await featureOff("pointsRedeem");
+    if (blocked) return blocked;
+  }
   const body = await req.json().catch(() => ({}));
   const { rewardId, displayName } = body;
   let lineUserId = String(body.lineUserId || "").trim();
@@ -175,7 +182,7 @@ async function handlePost(req: NextRequest, isAdmin: boolean) {
   if (!isAdmin) {
     const customerSession = await requireCustomerSession(req);
     if (!customerSession) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return noCustomerSessionResponse();
     }
     lineUserId = customerSession.lineUserId;
   }

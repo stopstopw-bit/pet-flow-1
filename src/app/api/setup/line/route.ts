@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionFrom } from "@/lib/auth";
 import { requireTenantId, withTenant } from "@/lib/tenant-context";
 import { getSupabase } from "@/lib/supabase/server";
-import { getSecrets, saveLineSecrets } from "@/lib/secrets-store";
+import { clearLineSecrets, getSecrets, saveLineSecrets } from "@/lib/secrets-store";
 import {
   getAppUrlFromEnv,
   getLineCredentials,
   isLineConfigured,
   isLiffConfigured,
   parseLineChannelToken,
+  parseLiffId,
   testLineChannelToken,
   setLineWebhookEndpoint,
   getLineWebhookEndpoint,
@@ -74,6 +75,22 @@ async function handleGet() {
   });
 }
 
+/**
+ * ลบค่า LINE (Token/Secret/LIFF) ของร้านนี้ — เจ้าของกดเองในหน้าตั้งค่า
+ * ใช้ตอนร้านถือค่า LINE ของร้านอื่นอยู่ (เช่นร้านแรกที่เคยตั้ง LINE PetFlow ไว้ก่อนสลับลิงก์เป็น Back Home)
+ */
+export async function DELETE(req: NextRequest) {
+  const session = await getSessionFrom(req);
+  if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (session.role !== "owner") {
+    return NextResponse.json({ ok: false, message: "เฉพาะเจ้าของร้าน" }, { status: 403 });
+  }
+  return withTenant(session.tenantId, async () => {
+    await clearLineSecrets();
+    return NextResponse.json({ ok: true, message: "ลบค่า LINE ของร้านนี้แล้ว" });
+  });
+}
+
 export async function POST(req: NextRequest) {
   const session = await getSessionFrom(req);
   if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -86,7 +103,7 @@ async function handlePost(req: NextRequest) {
 
   try {
     if (action === "save_liff") {
-      const liffId = String(body.liffId || "").trim();
+      const liffId = parseLiffId(body.liffId);
       if (!liffId || liffId.length < 6) {
         return NextResponse.json(
           { ok: false, message: "กรอก LIFF ID ให้ครบ (จาก LINE Developers → LIFF)" },
@@ -136,7 +153,7 @@ async function handlePost(req: NextRequest) {
 
     const channelToken = parseLineChannelToken(String(body.channelToken || ""));
     const channelSecret = String(body.channelSecret || "").trim();
-    const liffId = String(body.liffId || "").trim();
+    const liffId = parseLiffId(body.liffId);
     const current = await getSecrets();
 
     const test = await testLineChannelToken(channelToken);

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BLOG_POSTS, getBlogPost, type BlogPost } from "@/lib/blog-posts";
 import { getArticleBySlug, articleBodyToBlocks } from "@/lib/articles-store";
+import { withBootstrapTenant } from "@/lib/tenant-context";
 import SiteFooter from "@/components/SiteFooter";
 
 // รองรับบทความที่เขียนเองจากหลังบ้าน (ไม่ได้ prerender) — อัปเดตทุก ~5 นาที
@@ -13,7 +14,10 @@ export const revalidate = 300;
 async function resolvePost(
   slug: string
 ): Promise<{ post: BlogPost; external: boolean } | null> {
-  const db = await getArticleBySlug(slug);
+  // บล็อกหน้าเว็บหลักเป็นของร้าน bootstrap (env TENANT_ID)
+  const db = await Promise.resolve()
+    .then(() => withBootstrapTenant(() => getArticleBySlug(slug)))
+    .catch(() => null);
   if (db) {
     return {
       external: true,

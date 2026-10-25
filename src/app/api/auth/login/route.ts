@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyStaffLogin } from "@/lib/staff-store";
+import { withTenantEvenIfClosed } from "@/lib/tenant-context";
+import { TENANT_SLUG_HEADER } from "@/lib/tenant-resolve";
 import {
   SESSION_COOKIE,
+  SESSION_COOKIE_NAME_HEADER,
+  shopSessionCookie,
   getBootstrapTenantId,
   getOwnerCode,
   isOwnerCodeConfigured,
@@ -10,6 +14,8 @@ import {
   verifySession,
 } from "@/lib/auth";
 import { findTenantByLegacyOwnerCode, findTenantByOwnerLogin } from "@/lib/tenant-directory";
+import { getDirectoryDb } from "@/lib/supabase/server";
+import { isOverdue, tenantGateById, tenantGateBySlug } from "@/lib/tenant-billing";
 
 export const dynamic = "force-dynamic";
 
@@ -17,12 +23,16 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const session = await verifySession(req.cookies.get(SESSION_COOKIE)?.value);
   if (!session) return NextResponse.json({ ok: false }, { status: 401 });
+  // วันครบกำหนดจ่ายค่าบริการ — หลังบ้านใช้เตือนก่อนถึงวัน และพาไปหน้าค่าบริการเมื่อเลยกำหนด
+  const gate = await tenantGateById(session.tenantId).catch(() => null);
   return NextResponse.json({
     ok: true,
     role: session.role,
     name: session.name,
     menus: session.menus,
     impersonating: session.impersonating || false,
+    dueDate: gate?.dueDate || null,
+    overdue: isOverdue(gate?.dueDate),
   });
 }
 
@@ -31,29 +41,55 @@ export async function GET(req: NextRequest) {
  * เบราว์เซอร์แก้เองไม่ได้ และ JS อ่านไม่ได้
  *
  * เจ้าของร้านและพนักงานล็อกอินด้วย username+password เหมือนกันหมด (ตั้งแต่ T5b) —
- * username ต้อง unique ทั้งแพลตฟอร์ม (ข้ามร้าน) เพราะยังไม่รู้ว่าเป็นร้านไหนจนกว่าจะเจอ
+ * username ห้ามซ้ำแค่ในร้านเดียวกัน คนละร้านซ้ำได้ ร้านดูจากลิงก์ /s/<slug>/admin/login
  */
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const username = String(body.username || "").trim();
   const password = String(body.password || "");
+  // ร้านที่หน้าล็อกอินถูกเปิดมา (/s/<slug>/admin/login) — ว่าง = หน้า /admin/login แบบไม่ระบุร้าน
+  // บนโดเมนของร้านเอง (catcha.com/admin/login) ลิงก์ไม่มี /s/<slug> — middleware ใส่ร้านมาใน header ให้แล้ว
+  const fromBody = String(body.shop || "").trim().toLowerCase();
+  const fromHeader = (req.headers.get(TENANT_SLUG_HEADER) || "").trim().toLowerCase();
+  if (fromBody && fromHeader && fromBody !== fromHeader) {
+    return NextResponse.json({ error: "ลิงก์ร้านไม่ตรงกัน — เปิดหน้าล็อกอินของร้านนี้ใหม่" }, { status: 400 });
+  }
+  const shop = fromBody || fromHeader;
   if (!username) {
     return NextResponse.json({ error: "กรอก username" }, { status: 400 });
   }
 
   let payload:
-    | { role: "owner" | "staff"; name: string; tenantId: string; menus?: string[] }
+    | {
+        role: "owner" | "staff";
+        name: string;
+        tenantId: string;
+        tenantSlug?: string;
+        menus?: string[];
+      }
     | null = null;
 
-  // 1) เจ้าของร้าน — username+password ค้นข้ามทุกร้าน
-  const tenant = await findTenantByOwnerLogin(username, password);
+  // ล็อกอินจากลิงก์ร้าน → หาเฉพาะบัญชีของร้านนั้น (คนละร้านใช้ username เดียวกันได้)
+  // ไม่เช็คว่าร้านเปิดอยู่ — ร้านที่เลยกำหนดจ่ายยังต้องล็อกอินเข้าไปหน้าค่าบริการได้
+  const shopId = shop ? (await tenantGateBySlug(shop).catch(() => null))?.id || null : null;
+  if (shop && !shopId) {
+    return NextResponse.json(
+      { error: `ไม่พบร้าน "${shop}"` },
+      { status: 404 }
+    );
+  }
+
+  // 1) เจ้าของร้าน
+  const tenant = await findTenantByOwnerLogin(username, password, shopId || undefined);
   if (tenant) {
     payload = { role: "owner", name: "เจ้าของร้าน", tenantId: tenant.id };
   }
 
-  // 2) พนักงาน — username+password ค้นข้ามทุกร้านเช่นกัน
+  // 2) พนักงาน — ค้นในฐานของร้านนั้น (เผื่อร้านแยกไปฐานของตัวเองแล้ว)
   if (!payload) {
-    const staff = await verifyStaffLogin(username, password);
+    const staff = shopId
+      ? await withTenantEvenIfClosed(shopId, () => verifyStaffLogin(username, password, shopId))
+      : await verifyStaffLogin(username, password);
     if (staff) {
       payload = {
         role: "staff",
@@ -88,6 +124,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "username หรือ password ไม่ถูกต้อง" }, { status: 401 });
   }
 
+  const tenantSlug = await slugForTenant(payload.tenantId);
+  if (tenantSlug) payload.tenantSlug = tenantSlug;
+  // ล็อกอินจากลิงก์ของร้านหนึ่ง ต้องเป็นบัญชีของร้านนั้นเท่านั้น
+  if (shop && tenantSlug !== shop) {
+    return NextResponse.json(
+      { error: `บัญชีนี้ไม่ใช่ของร้าน "${shop}" — ใช้ username/password ของร้านนี้` },
+      { status: 401 }
+    );
+  }
+
   let token: string;
   try {
     token = await signSession(payload);
@@ -99,13 +145,23 @@ export async function POST(req: NextRequest) {
   }
 
   const res = NextResponse.json({ ok: true, ...payload });
-  res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
+  // ล็อกอินจากลิงก์ร้าน → คุกกี้ของร้านนั้นเท่านั้น ไม่ทับการล็อกอินของร้านอื่นในเครื่องเดียวกัน
+  res.cookies.set(shop ? shopSessionCookie(shop) : SESSION_COOKIE, token, sessionCookieOptions());
   return res;
 }
 
+async function slugForTenant(tenantId: string): Promise<string | undefined> {
+  const sb = getDirectoryDb();
+  if (!sb) return undefined;
+  const { data } = await sb.from("tenants").select("slug").eq("id", tenantId).maybeSingle();
+  return (data as { slug?: string } | null)?.slug || undefined;
+}
+
 /** ออกจากระบบ */
-export async function DELETE() {
+export async function DELETE(req: NextRequest) {
   const res = NextResponse.json({ ok: true });
-  res.cookies.set(SESSION_COOKIE, "", { ...sessionCookieOptions(), maxAge: 0 });
+  // ออกเฉพาะร้านที่กดออก — ร้านอื่นที่ล็อกอินค้างไว้ในเครื่องเดียวกันยังอยู่
+  const name = req.headers.get(SESSION_COOKIE_NAME_HEADER) || SESSION_COOKIE;
+  res.cookies.set(name, "", { ...sessionCookieOptions(), maxAge: 0 });
   return res;
 }

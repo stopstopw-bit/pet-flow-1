@@ -95,3 +95,19 @@ body {
     color: var(--brown-faint);
   }
 }
+
+/* คู่มือใช้งาน (/guide) — แมวโยกเบาๆ บนหัวหน้า */
+@keyframes guide-bob {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-3deg);
+  }
+  50% {
+    transform: translateY(-6px) rotate(3deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-\[guide-bob_2\.4s_ease-in-out_infinite\] {
+    animation: none;
+  }
+}

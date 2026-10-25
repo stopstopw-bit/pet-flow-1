@@ -4,29 +4,42 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { ADMIN_TAB_EN, ADMIN_TAB_GROUPS, ADMIN_TAB_ICONS, Icon } from "@/components/Icon";
+import { useConfig } from "@/components/ConfigProvider";
+import { disabledFeatureForAdminPath, isFeatureOn } from "@/lib/features";
 
 export const ADMIN_TABS = [
   { href: "/admin", label: "แดชบอร์ด", icon: "📊" },
   { href: "/admin/schedule", label: "ตารางนัด", icon: "🗓️" },
   { href: "/admin/bookings/new", label: "จองใหม่", icon: "➕" },
+  { href: "/admin/queue", label: "คิวอาบน้ำ", icon: "🛁" },
+  { href: "/admin/care", label: "เช็คลิสต์ดูแล", icon: "✅" },
   { href: "/admin/customers", label: "ลูกค้า", icon: "👤" },
   { href: "/admin/billing", label: "คิดเงิน", icon: "💳" },
   { href: "/admin/finance", label: "รายรับ-รายจ่าย", icon: "📒" },
   { href: "/admin/tax", label: "เอกสารรายได้ / ภาษี", icon: "📑" },
+  { href: "/admin/payroll", label: "เงินเดือน & ค่าคอม", icon: "💰" },
   { href: "/admin/insights", label: "สรุปข้อมูล", icon: "📊" },
+  { href: "/admin/staff-performance", label: "ผลงานพนักงาน", icon: "🏆" },
   { href: "/admin/promos", label: "โปร", icon: "✨" },
   { href: "/admin/coupons", label: "คูปอง", icon: "🎟️" },
   { href: "/admin/birthdays", label: "วันเกิดลูกค้า", icon: "🎂" },
   { href: "/admin/packages", label: "ขายคอร์สในแอป", icon: "🛍️" },
   { href: "/admin/cards", label: "ปรับแต่งการ์ด LINE", icon: "🎴" },
-  { href: "/admin/articles", label: "บทความหน้าเว็บ", icon: "📝" },
   { href: "/admin/staff", label: "พนักงาน", icon: "👥" },
   { href: "/admin/settings", label: "ตั้งค่า", icon: "⚙️" },
   { href: "/admin/trash", label: "ถังขยะ", icon: "🗑️" },
   { href: "/admin/setup", label: "ติดตั้ง", icon: "🚀" },
+  { href: "/admin/subscription", label: "ค่าบริการ PetFlow", icon: "🧾" },
 ] as const;
 
 const TABS = ADMIN_TABS;
+
+/**
+ * เมนูของเจ้าของร้านเท่านั้น — API ของหน้าพวกนี้ตอบ 403 ให้พนักงานอยู่แล้ว
+ * จึงไม่ให้ติ๊กให้พนักงาน และไม่โชว์ในเมนูพนักงานแม้เคยติ๊กไว้ก่อนหน้า
+ * (ค่าบริการ = ร้านจ่ายค่าระบบ เรื่องของเจ้าของ, พนักงาน = ตั้งบัญชี/สิทธิ์ของคนอื่น)
+ */
+export const OWNER_ONLY_TABS: string[] = ["/admin/staff", "/admin/subscription"];
 
 function isTabActive(pathname: string, href: string) {
   if (href === "/admin") return pathname === "/admin";
@@ -42,7 +55,7 @@ export function getAllowedMenus(): string[] | null {
     if (!Array.isArray(menus)) return [];
     // สิทธิ์ "สินค้าหน้าร้าน" เดิม = ขายหน้าร้าน (POS) และขายหน้าร้านย้ายไปเป็นแท็บในหน้าคิดเงินแล้ว
     // พนักงานที่เคยได้สิทธิ์ทั้งสองแบบยังเข้าได้
-    const out = [...menus];
+    const out = menus.filter((m: unknown) => !OWNER_ONLY_TABS.includes(String(m)));
     if (out.includes("/admin/products") && !out.includes("/admin/pos")) out.push("/admin/pos");
     if (out.includes("/admin/pos") && !out.includes("/admin/billing")) out.push("/admin/billing");
     return out;
@@ -55,6 +68,15 @@ export function getAllowedMenus(): string[] | null {
 export function isPathAllowed(pathname: string, allowed: string[] | null) {
   if (!allowed) return true;
   return allowed.some((href) => isTabActive(pathname, href));
+}
+
+/** เมนูที่ผู้ใช้เห็น — ตัดตามสิทธิ์พนักงาน และตัดเมนูของฟีเจอร์ที่ร้านปิดไว้ในตั้งค่า */
+function useVisibleTabs() {
+  const { config } = useConfig();
+  const allowed = getAllowedMenus();
+  return TABS.filter(
+    (t) => (!allowed || allowed.includes(t.href)) && !disabledFeatureForAdminPath(config, t.href)
+  );
 }
 
 /** ชื่ออังกฤษของเมนูที่เปิดอยู่ — ใช้เป็นหัวเล็กในแถบหัว */
@@ -145,8 +167,7 @@ export function AdminNav({
 }) {
   const pathname = usePathname();
   // เมนูของพนักงานถูกกรองตามสิทธิ์ที่เจ้าของตั้งไว้ (เมนูเปิดหลัง mount เสมอ อ่าน sessionStorage ได้เลย)
-  const allowed = getAllowedMenus();
-  const visibleTabs = TABS.filter((t) => !allowed || allowed.includes(t.href));
+  const visibleTabs = useVisibleTabs();
 
   useEffect(() => {
     setMenuOpen(false);
@@ -218,6 +239,7 @@ export function AdminNav({
               </ul>
             </section>
           ))}
+          <GuideLink onClick={closeMenu} />
         </div>
       </nav>
     </>
@@ -242,11 +264,27 @@ function groupTabs(tabs: readonly Tab[]) {
 /** แถบเมนูซ้ายบนจอใหญ่ — แสดงทุกเมนูที่ผู้ใช้มีสิทธิ์ แบ่งเป็นกลุ่ม */
 export function AdminSidebar() {
   const pathname = usePathname();
-  const allowed = getAllowedMenus();
-  const visibleTabs = TABS.filter((t) => !allowed || allowed.includes(t.href));
+  const visibleTabs = useVisibleTabs();
   const navRef = useRef<HTMLElement | null>(null);
   // เมนูยาวกว่าจอเตี้ยๆ → เลื่อนให้เห็นเมนูหน้าที่เปิดอยู่เสมอ
   // (top-[76px] = ใต้แถบหัวหลังบ้านที่ติดอยู่ด้านบน ไม่ให้เมนูมุดใต้หัว)
+  // กล่องเมนูต้องจบในจอเสมอ — หน้าแดชบอร์ดมีแถบหัวสูง เมนูเริ่มต่ำกว่า 76px
+  // ถ้าใช้ความสูงตายตัว ท้ายเมนูจะล้นขอบล่างจนกดเมนูสุดท้ายไม่ได้
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    const fit = () => {
+      const top = Math.max(nav.getBoundingClientRect().top, 76);
+      nav.style.maxHeight = `${Math.max(window.innerHeight - top - 24, 200)}px`;
+    };
+    fit();
+    window.addEventListener("scroll", fit, { passive: true });
+    window.addEventListener("resize", fit);
+    return () => {
+      window.removeEventListener("scroll", fit);
+      window.removeEventListener("resize", fit);
+    };
+  }, []);
   useEffect(() => {
     // เลื่อนเฉพาะในกล่องเมนู ไม่ใช้ scrollIntoView เพราะจะพาทั้งหน้าเลื่อนตามไปด้วย
     const nav = navRef.current;
@@ -282,7 +320,30 @@ export function AdminSidebar() {
           </ul>
         </div>
       ))}
+      <GuideLink />
     </nav>
+  );
+}
+
+/** ลิงก์ไปคู่มือใช้งาน (/guide) — ไม่ใช่เมนูที่ต้องให้สิทธิ์ ทุกคนในร้านเห็น */
+function GuideLink({ onClick }: { onClick?: () => void }) {
+  const { config } = useConfig();
+  // ร้านปิด "ลิงก์คู่มือการใช้งาน" ในตั้งค่า › เปิด/ปิดฟีเจอร์
+  if (!isFeatureOn(config, "guide")) return null;
+  return (
+    <Link
+      href="/guide"
+      onClick={onClick}
+      className="mt-2 flex items-center gap-3 rounded-petflow-sm bg-honey/25 px-3 py-2.5 text-sm font-bold text-petflow-chocolate"
+    >
+      <span aria-hidden className="text-lg">
+        📖
+      </span>
+      <span className="min-w-0 flex-1 leading-tight">
+        วิธีใช้งาน
+        <span className="block text-[11px] font-normal text-brown-soft">สอนทีละขั้น พร้อมภาพหน้าจอ</span>
+      </span>
+    </Link>
   );
 }
 

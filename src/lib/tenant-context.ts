@@ -1,7 +1,9 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { NextRequest } from "next/server";
 import { getBootstrapTenantId } from "./auth";
-import { resolveTenantId } from "./tenant-resolve";
+import { mainShopTenantId, resolveTenantId } from "./tenant-resolve";
+import { isTenantOpen, tenantGateById } from "./tenant-billing";
+import { setCurrentTenantReader } from "./supabase/server";
 
 /**
  * ตัวร้านที่กำลังประมวลผลอยู่ตอนนี้ — เซ็ตครั้งเดียวตอนเข้า API route
@@ -11,27 +13,62 @@ import { resolveTenantId } from "./tenant-resolve";
  * ที่ต้องกรองด้วย tenant_id โดยไม่ผ่านทั้งสองนี้ก่อน ไม่งั้นข้อมูลข้ามร้านได้
  */
 const storage = new AsyncLocalStorage<string>();
+// ให้ getSupabase() รู้ว่ากำลังทำงานให้ร้านไหน แล้วเลือกฐานของร้านนั้น (ถ้าแยกฐานไว้)
+setCurrentTenantReader(() => storage.getStore());
 
 /**
  * เรียกจาก store function เพื่อเอา tenant_id ปัจจุบันไปกรอง query
  *
- * ถ้า route ที่เรียกมายังไม่ได้ wrap ด้วย withTenant()/withBootstrapTenant()
- * (ยังมีอีกหลายไฟล์ที่ทยอยแปลงอยู่ — ดู T3) จะ fallback ไปใช้ร้าน bootstrap
- * แทนการพัง — ปลอดภัยตอนนี้เพราะมีร้านเดียว แต่ต้องรัดให้ throw แทนทันทีที่ทุก
- * route ห่อ context ครบแล้ว ไม่งั้นบั๊กจะเงียบเมื่อมีร้านที่ 2
+ * ต้องอยู่ใน withTenant()/withResolvedTenant()/withBootstrapTenant() เสมอ — ถ้าไม่อยู่ให้ throw
+ * เดิม fallback ไปร้าน bootstrap (env TENANT_ID) แบบเงียบ ๆ ซึ่งพอมีร้านที่ 2 จะกลายเป็น
+ * "เจ้าของร้าน B เห็นข้อมูลร้าน A" โดยไม่มีใครรู้ — พังดัง ๆ ปลอดภัยกว่าข้อมูลปนกันเงียบ ๆ
  */
 export function requireTenantId(): string {
-  const id = storage.getStore() || getBootstrapTenantId();
+  const id = storage.getStore();
   if (!id) {
     throw new Error(
-      "ไม่มี tenant context และไม่มี TENANT_ID — ตั้งค่า TENANT_ID ใน env หรือ wrap route ด้วย withTenant()"
+      "ไม่มี tenant context — wrap route ด้วย withTenant()/withResolvedTenant() ก่อนเรียก store"
     );
   }
   return id;
 }
 
-/** ใช้ใน API route หลังบ้านที่ล็อกอินแล้ว (มี session.tenantId) */
-export function withTenant<T>(tenantId: string, fn: () => Promise<T>): Promise<T> {
+/**
+ * ร้านที่กำลังประมวลผลคือร้าน bootstrap (env TENANT_ID) ไหม
+ * ค่าที่ตั้งใน env (LINE/Telegram/Google/บัญชีธนาคาร) เป็นของร้านนี้ร้านเดียว —
+ * ร้านอื่นต้องใช้ค่าที่ตั้งเองในหลังบ้าน ห้ามยืมของร้าน bootstrap
+ */
+export function isBootstrapTenant(): boolean {
+  const id = storage.getStore();
+  const bootstrap = getBootstrapTenantId();
+  return !!id && !!bootstrap && id === bootstrap;
+}
+
+/**
+ * ร้านที่เป็นเจ้าของค่าใน env (LINE/Telegram/Google/บัญชีธนาคาร) — ร้าน PetFlow ร้านเดียว (ดู mainShopTenantId)
+ * ห้ามรวม TENANT_ID: ตอนนี้ TENANT_ID เป็นร้าน Back Home — ถ้ารวมไว้ Back Home จะได้ LINE/บัญชีของ PetFlow
+ */
+export async function isEnvOwnerTenant(): Promise<boolean> {
+  const id = storage.getStore();
+  if (!id) return false;
+  return id === (await mainShopTenantId());
+}
+
+/**
+ * ใช้ใน API route หลังบ้านที่ล็อกอินแล้ว (มี session.tenantId)
+ * ร้านที่ถูกระงับ/เลยวันครบกำหนดจ่าย ใช้หลังบ้านต่อไม่ได้ แม้ session ยังไม่หมดอายุ
+ * ร้านที่ไม่มีแถวใน tenants (ร้าน bootstrap เดิม) หรืออ่านสถานะไม่ได้ = ปล่อยผ่าน
+ */
+export async function withTenant<T>(tenantId: string, fn: () => Promise<T>): Promise<T> {
+  const gate = await tenantGateById(tenantId).catch(() => null);
+  if (gate && !isTenantOpen(gate)) {
+    throw new Error("ร้านนี้ถูกระงับการใช้งาน (เลยวันครบกำหนดชำระ หรือถูกปิดโดยผู้ดูแลระบบ)");
+  }
+  return storage.run(tenantId, fn);
+}
+
+/** เหมือน withTenant แต่ไม่ตรวจว่าร้านเปิดอยู่ — ใช้กับหน้า "ค่าบริการ" ที่ร้านค้างจ่ายต้องเข้าได้ */
+export function withTenantEvenIfClosed<T>(tenantId: string, fn: () => Promise<T>): Promise<T> {
   return storage.run(tenantId, fn);
 }
 
@@ -40,8 +77,9 @@ export function withTenant<T>(tenantId: string, fn: () => Promise<T>): Promise<T
  * ตอนนี้มีร้านเดียว (CatCha) จึงอ่านจาก env TENANT_ID ได้เลย
  * พอมีหลายร้านจริง ต้องเปลี่ยนไป resolve จาก LIFF ID/domain แทน (ดู T5)
  */
-export function withBootstrapTenant<T>(fn: () => Promise<T>): Promise<T> {
-  const tenantId = getBootstrapTenantId();
+export async function withBootstrapTenant<T>(fn: () => Promise<T>): Promise<T> {
+  // หน้าเว็บโฆษณา/บทความเขียนไว้ของ PetFlow — ใช้ร้าน PetFlow ไม่ใช่ TENANT_ID (ซึ่งเป็น Back Home แล้ว)
+  const tenantId = await mainShopTenantId();
   if (!tenantId) {
     throw new Error("ยังไม่ได้ตั้งค่า TENANT_ID — ดูขั้นตอนใน SETUP_NEW_SHOP.md");
   }

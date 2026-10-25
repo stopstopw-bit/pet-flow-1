@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { parseTaxInvoiceBody } from "@/lib/tax-invoice";
 import {
   listCustomersWithAppointmentCounts,
   searchCustomers,
@@ -16,6 +17,7 @@ import {
   listTrashedCustomers,
   topupMemberCredit,
   cancelMemberTopup,
+  findCancelCreditTopup,
   deleteServiceRecord,
   upsertCustomerFromBooking,
   recalculateCustomerTier,
@@ -23,12 +25,19 @@ import {
   adoptLineFromBookings,
   unlinkCustomerLine,
   getOrCreateWalkInCustomer,
+  addCatVaccinePhotos,
+  setCatVaccinePhotos,
+  syncCustomerDocsFromBookings,
+  normalizeSpecies,
 } from "@/lib/customers-store";
+import { splitVaccinePhotos } from "@/lib/vaccine-photos";
+import { parseCatInput, type CatInput } from "@/lib/cat-input";
 import type { CustomerTier } from "@/lib/customer-tier";
 import { getAllPointsMap } from "@/lib/points-store";
 import {
   customerActivityInfo,
   listInactiveCustomers,
+  previewCustomerFollowUp,
   sendCustomerFollowUp,
   sendInactiveFollowUps,
 } from "@/lib/customer-crm";
@@ -36,6 +45,8 @@ import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { withTenant } from "@/lib/tenant-context";
 import { pushLineMessage, buildMemberBalanceFlex } from "@/lib/line";
 import { getSiteConfig } from "@/lib/config-store";
+import { isFeatureOn } from "@/lib/features";
+import { customerServiceLog } from "@/lib/customer-service-log";
 
 async function requireTenant(req: NextRequest) {
   const session = await verifySession(req.cookies.get(SESSION_COOKIE)?.value);
@@ -67,9 +78,15 @@ async function handleGet(req: NextRequest) {
   }
 
   if (id) {
+    // สมุดวัคซีน/ข้อตกลงที่ลูกค้าส่งผ่านนัด (ข้อมูลก่อนมีการยกอัตโนมัติ) → ยกขึ้นตัวน้อง/ลูกค้าก่อนโชว์
+    await syncCustomerDocsFromBookings(id).catch(() => false);
     const activity = await customerActivityInfo(id);
     if (!activity) return NextResponse.json({ error: "not found" }, { status: 404 });
-    return NextResponse.json(activity);
+    const serviceLog = await customerServiceLog(
+      id,
+      activity.history.pastBookings.map((b) => b.id)
+    );
+    return NextResponse.json({ ...activity, serviceLog });
   }
 
   if (q) {
@@ -107,21 +124,57 @@ export async function POST(req: NextRequest) {
 
 async function handlePost(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
-  const catName = String(body.catName || "").trim();
+  // ฟอร์ม "เพิ่มลูกค้าเอง" ส่งน้องมาเป็นรายการ (หลายตัว + รายละเอียดเหมือนตอนสมัคร) · ที่อื่นยังส่ง catName ตัวเดียว
+  const cats: CatInput[] = Array.isArray(body.cats)
+    ? body.cats.map(parseCatInput).filter((c: CatInput) => c.name)
+    : [];
+  const catName = cats[0]?.name || String(body.catName || "").trim();
   const customerName = String(body.customerName || "").trim();
   if (!customerName || !catName) {
     return NextResponse.json(
-      { error: "กรอกชื่อลูกค้าและชื่อน้องแมว" },
+      { error: "กรอกชื่อลูกค้าและชื่อน้อง" },
       { status: 400 }
     );
   }
-  const customer = await upsertCustomerFromBooking({
+  // สมัครในนามนิติบุคคล / ขอใบกำกับภาษี — ตรวจก่อนสร้างลูกค้า จะได้ไม่ค้างครึ่ง ๆ
+  const taxInvoice = parseTaxInvoiceBody(body.taxInvoice ?? undefined);
+  if (taxInvoice.error) return NextResponse.json({ error: taxInvoice.error }, { status: 400 });
+  let customer = await upsertCustomerFromBooking({
     customerName,
     catName,
     lineUserId: body.lineUserId,
     phone: body.phone,
-    staffNote: body.staffNote,
+    staffNote: cats.length ? undefined : body.staffNote,
   });
+  // ข้อมูลเสริมตอนร้านเพิ่มลูกค้าเอง — ใส่เฉพาะช่องที่กรอกมา
+  const extra: Parameters<typeof updateCustomer>[1] = {};
+  for (const k of [
+    "email",
+    "birthday",
+    "referralSource",
+    "address",
+    "addressMapUrl",
+    "postalCode",
+  ] as const) {
+    const v = typeof body[k] === "string" ? body[k].trim() : "";
+    if (v) extra[k] = v;
+  }
+  if (taxInvoice.value) extra.taxInvoice = taxInvoice.value;
+  if (Object.keys(extra).length > 0) {
+    customer = (await updateCustomer(customer.id, extra)) ?? customer;
+  }
+  // รายละเอียดน้อง — ตัวแรกถูกสร้างไว้แล้ว (หรือเป็นตัวเดิมของลูกค้าคนนี้) ก็เติมรายละเอียดให้ ตัวอื่นเพิ่มใหม่
+  for (const cat of cats) {
+    const found = customer.cats.find((x) => x.name.trim() === cat.name);
+    // ช่องที่เว้นว่างไม่ส่งต่อ — ไม่งั้นจะไปลบรายละเอียดเดิมของน้องตัวที่มีอยู่แล้ว
+    const filled = Object.fromEntries(
+      Object.entries(cat).filter(([, v]) => v !== undefined)
+    ) as CatInput;
+    const updated = found
+      ? await updateCat(customer.id, found.id, filled)
+      : await addCat(customer.id, filled);
+    if (updated) customer = updated;
+  }
   return NextResponse.json({ ok: true, customer });
 }
 
@@ -149,15 +202,49 @@ async function handlePatch(req: NextRequest) {
   }
 
   if (action === "update_customer") {
-    const c = await updateCustomer(id, body.patch);
+    const patch = { ...(body.patch || {}) };
+    if ("taxInvoice" in patch) {
+      const t = parseTaxInvoiceBody(patch.taxInvoice);
+      if (t.error) return NextResponse.json({ error: t.error }, { status: 400 });
+      patch.taxInvoice = t.value;
+    }
+    const c = await updateCustomer(id, patch);
     if (!c) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json({ ok: true, customer: c });
   }
 
   if (action === "update_cat") {
-    const c = await updateCat(id, body.catId, body.patch);
+    const catPatch = { ...(body.patch || {}) };
+    if ("species" in catPatch) {
+      const sp = normalizeSpecies(catPatch.species);
+      if (sp) catPatch.species = sp;
+      else delete catPatch.species;
+    }
+    const c = await updateCat(id, body.catId, catPatch);
     if (!c) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json({ ok: true, customer: c });
+  }
+
+  // พนักงานแนบ / ลบรูปสมุดวัคซีนที่ตัวน้องเอง (ไม่ต้องมีนัด)
+  if (action === "add_cat_vaccine") {
+    const photos: string[] = Array.isArray(body.photos) ? body.photos.map((v: unknown) => String(v || "")) : [];
+    const res = await addCatVaccinePhotos(id, String(body.catId || ""), photos);
+    if (!res.ok) {
+      return NextResponse.json(
+        { error: res.error === "no_photo" ? "ไม่พบรูปที่แนบ" : res.error === "not_found" ? "not found" : "บันทึกไม่สำเร็จ" },
+        { status: res.error === "need_sql" ? 500 : 400 }
+      );
+    }
+    return NextResponse.json({ ok: true });
+  }
+  if (action === "remove_cat_vaccine") {
+    const c = await getCustomer(id);
+    const cat = c?.cats.find((x) => x.id === body.catId);
+    if (!c || !cat) return NextResponse.json({ error: "not found" }, { status: 404 });
+    const urls = splitVaccinePhotos(cat.vaccinePhotos).filter((u) => u !== String(body.url || ""));
+    const res = await setCatVaccinePhotos(id, cat.id, urls);
+    if (!res.ok) return NextResponse.json({ error: "บันทึกไม่สำเร็จ" }, { status: 500 });
+    return NextResponse.json({ ok: true });
   }
 
   if (action === "update_cat_private_note") {
@@ -188,15 +275,19 @@ async function handlePatch(req: NextRequest) {
     try {
       const c = await addCat(id, {
         name: String(body.name || ""),
+        neutered: typeof body.neutered === "boolean" ? body.neutered : undefined,
+        seizureHistory: body.seizureHistory ? String(body.seizureHistory) : undefined,
+        allergy: body.allergy ? String(body.allergy) : undefined,
         staffNote: body.staffNote ? String(body.staffNote) : undefined,
+        species: normalizeSpecies(body.species),
       });
       if (!c) {
-        return NextResponse.json({ error: "กรอกชื่อน้องแมว" }, { status: 400 });
+        return NextResponse.json({ error: "กรอกชื่อน้อง" }, { status: 400 });
       }
       return NextResponse.json({ ok: true, customer: c });
     } catch (e) {
       return NextResponse.json(
-        { error: e instanceof Error ? e.message : "เพิ่มแมวไม่สำเร็จ" },
+        { error: e instanceof Error ? e.message : "เพิ่มน้องไม่สำเร็จ" },
         { status: 500 }
       );
     }
@@ -216,7 +307,7 @@ async function handlePatch(req: NextRequest) {
     try {
       const c = await deleteCat(id, String(body.catId || ""));
       if (!c) {
-        return NextResponse.json({ error: "ไม่พบน้องแมว" }, { status: 404 });
+        return NextResponse.json({ error: "ไม่พบข้อมูลน้อง" }, { status: 404 });
       }
       return NextResponse.json({ ok: true, customer: c });
     } catch (e) {
@@ -286,16 +377,46 @@ async function handlePatch(req: NextRequest) {
   }
 
   if (action === "topup_member") {
+    // ร้านปิดเครดิต Member ในตั้งค่า › เปิด/ปิดฟีเจอร์ — เติมใหม่ไม่ได้
+    if (!isFeatureOn(await getSiteConfig(), "memberCredit")) {
+      return NextResponse.json({ error: "feature_disabled", feature: "memberCredit" }, { status: 403 });
+    }
     const paidAmount =
       body.paidAmount != null
         ? Number(body.paidAmount)
         : Number(body.amount) || 0;
-    const bonusAmount = Number(body.bonusAmount) || 0;
+    const isCancelCredit = Boolean(body.isCancelCredit);
+    const bonusAmount = isCancelCredit ? 0 : Number(body.bonusAmount) || 0;
+    const sourceInvoiceId = isCancelCredit ? String(body.sourceInvoiceId || "").trim() : "";
+
+    // 🔁 ระบุเลขบิลมา → ต้องเป็นบิลของลูกค้าคนนี้ที่จ่ายแล้ว และยังไม่เคยแปลงเป็นเครดิต
+    // (กันกรอกเลขบิลผิด / แปลงบิลเดียวซ้ำสองรอบ)
+    if (sourceInvoiceId) {
+      const { getInvoice } = await import("@/lib/invoices-store");
+      const src = await getInvoice(sourceInvoiceId);
+      if (!src || src.customerId !== id) {
+        return NextResponse.json({ error: "ไม่พบบิลนี้ของลูกค้าคนนี้" }, { status: 400 });
+      }
+      if (src.status !== "paid") {
+        return NextResponse.json({ error: "บิลนี้ยังไม่ได้ชำระ" }, { status: 400 });
+      }
+      if (await findCancelCreditTopup(sourceInvoiceId)) {
+        return NextResponse.json({ error: "บิลนี้เก็บเป็นเครดิตไปแล้ว" }, { status: 400 });
+      }
+    }
+
     const result = await topupMemberCredit(id, {
       paidAmount,
       bonusAmount,
-      note: body.note,
+      note:
+        isCancelCredit && sourceInvoiceId
+          ? [`ยกเลิกนัด · บิล ${sourceInvoiceId}`, String(body.note || "").trim()]
+              .filter(Boolean)
+              .join(" · ")
+          : body.note,
       isLegacy: Boolean(body.isLegacy),
+      isCancelCredit,
+      sourceInvoiceId: sourceInvoiceId || undefined,
     });
     if (!result) {
       return NextResponse.json({ error: "invalid_topup" }, { status: 400 });
@@ -373,6 +494,14 @@ async function handlePatch(req: NextRequest) {
   }
 
   if (action === "send_follow_up") {
+    // ดูตัวอย่างการ์ดก่อนส่งจริง — ยังไม่ส่ง ไม่นับ cooldown
+    if (body.preview === true) {
+      const preview = await previewCustomerFollowUp(id, {
+        message: body.message ? String(body.message) : undefined,
+      });
+      if (!preview.ok) return NextResponse.json({ error: preview.error }, { status: 400 });
+      return NextResponse.json({ ok: true, preview: preview.messages });
+    }
     const result = await sendCustomerFollowUp(id, {
       message: body.message ? String(body.message) : undefined,
       force: Boolean(body.force),

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionFrom } from "@/lib/auth";
 import { withTenant } from "@/lib/tenant-context";
 import { getSiteConfig } from "@/lib/config-store";
+import { isFeatureOn } from "@/lib/features";
 import { pushLineMessage } from "@/lib/line";
 import { getCustomer } from "@/lib/customers-store";
 import { issueCoupon, listCustomerCoupons } from "@/lib/coupons-store";
@@ -26,7 +27,8 @@ async function resolveBirthdayCoupon(
 ) {
   const auto = cfg.automation;
   const amount = Math.round(auto?.birthdayCouponAmount ?? 100);
-  if (auto?.birthdayCouponEnabled === false || amount <= 0) {
+  // ร้านปิดคูปองในตั้งค่า › เปิด/ปิดฟีเจอร์ = ส่งแค่คำอวยพร ไม่แจกคูปอง
+  if (auto?.birthdayCouponEnabled === false || amount <= 0 || !isFeatureOn(cfg, "coupons")) {
     return { willIssue: false, amount, line: "" };
   }
   const mine = await listCustomerCoupons(customerId);

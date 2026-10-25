@@ -214,11 +214,14 @@ alter table customers add column if not exists marketing_consent boolean not nul
 alter table customers add column if not exists referral_source text;
 alter table customers add column if not exists tier text not null default 'new';
 alter table customers add column if not exists last_follow_up_at timestamptz;
+alter table customers add column if not exists tax_invoice jsonb;
 
 alter table cats add column if not exists gender text;
 alter table cats add column if not exists breed text;
 alter table cats add column if not exists age text;
 alter table cats add column if not exists age_value integer;
+alter table cats add column if not exists weight_kg numeric;
+alter table cats add column if not exists species text;
 alter table cats add column if not exists age_unit text;
 alter table cats add column if not exists age_as_of date;
 alter table cats add column if not exists birthday date;

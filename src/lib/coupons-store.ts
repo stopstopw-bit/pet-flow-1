@@ -231,6 +231,7 @@ export async function findCouponByInvoice(invoiceId: string): Promise<Coupon | u
       .from("coupons")
       .select("*")
       .eq("used_invoice_id", invoiceId)
+      .eq("tenant_id", requireTenantId())
       .maybeSingle();
     return data ? rowToCoupon(data as CouponRow) : undefined;
   }

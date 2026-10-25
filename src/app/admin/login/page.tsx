@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Logo } from "@/components/Logo";
+import { useConfig } from "@/components/ConfigProvider";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -12,6 +13,14 @@ export default function AdminLoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const { config } = useConfig();
+  // เปิดมาจากลิงก์ร้าน /s/<slug>/admin/login → ล็อกอินได้แค่บัญชีของร้านนั้น
+  const [shop, setShop] = useState("");
+  useEffect(() => {
+    const m = window.location.pathname.match(/^\/s\/([a-z0-9-]+)\//i);
+    if (m) setShop(m[1].toLowerCase());
+  }, []);
+  const home = shop ? `/s/${shop}/admin` : "/admin";
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,7 +32,7 @@ export default function AdminLoginPage() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, shop }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.ok) {
@@ -33,10 +42,10 @@ export default function AdminLoginPage() {
         const next = params.get("next");
         if (data.role === "staff") {
           sessionStorage.setItem("petflow-menus", JSON.stringify(data.menus || []));
-          router.push(next || (data.menus || [])[0] || "/admin");
+          router.push(next || (data.menus || [])[0] || home);
         } else {
           sessionStorage.removeItem("petflow-menus");
-          router.push(next || "/admin");
+          router.push(next || home);
         }
       } else {
         setErr(data.error || "username หรือ password ไม่ถูกต้อง");
@@ -57,9 +66,14 @@ export default function AdminLoginPage() {
         <div className="mb-6 flex flex-col items-center text-center">
           <Logo size={64} />
           <h1 className="mt-4 text-lg font-extrabold text-petflow-chocolate">
-            PetFlow Admin
+            {config.business?.name || ""}
           </h1>
           <p className="mt-1 text-xs text-brown-soft">เข้าสู่ระบบเจ้าของ / พนักงาน</p>
+          {shop && (
+            <p className="mt-2 rounded-full bg-paper px-3 py-1 text-xs font-bold text-petflow-chocolate">
+              ร้าน: {shop}
+            </p>
+          )}
         </div>
 
         <label className="mb-2 block text-xs font-bold text-brown-soft">Username</label>

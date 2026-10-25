@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSiteConfig, updateSiteConfig, replaceSiteConfig } from "@/lib/config-store";
 import { getSessionFrom } from "@/lib/auth";
 import { withResolvedTenant, withTenant } from "@/lib/tenant-context";
+import { tenantIdForSlug } from "@/lib/tenant-resolve";
 
 export const dynamic = "force-dynamic";
 
@@ -12,9 +13,29 @@ export const dynamic = "force-dynamic";
  * แล้วกระทบร้านอื่นด้วย — bug นี้ร้ายแรงสุดในบรรดาที่เจอ เพราะกระทบ config ทั้งก้อน
  */
 export async function GET(req: NextRequest) {
+  // หน้าเว็บอยู่ร้านไหน (/s/<slug>/...) ต้องได้โลโก้/ชื่อ/สีของร้านนั้นเสมอ — เดิมเอาร้านใน session
+  // มาก่อน พอล็อกอินร้าน A ค้างไว้แล้วเปิดหน้าร้าน B ก็เห็นหน้าตาร้าน A (ดูเหมือนแก้ร้านหนึ่งแล้วร้านอื่นเปลี่ยนตาม)
+  const pageShop = req.nextUrl.searchParams.get("shop")?.trim().toLowerCase() || shopFromReferer(req);
+  if (pageShop) {
+    const id = await tenantIdForSlug(pageShop);
+    if (!id) return NextResponse.json({ error: "shop not found" }, { status: 404 });
+    return withTenant(id, handleGet);
+  }
   const session = await getSessionFrom(req);
   if (session) return withTenant(session.tenantId, handleGet);
   return withResolvedTenant(req, handleGet);
+}
+
+/** slug ร้านจากหน้าที่เรียก API นี้ (Referer /s/<slug>/...) */
+function shopFromReferer(req: NextRequest): string | null {
+  const ref = req.headers.get("referer");
+  if (!ref) return null;
+  try {
+    const m = new URL(ref).pathname.match(/^\/s\/([a-z0-9-]+)(?:\/|$)/i);
+    return m ? m[1].toLowerCase() : null;
+  } catch {
+    return null;
+  }
 }
 
 async function handleGet() {

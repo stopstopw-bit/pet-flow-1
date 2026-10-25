@@ -1,9 +1,14 @@
+import { GROOM_EXTRA_CARDS, groomUsesCard } from "@/lib/intake-rules";
 import { NextRequest, NextResponse } from "next/server";
+import { petWords } from "@/lib/pet-kind";
+import { isDayCareStay } from "@/lib/day-care";
 import {
   createCalendarEvent,
   updateCalendarEventConfirmed,
   updateCalendarEvent,
   deleteCalendarEvent,
+  bookingCalendarPayload,
+  transportCalendarText,
 } from "@/lib/calendar";
 import {
   addBooking,
@@ -13,15 +18,18 @@ import {
   toBooking,
   updateBooking,
   deleteBooking,
+  addBookingVaccinePhotos,
+  setBookingVaccinePhotos,
   type StoredBooking,
 } from "@/lib/bookings-store";
+import { splitVaccinePhotos } from "@/lib/vaccine-photos";
 import { AUTO_MESSAGE_TOPICS } from "@/lib/auto-messages";
 import { rescheduleGroup, type DatePatch } from "@/lib/stay-sync";
 import { bookingMatchesCustomer } from "@/lib/booking-customer-match";
 import { groomProgram, resolveGroomPrograms } from "@/lib/grooming-prices";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { withResolvedTenant, withTenant } from "@/lib/tenant-context";
-import { requireCustomerSession } from "@/lib/customer-session";
+import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 import { listCustomers, resolveCustomerForBooking } from "@/lib/customers-store";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import {
@@ -37,8 +45,11 @@ import {
   buildReceiptFlex,
   buildReadyForPickupFlex,
   buildDepositThanksFlex,
+  buildDocRequestFlex,
+  mergeIntakeCards,
   politeName,
   politeCat,
+  type IntakeEntry,
 } from "@/lib/line";
 import { buildBookingConfirmFlex } from "@/lib/booking-line-card";
 import {
@@ -46,15 +57,20 @@ import {
   recalculateCustomerTier,
   adjustDepositCredit,
   getCatGroomInfo,
+  getCatStayInfo,
   getCustomer,
+  getIntakeStatus,
+  copyBookingDocsToCustomer,
 } from "@/lib/customers-store";
 import { getSiteConfig } from "@/lib/config-store";
-import { cleanTransport, hasTransport, transportLabel, type BookingTransport } from "@/lib/transport";
-import { DEFAULT_MESSAGES, renderTemplate } from "@/lib/messages";
-import { listInvoices, updateInvoice, invoiceCatNames, findOpenInvoiceForBooking } from "@/lib/invoices-store";
+import { getLineCredentials } from "@/lib/line-config";
+import { cardOn, CARD_FEATURE, featureLabel } from "@/lib/features";
+import { cleanTransport, hasTransport, transportLabel } from "@/lib/transport";
+import { DEFAULT_MESSAGES, consentDates, consentTextFor, renderTemplate } from "@/lib/messages";
+import { listInvoices, getInvoice, updateInvoice, invoiceCatNames, findOpenInvoiceForBooking } from "@/lib/invoices-store";
 import { getPaymentConfig } from "@/lib/payment-config";
 import {
-  buildDepositReminderText,
+  buildDepositReminderCard,
   buildPrestayFlexData,
   buildCheckinBodyText,
   buildCheckoutBodyText,
@@ -62,35 +78,12 @@ import {
   getBookingTimeUrl,
   getGroomInfoUrl,
   getConsentUrl,
+  getPetDocsUrl,
+  buildStayInfoBody,
   bookingScheduleText,
 } from "@/lib/booking-reminders";
 
 export const dynamic = "force-dynamic";
-
-/** บรรทัดรับ-ส่งในปฏิทิน — ให้คนขับเปิดแผนที่จากปฏิทินได้เลย */
-function transportCalendarText(t?: BookingTransport) {
-  if (!hasTransport(t)) return "";
-  return [
-    `\n🚗 ${transportLabel(t)}`,
-    t.address ? `จุดรับ-ส่ง: ${t.address}` : "",
-    t.mapUrl ? `แผนที่: ${t.mapUrl}` : "ยังไม่ได้ส่งแผนที่",
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
-function bookingCalendarPayload(b: StoredBooking) {
-  return {
-    summary: `${b.service === "room" ? "🏠" : "🛁"}${hasTransport(b.transport) ? "🚗" : ""} ${b.catName} (${b.customerName})`,
-    description: `${b.service === "room" ? "ห้องพัก" : "อาบน้ำ"} · ${b.notes || ""}${transportCalendarText(b.transport)}`,
-    start: b.date || b.checkin || "",
-    end: b.checkout || b.date || b.checkin || "",
-    time: b.time,
-    allDay: b.service === "room" && !b.time,
-    service: b.service === "room" ? ("room" as const) : ("groom" as const),
-    eventId: b.id,
-  };
-}
 
 /** หา LINE User ID ปลายทางของนัด (จากตัวนัด หรือจับคู่ลูกค้าในระบบ) */
 async function resolveRecipient(
@@ -138,10 +131,12 @@ export async function GET(req: NextRequest) {
   // แอปลูกค้า: ยึดตัวตนจากคุกกี้ที่ตรวจกับ LINE แล้ว ไม่ใช่ค่าที่ client ส่งมา
   // ไม่งั้นใครรู้ lineUserId ของคนอื่นก็ดึงนัดทั้งหมดของเขาได้
   return withResolvedTenant(req, async () => {
+    // ห้ามตกไปใช้ lineUserId ใน query — LINE ID ของคนเดียวกันซ้ำกันได้ทุกร้านที่อยู่ provider เดียวกัน
+    // พนักงานร้านหนึ่งเห็น LINE ID ลูกค้าในหลังบ้าน แล้วเอาไปดึงนัดของคนนั้นจากอีกร้านได้
     const customer = await requireCustomerSession(req);
-    const lineUserId = customer?.lineUserId || claimed;
+    const lineUserId = customer?.lineUserId;
     if (!lineUserId) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return noCustomerSessionResponse();
     }
     return handleGet(lineUserId);
   });
@@ -231,9 +226,11 @@ async function handlePost(req: NextRequest) {
     pickupTime: isRoom ? transport?.dropoffTime : undefined,
   });
 
+  const serviceLabel =
+    body.service === "room" ? (isDayCareStay(body) ? "Day Care" : "ห้องพัก") : "อาบน้ำ";
   const cal = await createCalendarEvent({
     summary: `${body.service === "room" ? "🏠" : "🛁"}${hasTransport(booking.transport) ? "🚗" : ""} ${body.catName} (${customer.name})`,
-    description: `${body.service === "room" ? "ห้องพัก" : "อาบน้ำ"} · ${body.notes || ""}${transportCalendarText(booking.transport)}`,
+    description: `${serviceLabel} · ${body.notes || ""}${transportCalendarText(booking.transport)}`,
     start: body.date || body.checkin,
     end: body.checkout || body.date || body.checkin,
     time: body.time,
@@ -250,8 +247,8 @@ async function handlePost(req: NextRequest) {
   await sendTelegram(
     formatBookingTelegram("📌 จองใหม่", {
       ลูกค้า: customer.name,
-      น้องแมว: body.catName,
-      บริการ: body.service === "room" ? "ห้องพัก" : "อาบน้ำ",
+      น้อง: body.catName,
+      บริการ: serviceLabel,
       ...(hasTransport(booking.transport) ? { รับส่ง: transportLabel(booking.transport) } : {}),
       วันที่: `${body.date || body.checkin}${body.time ? ` ${body.time}` : ""}`,
       ปฏิทิน: cal.googleUrl || icsUrl,
@@ -274,7 +271,11 @@ export async function PATCH(req: NextRequest) {
 
 async function handlePatch(req: NextRequest, admin: boolean) {
   const body = await req.json().catch(() => ({}));
-  const { id, action, lineUserId, checkinTime } = body;
+  const { id, action, checkinTime } = body;
+  // ลูกค้า (ไม่ได้ล็อกอินหลังบ้าน) ยืนยันตัวด้วยคุกกี้ที่ตรวจกับ LINE แล้วเท่านั้น ห้ามเชื่อ lineUserId ใน body
+  const lineUserId: string | undefined = admin
+    ? body.lineUserId
+    : (await requireCustomerSession(req))?.lineUserId;
   // ดูตัวอย่างการ์ดก่อนส่งจริง — ทำทุกอย่างเหมือนส่งจริงเป๊ะ (ข้อมูล/เงื่อนไขเดียวกัน)
   // แค่ข้ามขั้นตอน push เข้า LINE + การเขียนข้อมูลที่มีผลจริง (เช่น ผูกมัดจำ) เท่านั้น
   const preview = body.preview === true;
@@ -298,11 +299,24 @@ async function handlePatch(req: NextRequest, admin: boolean) {
     }
   }
 
+  // ร้านปิดการ์ดเรื่องนี้ในตั้งค่า › เปิด/ปิดฟีเจอร์ — กันที่ API ด้วย ไม่ใช่แค่ซ่อนปุ่ม
+  const singlePart = singleCardPart(action, body.kind, b);
+  if (singlePart && !cardOn(await getSiteConfig(), singlePart)) {
+    return NextResponse.json(
+      { error: `ร้านปิด "${featureLabel(CARD_FEATURE[singlePart])}" ไว้ในตั้งค่า › เปิด/ปิดฟีเจอร์` },
+      { status: 403 }
+    );
+  }
+
   let notifyError: string | undefined;
   if (action === "confirm") {
     // ต้องเช็คสถานะ "ก่อน" อัปเดต — กันส่งข้อความซ้ำถ้ากดยืนยันซ้ำ/ลูกค้ากดยืนยันหลังร้านยืนยันไปแล้ว
     const wasNotYetConfirmed = b.status !== "confirmed";
-    await updateBooking(id, { status: "confirmed", checkinTime });
+    // เวลาที่เลือกตอนกดยืนยัน = เวลามาส่งน้อง (ที่เดียวกับหน้าเลือกเวลา/หลังบ้าน/แจ้งเตือน)
+    await updateBooking(id, {
+      status: "confirmed",
+      ...(checkinTime ? { checkinTime, arrivalTime: checkinTime } : {}),
+    });
 
     // แจ้งลูกค้าทันทีว่าได้คิวแล้ว — คนละเรื่องกับการ์ดเตือนล่วงหน้าก่อนถึงวันจริง (send_reminder / cron)
     // ส่งเฉพาะตอน "ร้าน" เป็นคนยืนยัน — ลูกค้ากดตอบรับเองในแอปไม่ต้องส่งซ้ำ (เขาเพิ่งกดเองเห็นผลอยู่แล้ว
@@ -342,7 +356,7 @@ async function handlePatch(req: NextRequest, admin: boolean) {
     await sendTelegram(
       formatBookingTelegram("✅ ลูกค้ายืนยันแล้ว", {
         ลูกค้า: String(b.customerName),
-        น้องแมว: String(b.catName),
+        น้อง: String(b.catName),
         วันที่: String(b.date || b.checkin),
       })
     );
@@ -363,7 +377,11 @@ async function handlePatch(req: NextRequest, admin: boolean) {
       if (!bk) continue;
       // ยืนยันได้เฉพาะนัดของตัวเอง แม้จะมาในกลุ่มเดียวกัน — กันแอบยัด id ของคนอื่นปนมา
       if (!admin && !(!!lineUserId && bk.lineUserId === lineUserId)) continue;
-      await updateBooking(bk.id, { status: "confirmed", checkinTime });
+      await updateBooking(bk.id, {
+        status: "confirmed",
+        // เวลามาส่งน้องเป็นของการเข้าพัก — อาบน้ำก่อนกลับที่ยืนยันมาพร้อมกันไม่ต้องได้เวลานี้
+        ...(checkinTime && bk.service !== "groom" ? { checkinTime, arrivalTime: checkinTime } : {}),
+      });
       if (bk.calendarEventId) {
         await updateCalendarEventConfirmed(bk.calendarEventId, {
           summary: `${bk.service === "room" ? "🏠" : "🛁"} ${bk.catName} (${bk.customerName})`,
@@ -385,7 +403,7 @@ async function handlePatch(req: NextRequest, admin: boolean) {
     await sendTelegram(
       formatBookingTelegram("✅ ลูกค้ายืนยันแล้ว", {
         ลูกค้า: String(first.customerName),
-        น้องแมว: confirmed.map((x) => x!.catName).join(", "),
+        น้อง: confirmed.map((x) => x!.catName).join(", "),
         วันที่: String(first.date || first.checkin),
       })
     );
@@ -430,7 +448,7 @@ async function handlePatch(req: NextRequest, admin: boolean) {
         notes: b.notes,
         groomProgram: b.groomProgram,
         transport: b.transport,
-      });
+      }, group);
 
       if (preview) return NextResponse.json({ ok: true, preview: [flex] });
       await pushLineMessage(to, [flex]);
@@ -441,23 +459,85 @@ async function handlePatch(req: NextRequest, admin: boolean) {
     }
   }
 
+type InfoKind = "stay" | "groom";
+const defaultInfoKind = (b: StoredBooking): InfoKind => (b.service === "room" ? "stay" : "groom");
+/** ร้านเลือกเองได้ว่าจะถามแบบไหน (ทุกนัดส่งได้ทั้งสองแบบ) — ไม่ส่งมา = ตามบริการของนัด */
+const pickInfoKind = (raw: unknown, b: StoredBooking): InfoKind =>
+  raw === "stay" || raw === "groom" ? raw : defaultInfoKind(b);
+/** ปุ่มส่งการ์ดเดี่ยว → หัวข้อการ์ด (ใช้เช็คสวิตช์ฟีเจอร์) · null = ไม่ใช่การ์ดที่ปิดได้ */
+function singleCardPart(action: unknown, kind: unknown, b: StoredBooking): string | null {
+  switch (action) {
+    case "send_groom_info":
+    case "send_groom_info_group":
+      return pickInfoKind(kind, b) === "stay" ? "stayInfo" : "groomInfo";
+    case "send_vaccine_request":
+      return "vaccine";
+    case "send_idcard_request":
+      return "idcard";
+    case "send_consent":
+      return "consent";
+    case "send_prestay":
+      return "prestay";
+    case "send_checkin_reminder":
+      return "checkin";
+    case "send_checkout_reminder":
+      return "checkout";
+    default:
+      return null;
+  }
+}
+/** เคยกรอกฟอร์มแบบนี้ไว้แล้วหรือยัง (ผูกกับตัวน้อง ข้ามนัดก็ยังจำได้) */
+const infoAlreadyFilled = (to: string, catName: string, kind: InfoKind) =>
+  kind === "stay" ? getCatStayInfo(to, catName) : getCatGroomInfo(to, catName);
+
+/** นัดเข้าพักใช้การ์ดขอประวัติใบเดียวกัน — เปลี่ยนหัวการ์ด/วันที่ให้ตรงบริการ (หัวที่ร้านตั้งเองเป็นของการ์ดก่อนอาบน้ำ — นัดเข้าพักใช้หัวเข้าพักเสมอ) */
+function groomInfoCardFor(
+  b: StoredBooking,
+  cfg: Awaited<ReturnType<typeof getSiteConfig>>,
+  kind: InfoKind = defaultInfoKind(b)
+) {
+  const style = cfg.cards?.groomInfo;
+  if (kind === "groom") {
+    return {
+      body: buildGroomInfoBody,
+      style,
+      dateText: b.date
+        ? `${style?.texts?.datePrefix || "📅 นัดอาบน้ำ:"} ${b.date}${b.time ? ` ${b.time}` : ""}`
+        : undefined,
+    };
+  }
+  return {
+    body: buildStayInfoBody,
+    style: { ...style, texts: { ...style?.texts, header: "🐾 ข้อมูลน้องก่อนเข้าพัก" } },
+    dateText: bookingScheduleText(b),
+  };
+}
+
   // ── การ์ดสอบถามประวัติน้องก่อนอาบน้ำ (กดเอง) ──
   if (action === "send_groom_info") {
     const to = await resolveRecipient(b, lineUserId);
     if (!to) {
       return NextResponse.json({ error: NO_LINE_ERROR }, { status: 400 });
     }
+    // เคยกรอกประวัติแล้ว → ไม่ขอซ้ำเด็ดขาด (ประวัติผูกกับตัวแมว ข้ามนัดก็ยังจำได้)
+    const kind = pickInfoKind(body.kind, b);
+    if (await infoAlreadyFilled(to, String(b.catName), kind)) {
+      return NextResponse.json(
+        { error: `${b.catName} เคยกรอกประวัติแล้ว ไม่ขอซ้ำค่ะ` },
+        { status: 400 }
+      );
+    }
     const cfg = await getSiteConfig();
-    const url = await getGroomInfoUrl(b.id);
+    const url = await getGroomInfoUrl(b.id, kind);
+    const card = groomInfoCardFor(b, cfg, kind);
     const flex = buildGroomInfoFlex({
       catName: String(b.catName),
-      dateText: b.date
-        ? `${cfg.cards?.groomInfo?.texts?.datePrefix || "📅 นัดอาบน้ำ:"} ${b.date}${b.time ? ` ${b.time}` : ""}`
-        : undefined,
-      body: buildGroomInfoBody(b, cfg),
+      petEmoji: petWords(cfg).emoji,
+      dateText: card.dateText,
+      body: card.body(b, cfg),
       url: url || undefined,
       label: cfg.cards?.groomInfo?.texts?.button || "🩺 แจ้งประวัติน้อง",
-    }, cfg.cards?.groomInfo);
+    }, card.style);
     try {
       if (preview) return NextResponse.json({ ok: true, preview: [flex] });
       await pushLineMessage(to, [flex]);
@@ -475,21 +555,33 @@ async function handlePatch(req: NextRequest, admin: boolean) {
     if (!to) {
       return NextResponse.json({ error: NO_LINE_ERROR }, { status: 400 });
     }
-    const bookings = (
+    const found = (
       await Promise.all(ids.map((x: string) => getBooking(x)))
     ).filter((x): x is StoredBooking => !!x);
-    if (bookings.length === 0) {
+    if (found.length === 0) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }
+    // ตัวที่เคยกรอกประวัติแล้ว → ตัดออก ไม่ขอซ้ำเด็ดขาด
+    const kind = pickInfoKind(body.kind, b);
+    const bookings: StoredBooking[] = [];
+    for (const x of found) {
+      if (!(await infoAlreadyFilled(to, String(x.catName), kind))) bookings.push(x);
+    }
+    if (bookings.length === 0) {
+      return NextResponse.json(
+        { error: "ทุกตัวเคยกรอกประวัติแล้ว ไม่ขอซ้ำค่ะ" },
+        { status: 400 }
+      );
+    }
     const cfg = await getSiteConfig();
-    const url = await getGroomInfoUrl(bookings.map((x) => x.id));
+    const url = await getGroomInfoUrl(bookings.map((x) => x.id), kind);
     const catNames = bookings.map((x) => x.catName).join(", ");
+    const card = groomInfoCardFor(b, cfg, kind);
     const flex = buildGroomInfoFlex({
       catName: catNames,
-      dateText: b.date
-        ? `${cfg.cards?.groomInfo?.texts?.datePrefix || "📅 นัดอาบน้ำ:"} ${b.date}${b.time ? ` ${b.time}` : ""}`
-        : undefined,
-      body: buildGroomInfoBody(
+      petEmoji: petWords(cfg).emoji,
+      dateText: card.dateText,
+      body: card.body(
         { catName: bookings.length > 1 ? `น้องๆ ${bookings.length} ตัว` : catNames },
         cfg
       ),
@@ -498,7 +590,7 @@ async function handlePatch(req: NextRequest, admin: boolean) {
         bookings.length > 1
           ? `${cfg.cards?.groomInfo?.texts?.button || "🩺 แจ้งประวัติน้อง"} (${bookings.length} ตัว)`
           : cfg.cards?.groomInfo?.texts?.button || "🩺 แจ้งประวัติน้อง",
-    }, cfg.cards?.groomInfo);
+    }, card.style);
     try {
       if (preview) return NextResponse.json({ ok: true, preview: [flex] });
       await pushLineMessage(to, [flex]);
@@ -507,6 +599,67 @@ async function handlePatch(req: NextRequest, admin: boolean) {
       const message = e instanceof Error ? e.message : String(e);
       return NextResponse.json({ error: message }, { status: 500 });
     }
+  }
+
+  // ── การ์ดขอสมุดวัคซีน / ขอบัตรประชาชน (กดเองจากการ์ดนัด) — ปุ่มเปิดหน้าแนบรูปของนัดนี้ ──
+  if (action === "send_vaccine_request" || action === "send_idcard_request") {
+    const to = await resolveRecipient(b, lineUserId);
+    if (!to) {
+      return NextResponse.json({ error: NO_LINE_ERROR }, { status: 400 });
+    }
+    const kind = action === "send_vaccine_request" ? "vaccine" : "idcard";
+    // จองทั้งบ้าน — ลิงก์เดียวแนบสมุดวัคซีนได้ครบทุกตัว (บัตรประชาชนผูกกับเจ้าของ ใช้นัดเดียวพอ)
+    const groupIds: string[] =
+      kind === "vaccine" && Array.isArray(body.ids) && body.ids.length > 0 ? body.ids.map(String) : [b.id];
+    const url = await getPetDocsUrl(groupIds, kind);
+    if (!url) {
+      return NextResponse.json(
+        { error: "ยังไม่ได้ตั้ง LIFF ID — ไป Admin → ติดตั้ง เพื่อตั้งค่าก่อน" },
+        { status: 400 }
+      );
+    }
+    const cfg = await getSiteConfig();
+    const gb = await resolveGroupBooking(b, body.ids);
+    const flex = buildDocRequestFlex({
+      kind,
+      businessName: cfg.business.name,
+      catName: String(gb.catName),
+      petEmoji: petWords(cfg).emoji,
+      dateText: bookingScheduleText(gb),
+      url,
+    }, cfg.cards?.docRequest);
+    try {
+      if (preview) return NextResponse.json({ ok: true, preview: [flex] });
+      await pushLineMessage(to, [flex]);
+      return NextResponse.json({ ok: true });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
+  }
+
+  // ── พนักงานแนบ / ลบรูปสมุดวัคซีนของน้องเองในหลังบ้าน (เฉพาะหลังบ้าน — ลูกค้าโดนกันไว้ด้านบนแล้ว) ──
+  if (action === "add_vaccine_photos") {
+    const photos: string[] = Array.isArray(body.photos)
+      ? body.photos.map((v: unknown) => String(v || ""))
+      : [];
+    const res = await addBookingVaccinePhotos(b.id, photos);
+    if (!res.ok) {
+      return NextResponse.json(
+        { error: res.error === "no_photo" ? "ไม่พบรูปที่แนบ" : "บันทึกไม่สำเร็จ" },
+        { status: res.error === "no_photo" ? 400 : 500 }
+      );
+    }
+    // เก็บที่ตัวน้องด้วย — หน้าข้อมูลลูกค้าขึ้น "ได้รับแล้ว" และรอบหน้าไม่ขอซ้ำ
+    await copyBookingDocsToCustomer(b, { newPhotos: res.addedUrls });
+    return NextResponse.json({ ok: true, vaccinePhotoUrl: res.urls.join("\n") });
+  }
+  if (action === "remove_vaccine_photo") {
+    const target = String(body.url || "");
+    const urls = splitVaccinePhotos(b.vaccinePhotoUrl).filter((u) => u !== target);
+    const res = await setBookingVaccinePhotos(b.id, urls);
+    if (!res.ok) return NextResponse.json({ error: "บันทึกไม่สำเร็จ" }, { status: 500 });
+    return NextResponse.json({ ok: true });
   }
 
   // ── การ์ดให้ลูกค้าเลือกเวลาส่ง/รับน้อง (กดเอง) ──
@@ -546,26 +699,91 @@ async function handlePatch(req: NextRequest, admin: boolean) {
 
   // ── 📦 ส่งชุดการ์ดที่เลือกเอง — หลายการ์ดใน push เดียว (LINE นับเป็น 1 ข้อความ) ──
   // parts: reminder | prestay | consent | groomInfo | checkin | checkout
-  //        | deposit(+depositAmount) | depositThanks | summary | payment
+  //        | vaccine | idcard | deposit(+depositAmount) | depositThanks | summary | payment
   //        | receipt (เฉพาะบิลที่จ่ายแล้ว) | review
-  if (action === "send_bundle") {
+  // ── 📋 การ์ดรวมขอข้อมูล — ใบเดียวหลายปุ่ม เฉพาะเรื่องที่บ้านนี้ยังขาด (ประวัติ/สมุดวัคซีน/บัตร/กฎ + มัดจำถ้าใส่ยอดมา) ──
+  // ใช้ทางเดียวกับชุดการ์ด แค่เลือกหัวข้อให้เองตามบริการ แล้วบังคับรวมเป็นใบเดียวแม้เหลือเรื่องเดียว
+  const intakeAlways = action === "send_intake";
+  /**
+   * เรื่องที่ร้านเลือกให้แยกเป็นการ์ดของตัวเอง (ที่เหลือรวมเป็นการ์ดใบเดียวปุ่มเดียว) —
+   * separateParts = รายชื่อเรื่อง · separate: true = แยกทุกเรื่อง
+   */
+  const separateKinds = new Set<string>(
+    !intakeAlways
+      ? []
+      : body.separate === true
+        ? ["stayInfo", "info", "vaccine", "idcard", "consent", "deposit"]
+        : (Array.isArray(body.separateParts) ? body.separateParts : [])
+            .map(String)
+            .map((x: string) => (x === "groomInfo" ? "info" : x))
+  );
+  if (intakeAlways) {
+    const room = b.service === "room";
+    const hasDeposit = Number(body.depositAmount) > 0;
+    // ร้านติ๊กเลือกเองว่าจะขออะไรบ้าง · ไม่ส่งมา = ทุกเรื่องตามบริการ (ระบบยังข้ามเรื่องที่ส่งแล้วให้)
+    const allowed = new Set(["stayInfo", "groomInfo", "vaccine", "idcard", "consent"]);
+    const raw: string[] = Array.isArray(body.parts) ? body.parts.map(String) : [];
+    const picked: string[] | null = Array.isArray(body.parts) ? raw.filter((x) => allowed.has(x)) : null;
+    // นัดอาบน้ำ: ประวัติ + เฉพาะการ์ดที่ร้านตั้งให้ขอในนัดอาบน้ำ (ตั้งค่า › ขอข้อมูลตามบริการ)
+    const groomCfg = room ? null : await getSiteConfig();
+    body.parts = [
+      ...(picked ??
+        (room
+          ? ["stayInfo", "vaccine", "idcard", "consent"]
+          : ["groomInfo", ...GROOM_EXTRA_CARDS.map((c) => c.key).filter((k) => groomUsesCard(groomCfg, k))])),
+      ...(hasDeposit ? ["deposit"] : []),
+      // แจ้งยอดชำระค่าบริการ (บิล) — การ์ดแยกของตัวเอง ส่งไปพร้อมกันในข้อความเดียว
+      ...(raw.includes("payment") ? ["payment"] : []),
+    ];
+  }
+  if (action === "send_bundle" || intakeAlways) {
     const to = await resolveRecipient(b, lineUserId);
     if (!to) {
       return NextResponse.json({ error: NO_LINE_ERROR }, { status: 400 });
     }
+    // เรื่องขอข้อมูลหลายเรื่องรวมเป็นการ์ดใบเดียว จึงเลือกได้เกิน 5 หัวข้อ — นับ 5 ใบที่ตัวการ์ดจริงตอนท้าย
+    const cfg = await getSiteConfig();
+    // ตัดการ์ดที่ร้านปิดในตั้งค่า › เปิด/ปิดฟีเจอร์ออก (การ์ดรวมขอข้อมูลก็ขอเฉพาะเรื่องที่เปิดอยู่)
     const parts: string[] = (Array.isArray(body.parts) ? body.parts : [])
       .map(String)
-      .slice(0, 5); // LINE จำกัด 5 การ์ดต่อ push
+      .filter((p: string) => cardOn(cfg, p))
+      .slice(0, 20);
     if (parts.length === 0) {
-      return NextResponse.json({ error: "เลือกอย่างน้อย 1 การ์ด" }, { status: 400 });
+      return NextResponse.json(
+        { error: intakeAlways ? "ร้านปิดการ์ดขอข้อมูลทุกเรื่องไว้ในตั้งค่า › เปิด/ปิดฟีเจอร์" : "เลือกอย่างน้อย 1 การ์ด" },
+        { status: 400 }
+      );
     }
-    const cfg = await getSiteConfig();
     const messages: object[] = [];
     /** การ์ดที่ระบบข้ามให้ พร้อมเหตุผล — ส่งกลับไปบอกพนักงานที่หน้าจอ */
     const skipped: string[] = [];
     // บ้านเดียวกัน จองพร้อมกันหลายตัว (ปฏิทินส่ง ids ของทั้งกลุ่มมา) — ใช้ booking จำลอง
     // ที่มีชื่อรวมทุกตัว แทน b เดิม ทุกการ์ดในชุดจะได้มีชื่อครบทุกตัวเหมือนกันหมด
     const gb = await resolveGroupBooking(b, body.ids);
+    const householdIds: string[] =
+      Array.isArray(body.ids) && body.ids.length > 0 ? body.ids.map(String) : [b.id];
+    const household = (
+      await Promise.all(householdIds.map((x) => (x === b.id ? Promise.resolve(b) : getBooking(x))))
+    ).filter((x): x is StoredBooking => !!x);
+    /** เรื่องขอข้อมูล (ประวัติ/สมุดวัคซีน/บัตร/กฎ/มัดจำ) — ตั้งแต่ 2 เรื่องรวมเป็นการ์ดใบเดียว แทรกตรงเรื่องแรก */
+    const intake: IntakeEntry[] = [];
+    let intakeAt = -1;
+    const addIntake = (e: IntakeEntry) => {
+      if (intakeAt < 0) intakeAt = messages.length;
+      intake.push(e);
+    };
+    // เปิดจากหน้าบิล ส่ง invoiceId มาด้วย — บิลที่ไม่ได้ผูก bookingId (ออกบิลเอง แล้วหน้าบิลจับคู่นัดจากชื่อลูกค้า+น้อง)
+    // หาด้วย bookingId ไม่เจอ ใบเสร็จ/ขอรีวิว/สรุปบิลเลยไม่ออกสักใบ → ใช้บิลที่ส่งมาก่อน ไม่งั้นค่อยหาจากนัดทั้งบ้าน
+    const pinnedInv = body.invoiceId ? await getInvoice(String(body.invoiceId)) : null;
+    const invoiceFor = async (prefer: "paid" | "open") => {
+      if (pinnedInv) return pinnedInv;
+      const all = await listInvoices();
+      const ids = new Set([b.id, ...household.map((x) => x.id)]);
+      const mine = all.filter((i) => !!i.bookingId && ids.has(i.bookingId));
+      const direct = mine.filter((i) => i.bookingId === b.id);
+      const want = (i: (typeof all)[number]) => (prefer === "paid" ? i.status === "paid" : i.status !== "paid");
+      return direct.find(want) || mine.find(want) || direct[0] || mine[0];
+    };
 
     for (const part of parts) {
       if (part === "reminder") {
@@ -583,25 +801,29 @@ async function handlePatch(req: NextRequest, admin: boolean) {
             notes: b.notes,
             groomProgram: b.groomProgram,
             transport: b.transport,
-          })
+          }, household)
         );
       } else if (part === "consent") {
+        // กดยอมรับนัดนี้ครบทุกตัวแล้ว → ไม่ขอซ้ำ (ทุกนัดใหม่ยังต้องกดใหม่)
+        if (household.every((x) => x.consentAcceptedAt)) {
+          skipped.push("กดยอมรับกฎของนัดนี้แล้ว ไม่ขอซ้ำ");
+          continue;
+        }
         const url = await getConsentUrl(b.id);
         if (url) {
-          messages.push(
-            buildConsentFlex({
+          addIntake({
+            kind: "consent",
+            url,
+            ids: [b.id],
+            card: buildConsentFlex({
               businessName: cfg.business.name,
-              title: cfg.messages.consentTitle || DEFAULT_MESSAGES.consentTitle,
+              ...consentTextFor(cfg.messages, b.service),
               catName: String(gb.catName),
-              checkin: gb.checkin || gb.date,
-              checkout: gb.checkout,
-              room: gb.room,
-              terms: cfg.messages.consentTerms?.length
-                ? cfg.messages.consentTerms
-                : DEFAULT_MESSAGES.consentTerms,
+              petEmoji: petWords(cfg).emoji,
+              ...consentDates(gb),
               url,
-            })
-          );
+            }, cfg.cards?.consent),
+          });
         }
       } else if (part === "prestay") {
         // ไม่แนบลิงก์เซ็น — ถ้าต้องการให้ติ๊ก "เงื่อนไข + ลายเซ็น" เพิ่มเอง
@@ -612,10 +834,9 @@ async function handlePatch(req: NextRequest, admin: boolean) {
           }, cfg.cards?.prestay)
         );
       } else if (part === "receipt" || part === "depositThanks") {
-        const all = await listInvoices();
-        const inv =
-          all.find((i) => i.bookingId === b.id && i.status === "paid") ||
-          all.find((i) => i.bookingId === b.id);
+        const inv = await invoiceFor("paid");
+        if (!inv) skipped.push("หาบิลของนัดนี้ไม่เจอ — ข้าม" + (part === "receipt" ? "ใบเสร็จ" : "การ์ดขอบคุณมัดจำ"));
+        else if (part === "receipt" && inv.status !== "paid") skipped.push("บิลยังไม่ปิด — ข้ามใบเสร็จ");
         if (inv && part === "receipt" && inv.status === "paid") {
           const paidByCredit = inv.paymentMethod === "member_credit";
           // เครดิตปัจจุบัน = ยอดหลังหักบิลนี้ไปแล้ว (บิลถูกปิดไปก่อนถึงจะส่งใบเสร็จได้)
@@ -658,10 +879,8 @@ async function handlePatch(req: NextRequest, admin: boolean) {
           );
         }
       } else if (part === "summary" || part === "review") {
-        const all = await listInvoices();
-        const inv =
-          all.find((i) => i.bookingId === b.id && i.status !== "paid") ||
-          all.find((i) => i.bookingId === b.id);
+        const inv = await invoiceFor("open");
+        if (!inv) skipped.push("หาบิลของนัดนี้ไม่เจอ — ข้าม" + (part === "review" ? "การ์ดขอรีวิว" : "สรุปการจอง"));
         if (inv && part === "summary") {
           const payment = await getPaymentConfig();
           messages.push(
@@ -703,9 +922,11 @@ async function handlePatch(req: NextRequest, admin: boolean) {
                 reviewLabel: cfg.business.reviewButtonText,
               }, cfg.cards?.review)
             );
-          }
+          } else skipped.push("ยังไม่ได้ใส่ลิงก์รีวิว/Google Maps ในตั้งค่าร้าน — ข้ามการ์ดขอรีวิว");
         }
-      } else if (part === "groomInfo") {
+      } else if (part === "groomInfo" || part === "stayInfo") {
+        // stayInfo = ฟอร์มข้อมูลก่อนเข้าพัก · groomInfo = ประวัติก่อนอาบน้ำ (ชุดเดียวกับหน้าข้อมูลลูกค้า)
+        const kind: InfoKind = part === "stayInfo" ? "stay" : "groom";
         // บ้านเดียวกันมาหลายตัว = ถามประวัติทั้งบ้านในการ์ดเดียว ลิงก์เดียว กรอกครบในหน้าเดียว
         // (เหมือนปุ่มส่งเดี่ยว "สอบถามประวัติ" ไม่ใช่ถามแค่ตัวที่กดมาจากแถวนั้น)
         const groupIds: string[] =
@@ -718,23 +939,26 @@ async function handlePatch(req: NextRequest, admin: boolean) {
           )
         ).filter((x): x is StoredBooking => !!x);
         // เคยกรอกประวัติไว้แล้ว → ไม่ถามซ้ำ (ประวัติผูกกับตัวแมว ข้ามนัดก็ยังจำได้)
-        // ถ้าอยากถามใหม่จริง ๆ ให้ใช้ปุ่มส่งเดี่ยว "ขอประวัติ" แทน
         const needInfo: StoredBooking[] = [];
         for (const g of groupBookings) {
-          const existing = to ? await getCatGroomInfo(to, String(g.catName)) : undefined;
+          const existing = to ? await infoAlreadyFilled(to, String(g.catName), kind) : undefined;
           if (existing) skipped.push(`${g.catName}: เคยกรอกประวัติแล้ว ไม่ขอซ้ำ`);
           else needInfo.push(g);
         }
         if (needInfo.length > 0) {
-          const url = await getGroomInfoUrl(needInfo.map((x) => x.id));
+          const url = await getGroomInfoUrl(needInfo.map((x) => x.id), kind);
           const catNames = needInfo.map((x) => x.catName).join(", ");
-          messages.push(
-            buildGroomInfoFlex({
+          const card = groomInfoCardFor(b, cfg, kind);
+          addIntake({
+            kind: kind === "stay" ? "stayInfo" : "info",
+            url: url || undefined,
+            ids: needInfo.map((x) => x.id),
+            count: needInfo.length,
+            card: buildGroomInfoFlex({
               catName: catNames,
-              dateText: b.date
-                ? `${cfg.cards?.groomInfo?.texts?.datePrefix || "📅 นัดอาบน้ำ:"} ${b.date}${b.time ? ` ${b.time}` : ""}`
-                : undefined,
-              body: buildGroomInfoBody(
+              petEmoji: petWords(cfg).emoji,
+              dateText: card.dateText,
+              body: card.body(
                 { catName: needInfo.length > 1 ? `น้องๆ ${needInfo.length} ตัว` : catNames },
                 cfg
               ),
@@ -743,9 +967,43 @@ async function handlePatch(req: NextRequest, admin: boolean) {
                 needInfo.length > 1
                   ? `${cfg.cards?.groomInfo?.texts?.button || "🩺 แจ้งประวัติน้อง"} (${needInfo.length} ตัว)`
                   : cfg.cards?.groomInfo?.texts?.button || "🩺 แจ้งประวัติน้อง",
-            }, cfg.cards?.groomInfo)
-          );
+            }, card.style),
+          });
         }
+      } else if (part === "checkin" && b.arrivalTime) {
+        // ลูกค้าเลือกเวลาส่งน้องไว้แล้ว → ไม่ถามซ้ำ (อยากถามใหม่ใช้ปุ่มส่งเดี่ยวแทน)
+        skipped.push(`เลือกเวลาเข้าพักไว้แล้ว (${b.arrivalTime}) ไม่ถามซ้ำ`);
+      } else if (part === "checkout" && b.pickupTime) {
+        skipped.push(`เลือกเวลารับน้องไว้แล้ว (${b.pickupTime}) ไม่ถามซ้ำ`);
+      } else if (part === "vaccine" || part === "idcard") {
+        // สมุดวัคซีนขอทุกรอบ ข้ามเฉพาะนัดที่แนบมาแล้ว · บัตรประชาชนครั้งเดียวต่อลูกค้า
+        const status = await Promise.all(household.map((x) => getIntakeStatus(to, String(x.catName))));
+        let ask = household;
+        if (part === "vaccine") {
+          ask = household.filter((x) => !x.vaccinePhotoUrl);
+          for (const x of household) if (!ask.includes(x)) skipped.push(`${x.catName}: นัดนี้แนบสมุดวัคซีนแล้ว ไม่ขอซ้ำ`);
+        } else if (status[0]?.idCard) {
+          ask = [];
+          skipped.push("มีบัตรประชาชนแล้ว ไม่ขอซ้ำ");
+        }
+        if (ask.length === 0) continue;
+        const url = await getPetDocsUrl(part === "vaccine" ? ask.map((x) => x.id) : [b.id], part);
+        if (url) {
+          addIntake({
+            kind: part,
+            url,
+            ids: part === "vaccine" ? ask.map((x) => x.id) : [b.id],
+            count: part === "vaccine" ? ask.length : undefined,
+            card: buildDocRequestFlex({
+              kind: part,
+              businessName: cfg.business.name,
+              catName: part === "vaccine" ? ask.map((x) => x.catName).join(", ") : String(gb.catName),
+              petEmoji: petWords(cfg).emoji,
+              dateText: bookingScheduleText(gb),
+              url,
+            }, cfg.cards?.docRequest),
+          });
+        } else skipped.push("ยังไม่ได้ตั้ง LIFF ID — ข้ามการ์ดขอเอกสาร");
       } else if (part === "checkin" || part === "checkout") {
         const url = await getBookingTimeUrl(b.id, part);
         messages.push(
@@ -780,8 +1038,16 @@ async function handlePatch(req: NextRequest, admin: boolean) {
             }
           }
           const payment = await getPaymentConfig();
-          messages.push(
-            buildDepositRequestFlex({
+          // ไปกับเรื่องขอข้อมูลอื่นได้ — มีเรื่องอื่นด้วยจะกลายเป็นกล่องยอดมัดจำ + ปุ่มคัดลอกเลขบัญชีในการ์ดรวม
+          addIntake({
+            kind: "deposit",
+            deposit: {
+              amount,
+              bankName: payment.bankName,
+              accountNumber: payment.accountNumber,
+              accountName: payment.accountName,
+            },
+            card: buildDepositRequestFlex({
               title: cfg.messages.depositRequestTitle,
               body: renderTemplate(cfg.messages.depositRequestBody, {
                 name: String(b.customerName),
@@ -793,14 +1059,12 @@ async function handlePatch(req: NextRequest, admin: boolean) {
               bankName: payment.bankName,
               accountNumber: payment.accountNumber,
               accountName: payment.accountName,
-            }, cfg.cards?.depositRequest)
-          );
+            }, cfg.cards?.depositRequest),
+          });
         }
       } else if (part === "payment") {
-        const all = await listInvoices();
-        const inv =
-          all.find((i) => i.bookingId === b.id && i.status !== "paid") ||
-          all.find((i) => i.bookingId === b.id);
+        const inv = await invoiceFor("open");
+        if (!inv) skipped.push("หาบิลของนัดนี้ไม่เจอ — ข้ามการ์ดแจ้งยอด");
         if (inv) {
           const payment = await getPaymentConfig();
           const deposit = inv.deposit || 0;
@@ -826,12 +1090,51 @@ async function handlePatch(req: NextRequest, admin: boolean) {
               bankName: payment.bankName,
               accountNumber: payment.accountNumber,
               accountName: payment.accountName,
+              // ชุดเดียวกันมี "สรุปการจอง" แล้ว → การ์ดนี้บอกแค่ยอด ไม่ไล่รายการซ้ำอีกรอบ
+              hideItems: parts.includes("summary"),
             }, cfg.cards?.billSummary)
           );
         }
       }
     }
 
+    const together = intake.filter((e) => !separateKinds.has(e.kind));
+    const apart = intake.filter((e) => separateKinds.has(e.kind)).map((e) => e.card);
+    if (intake.length > 0) {
+      const liffId = together.length > 0 ? (await getLineCredentials())?.liffId : undefined;
+      messages.splice(
+        intakeAt,
+        0,
+        ...(together.length > 0
+          ? mergeIntakeCards(
+              together,
+              {
+                service: b.service === "room" ? "stay" : "groom",
+                catName: String(gb.catName),
+                petEmoji: petWords(cfg).emoji,
+                businessName: cfg.business.name,
+                dateText: bookingScheduleText(gb),
+                always: intakeAlways,
+                flow: liffId ? { liffId, by: "b" } : undefined,
+              },
+              cfg.cards?.intake
+            )
+          : []),
+        ...apart
+      );
+    }
+    if (intakeAlways && intake.length === 0 && messages.length === 0) {
+      return NextResponse.json(
+        { error: "บ้านนี้ส่งข้อมูลครบทุกอย่างแล้ว ไม่มีอะไรต้องขอเพิ่มค่ะ", skipped },
+        { status: 400 }
+      );
+    }
+    if (messages.length > 5) {
+      return NextResponse.json(
+        { error: `รวมแล้วได้ ${messages.length} การ์ด — LINE ส่งได้สูงสุด 5 ใบต่อข้อความ เอาออกบางใบก่อนนะคะ` },
+        { status: 400 }
+      );
+    }
     if (messages.length === 0) {
       return NextResponse.json(
         {
@@ -877,16 +1180,12 @@ async function handlePatch(req: NextRequest, admin: boolean) {
       }
       const flex = buildConsentFlex({
         businessName: cfg.business.name,
-        title: cfg.messages.consentTitle || DEFAULT_MESSAGES.consentTitle,
+        ...consentTextFor(cfg.messages, b.service),
         catName: String(gb.catName),
-        checkin: gb.checkin || gb.date,
-        checkout: gb.checkout,
-        room: gb.room,
-        terms: cfg.messages.consentTerms?.length
-          ? cfg.messages.consentTerms
-          : DEFAULT_MESSAGES.consentTerms,
+        petEmoji: petWords(cfg).emoji,
+        ...consentDates(gb),
         url,
-      });
+      }, cfg.cards?.consent);
       try {
         if (preview) return NextResponse.json({ ok: true, preview: [flex] });
         await pushLineMessage(to, [flex]);
@@ -915,7 +1214,7 @@ async function handlePatch(req: NextRequest, admin: boolean) {
       }
     }
 
-    let text: string | null = null;
+    let card: object | null = null;
     {
       // send_deposit_reminder — หาใบแจ้งหนี้ที่มีมัดจำและยังค้างยอด
       const invoices = await listInvoices();
@@ -928,8 +1227,8 @@ async function handlePatch(req: NextRequest, admin: boolean) {
           { status: 400 }
         );
       }
-      text = buildDepositReminderText(gb, inv, cfg);
-      if (!text) {
+      card = buildDepositReminderCard(gb, inv, cfg);
+      if (!card) {
         return NextResponse.json(
           { error: "ไม่มียอดคงเหลือที่ต้องโอนแล้ว" },
           { status: 400 }
@@ -938,9 +1237,9 @@ async function handlePatch(req: NextRequest, admin: boolean) {
     }
 
     try {
-      const textMsg = [{ type: "text", text }];
-      if (preview) return NextResponse.json({ ok: true, preview: textMsg });
-      await pushLineMessage(to, textMsg);
+      // การ์ดแจ้งยอดคงเหลือ (เมื่อก่อนเป็นข้อความตัวหนังสือ) — แก้ข้อความได้ที่ /admin/cards
+      if (preview) return NextResponse.json({ ok: true, preview: [card] });
+      await pushLineMessage(to, [card]);
       return NextResponse.json({ ok: true });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -955,7 +1254,7 @@ async function handlePatch(req: NextRequest, admin: boolean) {
     if (body.time != null) patch.time = String(body.time) || undefined;
     if (body.checkin != null) patch.checkin = String(body.checkin) || undefined;
     if (body.checkout != null) patch.checkout = String(body.checkout) || undefined;
-    if (patch.checkin && patch.checkout && patch.checkout <= patch.checkin) {
+    if (patch.checkin && patch.checkout && patch.checkout < patch.checkin) {
       return NextResponse.json({ error: "checkout_before_checkin" }, { status: 400 });
     }
     const res = await rescheduleGroup(id, patch, body.applyToGroup !== false);
@@ -971,7 +1270,7 @@ async function handlePatch(req: NextRequest, admin: boolean) {
     await sendTelegram(
       formatBookingTelegram(h?.service === "room" ? "📅 เลื่อนวัน/ต่อคืน" : "📅 เลื่อนนัด", {
         ลูกค้า: String(h?.customerName || ""),
-        น้องแมว: res.updated.map((u) => u.catName).join(", "),
+        น้อง: res.updated.map((u) => u.catName).join(", "),
         วันที่:
           h?.service === "room"
             ? `${h?.checkin || "-"} → ${h?.checkout || "-"}`
@@ -1038,7 +1337,7 @@ async function handlePatch(req: NextRequest, admin: boolean) {
     if (!body.silent) await sendTelegram(
       formatBookingTelegram("✏️ แก้ไขนัด", {
         ลูกค้า: String(updated.customerName),
-        น้องแมว: String(updated.catName),
+        น้อง: String(updated.catName),
         วันที่: String(updated.date || updated.checkin),
         เวลา: String(updated.time || "-"),
       })
@@ -1102,7 +1401,7 @@ async function handlePatch(req: NextRequest, admin: boolean) {
             : "🚫 ลูกค้าไม่มาตามนัด",
         {
           ลูกค้า: String(b.customerName),
-          น้องแมว: String(gb.catName),
+          น้อง: String(gb.catName),
           บริการ: b.service === "room" ? "ห้องพัก" : "อาบน้ำ",
           ...(status === "ready" ? { แจ้งลูกค้า: sent ? "ส่งแล้ว" : "ไม่ได้ส่ง" } : {}),
         }
@@ -1128,7 +1427,7 @@ async function handlePatch(req: NextRequest, admin: boolean) {
     await sendTelegram(
       formatBookingTelegram("❌ ยกเลิกนัด", {
         ลูกค้า: String(b.customerName),
-        น้องแมว: String(b.catName),
+        น้อง: String(b.catName),
         วันที่: String(b.date || b.checkin),
       })
     );

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { featureOff } from "@/lib/features-server";
 import {
   listPackageOffers,
   createPackageOffer,
@@ -20,6 +21,7 @@ import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { pushLineMessage, buildPackageFlex, buildMemberBalanceFlex } from "@/lib/line";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { withResolvedTenant, withTenant } from "@/lib/tenant-context";
+import { requireCustomerSession } from "@/lib/customer-session";
 
 export const dynamic = "force-dynamic";
 
@@ -42,24 +44,28 @@ export async function GET(req: NextRequest) {
 }
 
 async function handleGet(req: NextRequest, isAdminSession: boolean) {
+  // ลูกค้า: LINE จากคุกกี้ที่ตรวจแล้วเท่านั้น — ใส่ lineUserId คนอื่นใน query แล้วเห็นออร์เดอร์เขาไม่ได้
   const lineUserId = req.nextUrl.searchParams.get("lineUserId")?.trim();
 
-  if (lineUserId) {
+  if (lineUserId || !isAdminSession) {
     // ลูกค้า — เห็นเฉพาะที่เปิดขาย และเห็นเฉพาะออร์เดอร์ของตัวเอง
-    const customer = await findCustomerByLine(lineUserId);
-    const [offers, payment] = await Promise.all([
+    const me = isAdminSession ? lineUserId : (await requireCustomerSession(req))?.lineUserId;
+    const customer = me ? await findCustomerByLine(me) : undefined;
+    const [allOffers, payment, off, creditOff] = await Promise.all([
       listPackageOffers(true),
       getPaymentConfig(),
+      featureOff("packages"),
+      featureOff("memberCredit"),
     ]);
+    // ร้านปิด "ขายคอร์สในแอป" — ไม่โชว์อะไรให้ซื้อ (ออร์เดอร์เดิมของลูกค้ายังเห็น)
+    // ปิดเครดิต Member — ไม่โชว์ชุดเติมเครดิต
+    const offers = off ? [] : allOffers.filter((o) => !(creditOff && o.kind === "credit"));
     const orders = customer
       ? await listPackageOrders({ customerId: customer.id })
       : [];
     return NextResponse.json({ offers, orders, payment });
   }
 
-  if (!isAdminSession) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
   const [offers, orders] = await Promise.all([
     listPackageOffers(),
     listPackageOrders(),
@@ -76,12 +82,18 @@ export async function POST(req: NextRequest) {
 }
 
 async function handlePost(req: NextRequest, isAdminSession: boolean) {
+  if (!isAdminSession) {
+    const blocked = await featureOff("packages");
+    if (blocked) return blocked;
+  }
   const body = await req.json().catch(() => ({}));
   const action = String(body.action || "");
 
   /* ── ลูกค้ากดซื้อ ── */
+  // ลูกค้าสั่งซื้อ/แนบสลิปในนามตัวเองเท่านั้น — ใช้ LINE จากคุกกี้ที่ตรวจแล้ว ไม่ใช่ body.lineUserId
+  const sessionLine = isAdminSession ? "" : (await requireCustomerSession(req))?.lineUserId || "";
   if (action === "order") {
-    const lineUserId = String(body.lineUserId || "").trim();
+    const lineUserId = isAdminSession ? String(body.lineUserId || "").trim() : sessionLine;
     if (!lineUserId) {
       return NextResponse.json({ error: "lineUserId required" }, { status: 400 });
     }
@@ -93,6 +105,10 @@ async function handlePost(req: NextRequest, isAdminSession: boolean) {
     const offer = offers.find((o) => o.id === String(body.offerId || ""));
     if (!offer) {
       return NextResponse.json({ error: "offer_not_found" }, { status: 404 });
+    }
+    if (offer.kind === "credit") {
+      const blocked = await featureOff("memberCredit");
+      if (blocked) return blocked;
     }
 
     const order = await createPackageOrder({
@@ -121,7 +137,7 @@ async function handlePost(req: NextRequest, isAdminSession: boolean) {
 
   /* ── ลูกค้าแนบสลิป ── */
   if (action === "slip") {
-    const lineUserId = String(body.lineUserId || "").trim();
+    const lineUserId = isAdminSession ? String(body.lineUserId || "").trim() : sessionLine;
     const orderId = String(body.orderId || "").trim();
     const slip = String(body.slip || "");
     if (!lineUserId || !orderId || !slip) {

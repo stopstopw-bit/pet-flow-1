@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ADMIN_TABS } from "@/components/AdminNav";
+import { ADMIN_TABS, OWNER_ONLY_TABS } from "@/components/AdminNav";
 import { ADMIN_TAB_ICONS, Icon } from "@/components/Icon";
 import { Avatar, EmptyState, MoreMenu, SectionLabel } from "@/components/ui";
 
@@ -15,7 +15,7 @@ export type StaffItem = {
 
 /**
  * จัดการบัญชีพนักงาน — เจ้าของเท่านั้นที่เห็น (API ตอบ 403 ให้พนักงาน)
- * ล็อกอินด้วย username + password — username ต้อง unique ทั้งแพลตฟอร์ม (ข้ามร้าน)
+ * ล็อกอินด้วย username + password — username ห้ามซ้ำในร้านเดียวกัน (คนละร้านซ้ำได้)
  *
  * แยกออกมาจากหน้าตั้งค่าเพราะมันเป็นงานคนละเรื่องกับการตั้งค่าระบบ
  * และเจ้าของร้านหาไม่เจอเวลามันซ่อนอยู่ท้ายหน้า
@@ -31,6 +31,8 @@ export function StaffSection() {
   const [newMenus, setNewMenus] = useState<string[]>([
     "/admin",
     "/admin/schedule",
+    "/admin/queue",
+    "/admin/care",
     "/admin/bookings/new",
     "/admin/customers",
     "/admin/billing",
@@ -132,7 +134,7 @@ export function StaffSection() {
 
   const menuPicker = (selected: string[], onToggle: (href: string) => void) => (
     <div className="grid grid-cols-2 gap-x-2">
-      {ADMIN_TABS.map((t) => (
+      {ADMIN_TABS.filter((t) => !OWNER_ONLY_TABS.includes(t.href)).map((t) => (
         <label key={t.href} className="flex min-h-[40px] items-center gap-2 text-xs text-brown">
           <input
             type="checkbox"
@@ -227,7 +229,7 @@ export function StaffSection() {
         </div>
         <p className="mt-1.5 px-1 text-[10px] text-brown-faint">
           ตั้ง username/password ให้พนักงานแต่ละคน แล้วเลือกว่าให้เห็นเมนูไหนบ้าง —
-          username ต้องไม่ซ้ำกับใครในระบบเลย (ข้ามร้านด้วย)
+          username ห้ามซ้ำกับคนอื่นในร้านนี้ (ร้านอื่นใช้ชื่อเดียวกันได้) — พนักงานล็อกอินผ่านลิงก์ของร้าน
         </p>
       </section>
 

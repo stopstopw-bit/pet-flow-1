@@ -1,4 +1,4 @@
-import { getSupabase } from "./supabase/server";
+import { getDirectoryDb } from "./supabase/server";
 
 /** บันทึกทุก action ที่ผู้ดูแลระบบ (platform) ทำ — โดยเฉพาะ impersonate ต้องมีร่องรอยเสมอ */
 export async function logAudit(entry: {
@@ -12,7 +12,7 @@ export async function logAudit(entry: {
   afterState?: unknown;
   impersonationId?: string | null;
 }) {
-  const sb = getSupabase();
+  const sb = getDirectoryDb();
   if (!sb) return;
   await sb.from("audit_logs").insert({
     tenant_id: entry.tenantId || null,
@@ -39,7 +39,7 @@ export type AuditRow = {
 
 /** อ่าน log ล่าสุดของร้านปัจจุบัน — ใช้ในหน้าหลังบ้าน */
 export async function listAudit(limit = 200): Promise<AuditRow[]> {
-  const sb = getSupabase();
+  const sb = getDirectoryDb();
   if (!sb) return [];
   try {
     const { requireTenantId } = await import("./tenant-context");

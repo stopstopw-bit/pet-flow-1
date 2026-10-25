@@ -1,4 +1,7 @@
-import { getSecrets } from "./secrets-store";
+import { getSecrets, type LineSecrets } from "./secrets-store";
+import { isEnvOwnerTenant, requireTenantId, withTenantEvenIfClosed } from "./tenant-context";
+import { mainShopTenantId } from "./tenant-resolve";
+import { getDirectoryDb } from "./supabase/server";
 
 export type LineCredentials = {
   channelToken: string;
@@ -17,30 +20,60 @@ export function parseLineChannelToken(raw: string) {
   return token;
 }
 
+/** LIFF ID จากที่ร้านวางมา — รับได้ทั้ง ID เปล่า ๆ และลิงก์เต็ม https://liff.line.me/<id>
+ * (เคยมีร้านวางลิงก์เต็ม แล้ว liff.init ขึ้น "resource is not found") */
+export function parseLiffId(raw: string | undefined | null): string {
+  const value = String(raw || "").trim();
+  const m = value.match(/liff\.line\.me\/([^/?#\s]+)/i);
+  return (m ? m[1] : value).trim();
+}
+
+/**
+ * ค่า LINE ชุดนี้เป็นของร้าน PetFlow ไหม (LIFF ID หรือ Token ซ้ำกับของ PetFlow / ใน env)
+ * ร้านแรก (TENANT_ID) เคยถูกตั้ง LINE PetFlow ไว้ก่อนสลับลิงก์เป็น Back Home — ค่านั้นยังค้างในร้าน
+ * ร้านอื่นต้องมองไม่เห็นค่าชุดนี้เลย (หน้าตั้งค่าว่าง ส่งการ์ดไม่ได้ จนกว่าร้านจะตั้ง LINE ของตัวเอง)
+ */
+async function isMainShopLine(line: LineSecrets): Promise<boolean> {
+  const liff = parseLiffId(line.liffId);
+  const token = line.channelToken?.trim();
+  const envToken = process.env.LINE_CHANNEL_TOKEN?.trim();
+  const envLiff = parseLiffId(process.env.NEXT_PUBLIC_LIFF_ID);
+  if ((token && token === envToken) || (liff && liff === envLiff)) return true;
+  const mainId = await mainShopTenantId();
+  if (!mainId || mainId === requireTenantId()) return false;
+  const main = (await withTenantEvenIfClosed(mainId, () => getSecrets()).catch(() => ({}) as { line?: LineSecrets })).line;
+  if (!main) return false;
+  return (!!liff && liff === parseLiffId(main.liffId)) || (!!token && token === main.channelToken?.trim());
+}
+
 export async function getLineCredentials(): Promise<LineCredentials | null> {
   const secrets = await getSecrets();
-  const line = secrets.line;
   const envToken = process.env.LINE_CHANNEL_TOKEN?.trim();
-  const envLiff = process.env.NEXT_PUBLIC_LIFF_ID?.trim();
+  // LINE ใน env เป็นของร้าน PetFlow เท่านั้น (ดู isEnvOwnerTenant) — ร้านอื่นที่ยังไม่ตั้งต้องว่าง
+  // ห้ามยืม LINE ของร้านอื่นมาใช้ ไม่ว่ากรณีไหน: การ์ด/ลิงก์จะออกจาก LINE ผิดร้าน
+  const envOwner = await isEnvOwnerTenant();
+  const line = secrets.line && !envOwner && (await isMainShopLine(secrets.line)) ? undefined : secrets.line;
+  const envLiff = envOwner ? parseLiffId(process.env.NEXT_PUBLIC_LIFF_ID) || undefined : undefined;
 
   if (line?.channelToken) {
     return {
       channelToken: line.channelToken,
       channelSecret: line.channelSecret,
-      liffId: line.liffId || envLiff,
+      liffId: parseLiffId(line.liffId) || envLiff,
       source: "database",
     };
   }
-  if (envToken) {
+  // LINE OA ใน env เป็นของร้าน PetFlow — ร้านอื่นที่ยังไม่ตั้ง LINE ต้องไม่ส่งข้อความผ่าน OA ร้านนี้
+  if (envToken && envOwner) {
     return {
       channelToken: envToken,
       channelSecret: process.env.LINE_CHANNEL_SECRET?.trim(),
-      liffId: envLiff,
+      liffId: parseLiffId(line?.liffId) || envLiff,
       source: "env",
     };
   }
   if (line?.liffId) {
-    return { channelToken: "", liffId: line.liffId, source: "database" };
+    return { channelToken: "", liffId: parseLiffId(line.liffId), source: "database" };
   }
   if (envLiff) {
     return { channelToken: "", liffId: envLiff, source: "env" };
@@ -84,6 +117,19 @@ export async function testLineChannelToken(token: string) {
   };
 }
 
+/**
+ * ลิงก์หน้าลูกค้าของร้านที่กำลังทำงานอยู่ — https://…/s/<slug> (ไม่มี /app ต่อท้าย)
+ * ทุกลิงก์ที่ส่งให้ลูกค้าต้องมีชื่อร้าน ไม่งั้นลิงก์ /app เปล่า ๆ จะเปิดเป็นร้าน PetFlow
+ */
+export async function shopAppBase(): Promise<string> {
+  const appUrl = getAppUrlFromEnv();
+  const sb = getDirectoryDb();
+  if (!sb) return appUrl;
+  const { data } = await sb.from("tenants").select("slug").eq("id", requireTenantId()).maybeSingle();
+  const slug = (data as { slug?: string } | null)?.slug;
+  return slug ? `${appUrl}/s/${slug}` : appUrl;
+}
+
 /** URL หลักของเว็บ — ใช้ตั้ง LINE webhook/LIFF/ลิงก์การ์ด ต้องเป็นโดเมนถาวรเท่านั้น
  * (ห้าม fallback ไป VERCEL_URL เพราะเปลี่ยนทุกครั้งที่ deploy ใหม่ จะทำให้ webhook หลุด) */
 export function getAppUrlFromEnv() {
@@ -95,10 +141,9 @@ export function getAppUrlFromEnv() {
   );
 }
 
-export function bookingConfirmUrl(bookingId: string, liffId?: string) {
-  const lid = liffId || process.env.NEXT_PUBLIC_LIFF_ID;
-  const base =
-    getAppUrlFromEnv() || "https://petflow.example.com";
+export function bookingConfirmUrl(bookingId: string, liffId?: string, shopBase?: string) {
+  const lid = liffId;
+  const base = shopBase || getAppUrlFromEnv() || "https://petflow.example.com";
   if (lid) {
     return `https://liff.line.me/${lid}?path=bookings&id=${bookingId}`;
   }
@@ -106,11 +151,11 @@ export function bookingConfirmUrl(bookingId: string, liffId?: string) {
 }
 
 /** ลิงก์หน้ากรอกจุดรับ-ส่งน้อง — เปิดผ่าน LIFF ถ้ามี ไม่งั้นเปิดหน้าเว็บตรงๆ */
-export function bookingTransportUrl(bookingId: string, liffId?: string) {
-  const lid = liffId || process.env.NEXT_PUBLIC_LIFF_ID;
+export function bookingTransportUrl(bookingId: string, liffId?: string, shopBase?: string) {
+  const lid = liffId;
   const id = encodeURIComponent(bookingId);
   if (lid) return `https://liff.line.me/${lid}?path=booking-transport&id=${id}`;
-  return `${getAppUrlFromEnv()}/app/booking-transport?id=${id}`;
+  return `${shopBase || getAppUrlFromEnv()}/app/booking-transport?id=${id}`;
 }
 
 /** ดู Webhook URL ปัจจุบันของ LINE (Messaging API) */

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withResolvedTenant } from "@/lib/tenant-context";
+import { featureOff } from "@/lib/features-server";
 import { getBooking, listBookings, setBookingTime } from "@/lib/bookings-store";
 import { bookingGroupKey, groupCatNames } from "@/lib/booking-group";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
-import { requireCustomerSession } from "@/lib/customer-session";
+import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 
 /** นัดของบ้านเดียวกันที่เข้าพักรอบเดียวกัน (รวมตัวที่กดลิงก์มาด้วย) */
 async function householdSiblings(b: Awaited<ReturnType<typeof getBooking>>) {
@@ -32,15 +33,21 @@ async function getHandler(req: NextRequest) {
       checkout: b.checkout,
       arrivalTime: b.arrivalTime,
       pickupTime: b.pickupTime,
+      // ร้านไปรับ/ไปส่งเอง → หน้าเลือกเวลาเปลี่ยนคำให้ตรง (ส่งแค่ว่ามีไหม ไม่ส่งที่อยู่)
+      shopPickup: !!b.transport?.pickup,
+      shopDropoff: !!b.transport?.dropoff,
     },
   });
 }
 
 /** ลูกค้าเลือกเวลามาส่ง/รับน้อง */
 async function postHandler(req: NextRequest) {
+  // ร้านปิดเรื่องนี้ในตั้งค่า › เปิด/ปิดฟีเจอร์
+  const blocked = await featureOff("checkinTime");
+  if (blocked) return blocked;
   const session = await requireCustomerSession(req);
   if (!session) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return noCustomerSessionResponse();
   }
   const body = await req.json().catch(() => ({}));
   const bookingId = String(body.bookingId || "").trim();
@@ -72,7 +79,7 @@ async function postHandler(req: NextRequest) {
       formatBookingTelegram(
         type === "checkin" ? "🕒 ลูกค้าเลือกเวลาส่งน้อง" : "🕒 ลูกค้าเลือกเวลารับน้อง",
         {
-          น้องแมว: b.catName,
+          น้อง: b.catName,
           ลูกค้า: b.customerName,
           เวลา: time,
           วันที่: type === "checkin" ? b.checkin || b.date || "-" : b.checkout || "-",

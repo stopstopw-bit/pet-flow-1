@@ -15,7 +15,19 @@ export async function adminJson<T>(
       ...init,
       signal: ctrl.signal,
     });
-    const data = (await res.json()) as T & { error?: string; message?: string };
+    const text = await res.text();
+    let data: T & { error?: string; message?: string };
+    try {
+      data = JSON.parse(text);
+    } catch {
+      // หน้าข้อผิดพลาดของ Vercel (เช่น 500/504) ไม่ใช่ JSON — บอกรหัสไว้ให้ไล่ปัญหาต่อได้
+      return {
+        ok: false,
+        error: res.status === 504
+          ? "เซิร์ฟเวอร์ตอบช้าเกินไป (HTTP 504) — ฐานข้อมูลอาจเชื่อมไม่ได้"
+          : `เซิร์ฟเวอร์ตอบผิดพลาด (HTTP ${res.status}) ${url}`,
+      };
+    }
     if (!res.ok) {
       return {
         ok: false,

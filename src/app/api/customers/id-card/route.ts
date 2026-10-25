@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireCustomerSession } from "@/lib/customer-session";
+import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 import { withResolvedTenant } from "@/lib/tenant-context";
+import { featureOff } from "@/lib/features-server";
 import { findCustomerByLine, setCustomerIdCard } from "@/lib/customers-store";
-import { uploadDataUrlToStorage } from "@/lib/supabase/storage";
+import { uploadPrivateDataUrl } from "@/lib/supabase/storage";
 
 /**
  * ลูกค้าแนบรูปบัตรประชาชน (ผู้ปกครองน้องแมว) สำหรับลงทะเบียนเข้าพัก
@@ -13,8 +14,11 @@ export async function POST(req: NextRequest) {
 }
 
 async function handlePost(req: NextRequest) {
+  // ร้านปิดเรื่องนี้ในตั้งค่า › เปิด/ปิดฟีเจอร์
+  const blocked = await featureOff("idCard");
+  if (blocked) return blocked;
   const session = await requireCustomerSession(req);
-  if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!session) return noCustomerSessionResponse();
   const lineUserId = session.lineUserId;
   const body = await req.json().catch(() => ({}));
   const image = String(body.image || "");
@@ -23,7 +27,7 @@ async function handlePost(req: NextRequest) {
   }
   const c = await findCustomerByLine(lineUserId);
   if (!c) return NextResponse.json({ error: "not found" }, { status: 404 });
-  const url = await uploadDataUrlToStorage(`id-cards/${c.id}-${Date.now()}`, image);
+  const url = await uploadPrivateDataUrl(`id-cards/${c.id}-${Date.now()}`, image);
   const res = await setCustomerIdCard(c.id, url);
   if (!res.ok) return NextResponse.json({ error: res.error, needSql: true }, { status: 500 });
   return NextResponse.json({ ok: true, url });

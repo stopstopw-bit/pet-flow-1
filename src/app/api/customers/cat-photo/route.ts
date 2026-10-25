@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { findCustomerByLine, updateCat } from "@/lib/customers-store";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { withResolvedTenant } from "@/lib/tenant-context";
-import { requireCustomerSession } from "@/lib/customer-session";
+import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,6 +23,7 @@ async function handleGet(req: NextRequest) {
       name: c.name,
       photoDataUrl: c.photoDataUrl || null,
       breed: c.breed || null,
+      species: c.species || null,
     })),
   });
 }
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest) {
 async function handlePost(req: NextRequest) {
   const session = await requireCustomerSession(req);
   if (!session) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return noCustomerSessionResponse();
   }
   const body = await req.json().catch(() => ({}));
   const catId = String(body.catId || "").trim();
@@ -61,9 +62,9 @@ async function handlePost(req: NextRequest) {
     const cat = customer.cats.find((c) => c.id === catId);
     await updateCat(customer.id, catId, { photoDataUrl });
     await sendTelegram(
-      formatBookingTelegram("📷 ลูกค้าอัปโหลดรูปน้องแมวแล้ว", {
+      formatBookingTelegram("📷 ลูกค้าอัปโหลดรูปน้องแล้ว", {
         ลูกค้า: customer.name,
-        น้องแมว: cat?.name || catId,
+        น้อง: cat?.name || catId,
       })
     );
     return NextResponse.json({ ok: true });

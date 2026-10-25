@@ -7,8 +7,15 @@ import {
   resolveGroomForm,
   type GroomFormConfig,
 } from "@/lib/groom-form";
+import { FOLLOW_UP_MESSAGES, followUpActions, followUpKey } from "@/lib/sales-insights";
+import { MISS_YOU_DEFAULT_TITLE, missYouActions } from "@/lib/miss-you-card";
+import { broadcastActionLabel } from "@/lib/broadcast-constants";
+import { BroadcastButtonPicker } from "@/components/BroadcastButtonPicker";
 import { toast } from "@/components/Toast";
+import { useConfig } from "@/components/ConfigProvider";
 import { Icon } from "@/components/Icon";
+import { brandColorsFor } from "@/lib/card-brand";
+import { DEPOSIT_REMINDER_DEFAULTS, DOC_REQUEST_DEFAULTS, INTAKE_CARD_DEFAULTS } from "@/lib/line-card-defaults";
 
 /**
  * ปรับแต่งการ์ด LINE — สี ขนาดตัวอักษร ข้อความ เงื่อนไข และส่วนประกอบของการ์ดแต่ละใบ
@@ -88,7 +95,7 @@ const CARDS: CardMeta[] = [
         key: "groomPrepNote",
         label: "ข้อความเตือนพกขนม/ตะกร้า (เฉพาะนัดอาบน้ำ)",
         placeholder:
-          "🍬 อย่าลืมพกขนม/แมวเลียมาด้วยอย่างน้อย 1-2 ซองนะคะ\n🧺 และให้น้องอยู่ในตะกร้า/กระเป๋าทุกครั้งที่มาใช้บริการด้วยค่ะ",
+          "🍬 อย่าลืมพกขนมที่น้องชอบมาด้วยนะคะ\n🧺 และให้น้องอยู่ในตะกร้า/กระเป๋า หรือใส่สายจูงทุกครั้งที่มาใช้บริการด้วยค่ะ",
         multiline: true,
       },
       {
@@ -235,7 +242,7 @@ const CARDS: CardMeta[] = [
         key: "bodyRoom",
         label: "เนื้อความ — เข้าพักโรงแรมอย่างเดียว (แนบท้ายใบเสร็จ)",
         placeholder:
-          "ตลอดช่วงที่น้องเข้าพัก พวกเราตั้งใจดูแลเหมือนเป็นหนึ่งในครอบครัว\nหวังว่าน้องจะกลับบ้านไปอย่างมีความสุขนะคะ 🐱✨",
+          "ตลอดช่วงที่น้องเข้าพัก พวกเราตั้งใจดูแลเหมือนเป็นหนึ่งในครอบครัว\nหวังว่าน้องจะกลับบ้านไปอย่างมีความสุขนะคะ 🐾✨",
         multiline: true,
       },
       {
@@ -246,7 +253,7 @@ const CARDS: CardMeta[] = [
       {
         key: "bodyGroom",
         label: "เนื้อความ — อาบน้ำอย่างเดียว (แนบท้ายใบเสร็จ)",
-        placeholder: "หวังว่าน้องจะกลับบ้านไปตัวหอม นุ่มฟู และมีความสุขนะคะ 🐱✨",
+        placeholder: "หวังว่าน้องจะกลับบ้านไปตัวหอม นุ่มฟู และมีความสุขนะคะ 🐾✨",
         multiline: true,
       },
     ],
@@ -276,6 +283,57 @@ const CARDS: CardMeta[] = [
       { key: "header", label: "ข้อความบนแถบหัว", placeholder: "🩺 ประวัติน้องก่อนอาบน้ำ" },
       { key: "datePrefix", label: "คำนำหน้าวันนัด", placeholder: "📅 นัดอาบน้ำ:" },
       { key: "button", label: "คำในปุ่ม", placeholder: "🩺 แจ้งประวัติน้อง" },
+    ],
+    closingLabel: "ประโยคเสริมท้ายการ์ด (ไม่บังคับ)",
+    hasTitleSize: true,
+  },
+  {
+    key: "intake",
+    name: "การ์ดรวมขอข้อมูล (ปุ่มเดียว ไล่ทีละหน้า)",
+    desc: "ขอหลายเรื่องในใบเดียว ปุ่มเดียวพาลูกค้าไล่ทีละหน้า — ประวัติน้อง → สมุดวัคซีน → บัตรประชาชน → กฎ + กดยินยอม (กฎขอใหม่ทุกรอบเข้าพัก) · เรื่องที่ส่งแล้วข้ามให้เอง",
+    colors: [
+      { key: "headerColor", label: "สีแถบหัว", fallback: "#6e2f48" },
+      { key: "headerTextColor", label: "สีตัวหนังสือหัว", fallback: "#FFFFFF" },
+      { key: "accentColor", label: "สีชื่อน้อง / ยอดมัดจำ", fallback: "#5C4033" },
+      { key: "buttonColor", label: "สีปุ่ม", fallback: "#bd3a6a" },
+    ],
+    fields: [],
+    texts: [],
+    styleTexts: [
+      { key: "headerStay", label: "หัวการ์ด (นัดเข้าพัก)", placeholder: INTAKE_CARD_DEFAULTS.headerStay },
+      { key: "headerGroom", label: "หัวการ์ด (นัดอาบน้ำ)", placeholder: INTAKE_CARD_DEFAULTS.headerGroom },
+      { key: "body", label: "เนื้อความ (ใช้ได้: {cat} {shop})", placeholder: INTAKE_CARD_DEFAULTS.body, multiline: true },
+      { key: "startButton", label: "ปุ่ม: เริ่มกรอกข้อมูล (ปุ่มเดียว ไล่ทีละหน้า)", placeholder: INTAKE_CARD_DEFAULTS.startButton },
+      { key: "stayInfoButton", label: "ขั้น: ข้อมูลก่อนเข้าพัก", placeholder: INTAKE_CARD_DEFAULTS.stayInfoButton },
+      { key: "infoButton", label: "ขั้น: ประวัติก่อนอาบน้ำ", placeholder: INTAKE_CARD_DEFAULTS.infoButton },
+      { key: "vaccineButton", label: "ขั้น: แนบสมุดวัคซีน", placeholder: INTAKE_CARD_DEFAULTS.vaccineButton },
+      { key: "idcardButton", label: "ขั้น: แนบบัตรประชาชน", placeholder: INTAKE_CARD_DEFAULTS.idcardButton },
+      { key: "consentButton", label: "ขั้น: กฎ + กดยินยอม", placeholder: INTAKE_CARD_DEFAULTS.consentButton },
+      { key: "depositLabel", label: "ป้าย: ยอดมัดจำ", placeholder: INTAKE_CARD_DEFAULTS.depositLabel },
+      { key: "copyButton", label: "ปุ่ม: คัดลอกเลขบัญชี", placeholder: INTAKE_CARD_DEFAULTS.copyButton },
+    ],
+    closingLabel: "ประโยคเสริมท้ายการ์ด (ไม่บังคับ)",
+    hasTitleSize: true,
+  },
+  {
+    key: "docRequest",
+    name: "ขอสมุดวัคซีน / บัตรประชาชน",
+    desc: "การ์ดเดี่ยวขอรูปสมุดวัคซีนน้อง หรือบัตรประชาชนผู้ปกครอง",
+    colors: [
+      { key: "headerColor", label: "สีแถบหัว", fallback: "#6e2f48" },
+      { key: "headerTextColor", label: "สีตัวหนังสือหัว", fallback: "#FFFFFF" },
+      { key: "accentColor", label: "สีชื่อน้อง", fallback: "#5C4033" },
+      { key: "buttonColor", label: "สีปุ่ม", fallback: "#bd3a6a" },
+    ],
+    fields: [],
+    texts: [],
+    styleTexts: [
+      { key: "vaccineHeader", label: "สมุดวัคซีน: หัวการ์ด", placeholder: DOC_REQUEST_DEFAULTS.vaccineHeader },
+      { key: "vaccineBody", label: "สมุดวัคซีน: เนื้อความ (ใช้ได้: {cat})", placeholder: DOC_REQUEST_DEFAULTS.vaccineBody, multiline: true },
+      { key: "vaccineButton", label: "สมุดวัคซีน: ปุ่ม", placeholder: DOC_REQUEST_DEFAULTS.vaccineButton },
+      { key: "idcardHeader", label: "บัตรประชาชน: หัวการ์ด", placeholder: DOC_REQUEST_DEFAULTS.idcardHeader },
+      { key: "idcardBody", label: "บัตรประชาชน: เนื้อความ", placeholder: DOC_REQUEST_DEFAULTS.idcardBody, multiline: true },
+      { key: "idcardButton", label: "บัตรประชาชน: ปุ่ม", placeholder: DOC_REQUEST_DEFAULTS.idcardButton },
     ],
     closingLabel: "ประโยคเสริมท้ายการ์ด (ไม่บังคับ)",
     hasTitleSize: true,
@@ -339,8 +397,44 @@ const CARDS: CardMeta[] = [
         multiline: true,
       },
       { key: "confirmButton", label: "คำในปุ่มยืนยันเข้าพัก", placeholder: "🧡 อ่านรายละเอียด & ยืนยันการเข้าพัก" },
+      { key: "timeButton", label: "ปุ่ม: เลือกเวลาส่งน้อง (ส่งอัตโนมัติ)", placeholder: "🕒 เลือกเวลาส่งน้อง" },
+      { key: "intakeTitle", label: "หัวข้อ: ข้อมูลที่ยังต้องส่ง", placeholder: "📋 ข้อมูลที่ยังต้องส่งให้ร้าน" },
+      { key: "balanceLabel", label: "ป้าย: ยอดคงเหลือ", placeholder: "💳 ยอดคงเหลือที่ต้องโอน" },
+      { key: "copyButton", label: "ปุ่ม: คัดลอกเลขบัญชี", placeholder: "📋 คัดลอกเลขบัญชี" },
     ],
     closingLabel: "ข้อความปิดท้ายการ์ด (ไม่บังคับ)",
+    hasTitleSize: true,
+  },
+  {
+    key: "depositReminder",
+    name: "แจ้งยอดก่อนเข้าพัก",
+    desc: "ส่งอัตโนมัติก่อนวันเข้าพัก (ตามวันที่ตั้งในตั้งค่า) — ยอดคงเหลือ + บัญชีโอน · ส่งรอบเดียว ไม่แนบซ้ำในการ์ดเตรียมตัว",
+    colors: [
+      { key: "headerColor", label: "สีแถบหัว", fallback: "#6e2f48" },
+      { key: "headerTextColor", label: "สีตัวหนังสือหัว", fallback: "#FFFFFF" },
+      { key: "accentColor", label: "สียอดคงเหลือ", fallback: "#C4956A" },
+      { key: "buttonColor", label: "สีปุ่มคัดลอกบัญชี", fallback: "#bd3a6a" },
+    ],
+    fields: [
+      { key: "schedule", label: "วันเข้าพัก" },
+      { key: "deposit", label: "บรรทัดมัดจำที่ชำระแล้ว" },
+      { key: "bank", label: "กล่องเลขบัญชี + ปุ่มคัดลอก" },
+    ],
+    texts: [],
+    styleTexts: [
+      { key: "header", label: "ข้อความบนแถบหัว", placeholder: DEPOSIT_REMINDER_DEFAULTS.header },
+      {
+        key: "body",
+        label: "เนื้อความ (ใช้ได้: {shop} {cat} {days} {checkin} {deposit} {remaining})",
+        placeholder: DEPOSIT_REMINDER_DEFAULTS.body,
+        multiline: true,
+      },
+      { key: "amountLabel", label: "ป้าย: ยอดคงเหลือ", placeholder: DEPOSIT_REMINDER_DEFAULTS.amountLabel },
+      { key: "depositPaidLabel", label: "ป้าย: มัดจำที่ชำระแล้ว", placeholder: DEPOSIT_REMINDER_DEFAULTS.depositPaidLabel },
+      { key: "accountNameLabel", label: "ป้าย: ชื่อบัญชี", placeholder: DEPOSIT_REMINDER_DEFAULTS.accountNameLabel },
+      { key: "copyButton", label: "ปุ่ม: คัดลอกเลขบัญชี", placeholder: DEPOSIT_REMINDER_DEFAULTS.copyButton },
+    ],
+    closingLabel: "ข้อความปิดท้าย (ไม่บังคับ)",
     hasTitleSize: true,
   },
   {
@@ -486,10 +580,147 @@ const CARDS: CardMeta[] = [
     fields: [],
     texts: [],
     styleTexts: [
-      { key: "header", label: "ข้อความบนแถบหัว", placeholder: "✨ โปรโมชั่น PetFlow" },
+      { key: "header", label: "ข้อความบนแถบหัว", placeholder: "✨ โปรโมชั่นของร้าน" },
       { key: "detailButton", label: "คำในปุ่ม (เมื่อไม่ได้กำหนดปุ่มเอง)", placeholder: "ดูรายละเอียด" },
     ],
     closingLabel: "ข้อความปิดท้ายการ์ด (ไม่บังคับ)",
+    hasTitleSize: true,
+  },
+  {
+    key: "readyForPickup",
+    name: "น้องพร้อมกลับบ้าน",
+    desc: "ส่งตอนอาบน้ำเสร็จ / เช็คเอาท์พร้อม ให้ลูกค้ามารับ",
+    colors: [
+      { key: "headerColor", label: "สีหัวข้อ", fallback: "#5C4033" },
+      { key: "accentColor", label: "สีชื่อน้อง", fallback: "#C4956A" },
+    ],
+    fields: [
+      { key: "customerName", label: "ชื่อลูกค้า" },
+      { key: "pickupTime", label: "เวลาที่แจ้งว่าจะมารับ" },
+    ],
+    texts: [],
+    styleTexts: [
+      { key: "title", label: "หัวข้อการ์ด", placeholder: "🎉 น้องพร้อมกลับบ้านแล้วค่ะ" },
+      {
+        key: "groomBody",
+        label: "ข้อความ (อาบน้ำเสร็จ)",
+        placeholder: "อาบน้ำเสร็จเรียบร้อย สวยหล่อพร้อมกลับบ้านแล้วค่ะ",
+        multiline: true,
+      },
+      {
+        key: "roomBody",
+        label: "ข้อความ (เช็คเอาท์ห้องพัก)",
+        placeholder: "เช็คเอาท์เรียบร้อย รอคุณแม่มารับได้เลยค่ะ",
+        multiline: true,
+      },
+      { key: "pickupTimeLabel", label: "ป้าย: เวลามารับ", placeholder: "🚗 เวลาที่แจ้งไว้ว่าจะมารับ" },
+    ],
+    closingLabel: "ข้อความปิดท้าย (ว่าง = ขอบคุณที่ไว้ใจ…)",
+    hasTitleSize: true,
+  },
+  {
+    key: "packageCard",
+    name: "คอร์สของคุณ",
+    desc: "ส่งตอนลูกค้าซื้อ/ได้รับคอร์ส — บอกจำนวนครั้งคงเหลือ",
+    colors: [
+      { key: "headerColor", label: "สีหัวข้อ", fallback: "#5C4033" },
+      { key: "accentColor", label: "สีจำนวนครั้ง", fallback: "#C4956A" },
+    ],
+    fields: [],
+    texts: [],
+    styleTexts: [
+      { key: "title", label: "หัวข้อการ์ด", placeholder: "🎫 คอร์สของคุณ" },
+      { key: "usesLeftLabel", label: "ป้าย: ใช้ได้อีก", placeholder: "ใช้ได้อีก" },
+    ],
+    closingLabel: "ข้อความปิดท้าย (ว่าง = แจ้งร้านได้เลยตอนมาใช้บริการ…)",
+    hasTitleSize: true,
+  },
+  {
+    key: "roomPlan",
+    name: "แพ็กห้อง / คอร์สแบ่งจ่าย",
+    desc: "ส่งตอนรับชำระแต่ละงวด หรือแจ้งคืน/ครั้งคงเหลือ",
+    colors: [
+      { key: "headerColor", label: "สีหัวข้อ", fallback: "#5C4033" },
+      { key: "accentColor", label: "สีจำนวนคงเหลือ", fallback: "#C4956A" },
+    ],
+    fields: [],
+    texts: [],
+    styleTexts: [
+      { key: "paidTitleRoom", label: "หัวข้อ: รับชำระแพ็กห้อง", placeholder: "🧾 รับชำระแพ็กห้องแล้ว" },
+      { key: "paidTitlePackage", label: "หัวข้อ: รับชำระคอร์ส", placeholder: "🧾 รับชำระคอร์สแล้ว" },
+      { key: "titleRoom", label: "หัวข้อ: แจ้งคืนคงเหลือ", placeholder: "🏠 คืนคงเหลือของคุณ" },
+      { key: "titlePackage", label: "หัวข้อ: แจ้งคอร์สคงเหลือ", placeholder: "🎫 คอร์สคงเหลือของคุณ" },
+      { key: "leftLabel", label: "ป้าย: ที่ใช้ได้อีก (ว่าง = คืน/ครั้งที่ใช้ได้อีก)", placeholder: "คืนที่ใช้ได้อีก" },
+      { key: "priceLabel", label: "ป้าย: ยอดแพ็ก", placeholder: "ยอดแพ็ก" },
+      { key: "paidLabel", label: "ป้าย: จ่ายแล้ว", placeholder: "จ่ายแล้ว" },
+      { key: "remainingLabel", label: "ป้าย: คงเหลือ", placeholder: "คงเหลือ" },
+      { key: "installmentsLabel", label: "ป้าย: เหลืออีก (งวด)", placeholder: "เหลืออีก" },
+      {
+        key: "unpaidNote",
+        label: "ข้อความตอนยังจ่ายไม่ครบ",
+        placeholder: "เริ่มใช้คืนได้เมื่อชำระครบทุกงวดนะคะ",
+        multiline: true,
+      },
+      { key: "statusLabel", label: "ป้าย: สถานะ", placeholder: "สถานะ" },
+      { key: "statusPaid", label: "สถานะ: จ่ายครบแล้ว", placeholder: "ชำระครบ ใช้ได้เลย ✅" },
+    ],
+    closingLabel: "ข้อความท้ายการ์ดแพ็กห้อง (ว่าง = พักห้องไหน ระบบหักคืน…)",
+    hasTitleSize: true,
+  },
+  {
+    key: "pointsAward",
+    name: "ได้รับแต้มสะสม",
+    desc: "ส่งตอนร้านเติมแต้ม หรือกดใช้โปรแทนลูกค้า",
+    colors: [
+      { key: "headerColor", label: "สีหัวข้อ", fallback: "#5C4033" },
+      { key: "accentColor", label: "สีจำนวนแต้ม", fallback: "#C4956A" },
+    ],
+    fields: [
+      { key: "customerName", label: "ชื่อลูกค้า" },
+      { key: "reason", label: "เหตุผลที่ได้แต้ม" },
+      { key: "totalPoints", label: "แต้มสะสมรวม" },
+    ],
+    texts: [],
+    styleTexts: [
+      { key: "title", label: "หัวข้อการ์ด", placeholder: "🎁 ได้รับแต้มสะสมแล้ว" },
+      { key: "pointsLabel", label: "ป้าย: แต้มที่ได้รับ", placeholder: "แต้มที่ได้รับ" },
+      { key: "reasonLabel", label: "ป้าย: เหตุผล", placeholder: "เหตุผล" },
+      { key: "totalLabel", label: "ป้าย: แต้มสะสมรวม", placeholder: "แต้มสะสมรวมตอนนี้" },
+    ],
+    closingLabel: "ข้อความปิดท้าย (ว่าง = ขอบคุณที่ไว้ใจ…)",
+    hasTitleSize: true,
+  },
+  {
+    key: "followUp",
+    name: "ข้อความตามลูกค้า (กลุ่มที่ควรทัก)",
+    desc: "ข้อความตั้งต้นของปุ่มส่ง LINE ในหน้าสรุปข้อมูล แยกตามกลุ่มลูกค้า — ส่งเป็นการ์ดโปรโมชั่น",
+    colors: [],
+    fields: [],
+    texts: [],
+  },
+  {
+    key: "missYou",
+    name: "คิดถึงน้อง (ทักลูกค้าที่หายไป)",
+    desc: "การ์ดที่ส่งตอนกด \"ทักลูกค้าทาง LINE\" ในหน้าลูกค้า และตอนระบบทักลูกค้าที่ไม่มานานให้อัตโนมัติ",
+    colors: [
+      { key: "headerColor", label: "สีแถบหัว", fallback: "#6e2f48" },
+      { key: "headerTextColor", label: "สีตัวหนังสือหัว", fallback: "#FFFFFF" },
+      { key: "buttonColor", label: "สีปุ่มแรก", fallback: "#bd3a6a" },
+    ],
+    fields: [{ key: "header", label: "แถบหัวการ์ด (ชื่อร้าน)" }],
+    texts: [
+      {
+        stateKey: "followUpMessage",
+        label: "ข้อความ",
+        multiline: true,
+        hint: "ใช้ได้: {name} = ชื่อลูกค้า · {pets} = ชื่อน้อง · {days} = จำนวนวันที่ไม่ได้มา · {shop} = ชื่อร้าน",
+      },
+    ],
+    styleTexts: [
+      { key: "header", label: "ข้อความบนแถบหัว (ว่าง = ชื่อร้าน)", placeholder: "🐾 ชื่อร้าน" },
+      { key: "title", label: "หัวข้อ", placeholder: MISS_YOU_DEFAULT_TITLE },
+    ],
+    closingLabel: "ข้อความท้ายการ์ด (ว่าง = ไม่มี)",
     hasTitleSize: true,
   },
   {
@@ -503,14 +734,40 @@ const CARDS: CardMeta[] = [
   {
     key: "consent",
     name: "เงื่อนไขเข้าพัก + ลายเซ็น",
-    desc: "หัวข้อและข้อตกลงที่ลูกค้าต้องอ่านและเซ็นยอมรับ — เขียนเองได้ทุกข้อ",
-    colors: [],
+    desc: "การ์ดชวนเซ็นข้อตกลง + หัวข้อและข้อตกลงที่ลูกค้าต้องอ่าน — เขียนเองได้ทุกข้อ",
+    colors: [
+      { key: "headerColor", label: "สีแถบหัว", fallback: "#6e2f48" },
+      { key: "headerTextColor", label: "สีตัวหนังสือหัว", fallback: "#FFFFFF" },
+      { key: "accentColor", label: "สีหัวข้อ", fallback: "#5C4033" },
+      { key: "buttonColor", label: "สีปุ่มเซ็น", fallback: "#bd3a6a" },
+    ],
     fields: [],
+    styleTexts: [
+      { key: "header", label: "ข้อความบนแถบหัว", placeholder: "📋 เงื่อนไขก่อนเข้าพัก" },
+      { key: "stayLabel", label: "ป้าย: เข้าพัก", placeholder: "เข้าพัก" },
+      { key: "stepsTitle", label: "หัวข้อขั้นตอน", placeholder: "⚠️ ก่อนฝากน้อง รบกวนทำ 2 ขั้นตอนนี้ก่อนนะคะ" },
+      {
+        key: "steps",
+        label: "ขั้นตอน (ว่าง = ข้อความเดิม พร้อมจำนวนข้อ)",
+        placeholder: "1. กดปุ่มด้านล่าง เพื่ออ่านข้อตกลง\n2. กดยอมรับ และเซ็นรับทราบในหน้านั้น",
+        multiline: true,
+      },
+      { key: "button", label: "คำในปุ่ม", placeholder: "อ่านเงื่อนไข + เซ็นยินยอม" },
+    ],
+    closingLabel: "ข้อความท้ายการ์ด (ว่าง = แจ้งการดูแลเพิ่มเติม…)",
+    hasTitleSize: true,
     texts: [
       { stateKey: "consentTitle", label: "หัวข้อข้อตกลง" },
       {
         stateKey: "consentTerms",
         label: "ข้อตกลงทั้งหมด (1 บรรทัด = 1 ข้อ — เพิ่ม/ลบ/แก้ได้อิสระ)",
+        multiline: true,
+      },
+      // นัดอาบน้ำใช้ข้อตกลงชุดนี้แทน (การ์ด + หน้าเซ็น) — แยกจากกฎเข้าพัก
+      { stateKey: "groomConsentTitle", label: "นัดอาบน้ำ: หัวข้อข้อตกลงอาบน้ำ" },
+      {
+        stateKey: "groomConsentTerms",
+        label: "นัดอาบน้ำ: ข้อตกลงอาบน้ำ (1 บรรทัด = 1 ข้อ · \"หัวข้อ — เนื้อหา\" หัวข้อจะเป็นตัวหนา)",
         multiline: true,
       },
     ],
@@ -522,26 +779,6 @@ const SWATCHES = [
 ];
 
 const BRAND_FALLBACK = { primary: "#a9855f", accent: "#ebc583", heading: "#5c4033" };
-
-/**
- * แปลงสีร้าน (branding) เป็นสีของการ์ดใบหนึ่ง — การ์ดที่มีแถบหัว (มี headerTextColor)
- * ใช้สีหลักเป็นพื้นแถบ + ตัวหนังสือขาว, ส่วนการ์ดที่ headerColor คือสีตัวหนังสือหัวข้อตรงๆ
- * (ไม่มีแถบพื้น) ใช้สีหัวข้อของร้านแทน
- */
-function brandCardColors(
-  meta: CardMeta,
-  branding: { primary: string; accent: string; heading: string }
-): Partial<CardStyleConfig> {
-  const hasBar = meta.colors.some((r) => r.key === "headerTextColor");
-  const next: Partial<CardStyleConfig> = {};
-  for (const role of meta.colors) {
-    if (role.key === "headerColor") next.headerColor = hasBar ? branding.primary : branding.heading;
-    if (role.key === "headerTextColor") next.headerTextColor = "#FFFFFF";
-    if (role.key === "accentColor") next.accentColor = branding.accent;
-    if (role.key === "buttonColor") next.buttonColor = branding.primary;
-  }
-  return next;
-}
 
 const TITLE_SIZES: { value: "" | "sm" | "md" | "lg" | "xl"; label: string }[] = [
   { value: "", label: "ค่าเริ่มต้น" },
@@ -573,6 +810,11 @@ function Preview({
   texts: Record<string, string>;
 }) {
   const show = (k: string) => st.show?.[k] !== false;
+  // พรีวิวใช้ชื่อ/ที่อยู่/บัญชีของร้านนี้จริง ๆ — ไม่ใช่ชื่อระบบ
+  const { config } = useConfig();
+  const shop = config.business?.name || "ร้านของคุณ";
+  const shopPlace = [shop, config.business?.location?.th].filter(Boolean).join(" · ");
+  const accountName = config.payment?.accountName || shop;
   const c = (role: ColorRole["key"], fb: string) => st[role] || fb;
   /** ข้อความที่เก็บในตัวการ์ดเอง (cards.<key>.texts) — ว่าง = ใช้ค่าเริ่มต้น */
   const t = (k: string, fb: string) => st.texts?.[k] || fb;
@@ -634,13 +876,13 @@ function Preview({
                 <p>⏰ <b>เวลา</b> — 12:30 น.</p>
               </>
             )}
-            {show("location") && <p>📍 <b>สถานที่</b> — PetFlow · เทพารักษ์ บางนา</p>}
+            {show("location") && <p>📍 <b>สถานที่</b> — {shopPlace}</p>}
             {show("notes") && <p>📝 <b>หมายเหตุ</b> — แจ้งในแชทได้เลยนะคะ</p>}
             {!isRoomPreview && show("groomPrep") && (
               <p className="whitespace-pre-line rounded-lg bg-[#FBEEE0] px-2.5 py-2 text-[10px] font-bold text-[#B4553B]">
                 {t(
                   "groomPrepNote",
-                  "🍬 อย่าลืมพกขนม/แมวเลียมาด้วยอย่างน้อย 1-2 ซองนะคะ\n🧺 และให้น้องอยู่ในตะกร้า/กระเป๋าทุกครั้งที่มาใช้บริการด้วยค่ะ"
+                  "🍬 อย่าลืมพกขนมที่น้องชอบมาด้วยนะคะ\n🧺 และให้น้องอยู่ในตะกร้า/กระเป๋า หรือใส่สายจูงทุกครั้งที่มาใช้บริการด้วยค่ะ"
                 )}
               </p>
             )}
@@ -670,7 +912,7 @@ function Preview({
           <p className="text-[10px] text-[#A2907E]">Soju · ตาล</p>
           {show("schedule") && <p className="text-[10px] font-bold">🛁 นัดอาบน้ำ: 24 ก.ค. 12:30 น.</p>}
           <hr className="border-[#eee3d2]" />
-          <div className="flex justify-between"><span>PetFlow Premium · แมวไทย M</span><span>900 บาท</span></div>
+          <div className="flex justify-between"><span>อาบน้ำ Premium · ไซซ์ M</span><span>900 บาท</span></div>
           <div className="flex justify-between text-[#C08A2E]"><span>ส่วนลด</span><span>-45 บาท</span></div>
           <hr className="border-[#eee3d2]" />
           <div className="flex items-baseline justify-between">
@@ -684,7 +926,7 @@ function Preview({
             <div className="rounded-lg bg-[#F4ECE0] px-2.5 py-2">
               <p className="font-extrabold">กรุงไทย</p>
               <p className="text-sm font-extrabold text-[#bd3a6a]">664-4-43446-0</p>
-              <p className="text-[10px] text-[#A2907E]">ชื่อบัญชี: PetFlow</p>
+              <p className="text-[10px] text-[#A2907E]">ชื่อบัญชี: {accountName}</p>
             </div>
           )}
           {show("closing") && (
@@ -731,10 +973,10 @@ function Preview({
       <div className={bubble}>
         <div className="px-4 py-3" style={{ background: c("headerColor", "#C4956A") }}>
           <p className={`${titleCls} font-extrabold`} style={{ color: c("headerTextColor", "#FFFFFF") }}>🧾 ใบเสร็จรับเงิน</p>
-          <p className="text-[10px]" style={{ color: c("headerTextColor", "#FFFFFF") }}>PetFlow</p>
+          <p className="text-[10px]" style={{ color: c("headerTextColor", "#FFFFFF") }}>{shop}</p>
         </div>
         <div className="space-y-2 px-4 py-3 text-[11px] text-[#4E3E32]">
-          <p>🐱 <b>ลูกค้า</b> — Soju · ตาล</p>
+          <p>🐾 <b>ลูกค้า</b> — Soju · ตาล</p>
           {show("invoiceNo") && <p>🔖 <b>เลขที่</b> — INV1784047676893</p>}
           <div className="rounded-xl bg-[#FBF4E9] px-3 py-3 text-center">
             <p className="text-[10px] text-[#A2907E]">ชำระแล้ว</p>
@@ -746,7 +988,7 @@ function Preview({
             </div>
           )}
           {show("closing") && (
-            <p className="whitespace-pre-line text-center text-[10px] text-[#A2907E]">{st.closing || "ขอบคุณที่ไว้วางใจ PetFlow นะคะ 🧡"}</p>
+            <p className="whitespace-pre-line text-center text-[10px] text-[#A2907E]">{st.closing || `ขอบคุณที่ไว้วางใจ ${shop} นะคะ 🧡`}</p>
           )}
           {show("reviewBundle") && (
             <p className="rounded-lg border border-dashed border-[#d9c9a8] px-2 py-1.5 text-center text-[9px] text-[#A2907E]">
@@ -762,19 +1004,19 @@ function Preview({
     return (
       <div className={bubble}>
         <div className="px-4 py-4 text-center" style={{ background: c("headerColor", "#FBF4E9") }}>
-          {show("stars") && <p className="text-sm" style={{ color: c("accentColor", "#C4956A") }}>⭐ ⭐ ⭐ ⭐ ⭐</p>}
+          {show("stars") && <p className="text-sm" style={{ color: c("accentColor", "#C4956A") }}>{t("stars", "⭐ ⭐ ⭐ ⭐ ⭐")}</p>}
           <p className={`mt-1 ${titleCls} font-extrabold`} style={{ color: c("headerTextColor", "#5C4033") }}>
-            ขอบคุณที่ไว้วางใจ PetFlow นะคะ 🧡
+            ขอบคุณที่ไว้วางใจ {shop} นะคะ 🧡
           </p>
         </div>
         <div className="space-y-1.5 px-4 py-3 text-[11px] text-[#4E3E32]">
           <p className="whitespace-pre-line">
             {(texts.reviewRequest || "ถ้าประทับใจ ฝากรีวิวให้ทีมงานหน่อยนะคะ")
-              .replace("{shop}", "PetFlow").replace("{cat}", "น้อง Soju")}
+              .replace("{shop}", shop).replace("{cat}", "น้อง Soju")}
           </p>
           {st.closing && <p className="whitespace-pre-line text-[10px] text-[#A2907E]">{st.closing}</p>}
         </div>
-        {btn(c("buttonColor", "#C4956A"), "⭐ รีวิวให้เราหน่อยนะคะ")}
+        {btn(c("buttonColor", "#C4956A"), t("button", "⭐ รีวิวให้เราหน่อยนะคะ"))}
       </div>
     );
   }
@@ -782,10 +1024,38 @@ function Preview({
   if (meta.key === "consent") {
     const terms = (texts.consentTerms || "").split("\n").map((t) => t.trim()).filter(Boolean);
     return (
+      <div className="space-y-3">
+      <div className={bubble}>
+        <div className="px-4 py-3" style={{ background: c("headerColor", "#6e2f48") }}>
+          <p className="text-xs font-extrabold" style={{ color: c("headerTextColor", "#FFFFFF") }}>
+            {t("header", "📋 เงื่อนไขก่อนเข้าพัก")}
+          </p>
+        </div>
+        <div className="space-y-2 px-4 py-3 text-[11px] text-[#4E3E32]">
+          <p className={`${titleCls} font-extrabold`} style={{ color: c("accentColor", "#5C4033") }}>
+            {texts.consentTitle || "ข้อตกลงและเงื่อนไขการเข้าพัก"}
+          </p>
+          <p className="text-[10px] text-[#A2907E]">{shop} · 🐾 น้องเรเนล</p>
+          <p className="text-[10px]">🗓️ {t("stayLabel", "เข้าพัก")} 20 ก.ค. → 26 ก.ค.</p>
+          <div className="rounded-xl bg-[#FBF4E9] px-3 py-2.5">
+            <p className="font-extrabold text-[#5C4033]">{t("stepsTitle", "⚠️ ก่อนฝากน้อง รบกวนทำ 2 ขั้นตอนนี้ก่อนนะคะ")}</p>
+            <p className="mt-1 whitespace-pre-line">
+              {t(
+                "steps",
+                `1. กดปุ่มด้านล่าง เพื่ออ่านข้อตกลง ${terms.length} ข้อ\n2. กดยอมรับ และเซ็นรับทราบในหน้านั้น`
+              )}
+            </p>
+          </div>
+          <p className="text-[10px] text-[#A2907E]">
+            {st.closing || "แจ้งการดูแลเพิ่มเติมของน้องในหน้าเดียวกันได้เลยค่ะ 🧡"}
+          </p>
+        </div>
+        {btn(c("buttonColor", "#bd3a6a"), t("button", "อ่านเงื่อนไข + เซ็นยินยอม"))}
+      </div>
+      <p className="text-center text-[10px] font-bold text-brown-soft">หน้าที่ลูกค้าเปิดอ่าน + เซ็น</p>
       <div className={bubble}>
         <div className="space-y-2 px-4 py-3 text-[11px] text-[#4E3E32]">
           <p className="text-sm font-extrabold text-[#5C4033]">📋 {texts.consentTitle || "ข้อตกลงและเงื่อนไขการเข้าพัก"}</p>
-          <p className="text-[10px] text-[#A2907E]">🐱 เรเนล · เข้าพัก 20 → 26 ก.ค.</p>
           <div className="space-y-1">
             {(terms.length ? terms : ["(ยังไม่มีข้อตกลง — พิมพ์ด้านซ้ายได้เลย)"]).slice(0, 5).map((t, i) => (
               <p key={i} className="rounded bg-[#F8F2E4] px-2 py-1 text-[10px]">{i + 1}. {t}</p>
@@ -795,7 +1065,7 @@ function Preview({
             )}
           </div>
         </div>
-        {btn("#bd3a6a", "📋 อ่าน + เซ็นยอมรับข้อตกลง")}
+      </div>
       </div>
     );
   }
@@ -809,8 +1079,8 @@ function Preview({
           </p>
         </div>
         <div className="space-y-2 px-4 py-3 text-[11px] text-[#4E3E32]">
-          <p className={`${titleCls} font-extrabold`} style={{ color: c("accentColor", "#5C4033") }}>🐱 เรเนล</p>
-          <p className="text-[10px] text-[#A2907E]">PetFlow</p>
+          <p className={`${titleCls} font-extrabold`} style={{ color: c("accentColor", "#5C4033") }}>🐾 เรเนล</p>
+          <p className="text-[10px] text-[#A2907E]">{shop}</p>
           <p>สวัสดีค่ะ 🧡 ใกล้ถึงวันเข้าพักของน้องแล้วนะคะ</p>
           {(show("dates") || show("room")) && (
             <div className="space-y-1.5 rounded-xl bg-[#F4ECE0] px-3 py-2.5">
@@ -847,9 +1117,60 @@ function Preview({
           {show("care") && (
             <p className="rounded-lg bg-[#FBF0F1] px-2.5 py-1.5 text-[10px] text-[#7A6A5A]">💗 มีอะไรที่ต้องดูแลพิเศษ แจ้งได้เลยนะคะ</p>
           )}
+          <p className="pt-1 text-xs font-extrabold" style={{ color: c("headerColor", "#5C4033") }}>
+            {t("intakeTitle", "📋 ข้อมูลที่ยังต้องส่งให้ร้าน")}
+          </p>
+          <div className="space-y-1 rounded-lg bg-[#FBF7F0] px-2.5 py-2 text-[10px]">
+            <p>1. 📸 แนบสมุดวัคซีน</p>
+            <p>2. 📋 อ่านกฎ + กดยินยอม</p>
+          </div>
+          <div className="rounded-xl bg-[#FBF4E9] px-3 py-2.5 text-center">
+            <p className="text-[10px] text-[#A2907E]">{t("balanceLabel", "💳 ยอดคงเหลือที่ต้องโอน")}</p>
+            <p className="text-lg font-extrabold text-[#C4956A]">1,496 บาท</p>
+            <p className="text-[9px] text-[#A2907E]">มัดจำที่ชำระแล้ว 641 บาท</p>
+            <p className="pt-1 font-extrabold">กรุงไทย · <span className="text-[#4A7348]">664-4-43446-0</span></p>
+          </div>
+          <p className="text-[9px] text-[#A2907E]">ข้อมูลที่ยังขาด / ยอดคงเหลือ จะขึ้นเฉพาะลูกค้าที่ยังไม่ได้ส่ง/ยังค้างยอด</p>
           {st.closing && <p className="whitespace-pre-line text-[10px] text-[#A2907E]">{st.closing}</p>}
         </div>
-        {btn(c("buttonColor", "#bd3a6a"), "🧡 อ่านรายละเอียด & ยืนยันการเข้าพัก")}
+        {btn(c("buttonColor", "#bd3a6a"), "📋 เริ่มกรอกข้อมูล")}
+        {btn(c("buttonColor", "#bd3a6a"), t("timeButton", "🕒 เลือกเวลาส่งน้อง"))}
+        {btn("#8C7B6B", t("copyButton", "📋 คัดลอกเลขบัญชี"))}
+      </div>
+    );
+  }
+
+  if (meta.key === "depositReminder") {
+    const D = DEPOSIT_REMINDER_DEFAULTS;
+    return (
+      <div className={bubble}>
+        <div className="px-4 py-3" style={{ background: c("headerColor", "#6e2f48") }}>
+          <p className={`${titleCls} font-extrabold`} style={{ color: c("headerTextColor", "#FFFFFF") }}>
+            {t("header", D.header)}
+          </p>
+        </div>
+        <div className="space-y-2 px-4 py-3 text-[11px] text-[#4E3E32]">
+          <p className="whitespace-pre-line">
+            {(st.texts?.body?.trim() || D.body)
+              .replace(/\{days\}/g, "7").replace(/\{cat\}/g, "น้องโมจิ").replace(/\{shop\}/g, shop)
+              .replace(/\{checkin\}/g, "20 ก.ค. 69").replace(/\{deposit\}/g, "641").replace(/\{remaining\}/g, "1,496")}
+          </p>
+          {show("schedule") && <p className="font-bold text-[#4A7348]">🏠 เข้าพัก: 20 ก.ค. 69 → 26 ก.ค. 69</p>}
+          <div className="rounded-xl bg-[#FBF4E9] px-3 py-3 text-center">
+            <p className="text-[10px] text-[#A2907E]">{t("amountLabel", D.amountLabel)}</p>
+            <p className="text-2xl font-extrabold" style={{ color: c("accentColor", "#C4956A") }}>1,496 บาท</p>
+            {show("deposit") && <p className="text-[10px] text-[#A2907E]">{t("depositPaidLabel", D.depositPaidLabel)} 641 บาท</p>}
+          </div>
+          {show("bank") && (
+            <div className="rounded-lg bg-[#F4ECE0] px-2.5 py-2">
+              <p className="font-extrabold">กรุงไทย</p>
+              <p className="text-sm font-extrabold text-[#4A7348]">664-4-43446-0</p>
+              <p className="text-[10px] text-[#A2907E]">{t("accountNameLabel", D.accountNameLabel)} {shop}</p>
+            </div>
+          )}
+          {st.closing && <p className="whitespace-pre-line text-[10px] text-[#A2907E]">{st.closing}</p>}
+        </div>
+        {show("bank") && btn(c("buttonColor", "#bd3a6a"), t("copyButton", D.copyButton))}
       </div>
     );
   }
@@ -928,7 +1249,7 @@ function Preview({
           </p>
           <p className="text-[10px] text-[#A2907E]">Soju · ตาล</p>
           {show("items") && (
-            <p className="whitespace-pre-line text-[10px]">PetFlow Premium · แมวไทย M 900 บาท{"\n"}ส่วนลด -45 บาท</p>
+            <p className="whitespace-pre-line text-[10px]">อาบน้ำ Premium · ไซซ์ M 900 บาท{"\n"}ส่วนลด -45 บาท</p>
           )}
           <hr className="border-[#eee3d2]" />
           <p className="text-base font-extrabold" style={{ color: c("accentColor", "#C4956A") }}>รวม 855 บาท</p>
@@ -936,7 +1257,7 @@ function Preview({
             <div className="rounded-lg bg-[#F4ECE0] px-2.5 py-2">
               <p className="font-extrabold">กรุงไทย</p>
               <p className="text-sm font-extrabold text-[#bd3a6a]">664-4-43446-0</p>
-              <p className="text-[10px] text-[#A2907E]">ชื่อบัญชี: PetFlow</p>
+              <p className="text-[10px] text-[#A2907E]">ชื่อบัญชี: {accountName}</p>
             </div>
           )}
           {st.closing && <p className="whitespace-pre-line text-[10px] text-[#A2907E]">{st.closing}</p>}
@@ -974,7 +1295,7 @@ function Preview({
       <div className={bubble}>
         <div className="px-4 py-5" style={{ background: c("headerColor", "#6e2f48") }}>
           <p className="text-sm font-extrabold" style={{ color: c("headerTextColor", "#FFFFFF") }}>
-            {t("header", "✨ โปรโมชั่น PetFlow")}
+            {t("header", `✨ โปรโมชั่น ${shop}`)}
           </p>
           <p className="text-[9px]" style={{ color: c("headerTextColor", "#FFFFFF") }}>(ถ้าใส่รูปโปร รูปจะแทนแถบนี้)</p>
         </div>
@@ -989,22 +1310,270 @@ function Preview({
     );
   }
 
+  if (meta.key === "followUp") {
+    return (
+      <div className="space-y-3">
+        {FOLLOW_UP_MESSAGES.map((m) => (
+          <div key={m.id}>
+            <p className="mb-1 text-center text-[10px] font-bold text-white">{m.label}</p>
+            <div className={bubble}>
+              <div className="px-4 py-2.5" style={{ background: "#6e2f48" }}>
+                <p className="text-[11px] font-extrabold text-white">✨ โปรโมชั่น {shop}</p>
+              </div>
+              <div className="space-y-1 px-4 py-3 text-[11px] text-[#4E3E32]">
+                <p className="text-sm font-extrabold text-[#5C4033]">{t(followUpKey(m.id, "Title"), m.title)}</p>
+                <p className="whitespace-pre-line">{t(followUpKey(m.id, "Body"), m.body)}</p>
+              </div>
+              {followUpActions(m.id, st.texts).map((id, i) => (
+                <div key={id} className="px-3 pb-2 last:pb-3">
+                  <div
+                    className="rounded-lg py-1.5 text-center text-[11px] font-bold"
+                    style={i === 0 ? { background: "#bd3a6a", color: "#fff" } : { border: "1px solid #bd3a6a", color: "#bd3a6a" }}
+                  >
+                    {broadcastActionLabel(id)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (meta.key === "missYou") {
+    // ตัวอย่างใช้ชื่อสมมติ — ตอนส่งจริงระบบเติมชื่อลูกค้า/น้อง/จำนวนวันของคนนั้นให้
+    const body = (texts.followUpMessage || "")
+      .replace(/\{name\}/g, "คุณตาล")
+      .replace(/\{(pets|cats)\}/g, "มะลิ")
+      .replace(/\{days\}/g, "75")
+      .replace(/\{shop\}/g, shop);
+    const actions = missYouActions(st.texts);
+    return (
+      <div className={bubble}>
+        {show("header") && (
+          <div className="px-4 py-3" style={{ background: c("headerColor", "#6e2f48") }}>
+            <p className="text-xs font-extrabold" style={{ color: c("headerTextColor", "#FFFFFF") }}>
+              {t("header", `🐾 ${shop}`)}
+            </p>
+          </div>
+        )}
+        <div className="space-y-1 px-4 py-4 text-[11px] text-[#4E3E32]">
+          <p className={`${titleCls} font-extrabold text-[#5C4033]`}>{t("title", MISS_YOU_DEFAULT_TITLE)}</p>
+          <p className="whitespace-pre-line pt-1">{body}</p>
+          {st.closing && <p className="whitespace-pre-line pt-2 text-[10px] text-[#A2907E]">{st.closing}</p>}
+        </div>
+        {actions.map((id, i) => (
+          <div key={id} className="px-3 pb-2 last:pb-3">
+            <div
+              className="rounded-lg py-1.5 text-center text-[11px] font-bold"
+              style={i === 0 ? { background: c("buttonColor", "#bd3a6a"), color: "#fff" } : { background: "#EFEFEF", color: "#4E3E32" }}
+            >
+              {broadcastActionLabel(id)}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (meta.key === "readyForPickup") {
+    return (
+      <div className={bubble}>
+        <div className="space-y-1 px-4 py-4 text-[11px] text-[#4E3E32]">
+          <p className={`${titleCls} font-extrabold`} style={{ color: c("headerColor", "#5C4033") }}>
+            {t("title", "🎉 น้องพร้อมกลับบ้านแล้วค่ะ")}
+          </p>
+          {show("customerName") && <p className="pt-1 text-[10px] text-[#A2907E]">คุณตาล</p>}
+          <div className="mt-2 rounded-lg bg-[#F4ECE0] px-3 py-2.5">
+            <p className="font-extrabold" style={{ color: c("accentColor", "#C4956A") }}>น้อง Soju</p>
+            <p className="mt-0.5 whitespace-pre-line">
+              {t("groomBody", "อาบน้ำเสร็จเรียบร้อย สวยหล่อพร้อมกลับบ้านแล้วค่ะ")}
+            </p>
+          </div>
+          {show("pickupTime") && (
+            <p className="pt-1 text-[10px] text-[#A2907E]">{t("pickupTimeLabel", "🚗 เวลาที่แจ้งไว้ว่าจะมารับ")}: 17:00 น.</p>
+          )}
+          <p className="whitespace-pre-line pt-2 text-[10px] text-[#A2907E]">
+            {st.closing || `ขอบคุณที่ไว้ใจ ${shop} นะคะ 🧡`}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (meta.key === "packageCard") {
+    return (
+      <div className={bubble}>
+        <div className="space-y-1 px-4 py-4 text-[11px] text-[#4E3E32]">
+          <p className={`${titleCls} font-extrabold`} style={{ color: c("headerColor", "#5C4033") }}>
+            {t("title", "🎫 คอร์สของคุณ")}
+          </p>
+          <p className="pt-1 text-[10px] text-[#A2907E]">คุณตาล</p>
+          <p className="pt-2 text-xs font-extrabold">อาบน้ำ Premium 5 ครั้ง</p>
+          <div className="mt-2 rounded-xl bg-[#FBF4E9] px-3 py-3 text-center">
+            <p className="text-[10px] text-[#A2907E]">{t("usesLeftLabel", "ใช้ได้อีก")}</p>
+            <p className="text-2xl font-extrabold" style={{ color: c("accentColor", "#C4956A") }}>5 / 5 ครั้ง</p>
+          </div>
+          <p className="whitespace-pre-line pt-2 text-[10px] text-[#A2907E]">
+            {st.closing || "แจ้งร้านได้เลยตอนมาใช้บริการว่าจะหักจากคอร์สนะคะ 🧡"}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (meta.key === "roomPlan") {
+    const row = (label: string, value: string, tone = "") => (
+      <p className="flex justify-between gap-2 text-[11px]">
+        <span className="text-[#A2907E]">{label}</span>
+        <span className={`font-bold ${tone}`}>{value}</span>
+      </p>
+    );
+    return (
+      <div className={bubble}>
+        <div className="space-y-1.5 px-4 py-4 text-[11px] text-[#4E3E32]">
+          <p className={`${titleCls} font-extrabold`} style={{ color: c("headerColor", "#5C4033") }}>
+            {t("paidTitleRoom", "🧾 รับชำระแพ็กห้องแล้ว")}
+          </p>
+          <p className="text-[10px] text-[#A2907E]">คุณตาล</p>
+          <p className="text-xs font-extrabold">แพ็กพักรายเดือน 10 คืน</p>
+          <p className="text-[11px] font-bold text-[#6E8B5E]">รับงวดที่ 1 3,000 บาท เรียบร้อยค่ะ 🧡</p>
+          <div className="rounded-xl bg-[#FBF4E9] px-3 py-3 text-center">
+            <p className="text-[10px] text-[#A2907E]">{t("leftLabel", "คืนที่ใช้ได้อีก")}</p>
+            <p className="text-2xl font-extrabold" style={{ color: c("accentColor", "#C4956A") }}>10 คืน</p>
+          </div>
+          <hr className="border-[#eee3d2]" />
+          {row(t("priceLabel", "ยอดแพ็ก"), "9,000 บาท")}
+          {row(t("paidLabel", "จ่ายแล้ว"), "3,000 บาท", "text-[#6E8B5E]")}
+          {row(t("remainingLabel", "คงเหลือ"), "6,000 บาท", "text-[#C0703A]")}
+          {row(t("installmentsLabel", "เหลืออีก"), "2 งวด (งวดละ ~3,000)")}
+          <p className="whitespace-pre-line text-[10px] text-[#C0703A]">
+            {t("unpaidNote", "เริ่มใช้คืนได้เมื่อชำระครบทุกงวดนะคะ")}
+          </p>
+          <p className="whitespace-pre-line pt-1 text-[10px] text-[#A2907E]">
+            {st.closing || "พักห้องไหน ระบบหักคืนของห้องนั้นให้ตามจริงนะคะ 🐾"}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (meta.key === "pointsAward") {
+    return (
+      <div className={bubble}>
+        <div className="space-y-1 px-4 py-4 text-[11px] text-[#4E3E32]">
+          <p className={`${titleCls} font-extrabold`} style={{ color: c("headerColor", "#5C4033") }}>
+            {t("title", "🎁 ได้รับแต้มสะสมแล้ว")}
+          </p>
+          {show("customerName") && <p className="pt-1 text-[10px] text-[#A2907E]">คุณตาล</p>}
+          <div className="mt-2 flex items-center justify-between rounded-lg bg-[#F4ECE0] px-3 py-2.5">
+            <span className="text-[#5C4033]">{t("pointsLabel", "แต้มที่ได้รับ")}</span>
+            <span className="text-lg font-extrabold" style={{ color: c("accentColor", "#C4956A") }}>+50</span>
+          </div>
+          {show("reason") && <p className="pt-1">{t("reasonLabel", "เหตุผล")}: รีวิวร้านใน Google</p>}
+          {show("totalPoints") && (
+            <p className="text-[10px] text-[#A2907E]">{t("totalLabel", "แต้มสะสมรวมตอนนี้")} 320 แต้ม</p>
+          )}
+          <p className="whitespace-pre-line pt-2 text-[10px] text-[#A2907E]">
+            {st.closing || `ขอบคุณที่ไว้ใจ ${shop} นะคะ 🧡`}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (meta.key === "intake") {
+    return (
+      <div className={bubble}>
+        <div className="px-4 py-3" style={{ background: c("headerColor", "#6e2f48") }}>
+          <p className="text-xs font-extrabold" style={{ color: c("headerTextColor", "#FFFFFF") }}>
+            {t("headerStay", INTAKE_CARD_DEFAULTS.headerStay)}
+          </p>
+        </div>
+        <div className="space-y-2 px-4 py-3 text-[11px] text-[#4E3E32]">
+          <p className={`${titleCls} font-extrabold`} style={{ color: c("accentColor", "#5C4033") }}>🐾 น้องโรเซ่, Soju</p>
+          <p className="text-[10px] text-[#A2907E]">{shop} · 🏠 เข้าพัก: 24 ต.ค. → 27 ต.ค.</p>
+          <p className="whitespace-pre-line">
+            {t("body", INTAKE_CARD_DEFAULTS.body).replaceAll("{cat}", "น้องโรเซ่, Soju").replaceAll("{shop}", shop)}
+          </p>
+          <div className="space-y-0.5 text-xs text-[#5C4033]">
+            {[
+              `${t("stayInfoButton", INTAKE_CARD_DEFAULTS.stayInfoButton)} (2 ตัว)`,
+              `${t("vaccineButton", INTAKE_CARD_DEFAULTS.vaccineButton)} (2 ตัว)`,
+              t("idcardButton", INTAKE_CARD_DEFAULTS.idcardButton),
+              t("consentButton", INTAKE_CARD_DEFAULTS.consentButton),
+            ].map((label, i) => (
+              <p key={label}>{i + 1}. {label}</p>
+            ))}
+          </div>
+          <div className="flex items-center justify-between rounded-lg bg-[#F4ECE0] px-3 py-2.5">
+            <span className="text-[#5C4033]">{t("depositLabel", INTAKE_CARD_DEFAULTS.depositLabel)}</span>
+            <span className="text-sm font-extrabold" style={{ color: c("accentColor", "#C4956A") }}>500 บาท</span>
+          </div>
+          {st.closing && <p className="whitespace-pre-line text-[10px] text-[#A2907E]">{st.closing}</p>}
+        </div>
+        <div className="space-y-1.5 px-3 pb-3">
+          <div
+            className="rounded-lg py-2 text-center text-xs font-bold text-white"
+            style={{ background: c("buttonColor", "#bd3a6a") }}
+          >
+            {t("startButton", INTAKE_CARD_DEFAULTS.startButton)}
+          </div>
+          <div className="rounded-lg bg-[#EFEFEF] py-2 text-center text-xs font-bold text-[#555]">
+            {t("copyButton", INTAKE_CARD_DEFAULTS.copyButton)}
+          </div>
+        </div>
+        <p className="px-4 pb-3 text-[10px] text-[#A2907E]">
+          ตัวอย่างนี้โชว์ครบทุกขั้น — ส่งจริงจะมีเฉพาะเรื่องที่ลูกค้ายังไม่ได้ส่ง (รอบถัดไปมักเหลือแค่กฎ)
+        </p>
+      </div>
+    );
+  }
+
+  if (meta.key === "docRequest") {
+    const one = (kind: "vaccine" | "idcard") => (
+      <div className={bubble}>
+        <div className="px-4 py-3" style={{ background: c("headerColor", "#6e2f48") }}>
+          <p className="text-xs font-extrabold" style={{ color: c("headerTextColor", "#FFFFFF") }}>
+            {t(`${kind}Header`, DOC_REQUEST_DEFAULTS[`${kind}Header`])}
+          </p>
+        </div>
+        <div className="space-y-2 px-4 py-3 text-[11px] text-[#4E3E32]">
+          <p className={`${titleCls} font-extrabold`} style={{ color: c("accentColor", "#5C4033") }}>🐾 น้อง Soju</p>
+          <p className="text-[10px] text-[#A2907E]">{shop} · 🏠 เข้าพัก: 24 ต.ค. → 27 ต.ค.</p>
+          <p className="whitespace-pre-line">
+            {t(`${kind}Body`, DOC_REQUEST_DEFAULTS[`${kind}Body`]).replaceAll("{cat}", "น้อง Soju")}
+          </p>
+          {st.closing && <p className="whitespace-pre-line text-[10px] text-[#A2907E]">{st.closing}</p>}
+        </div>
+        {btn(c("buttonColor", "#bd3a6a"), t(`${kind}Button`, DOC_REQUEST_DEFAULTS[`${kind}Button`]))}
+      </div>
+    );
+    return (
+      <div className="space-y-3">
+        {one("vaccine")}
+        {one("idcard")}
+      </div>
+    );
+  }
+
   // groomInfo
   return (
     <div className={bubble}>
       <div className="px-4 py-3" style={{ background: c("headerColor", "#6e2f48") }}>
-        <p className="text-xs font-extrabold" style={{ color: c("headerTextColor", "#FFFFFF") }}>🩺 ประวัติน้องก่อนอาบน้ำ</p>
+        <p className="text-xs font-extrabold" style={{ color: c("headerTextColor", "#FFFFFF") }}>{t("header", "🩺 ประวัติน้องก่อนอาบน้ำ")}</p>
       </div>
       <div className="space-y-2 px-4 py-3 text-[11px] text-[#4E3E32]">
-        <p className={`${titleCls} font-extrabold`} style={{ color: c("accentColor", "#5C4033") }}>🐱 Soju</p>
+        <p className={`${titleCls} font-extrabold`} style={{ color: c("accentColor", "#5C4033") }}>🐾 Soju</p>
         {show("date") && <p className="text-[10px] text-[#A2907E]">📅 นัดอาบน้ำ: 24 ก.ค. 12:30</p>}
         <p className="whitespace-pre-line">
           {(texts.groomInfoIntro || "รบกวนแจ้งประวัติน้องสั้นๆ นะคะ 🐾")
-            .replace("{shop}", "PetFlow").replace("{cat}", "น้อง Soju")}
+            .replace("{shop}", shop).replace("{cat}", "น้อง Soju")}
         </p>
         {st.closing && <p className="whitespace-pre-line text-[10px] text-[#A2907E]">{st.closing}</p>}
       </div>
-      {btn(c("buttonColor", "#bd3a6a"), "🩺 แจ้งประวัติน้อง")}
+      {btn(c("buttonColor", "#bd3a6a"), t("button", "🩺 แจ้งประวัติน้อง"))}
     </div>
   );
 }
@@ -1014,7 +1583,13 @@ export default function CardsStudioPage() {
   const [texts, setTexts] = useState<Record<string, string>>({});
   const [groomForm, setGroomForm] = useState<GroomFormConfig>({});
   const [branding, setBranding] = useState(BRAND_FALLBACK);
+  const [hasBrand, setHasBrand] = useState(false);
   const [activeKey, setActiveKey] = useState(CARDS[0].key);
+  // เปิดตรงการ์ดที่ต้องการจากลิงก์ (เช่น ?card=missYou จากหน้าลูกค้า)
+  useEffect(() => {
+    const want = new URLSearchParams(window.location.search).get("card");
+    if (want && CARDS.some((c) => c.key === want)) setActiveKey(want);
+  }, []);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -1027,6 +1602,7 @@ export default function CardsStudioPage() {
         setCards(cfg.cards || {});
         setGroomForm(cfg.groomForm || {});
         setBranding({ ...BRAND_FALLBACK, ...cfg.branding });
+        setHasBrand(Boolean(cfg.branding?.primary));
         setTexts({
           summaryBookingTitle: cfg.billing?.summaryBookingTitle || "",
           summaryDepositTitle: cfg.billing?.summaryDepositTitle || "",
@@ -1036,8 +1612,12 @@ export default function CardsStudioPage() {
           depositRequestBody: cfg.messages?.depositRequestBody || "",
           reviewRequest: cfg.messages?.reviewRequest || "",
           groomInfoIntro: cfg.messages?.groomInfoIntro || "",
+          // การ์ดคิดถึงน้อง — เนื้อความเก็บที่เดียวกับหน้าตั้งค่า › ลูกค้า (crm.followUpMessage)
+          followUpMessage: cfg.crm?.followUpMessage || "",
           consentTitle: cfg.messages?.consentTitle || "",
           consentTerms: (cfg.messages?.consentTerms || []).join("\n"),
+          groomConsentTitle: cfg.messages?.groomConsentTitle || "",
+          groomConsentTerms: (cfg.messages?.groomConsentTerms || []).join("\n"),
           // การ์ดเลือกเวลาเช็คอิน/เช็คเอาท์
           checkinReminder: cfg.messages?.checkinReminder || "",
           checkoutReminder: cfg.messages?.checkoutReminder || "",
@@ -1058,6 +1638,14 @@ export default function CardsStudioPage() {
 
   const meta = useMemo(() => CARDS.find((c) => c.key === activeKey)!, [activeKey]);
   const st = cards[activeKey] || {};
+  // สีที่ไม่ได้ตั้งเองรายใบ = สีร้าน (ตรงกับตอนส่งการ์ดจริง) — ไม่ใช่น้ำตาล/ชมพูเริ่มต้น
+  const shownSt: CardStyleConfig = hasBrand
+    ? { ...brandColorsFor(meta.colors.map((r) => r.key), branding), ...st }
+    : st;
+  // สีร้านขึ้นก่อนในแถบสีให้เลือก
+  const swatches = hasBrand
+    ? Array.from(new Set([branding.primary, branding.heading, ...SWATCHES]))
+    : SWATCHES;
 
   const patch = (p: Partial<CardStyleConfig>) => {
     setCards((prev) => ({ ...prev, [activeKey]: { ...prev[activeKey], ...p } }));
@@ -1104,6 +1692,8 @@ export default function CardsStudioPage() {
           patch: {
             cards,
             groomForm,
+            // ว่าง = ไม่แตะ (ส่งข้อความว่างให้ลูกค้าไม่ได้)
+            ...(texts.followUpMessage?.trim() ? { crm: { followUpMessage: texts.followUpMessage } } : {}),
             billing: {
               summaryBookingTitle: texts.summaryBookingTitle,
               summaryDepositTitle: texts.summaryDepositTitle,
@@ -1117,6 +1707,8 @@ export default function CardsStudioPage() {
               groomInfoIntro: texts.groomInfoIntro,
               consentTitle: texts.consentTitle,
               consentTerms: lines(texts.consentTerms),
+              groomConsentTitle: texts.groomConsentTitle,
+              groomConsentTerms: lines(texts.groomConsentTerms),
               // การ์ดเลือกเวลาเช็คอิน/เช็คเอาท์
               checkinReminder: texts.checkinReminder,
               checkoutReminder: texts.checkoutReminder,
@@ -1172,7 +1764,7 @@ export default function CardsStudioPage() {
                 const next = { ...prev };
                 for (const c of CARDS) {
                   if (c.colors.length === 0) continue;
-                  next[c.key] = { ...next[c.key], ...brandCardColors(c, branding) };
+                  next[c.key] = { ...next[c.key], ...brandColorsFor(c.colors.map((r) => r.key), branding) };
                 }
                 return next;
               });
@@ -1361,13 +1953,13 @@ export default function CardsStudioPage() {
                     <label className="w-36 shrink-0 text-[11px] font-bold text-brown-soft">{role.label}</label>
                     <input
                       type="color"
-                      value={styleValue(st, role)}
+                      value={styleValue(shownSt, role)}
                       onChange={(e) => patch({ [role.key]: e.target.value })}
                       className="h-9 w-12 cursor-pointer rounded-lg border border-petflow-line bg-paper"
                     />
-                    <span className="font-mono text-[10px] text-brown-faint">{styleValue(st, role)}</span>
+                    <span className="font-mono text-[10px] text-brown-faint">{styleValue(shownSt, role)}</span>
                     <div className="flex gap-1">
-                      {SWATCHES.map((sw) => (
+                      {swatches.map((sw) => (
                         <button
                           key={sw}
                           type="button"
@@ -1448,7 +2040,7 @@ export default function CardsStudioPage() {
                       <textarea
                         value={texts[t.stateKey] || ""}
                         onChange={(e) => patchText(t.stateKey, e.target.value)}
-                        rows={t.stateKey === "consentTerms" ? 8 : 3}
+                        rows={t.stateKey === "consentTerms" || t.stateKey === "groomConsentTerms" ? 8 : 3}
                         className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-xs font-normal"
                       />
                     ) : (
@@ -1462,6 +2054,104 @@ export default function CardsStudioPage() {
                   </label>
                 ))}
               </div>
+            </div>
+          )}
+
+          {activeKey === "missYou" && (
+            <div>
+              <p className="mb-1.5 flex items-center justify-between text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">
+                Buttons · ปุ่มในการ์ด (สูงสุด 3)
+                {st.texts?.buttons !== undefined && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = { ...st.texts };
+                      delete next.buttons;
+                      patch({ texts: Object.keys(next).length ? next : undefined });
+                    }}
+                    className="font-bold normal-case tracking-normal text-latte-deep underline"
+                  >
+                    ใช้ปุ่มตั้งต้น
+                  </button>
+                )}
+              </p>
+              <BroadcastButtonPicker
+                value={missYouActions(st.texts)}
+                // เก็บแม้เป็นค่าว่าง — "ไม่มีปุ่ม" ต่างจาก "ยังไม่ได้ตั้ง"
+                onChange={(next) => patch({ texts: { ...st.texts, buttons: next.join(",") } })}
+              />
+            </div>
+          )}
+
+          {activeKey === "followUp" && (
+            <div className="space-y-3">
+              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Groups · ข้อความ + ปุ่มของแต่ละกลุ่ม</p>
+              {FOLLOW_UP_MESSAGES.map((m) => {
+                const setKey = (key: string, v: string | undefined) => {
+                  const next = { ...st.texts };
+                  if (v === undefined || v === "") delete next[key];
+                  else next[key] = v;
+                  patch({ texts: Object.keys(next).length ? next : undefined });
+                };
+                const buttonsKey = followUpKey(m.id, "Buttons");
+                const actions = followUpActions(m.id, st.texts);
+                return (
+                  <details key={m.id} className="group rounded-petflow-sm border border-petflow-line bg-paper/40 [&_summary::-webkit-details-marker]:hidden">
+                    <summary className="flex min-h-[44px] cursor-pointer list-none items-center gap-2 px-3 py-2">
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-xs font-extrabold text-petflow-chocolate">{m.label}</span>
+                        <span className="block truncate text-[10px] text-brown-soft">
+                          {actions.length ? actions.map(broadcastActionLabel).join(" · ") : "ไม่มีปุ่ม"}
+                        </span>
+                      </span>
+                      <Icon name="chevron" size={14} className="text-brown-faint transition group-open:rotate-90" />
+                    </summary>
+                    <div className="space-y-2.5 border-t border-petflow-line px-3 py-3">
+                      <label className="block text-[11px] font-bold text-brown-soft">
+                        หัวข้อ
+                        <input
+                          value={st.texts?.[followUpKey(m.id, "Title")] || ""}
+                          onChange={(e) => setKey(followUpKey(m.id, "Title"), e.target.value)}
+                          placeholder={m.title}
+                          className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-xs font-normal"
+                        />
+                      </label>
+                      <label className="block text-[11px] font-bold text-brown-soft">
+                        ข้อความ
+                        <textarea
+                          value={st.texts?.[followUpKey(m.id, "Body")] || ""}
+                          onChange={(e) => setKey(followUpKey(m.id, "Body"), e.target.value)}
+                          placeholder={m.body}
+                          rows={3}
+                          className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-xs font-normal"
+                        />
+                      </label>
+                      <div>
+                        <p className="mb-1.5 flex items-center justify-between text-[11px] font-bold text-brown-soft">
+                          ปุ่มในการ์ด (สูงสุด 3)
+                          {st.texts?.[buttonsKey] !== undefined && (
+                            <button
+                              type="button"
+                              onClick={() => setKey(buttonsKey, undefined)}
+                              className="font-bold text-latte-deep underline"
+                            >
+                              ใช้ปุ่มตั้งต้น
+                            </button>
+                          )}
+                        </p>
+                        <BroadcastButtonPicker
+                          value={actions}
+                          // เก็บแม้เป็นค่าว่าง — "ไม่มีปุ่ม" ต่างจาก "ยังไม่ได้ตั้ง"
+                          onChange={(next) => {
+                            const t = { ...st.texts, [buttonsKey]: next.join(",") };
+                            patch({ texts: t });
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </details>
+                );
+              })}
             </div>
           )}
 
@@ -1537,7 +2227,7 @@ export default function CardsStudioPage() {
             <div className="rounded-2xl bg-[#efe6d6] p-3">
               <div className="rounded-petflow bg-[#fdfaf4] p-3">
                 <p className="text-sm font-extrabold text-[#4a3a12]">🩺 ประวัติน้องก่อนอาบน้ำ</p>
-                <p className="mt-0.5 text-[10px] text-[#8a7a5c]">🐱 Soju</p>
+                <p className="mt-0.5 text-[10px] text-[#8a7a5c]">🐾 Soju</p>
                 {resolveGroomForm(groomForm).map((fd) => (
                   <div key={fd.key} className="mt-2.5">
                     <p className="mb-1 text-[10px] font-bold text-[#6b5c40]">
@@ -1578,7 +2268,7 @@ export default function CardsStudioPage() {
             </div>
           ) : (
             <div className="rounded-2xl bg-[#8cabd8] p-4">
-              <Preview meta={meta} st={st} texts={texts} />
+              <Preview meta={meta} st={shownSt} texts={texts} />
             </div>
           )}
         </div>

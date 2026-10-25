@@ -1,11 +1,12 @@
-import { getSupabase } from "./supabase/server";
+import { getDirectoryDb, getSupabase } from "./supabase/server";
+import { ensureMigration } from "./migrations";
 import { requireTenantId } from "./tenant-context";
-import { generateSalt, hashPassword } from "./auth";
+import { generateSalt, getBootstrapTenantId, hashPassword } from "./auth";
 
 /**
  * บัญชีพนักงาน — เจ้าของสร้างให้ พร้อมเลือกเมนูที่พนักงานคนนั้นมองเห็นได้
- * ล็อกอินด้วย username + password (ไม่ใช่อีเมล) — username ต้อง unique ทั้งแพลตฟอร์ม
- * ไม่ใช่แค่ในร้านตัวเอง เพราะตอนล็อกอินยังไม่รู้ว่าเป็นร้านไหนจนกว่าจะหา username เจอ
+ * ล็อกอินด้วย username + password (ไม่ใช่อีเมล) — username ซ้ำไม่ได้ "ในร้านเดียวกัน" เท่านั้น
+ * คนละร้านตั้งชื่อเดียวกันได้ (ทุกร้านแยกขาดจากกัน) เพราะล็อกอินผ่านลิงก์ของร้าน /s/<slug>/admin/login
  */
 
 export type StaffUser = {
@@ -64,17 +65,49 @@ export async function listStaff(): Promise<StaffUser[]> {
   return mem.map(({ passwordHash: _h, passwordSalt: _s, ...s }) => s);
 }
 
-/** username ต้องไม่ซ้ำกับใครเลยทั้งแพลตฟอร์ม (ข้ามร้าน) — เช็คก่อนสร้าง/แก้ไขทุกครั้ง */
+/**
+ * username ซ้ำไม่ได้ในร้านเดียวกัน — ทั้งกับพนักงานคนอื่นและกับ username ของเจ้าของร้าน
+ * (ร้านอื่นใช้ชื่อเดียวกันได้ ไม่เกี่ยวกัน)
+ */
 async function usernameTaken(username: string, excludeId?: string): Promise<boolean> {
   const sb = getSupabase();
   const norm = normUsername(username);
   if (sb) {
-    let q = sb.from("staff_users").select("id").eq("username", norm).limit(1);
+    const tenantId = requireTenantId();
+    let q = sb
+      .from("staff_users")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("username", norm)
+      .limit(1);
     if (excludeId) q = q.neq("id", excludeId);
     const { data } = await q.maybeSingle();
-    return Boolean(data);
+    if (data) return true;
+    return (await ownerUsernameOf(tenantId)) === norm;
   }
   return mem.some((s) => normUsername(s.username) === norm && s.id !== excludeId);
+}
+
+async function ownerUsernameOf(tenantId: string): Promise<string | null> {
+  const dir = getDirectoryDb();
+  if (!dir) return null;
+  const { data } = await dir.from("tenants").select("owner_username").eq("id", tenantId).maybeSingle();
+  const u = (data as { owner_username?: string | null } | null)?.owner_username;
+  return u ? normUsername(u) : null;
+}
+
+/**
+ * ฐานข้อมูลเก่ายังมี unique index ที่บังคับ username ห้ามซ้ำทั้งแพลตฟอร์ม —
+ * ชนเมื่อไหร่ให้อัปเดตฐานข้อมูล (เปลี่ยนเป็นห้ามซ้ำต่อร้าน) แล้วลองใหม่ครั้งเดียว
+ */
+async function withPerShopUsernames<T extends { error: { code?: string } | null }>(
+  run: () => PromiseLike<T>
+): Promise<T> {
+  let res = await run();
+  if (res.error?.code === "23505" && (await ensureMigration("staff_users.username_per_shop"))) {
+    res = await run();
+  }
+  return res;
 }
 
 export async function addStaff(data: {
@@ -109,7 +142,7 @@ export async function addStaff(data: {
   const sb = getSupabase();
   if (sb) {
     try {
-      const { error } = await sb.from("staff_users").insert({
+      const { error } = await withPerShopUsernames(() => sb.from("staff_users").insert({
         id: staff.id,
         tenant_id: requireTenantId(),
         name: staff.name,
@@ -119,7 +152,7 @@ export async function addStaff(data: {
         menus: staff.menus,
         active: true,
         created_at: staff.createdAt,
-      });
+      }));
       if (error) {
         return {
           ok: false,
@@ -165,11 +198,10 @@ export async function updateStaff(
         row.password_salt = salt;
         row.password_hash = await hashPassword(patch.password, salt);
       }
-      const { error } = await sb
-        .from("staff_users")
-        .update(row)
-        .eq("id", id)
-        .eq("tenant_id", requireTenantId());
+      const tenantId = requireTenantId();
+      const { error } = await withPerShopUsernames(() =>
+        sb.from("staff_users").update(row).eq("id", id).eq("tenant_id", tenantId)
+      );
       if (error) {
         return {
           ok: false as const,
@@ -214,37 +246,39 @@ export async function deleteStaff(id: string) {
 }
 
 /**
- * ตรวจ username+password ตอนล็อกอิน — ค้น "ข้ามทุกร้าน" เพราะยังไม่รู้ว่าเป็นร้านไหน
- * จนกว่าจะเจอ username (unique ทั้งแพลตฟอร์มอยู่แล้ว) คืน tenantId มาด้วยเพื่อผูก session
+ * ตรวจ username+password ตอนล็อกอิน คืน tenantId มาด้วยเพื่อผูก session
+ *
+ * - ส่ง tenantId มา (ล็อกอินจากลิงก์ร้าน) = ค้นเฉพาะพนักงานของร้านนั้น
+ * - ไม่ส่ง (หน้า /admin/login แบบไม่ระบุร้าน) = ค้นทุกร้าน แต่ต้องตรงแค่บัญชีเดียว
+ *   ถ้าชื่อ+รหัสตรงกันมากกว่าหนึ่งร้าน จะไม่รู้ว่าเป็นร้านไหน → ไม่ให้ผ่าน (ให้ใช้ลิงก์ร้าน)
  * ที่อื่นห้ามเรียกฟังก์ชันนี้ ต้องผ่าน listStaff ที่กรองด้วย tenant_id เสมอ
  */
 export async function verifyStaffLogin(
   username: string,
-  password: string
+  password: string,
+  tenantId?: string
 ): Promise<(StaffUser & { tenantId: string }) | null> {
   const norm = normUsername(username);
   if (!norm || !password) return null;
 
   const sb = getSupabase();
   if (sb) {
-    const { data } = await sb
-      .from("staff_users")
-      .select("*")
-      .eq("username", norm)
-      .eq("active", true)
-      .limit(1)
-      .maybeSingle();
-    if (!data) return null;
-    const row = data as StaffRow & { tenant_id: string };
-    if (!row.tenant_id || !row.password_hash || !row.password_salt) return null;
-    const hash = await hashPassword(password, row.password_salt);
-    if (hash !== row.password_hash) return null;
-    return { ...rowToStaff(row), tenantId: row.tenant_id };
+    let q = sb.from("staff_users").select("*").eq("username", norm).eq("active", true);
+    if (tenantId) q = q.eq("tenant_id", tenantId);
+    const { data } = await q.limit(20);
+    const matches: (StaffUser & { tenantId: string })[] = [];
+    for (const row of (data as (StaffRow & { tenant_id: string })[] | null) || []) {
+      if (!row.tenant_id || !row.password_hash || !row.password_salt) continue;
+      const hash = await hashPassword(password, row.password_salt);
+      if (hash === row.password_hash) matches.push({ ...rowToStaff(row), tenantId: row.tenant_id });
+    }
+    return matches.length === 1 ? matches[0] : null;
   }
 
   const s = mem.find((x) => normUsername(x.username) === norm && x.active);
   if (!s) return null;
   const hash = await hashPassword(password, s.passwordSalt);
   if (hash !== s.passwordHash) return null;
-  return { ...s, tenantId: requireTenantId() };
+  // โหมดไม่มีฐานข้อมูล (dev) มีร้านเดียวคือร้าน bootstrap
+  return { ...s, tenantId: getBootstrapTenantId() || "" };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export default function PlatformLoginPage() {
@@ -9,6 +9,13 @@ export default function PlatformLoginPage() {
   const [showCode, setShowCode] = useState(false);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+
+  // ถูกพากลับมาเพราะ session หมดอายุ — บอกให้รู้ว่าแค่ล็อกอินใหม่
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("expired")) {
+      setErr("หมดเวลาเข้าสู่ระบบแล้ว — ใส่รหัสอีกครั้งเพื่อทำต่อ");
+    }
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();

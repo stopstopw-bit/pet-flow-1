@@ -3,6 +3,7 @@
 import { splitVaccinePhotos } from "@/lib/vaccine-photos";
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
+import { createPortal } from "react-dom";
 import { useSearchParams } from "next/navigation";
 import type { CatRecord, CustomerRecord, MemberCreditUsageRecord, MemberTopupRecord, PackageUsageRecord } from "@/lib/customers-store";
 import type { CustomerTier } from "@/lib/customer-tier";
@@ -12,22 +13,36 @@ import { CatMediaGallery } from "@/components/CatMediaGallery";
 import { TIER_LABELS, tierBadgeClass } from "@/lib/customer-tier";
 import { RegistrationQrSection } from "@/components/LineSetupSection";
 import { AddCustomerModal } from "@/components/AddCustomerModal";
+import { EditCustomerSheet } from "@/components/EditCustomerSheet";
+import { PetServiceHistory } from "@/components/PetServiceHistory";
+import type { HistoryBill } from "@/lib/pet-service-history";
 import { toast } from "@/components/Toast";
 import { PreviewSendModal } from "@/components/PreviewSendModal";
+import { CustomerIntakeCards } from "@/components/CustomerIntakeCards";
 import { CustomerLinkSection } from "@/components/CustomerLinkSection";
 import type { PointsHistoryEntry } from "@/lib/points-store";
 import { parseGroomInfo, groomInfoSummary } from "@/lib/groom-info";
-import type { Booking } from "@/lib/business";
+import { summaryFields } from "@/lib/intake-rules";
+import { BOOKING_STATUS_LABELS, type Booking } from "@/lib/business";
+import type { CustomerServiceLog } from "@/lib/customer-service-log";
+import { pastPriceList } from "@/lib/special-price";
+import { lastGroomForPet } from "@/lib/pet-groom-memory";
+import { PastPricesList } from "@/components/PastPrices";
+import { shortItemLabel, summarizeInvoiceItems } from "@/lib/invoice-item-label";
 import { bookingGroupKey, groupBookings } from "@/lib/booking-group";
 import { ExportSheetsButton } from "@/components/ExportSheetsButton";
 import { BookingEditModal, type EditableBooking } from "@/components/BookingEditModal";
 import { RoomPlanSection } from "@/components/RoomPlanSection";
-import { BREED_OPTIONS, OTHER_BREED } from "@/lib/cat-breeds";
+import { OTHER_BREED } from "@/lib/cat-breeds";
+import { asksSpecies, breedOptionsForSpecies, petKindOf, speciesOf, speciesWords, type PetSpecies } from "@/lib/pet-kind";
 import { BirthdayPicker } from "@/components/BirthdayPicker";
 import { StaffNoteTagPicker } from "@/components/StaffNoteTagPicker";
 import { Icon } from "@/components/Icon";
+import { useConfig, usePetWords } from "@/components/ConfigProvider";
+import { isFeatureOn } from "@/lib/features";
 import { GroomProgramPicker, useGroomPrograms } from "@/components/GroomProgramPicker";
 import { groomProgramName } from "@/lib/grooming-prices";
+import { tidyServiceText } from "@/lib/stay-line";
 import { Avatar, EmptyState, MoreMenu, SearchField, Segmented, SectionLabel } from "@/components/ui";
 
 type Summary = {
@@ -38,15 +53,25 @@ type Summary = {
   daysSinceVisit?: number | null;
   inactive?: boolean;
   canFollowUp?: boolean;
+  serviceLog?: CustomerServiceLog;
   history: {
     bookings: Booking[];
     upcomingBookings: EditableBooking[];
     pastBookings: EditableBooking[];
-    services: { id: string; service: string; date: string; amount?: number; catName: string }[];
+    services: {
+      id: string;
+      service: string;
+      date: string;
+      amount?: number;
+      catName: string;
+      invoiceId?: string;
+      bookingId?: string;
+    }[];
     points: PointsHistoryEntry[];
     memberTopups: MemberTopupRecord[];
     memberCreditUsage: MemberCreditUsageRecord[];
     packageUsage: PackageUsageRecord[];
+    serviceBills?: HistoryBill[];
   };
 };
 
@@ -70,13 +95,13 @@ const SORT_OPTIONS: { key: SortKey; label: string; defaultDir: "asc" | "desc" }[
   { key: "recent", label: "สมัครล่าสุด", defaultDir: "desc" },
   { key: "updated", label: "เคลื่อนไหวล่าสุด (แก้ไข/มาใช้บริการ)", defaultDir: "desc" },
   { key: "name", label: "ชื่อลูกค้า ก–ฮ", defaultDir: "asc" },
-  { key: "catName", label: "ชื่อแมว ก–ฮ", defaultDir: "asc" },
-  { key: "cats", label: "จำนวนแมว", defaultDir: "desc" },
+  { key: "catName", label: "ชื่อน้อง ก–ฮ", defaultDir: "asc" },
+  { key: "cats", label: "จำนวนน้อง", defaultDir: "desc" },
   { key: "upcoming", label: "จำนวนนัดที่จะมาถึง", defaultDir: "desc" },
   { key: "points", label: "แต้มสะสม", defaultDir: "desc" },
   { key: "credit", label: "เครดิต Member", defaultDir: "desc" },
   { key: "tier", label: "กลุ่มลูกค้า", defaultDir: "asc" },
-  { key: "birthdaySoon", label: "วันเกิดใกล้ถึง (เจ้าของ/แมว)", defaultDir: "asc" },
+  { key: "birthdaySoon", label: "วันเกิดใกล้ถึง (เจ้าของ/น้อง)", defaultDir: "asc" },
   { key: "birthday", label: "ปีเกิดเจ้าของ", defaultDir: "asc" },
   { key: "line", label: "ผูก LINE แล้ว/ยังไม่ผูก", defaultDir: "desc" },
   { key: "phone", label: "เบอร์โทร", defaultDir: "asc" },
@@ -101,9 +126,7 @@ function bookingWhen(b: EditableBooking) {
 }
 
 function statusLabel(status: Booking["status"]) {
-  if (status === "confirmed") return "ยืนยันแล้ว";
-  if (status === "cancelled") return "ยกเลิกแล้ว";
-  return "รอยืนยัน";
+  return BOOKING_STATUS_LABELS[status] || "รอยืนยัน";
 }
 
 /** หัวการ์ดส่วนต่างๆ ในหน้าลูกค้า: ไอคอนในกรอบมน · ชื่อ · ค่าด้านขวา (ถ้ามี) */
@@ -164,6 +187,48 @@ function CheckRow({
         className="mt-0.5 h-5 w-5 shrink-0 accent-latte-deep"
       />
     </label>
+  );
+}
+
+/**
+ * การ์ดฟอร์มแบบพับได้ (ปิดไว้ก่อน) — ฟอร์มที่ไม่ได้ใช้ทุกวันจะไม่รกหน้า
+ * แตะหัวการ์ดเพื่อเปิด/ปิด
+ */
+function CollapsibleCard({
+  icon,
+  title,
+  sub,
+  children,
+}: {
+  icon: string;
+  title: string;
+  sub?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <section className="mb-3 rounded-petflow bg-card shadow-petflow-sm">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex min-h-[64px] w-full items-center gap-3 p-4 text-left"
+      >
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-honey/25 text-petflow-chocolate">
+          <Icon name={icon} size={20} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-extrabold text-petflow-chocolate">{title}</span>
+          {sub ? <span className="block truncate text-[11px] text-brown-soft">{sub}</span> : null}
+        </span>
+        <Icon
+          name="chevron"
+          size={18}
+          className={`shrink-0 text-brown-soft transition-transform ${open ? "rotate-90" : ""}`}
+        />
+      </button>
+      {open && <div className="border-t border-petflow-line p-4 pt-3">{children}</div>}
+    </section>
   );
 }
 
@@ -346,11 +411,15 @@ function MemberTopupSection({
   const [msg, setMsg] = useState("");
   // ยอดยกมาจากระบบเก่า — เติมเครดิตให้ลูกค้าจริง แต่ไม่ใช่เงินที่รับเข้าร้านเดือนนี้
   const [isLegacy, setIsLegacy] = useState(false);
+  // 🔁 ยกเลิกนัดแล้วเก็บยอดบิลเป็นเครดิต — เงินเข้าร้าน + แต้มได้ไปแล้วตอนจ่ายบิลเดิม
+  // จึงไม่ลงรายรับ/ไม่ให้แต้มซ้ำ (ถ้าเติมแบบปกติ รายรับกับแต้มจะเบิ้ลจากเงินก้อนเดียว)
+  const [isCancelCredit, setIsCancelCredit] = useState(false);
+  const [sourceInvoiceId, setSourceInvoiceId] = useState("");
   /** ค่าเริ่มต้น = ไม่แจ้ง — ยกยอดเก่าเข้าระบบทีละหลายคนไม่ควรไปกวนลูกค้า */
   const [notify, setNotify] = useState(false);
 
   const paidNum = Math.max(0, Number(paid) || 0);
-  const bonusNum = Math.max(0, Number(bonus) || 0);
+  const bonusNum = isCancelCredit ? 0 : Math.max(0, Number(bonus) || 0);
   const total = paidNum + bonusNum;
 
   const applyPromo = (p: number, b: number) => {
@@ -375,7 +444,9 @@ function MemberTopupSection({
         paidAmount: paidNum,
         bonusAmount: bonusNum,
         note: note.trim() || undefined,
-        isLegacy,
+        isLegacy: isLegacy && !isCancelCredit,
+        isCancelCredit,
+        sourceInvoiceId: isCancelCredit ? sourceInvoiceId.trim() || undefined : undefined,
         notify,
       }),
     });
@@ -386,10 +457,16 @@ function MemberTopupSection({
       setBonus("");
       setNote("");
       setIsLegacy(false);
+      setIsCancelCredit(false);
+      setSourceInvoiceId("");
       setNotify(false);
       setMsg(
         `✅ เติมสำเร็จ +${total.toLocaleString()} บาท (คงเหลือ ${data.customer.memberCredit.toLocaleString()} บาท)` +
-          (isLegacy ? " · ยอดยกมา ไม่นับรายรับเดือนนี้" : "") +
+          (isCancelCredit
+            ? " · 🔁 จากบิลยกเลิกนัด ไม่ลงรายรับ · ไม่ให้แต้มซ้ำ (ได้ไปแล้วตอนจ่ายบิล)"
+            : isLegacy
+              ? " · ยอดยกมา ไม่นับรายรับเดือนนี้"
+              : "") +
           // เงินลงเรียบร้อยเสมอ — ถ้าส่ง LINE ไม่ได้ต้องบอกตรงๆ ไม่ใช่บอกว่าแจ้งแล้ว
           (notify
             ? data.notifyError
@@ -399,21 +476,20 @@ function MemberTopupSection({
       );
       onDone();
     } else {
-      setMsg("❌ บันทึกไม่สำเร็จ");
+      setMsg(data.error && data.error !== "invalid_topup" ? `❌ ${data.error}` : "❌ บันทึกไม่สำเร็จ");
     }
   };
 
   return (
-    <section className="mb-4 rounded-petflow bg-card p-4 shadow-petflow-sm">
-      <CardHeader
-        icon="wallet"
-        title="เติมเครดิต Member"
-        sub={
-          <>
-            คงเหลือ <span className="font-bold text-latte-deep">{memberCredit.toLocaleString()} บาท</span>
-          </>
-        }
-      />
+    <CollapsibleCard
+      icon="wallet"
+      title="เติมเครดิต Member"
+      sub={
+        <>
+          คงเหลือ <span className="font-bold text-latte-deep">{memberCredit.toLocaleString()} บาท</span>
+        </>
+      }
+    >
 
       <SectionLabel>Quick promo · โปรด่วน</SectionLabel>
       <div className="mb-3 flex flex-wrap gap-2">
@@ -438,7 +514,7 @@ function MemberTopupSection({
 
       <div className="mb-3 grid grid-cols-2 gap-2">
         <label className="block text-[11px] font-bold text-brown-soft">
-          รับเงินจริง (บาท)
+          {isCancelCredit ? "ยอดบิลเดิม (บาท)" : "รับเงินจริง (บาท)"}
           <input
             type="number"
             min={0}
@@ -455,7 +531,8 @@ function MemberTopupSection({
             min={0}
             value={bonus}
             onChange={(e) => setBonus(e.target.value)}
-            placeholder="2000"
+            placeholder={isCancelCredit ? "—" : "2000"}
+            disabled={isCancelCredit}
             className={`mt-1 font-bold text-latte-deep ${inputCls}`}
           />
         </label>
@@ -482,7 +559,10 @@ function MemberTopupSection({
       <div className="mb-3 space-y-2">
         <CheckRow
           checked={isLegacy}
-          onChange={setIsLegacy}
+          onChange={(v) => {
+            setIsLegacy(v);
+            if (v) setIsCancelCredit(false);
+          }}
           icon="clock"
           title="ยอดยกมาจากระบบเก่า"
           sub={
@@ -491,6 +571,28 @@ function MemberTopupSection({
             </>
           }
         />
+        <CheckRow
+          checked={isCancelCredit}
+          onChange={(v) => {
+            setIsCancelCredit(v);
+            if (v) setIsLegacy(false);
+          }}
+          icon="back"
+          title="ยกเลิกนัด เก็บยอดบิลที่จ่ายแล้วเป็นเครดิต"
+          sub={
+            <>
+              <b>ไม่ลงรายรับ ไม่ให้แต้มซ้ำ</b> (ได้ไปแล้วตอนจ่ายบิล) · ทำได้ในคลิกเดียวจากปุ่มที่บิล
+            </>
+          }
+        />
+        {isCancelCredit && (
+          <input
+            value={sourceInvoiceId}
+            onChange={(e) => setSourceInvoiceId(e.target.value)}
+            placeholder="เลขบิลเดิม (ถ้ามี) — โชว์ในประวัติเครดิต"
+            className={inputCls}
+          />
+        )}
         <CheckRow
           checked={notify}
           onChange={setNotify}
@@ -509,15 +611,17 @@ function MemberTopupSection({
         {!saving && <Icon name="plus" size={18} />}
         {saving
           ? "กำลังบันทึก…"
-          : isLegacy
-            ? `บันทึกยอดยกมา +${total > 0 ? total.toLocaleString() : "—"} บาท (ไม่นับรายรับ)`
-            : `บันทึกเติม Member +${total > 0 ? total.toLocaleString() : "—"} บาท`}
+          : isCancelCredit
+            ? `เก็บเป็นเครดิต +${total > 0 ? total.toLocaleString() : "—"} บาท (ไม่นับรายรับ)`
+            : isLegacy
+              ? `บันทึกยอดยกมา +${total > 0 ? total.toLocaleString() : "—"} บาท (ไม่นับรายรับ)`
+              : `บันทึกเติม Member +${total > 0 ? total.toLocaleString() : "—"} บาท`}
       </button>
 
       {msg && (
         <p className="mt-2 rounded-petflow-sm bg-paper px-3 py-2 text-center text-[11px] font-bold text-brown">{msg}</p>
       )}
-    </section>
+    </CollapsibleCard>
   );
 }
 
@@ -670,25 +774,56 @@ function StaysConsentSection({ bookings }: { bookings: EditableBooking[] }) {
   );
 }
 
+type ServiceKind = "groom" | "room" | "product" | "other";
+
+const SERVICE_KIND_LABELS: Record<Exclude<ServiceKind, "other">, string> = {
+  groom: "อาบน้ำ",
+  room: "ห้องพัก",
+  product: "สินค้า",
+};
+
+const PAY_LABELS: Record<string, string> = {
+  transfer: "โอน",
+  cash: "เงินสด",
+  member_credit: "เครดิต Member",
+  promptpay: "QR พร้อมเพย์",
+};
+
+/** ประเภทบริการของรายการในบิล — ใช้ kind ที่บันทึกไว้ก่อน บิลเก่าที่ไม่มี kind เดาจากชื่อ */
+function itemServiceKind(it: { label: string; kind?: string }): ServiceKind {
+  if (it.kind === "grooming") return "groom";
+  if (it.kind === "room") return "room";
+  if (it.kind === "product") return "product";
+  if (it.kind) return "other";
+  if (/อาบ|กรูม|ตัดขน|groom/i.test(it.label)) return "groom";
+  if (/ห้อง|ฝากเลี้ยง|คืน/.test(it.label)) return "room";
+  return "other";
+}
+
 /**
- * ประวัติใช้บริการ — รวมรายการที่บันทึกไว้กับนัดที่ผ่านมาเป็นไทม์ไลน์เดียว เรียงใหม่ก่อน
+ * ประวัติใช้บริการ — รวมบิลที่ปิดแล้ว, นัดที่ผ่านมา และบิลขายหน้าร้าน (POS)
+ * เป็นไทม์ไลน์เดียว เรียงใหม่ก่อน พร้อมสรุปว่าลูกค้าใช้อะไรไปกี่ครั้ง
  *
  * ลูกค้าเก่าบางรายมีเป็นร้อยแถวและส่วนใหญ่เป็นนัดที่ยกเลิก เลยพับนัดที่ยกเลิก
- * ไว้ต่างหาก และโชว์แค่ 8 แถวแรกก่อน กดดูทั้งหมดได้
+ * ไว้ต่างหาก และโชว์แค่ 8 แถวแรกก่อน กดดูทั้งหมดได้ · กดแถวที่มีบิลเพื่อดูรายการ
  */
 function ServiceHistorySection({
   customerId,
   services,
   pastBookings,
+  log,
   onChanged,
 }: {
   customerId: string;
-  services: { id: string; service: string; date: string; amount?: number; catName: string }[];
+  services: Summary["history"]["services"];
   pastBookings: EditableBooking[];
+  log?: CustomerServiceLog;
   onChanged: () => void;
 }) {
   const [showAll, setShowAll] = useState(false);
   const [showCancelled, setShowCancelled] = useState(false);
+  const [filter, setFilter] = useState<"all" | Exclude<ServiceKind, "other">>("all");
+  const [openKey, setOpenKey] = useState<string | null>(null);
 
   const remove = async (label: string, req: () => Promise<unknown>) => {
     if (!confirm(label)) return;
@@ -696,35 +831,78 @@ function ServiceHistorySection({
     onChanged();
   };
 
-  type Row = { key: string; date: string; text: string; onDelete: () => void };
+  type Row = {
+    key: string;
+    date: string;
+    text: string;
+    sub?: string;
+    amount?: number;
+    kinds: ServiceKind[];
+    detail?: { label: string; amount: number }[];
+    detailNote?: string;
+    onDelete?: () => void;
+  };
 
-  const serviceRows: Row[] = services.map((s) => ({
-    key: `s${s.id}`,
-    date: s.date,
-    text: `${s.catName} · ${s.service}${s.amount ? ` · ${s.amount} บาท` : ""}`,
-    onDelete: () =>
-      remove("ลบรายการนี้ออกจากประวัติ? กู้คืนไม่ได้", () =>
-        fetch("/api/customers", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            id: customerId,
-            action: "delete_service_record",
-            serviceId: s.id,
-          }),
-        })
-      ),
+  const billById = new Map((log?.bills || []).map((b) => [b.id, b]));
+  const groomers = log?.groomers || {};
+
+  const serviceRows: Row[] = services.map((s) => {
+    const bill = s.invoiceId ? billById.get(s.invoiceId) : undefined;
+    const kinds = bill
+      ? Array.from(new Set(bill.items.map(itemServiceKind)))
+      : s.service.split(", ").map((label) => itemServiceKind({ label }));
+    const groomer = s.bookingId ? groomers[s.bookingId] : undefined;
+    return {
+      key: `s${s.id}`,
+      date: s.date,
+      text: `${s.catName} · ${bill ? summarizeInvoiceItems(bill.items) : s.service}`,
+      sub: groomer ? `ช่าง ${groomer}` : undefined,
+      amount: s.amount,
+      kinds,
+      detail: bill?.items.map((it) => ({ label: it.label, amount: it.amount })),
+      detailNote: bill
+        ? `บิล ${bill.id}${bill.paymentMethod ? ` · จ่ายด้วย${PAY_LABELS[bill.paymentMethod] || bill.paymentMethod}` : ""}`
+        : undefined,
+      onDelete: () =>
+        remove("ลบรายการนี้ออกจากประวัติ? กู้คืนไม่ได้", () =>
+          fetch("/api/customers", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: customerId,
+              action: "delete_service_record",
+              serviceId: s.id,
+            }),
+          })
+        ),
+    };
+  });
+
+  const posRows: Row[] = (log?.posSales || []).map((p) => ({
+    key: `p${p.id}`,
+    date: p.date,
+    text: `ซื้อหน้าร้าน · ${summarizeInvoiceItems(p.items.map((it) => ({ label: it.name })))}`,
+    amount: p.total,
+    kinds: ["product"],
+    detail: p.items.map((it) => ({
+      label: `${it.name}${it.qty > 1 ? ` × ${it.qty}` : ""}`,
+      amount: it.price * it.qty,
+    })),
+    detailNote: `${p.no} · จ่ายด้วย${PAY_LABELS[p.method] || p.method} · ยกเลิกบิลได้ที่หน้า POS`,
   }));
 
   // นัดบ้านเดียวกัน นัดเดียวกัน (สถานะเดียวกัน) = 1 แถว ใส่ชื่อทุกตัว
   const bookingRow = (group: EditableBooking[]): Row => {
     const b = group[0];
+    const names = Array.from(new Set(group.map((g) => groomers[g.id]).filter(Boolean)));
     return {
       key: `b${group.map((g) => g.id).join(",")}`,
       date: b.date,
       text: `${group.map((g) => g.catName).join(", ")} · ${
         b.service === "room" ? "ห้องพัก" : "อาบน้ำ"
       } · ${statusLabel(b.status)}`,
+      sub: names.length ? `ช่าง ${names.join(", ")}` : undefined,
+      kinds: [b.service === "room" ? "room" : "groom"],
       onDelete: () =>
         remove(
           group.length > 1
@@ -753,24 +931,99 @@ function ServiceHistorySection({
   const cancelledRows = groupRows(pastBookings.filter((b) => b.status === "cancelled")).sort(
     byDateDesc
   );
-  const rows = [
+  const allRows = [
     ...serviceRows,
+    ...posRows,
     ...groupRows(pastBookings.filter((b) => b.status !== "cancelled")),
   ].sort(byDateDesc);
 
+  // สรุป: นับเป็น "วันที่มาใช้" ต่อประเภท — บิลกับนัดของวันเดียวกันจะได้ไม่นับซ้ำ
+  // (นัดที่ยังไม่ปิดงาน/ไม่มา ไม่นับ)
+  const daysByKind: Record<Exclude<ServiceKind, "other">, Set<string>> = {
+    groom: new Set(),
+    room: new Set(),
+    product: new Set(),
+  };
+  for (const r of [...serviceRows, ...posRows]) {
+    for (const k of r.kinds) if (k !== "other") daysByKind[k].add(r.date.slice(0, 10));
+  }
+  for (const b of pastBookings) {
+    if (b.status !== "ready" && b.status !== "done") continue;
+    daysByKind[b.service === "room" ? "room" : "groom"].add((b.date || b.checkin || "").slice(0, 10));
+  }
+  const totalSpend =
+    (log?.bills || []).reduce((s, b) => s + (b.total || 0), 0) +
+    (log?.posSales || []).reduce((s, p) => s + (p.total || 0), 0);
+
+  // ใช้อะไรบ่อย — นับจากรายการในบิล + POS (ชื่อย่อ ไม่เอาชื่อน้อง/ไซส์)
+  const itemCounts = new Map<string, number>();
+  const bump = (name: string, n: number) => {
+    if (!name) return;
+    itemCounts.set(name, (itemCounts.get(name) || 0) + n);
+  };
+  for (const b of log?.bills || [])
+    for (const it of b.items)
+      if (itemServiceKind(it) !== "other" || it.kind === "service" || it.kind === "custom")
+        bump(shortItemLabel(it.label), it.qty || 1);
+  for (const p of log?.posSales || []) for (const it of p.items) bump(it.name, it.qty || 1);
+  const topItems = Array.from(itemCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+
+  const rows = filter === "all" ? allRows : allRows.filter((r) => r.kinds.includes(filter));
   const visible = showAll ? rows : rows.slice(0, 8);
 
   const rowList = (list: Row[]) => (
     <ul className="divide-y divide-petflow-line rounded-petflow-sm border border-petflow-line text-xs">
-      {list.map((r) => (
-        <li key={r.key} className="flex min-h-[48px] items-center gap-2 py-1.5 pl-3 pr-1.5">
-          <span className="min-w-0 flex-1">
-            <span className="block truncate font-bold text-brown">{r.text}</span>
-            <span className="block text-[11px] text-brown-faint">{r.date}</span>
-          </span>
-          <MoreMenu items={[{ label: "ลบรายการนี้", icon: "trash", danger: true, onClick: r.onDelete }]} />
-        </li>
-      ))}
+      {list.map((r) => {
+        const expanded = openKey === r.key;
+        return (
+          <li key={r.key} className="py-1.5 pl-3 pr-1.5">
+            <div className="flex min-h-[44px] items-center gap-2">
+              <button
+                type="button"
+                disabled={!r.detail?.length}
+                onClick={() => setOpenKey(expanded ? null : r.key)}
+                className="min-w-0 flex-1 text-left"
+              >
+                <span className={`block font-bold text-brown ${expanded ? "" : "truncate"}`}>
+                  {r.text}
+                </span>
+                <span className="block text-[11px] text-brown-faint">
+                  {r.date}
+                  {r.sub ? ` · ${r.sub}` : ""}
+                  {r.detail?.length ? (expanded ? " · ซ่อนรายการ" : " · ดูรายการ") : ""}
+                </span>
+              </button>
+              {r.amount ? (
+                <span className="shrink-0 font-extrabold text-brown">
+                  ฿{r.amount.toLocaleString()}
+                </span>
+              ) : null}
+              {r.onDelete ? (
+                <MoreMenu
+                  items={[{ label: "ลบรายการนี้", icon: "trash", danger: true, onClick: r.onDelete }]}
+                />
+              ) : (
+                <span className="w-2 shrink-0" />
+              )}
+            </div>
+            {expanded && r.detail && (
+              <div className="mb-1 mr-2 mt-1 rounded-petflow-sm bg-paper px-3 py-2 text-[11px] text-brown-soft">
+                <ul className="space-y-0.5">
+                  {r.detail.map((d, i) => (
+                    <li key={i} className="flex gap-2">
+                      <span className="min-w-0 flex-1">{d.label}</span>
+                      <span className="shrink-0 font-bold">฿{d.amount.toLocaleString()}</span>
+                    </li>
+                  ))}
+                </ul>
+                {r.detailNote && <p className="mt-1 text-brown-faint">{r.detailNote}</p>}
+              </div>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 
@@ -780,11 +1033,61 @@ function ServiceHistorySection({
         icon="receipt"
         title="ประวัติใช้บริการ"
         right={
-          rows.length > 0 ? (
-            <span className="shrink-0 text-[11px] font-bold text-brown-faint">{rows.length} รายการ</span>
+          allRows.length > 0 ? (
+            <span className="shrink-0 text-[11px] font-bold text-brown-faint">{allRows.length} รายการ</span>
           ) : undefined
         }
       />
+
+      {allRows.length > 0 && (
+        <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {(Object.keys(SERVICE_KIND_LABELS) as Exclude<ServiceKind, "other">[]).map((k) => (
+            <div key={k} className="rounded-petflow-sm bg-paper px-3 py-2">
+              <div className="text-[11px] font-bold text-brown-faint">{SERVICE_KIND_LABELS[k]}</div>
+              <div className="text-base font-extrabold text-brown">
+                {daysByKind[k].size} <span className="text-[11px] font-bold">ครั้ง</span>
+              </div>
+            </div>
+          ))}
+          <div className="rounded-petflow-sm bg-paper px-3 py-2">
+            <div className="text-[11px] font-bold text-brown-faint">ยอดใช้จ่ายรวม</div>
+            <div className="text-base font-extrabold text-latte-deep">฿{totalSpend.toLocaleString()}</div>
+          </div>
+        </div>
+      )}
+
+      {topItems.length > 0 && (
+        <div className="mb-3">
+          <div className="mb-1 text-[11px] font-bold text-brown-faint">ใช้บ่อย</div>
+          <div className="flex flex-wrap gap-1.5">
+            {topItems.map(([name, n]) => (
+              <span
+                key={name}
+                className="rounded-full bg-paper px-2.5 py-1 text-[11px] font-bold text-brown-soft"
+              >
+                {name} × {n}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {allRows.length > 0 && (
+        <Segmented
+          className="mb-3"
+          value={filter}
+          onChange={(v) => {
+            setFilter(v);
+            setShowAll(false);
+          }}
+          options={[
+            { id: "all", label: "ทั้งหมด" },
+            { id: "groom", label: "อาบน้ำ" },
+            { id: "room", label: "ห้องพัก" },
+            { id: "product", label: "สินค้า" },
+          ]}
+        />
+      )}
 
       {rows.length === 0 ? (
         <EmptyState icon="receipt" title="ยังไม่มีประวัติ" />
@@ -824,6 +1127,37 @@ function ServiceHistorySection({
       <p className="mt-2 text-[10px] text-brown-faint">
         ลงข้อมูลผิด? กด ⋯ ที่รายการเพื่อลบ — จะหายจากประวัติที่ลูกค้าเห็นในแอปด้วย
       </p>
+    </section>
+  );
+}
+
+/**
+ * ราคาที่ลูกค้าคนนี้เคยจ่าย — อ่านจากบิลที่จ่ายแล้ว ไม่ต้องกรอกเพิ่ม
+ * ลูกค้าที่ได้ราคาพิเศษ พนักงานคนไหนเปิดดูก็รู้ราคาเดิม (หน้าคิดเงินจะถามให้ใช้ราคาเดิมเองด้วย)
+ */
+function PastPricesSection({ log }: { log?: CustomerServiceLog }) {
+  const [showAll, setShowAll] = useState(false);
+  const prices = pastPriceList(
+    (log?.bills || []).map((b) => ({ createdAt: b.date, items: b.items }))
+  );
+  if (prices.length === 0) return null;
+  return (
+    <section className="mb-4 rounded-petflow bg-card p-4 shadow-petflow-sm">
+      <CardHeader
+        icon="money"
+        title="ราคาที่ลูกค้าคนนี้เคยจ่าย"
+        sub="ราคาล่าสุดของน้องแต่ละตัว แยกตามบริการ · ตอนออกบิลระบบจะถามให้ใช้ราคาเดิม"
+      />
+      <PastPricesList prices={prices} limit={showAll ? undefined : 6} />
+      {prices.length > 6 && !showAll && (
+        <button
+          type="button"
+          onClick={() => setShowAll(true)}
+          className="mt-2 min-h-[40px] w-full rounded-petflow-sm bg-paper py-2 text-xs font-extrabold text-latte-deep"
+        >
+          ดูทั้งหมดอีก {prices.length - 6} รายการ
+        </button>
+      )}
     </section>
   );
 }
@@ -997,12 +1331,16 @@ function MemberCreditHistorySection({
    * ถ้าลูกค้าใช้เครดิตไปแล้วบางส่วน เซิร์ฟเวอร์จะบล็อกและบอกให้ไปยกเลิกบิลก่อน
    */
   const cancelTopup = async (t: MemberTopupRecord) => {
-    const label = t.isLegacy ? "ยอดยกมา" : "การเติมเครดิต";
+    const label = t.isCancelCredit
+      ? "เครดิตจากบิลยกเลิกนัด"
+      : t.isLegacy
+        ? "ยอดยกมา"
+        : "การเติมเครดิต";
     if (
       !confirm(
         `ยกเลิก${label} +${t.creditAdded.toLocaleString()} บาท?\n` +
           `เครดิตลูกค้าจะถูกหักออก ${t.creditAdded.toLocaleString()} บาท` +
-          (t.isLegacy ? "" : " และลบรายรับที่ลงไว้ด้วย") +
+          (t.isLegacy || t.isCancelCredit ? "" : " และลบรายรับที่ลงไว้ด้วย") +
           "\nกู้คืนไม่ได้"
       )
     )
@@ -1074,19 +1412,43 @@ function MemberCreditHistorySection({
               <li key={row.topup.id} className="py-2.5 pl-3 pr-1.5 text-xs">
                 <div className="flex items-start gap-2">
                   <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ok/15 text-ok">
-                    <Icon name={row.topup.isLegacy ? "clock" : "plus"} size={16} />
+                    <Icon
+                      name={row.topup.isCancelCredit ? "back" : row.topup.isLegacy ? "clock" : "plus"}
+                      size={16}
+                    />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className={`font-bold ${row.topup.isLegacy ? "text-brown" : "text-ok"}`}>
-                      {row.topup.isLegacy ? "ยอดยกมาจากระบบเก่า" : "เติมเครดิต"}
+                    <p
+                      className={`font-bold ${
+                        row.topup.isLegacy || row.topup.isCancelCredit ? "text-brown" : "text-ok"
+                      }`}
+                    >
+                      {row.topup.isCancelCredit
+                        ? "ยกเลิกนัด เก็บยอดเป็นเครดิต"
+                        : row.topup.isLegacy
+                          ? "ยอดยกมาจากระบบเก่า"
+                          : "เติมเครดิต"}
                     </p>
-                    <p className="text-brown-soft">
-                      {row.topup.createdAt.slice(0, 10)} · รับ {row.topup.paidAmount.toLocaleString()} บาท
-                      {row.topup.bonusAmount > 0 && (
-                        <> · แถม {row.topup.bonusAmount.toLocaleString()} บาท</>
-                      )}
-                      {row.topup.isLegacy && <> · ไม่นับรายรับ</>}
-                    </p>
+                    {row.topup.isCancelCredit ? (
+                      <p className="text-brown-soft">
+                        {row.topup.createdAt.slice(0, 10)}
+                        {row.topup.sourceInvoiceId && (
+                          <>
+                            {" · จากบิล "}
+                            <span className="font-bold text-latte-deep">{row.topup.sourceInvoiceId}</span>
+                          </>
+                        )}
+                        {" · ไม่นับรายรับ · ไม่ให้แต้มซ้ำ"}
+                      </p>
+                    ) : (
+                      <p className="text-brown-soft">
+                        {row.topup.createdAt.slice(0, 10)} · รับ {row.topup.paidAmount.toLocaleString()} บาท
+                        {row.topup.bonusAmount > 0 && (
+                          <> · แถม {row.topup.bonusAmount.toLocaleString()} บาท</>
+                        )}
+                        {row.topup.isLegacy && <> · ไม่นับรายรับ</>}
+                      </p>
+                    )}
                     {row.topup.note && (
                       <p className="text-[10px] text-brown-faint">{row.topup.note}</p>
                     )}
@@ -1153,6 +1515,7 @@ function CustomerSummaryCard({
   inactive,
   canFollowUp,
   onSaved,
+  toolsSlot,
 }: {
   customer: CustomerRecord;
   points: number;
@@ -1162,17 +1525,15 @@ function CustomerSummaryCard({
   inactive?: boolean;
   canFollowUp?: boolean;
   onSaved: () => void;
+  /** ที่วางฟอร์มเพิ่มแต้ม/ขายคอร์สท้ายหน้า (ย้ายลงล่างให้หัวโปรไฟล์ไม่รก) */
+  toolsSlot?: HTMLElement | null;
 }) {
-  const [name, setName] = useState(customer.name);
-  const [phone, setPhone] = useState(customer.phone || "");
-  const [email, setEmail] = useState(customer.email || "");
-  const [birthday, setBirthday] = useState(customer.birthday || "");
-  const [address, setAddress] = useState(customer.address || "");
-  const [addressMapUrl, setAddressMapUrl] = useState(customer.addressMapUrl || "");
-  const [postalCode, setPostalCode] = useState(customer.postalCode || "");
   const [tier, setTier] = useState<CustomerTier>(customer.tier || "new");
   const [msg, setMsg] = useState("");
   const [followUpBusy, setFollowUpBusy] = useState(false);
+  const [followUpPreview, setFollowUpPreview] = useState<Record<string, unknown>[] | null>(null);
+  const { config: siteConfig } = useConfig();
+  const followUpOn = isFeatureOn(siteConfig, "followUp");
   const [addAmt, setAddAmt] = useState("");
   const [addReason, setAddReason] = useState("");
   const [addBusy, setAddBusy] = useState(false);
@@ -1203,7 +1564,7 @@ function CustomerSummaryCard({
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.preview) setPointsPreview(data.preview);
-      else setMsg("❌ ดูตัวอย่างไม่สำเร็จ");
+      else toast("ดูตัวอย่างไม่สำเร็จ", "error");
     } finally {
       setAddBusy(false);
     }
@@ -1222,16 +1583,15 @@ function CustomerSummaryCard({
       });
       setPointsPreview(null);
       if (res.ok) {
-        setMsg(
-          `✅ ${n > 0 ? "เพิ่ม" : "ปรับ"} ${n} แต้มแล้ว (${reason})` +
+        toast(
+          `${n > 0 ? "เพิ่ม" : "ปรับ"} ${n} แต้มแล้ว (${reason})` +
             (n > 0 && !addNotify ? " · ไม่ได้แจ้งลูกค้า" : "")
         );
         setAddAmt("");
         setAddReason("");
         onSaved();
-        setTimeout(() => setMsg(""), 2500);
       } else {
-        setMsg("❌ เพิ่มแต้มไม่สำเร็จ");
+        toast("เพิ่มแต้มไม่สำเร็จ", "error");
       }
     } finally {
       setAddBusy(false);
@@ -1328,8 +1688,8 @@ function CustomerSummaryCard({
         loadPackages();
       }
       if (res.ok) {
-        setMsg(
-          `✅ ${pkgLegacy ? "ยกคอร์ส" : "ขายคอร์ส"} "${pkgName.trim()}" แล้ว` +
+        toast(
+          `${pkgLegacy ? "ยกคอร์ส" : "ขายคอร์ส"} "${pkgName.trim()}" แล้ว` +
             (pkgLegacy ? " · ไม่นับรายรับเดือนนี้" : "") +
             (pkgData.plan
               ? pkgData.plan.remaining > 0
@@ -1351,7 +1711,6 @@ function CustomerSummaryCard({
         setPkgInstallments(1);
         setPkgFirstPay("");
         loadPackages();
-        setTimeout(() => setMsg(""), 2500);
       }
     } finally {
       setPkgBusy(false);
@@ -1372,7 +1731,7 @@ function CustomerSummaryCard({
       if (res.ok && Array.isArray(data.preview)) {
         setPkgPreview(data.preview);
       } else {
-        setMsg("❌ ดูตัวอย่างการ์ดไม่สำเร็จ");
+        toast("ดูตัวอย่างการ์ดไม่สำเร็จ", "error");
       }
     } finally {
       setPkgBusy(false);
@@ -1442,51 +1801,13 @@ function CustomerSummaryCard({
   const heroCat = customer.cats.find((cat) => cat.photoDataUrl) || customer.cats[0];
 
   useEffect(() => {
-    setName(customer.name);
-    setPhone(customer.phone || "");
-    setAddress(customer.address || "");
-    setAddressMapUrl(customer.addressMapUrl || "");
-    setPostalCode(customer.postalCode || "");
     setTier(customer.tier || "new");
-  }, [
-    customer.id,
-    customer.name,
-    customer.phone,
-    customer.address,
-    customer.addressMapUrl,
-    customer.postalCode,
-    customer.tier,
-  ]);
-
-  const save = async (patch: {
-    name?: string;
-    phone?: string;
-    email?: string;
-    birthday?: string;
-    address?: string;
-    addressMapUrl?: string;
-    postalCode?: string;
-  }) => {
-    const res = await fetch("/api/customers", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: customer.id,
-        action: "update_customer",
-        patch,
-      }),
-    });
-    if (res.ok) {
-      setMsg("✅ บันทึกแล้ว");
-      onSaved();
-      setTimeout(() => setMsg(""), 2000);
-    }
-  };
+  }, [customer.id, customer.tier]);
 
   const removeCustomer = async () => {
     if (
       !confirm(
-        `ลบลูกค้า "${customer.name}" และประวัติทั้งหมด (แมว/นัด/แต้ม)?\nลบแล้วกู้คืนไม่ได้`
+        `ลบลูกค้า "${customer.name}" และประวัติทั้งหมด (น้อง/นัด/แต้ม)?\nลบแล้วกู้คืนไม่ได้`
       )
     )
       return;
@@ -1500,13 +1821,14 @@ function CustomerSummaryCard({
   };
 
   const [mergeOpen, setMergeOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   const unlinkLine = async () => {
     if (
       !confirm(
         `ปลดผูก LINE ของ "${customer.name}"?\n\n` +
           `หลังปลด: ส่งลิงก์เชิญให้ลูกค้ากดผูกใหม่ได้เลย (ไม่ติด "ผูกไปแล้ว")\n` +
-          `แต้ม · คูปอง · บิล · แมว ยังอยู่ครบ ไม่หายไปไหน\n\n` +
+          `แต้ม · คูปอง · บิล · น้อง ยังอยู่ครบ ไม่หายไปไหน\n\n` +
           `⚠️ ระหว่างที่ยังไม่ผูกใหม่ ลูกค้าจะไม่ได้รับข้อความจากร้าน`
       )
     )
@@ -1560,12 +1882,32 @@ function CustomerSummaryCard({
     }
   };
 
-  const sendFollowUp = async () => {
+  /** กดปุ่ม → ดูตัวอย่างการ์ดที่ลูกค้าจะเห็นก่อน แล้วค่อยยืนยันส่ง */
+  const previewFollowUp = async () => {
     if (!customer.lineUserId) {
       setMsg("❌ ลูกค้ายังไม่ได้ผูก LINE");
       return;
     }
-    if (!confirm(`ส่งข้อความตาม ${customer.name} ทาง LINE?`)) return;
+    setFollowUpBusy(true);
+    try {
+      const res = await fetch("/api/customers", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: customer.id, action: "send_follow_up", preview: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(data.preview)) {
+        setFollowUpPreview(data.preview);
+      } else {
+        setMsg(`❌ ${data.error || "ดูตัวอย่างการ์ดไม่สำเร็จ"}`);
+        setTimeout(() => setMsg(""), 3000);
+      }
+    } finally {
+      setFollowUpBusy(false);
+    }
+  };
+
+  const sendFollowUp = async () => {
     setFollowUpBusy(true);
     const res = await fetch("/api/customers", {
       method: "PATCH",
@@ -1573,13 +1915,15 @@ function CustomerSummaryCard({
       body: JSON.stringify({
         id: customer.id,
         action: "send_follow_up",
+        // ส่งเพราะร้านกดเอง ดูการ์ดแล้ว — ไม่ต้องติดเงื่อนไข "ไม่ส่งซ้ำภายใน X วัน" ของระบบส่งอัตโนมัติ
         force: !canFollowUp,
       }),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     setFollowUpBusy(false);
+    setFollowUpPreview(null);
     if (res.ok) {
-      setMsg("✅ ส่งข้อความตามแล้ว");
+      setMsg("✅ ส่งการ์ดทักลูกค้าแล้ว");
       onSaved();
     } else {
       setMsg(`❌ ${data.error || "ส่งไม่สำเร็จ"}`);
@@ -1634,6 +1978,14 @@ function CustomerSummaryCard({
             )}
           </div>
         </div>
+        <button
+          type="button"
+          onClick={() => setEditOpen(true)}
+          aria-label="แก้ไขข้อมูลลูกค้า"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-card/80 text-petflow-chocolate ring-1 ring-petflow-line"
+        >
+          <Icon name="edit" size={18} />
+        </button>
         <MoreMenu
           items={[
             ...(customer.lineUserId
@@ -1694,6 +2046,16 @@ function CustomerSummaryCard({
             </span>
           </li>
         )}
+        {customer.taxInvoice && (
+          <li className="flex items-start gap-2">
+            <Icon name="receipt" size={14} className="mt-px text-brown-faint" />
+            <span className="min-w-0 flex-1">
+              <b>ออกบิล{customer.taxInvoice.kind === "person" ? "บุคคลธรรมดา" : "นิติบุคคล"}:</b>{" "}
+              {customer.taxInvoice.name}
+              {customer.taxInvoice.branch && ` (${customer.taxInvoice.branch})`} · เลขภาษี {customer.taxInvoice.taxId}
+            </span>
+          </li>
+        )}
         <li className="flex items-center gap-2">
           <Icon name="user" size={14} className="text-brown-faint" />
           {customer.idCardUrl ? (
@@ -1709,6 +2071,8 @@ function CustomerSummaryCard({
           {customer.marketingConsent ? "ยินยอมรับข่าวสาร/โปร" : "ไม่รับข่าวสาร/โปร"}
         </li>
       </ul>
+
+      <CustomerIntakeCards customer={customer} onDone={onSaved} />
 
       {inactive && (
         <p className="mb-3 flex items-center gap-2 rounded-petflow-sm bg-wait/10 px-3 py-2 text-[11px] font-bold text-wait">
@@ -1740,260 +2104,48 @@ function CustomerSummaryCard({
         </div>
       </div>
 
-      <div className="mb-3 rounded-petflow-sm border border-petflow-line bg-card/85 p-3">
-        <p className="mb-2 flex items-center gap-2 text-xs font-extrabold text-petflow-chocolate">
-          <Icon name="gift" size={16} className="text-latte-deep" />
-          เพิ่มแต้มพิเศษ (แต้มฟรี)
-        </p>
-        {customer.lineUserId ? (
-          <>
-            <div className="flex gap-2">
-              <input
-                type="number"
-                value={addAmt}
-                onChange={(e) => setAddAmt(e.target.value)}
-                placeholder="กี่แต้ม"
-                className={`!w-24 shrink-0 font-bold ${inputCls}`}
-              />
-              <input
-                value={addReason}
-                onChange={(e) => setAddReason(e.target.value)}
-                placeholder="เหตุผล เช่น รีวิวร้าน"
-                className={`min-w-0 flex-1 ${inputCls}`}
-              />
+      {followUpOn && (inactive || customer.lineUserId) && (
+        <div className="mb-3 rounded-petflow-sm border border-petflow-line bg-card/85 p-3">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sage/20 text-ok">
+              <Icon name="send" size={18} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-extrabold text-petflow-chocolate">ทักลูกค้าทาง LINE</p>
+              <p className="text-[10px] text-brown-faint">
+                {!customer.lineUserId
+                  ? "ต้องผูก LINE ก่อนจึงส่งได้"
+                  : customer.lastFollowUpAt
+                    ? `ส่งการ์ด "คิดถึงน้อง" ล่าสุด ${customer.lastFollowUpAt.slice(0, 10)}`
+                    : `ส่งการ์ด "คิดถึงน้อง" ชวนกลับมาใช้บริการ · ยังไม่เคยส่ง`}
+              </p>
             </div>
             <button
               type="button"
-              disabled={addBusy || !addAmt}
-              onClick={addNotify ? previewBonusPoints : addBonusPoints}
-              className="mt-2 flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-petflow-sm bg-latte-deep px-4 py-2.5 text-sm font-extrabold text-white disabled:opacity-40"
+              disabled={followUpBusy || !customer.lineUserId}
+              onClick={previewFollowUp}
+              className="flex min-h-[40px] shrink-0 items-center gap-1 rounded-full bg-sage/25 px-3.5 py-2 text-xs font-bold text-ok disabled:opacity-50"
             >
-              {!addBusy && <Icon name={addNotify ? "eye" : "plus"} size={16} />}
-              {addBusy ? "…" : addNotify ? "ดูการ์ด" : "เพิ่มแต้ม"}
+              <Icon name="eye" size={14} />
+              {followUpBusy && !followUpPreview ? "กำลังโหลด…" : customer.lastFollowUpAt ? "ดูการ์ด + ส่งอีกครั้ง" : "ดูการ์ด + ส่ง"}
             </button>
-            {pointsPreview && (
-              <PreviewSendModal
-                messages={pointsPreview}
-                sending={addBusy}
-                onConfirm={addBonusPoints}
-                onCancel={() => setPointsPreview(null)}
-              />
-            )}
-            <label className="mt-1 flex min-h-[40px] items-center gap-2 text-[11px] font-bold text-brown-soft">
-              <input
-                type="checkbox"
-                checked={addNotify}
-                onChange={(e) => setAddNotify(e.target.checked)}
-                className="h-5 w-5 accent-latte-deep"
-              />
-              แจ้งลูกค้าทาง LINE ด้วย (เสียโควตา 1 ข้อความ)
-            </label>
-            <p className="text-[10px] text-brown-faint">
-              บันทึกในประวัติแต้มของลูกค้า (มีเหตุผลกำกับ) + แจ้งเตือนร้านเสมอ ·
-              ปกติจะ<b>ไม่</b>ส่งข้อความหาลูกค้า ถ้าอยากแจ้งค่อยติ๊กช่องด้านบน
-            </p>
-          </>
-        ) : (
-          <p className="flex gap-2 text-[11px] font-bold text-brown-soft">
-            <Icon name="alert" size={16} className="text-wait" />
-            <span className="min-w-0 flex-1">ลูกค้ารายนี้ยังไม่ได้ผูก LINE — ต้องให้ลูกค้าเปิดแอปจาก LINE ก่อน
-            ถึงจะเพิ่มแต้มสะสมได้ค่ะ (แต้มผูกกับบัญชี LINE)</span>
-          </p>
-        )}
-      </div>
-
-      {/* ── คอร์ส/แพ็กเกจ ── */}
-      <div className="mb-3 rounded-petflow-sm border border-petflow-line bg-card/85 p-3">
-        <p className="mb-2 flex items-center gap-2 text-xs font-extrabold text-petflow-chocolate">
-          <Icon name="ticket" size={16} className="text-ok" />
-          คอร์ส / แพ็กเกจ
-        </p>
-        {packages.filter((p) => p.status !== "cancelled").length > 0 && (
-          <ul className="mb-2 divide-y divide-petflow-line rounded-petflow-sm border border-petflow-line bg-card">
-            {packages
-              .filter((p) => p.status !== "cancelled")
-              .map((p) => {
-                const left = p.totalUses - p.usedUses;
-                return (
-                  <li key={p.id} className="flex min-h-[48px] items-center gap-2 py-1 pl-3 pr-1.5 text-xs">
-                    <span className="min-w-0 flex-1 truncate font-bold text-brown">
-                      {p.name}
-                      {p.groomProgram && (
-                        <span className="block truncate text-[10px] font-normal text-brown-faint">
-                          ใช้กับ {groomProgramName(p.groomProgram, groomPrograms) || "โปรแกรมที่ลบไปแล้ว"}
-                        </span>
-                      )}
-                      {p.planId && pkgPlans[p.planId] && (
-                        <span className={`block truncate text-[10px] font-bold ${p.locked ? "text-wait" : "text-ok"}`}>
-                          {p.locked
-                            ? `🔒 จ่ายแล้ว ${pkgPlans[p.planId].payments.length}/${pkgPlans[p.planId].installments} งวด`
-                            : `แบ่งจ่าย ${pkgPlans[p.planId].payments.length} งวด · จ่ายครบแล้ว`}
-                        </span>
-                      )}
-                    </span>
-                    {p.locked && p.planId ? (
-                      <button
-                        type="button"
-                        onClick={() => payInstallment(p.planId!, p.name)}
-                        className="flex min-h-[36px] shrink-0 items-center gap-1 rounded-full bg-petflow-chocolate px-3 text-[11px] font-extrabold text-card"
-                      >
-                        <Icon name="money" size={14} />
-                        รับงวด · ค้าง {Math.round(p.outstanding || 0).toLocaleString()}
-                      </button>
-                    ) : (
-                      <span className={`shrink-0 font-extrabold ${left > 0 ? "text-ok" : "text-brown-faint"}`}>
-                        เหลือ {left}/{p.totalUses}
-                      </span>
-                    )}
-                    <MoreMenu
-                      items={[
-                        { label: "ยกเลิกคอร์สนี้", icon: "x", danger: true, onClick: () => cancelPackage(p.id) },
-                      ]}
-                    />
-                  </li>
-                );
-              })}
-          </ul>
-        )}
-        <input
-          value={pkgName}
-          onChange={(e) => setPkgName(e.target.value)}
-          placeholder="ชื่อคอร์ส เช่น อาบน้ำ 10 ครั้ง"
-          className={inputCls}
-        />
-        <div className="mt-2">
-          <GroomProgramPicker value={pkgProgram} onChange={setPkgProgram} programs={groomPrograms} />
-        </div>
-        <div className="mt-2 flex gap-2">
-          <input
-            type="number"
-            value={pkgUses}
-            onChange={(e) => setPkgUses(e.target.value)}
-            placeholder="กี่ครั้ง"
-            className={`!w-24 shrink-0 ${inputCls}`}
-          />
-          <input
-            type="number"
-            value={pkgPrice}
-            onChange={(e) => setPkgPrice(e.target.value)}
-            placeholder="ราคา (บาท)"
-            className={`min-w-0 flex-1 ${inputCls}`}
-          />
-        </div>
-
-        {!pkgLegacy && (
-          <div className="mt-2 space-y-2">
-            <select
-              value={pkgInstallments}
-              onChange={(e) => setPkgInstallments(Number(e.target.value))}
-              className={inputCls}
-              aria-label="การจ่ายเงิน"
-            >
-              <option value={1}>จ่ายเต็มครั้งเดียว</option>
-              {Array.from({ length: 11 }, (_, i) => i + 2).map((n) => (
-                <option key={n} value={n}>
-                  แบ่งจ่าย {n} งวด{Number(pkgPrice) > 0 ? ` (งวดละ ~${Math.ceil(Number(pkgPrice) / n).toLocaleString()})` : ""}
-                </option>
-              ))}
-            </select>
-            {pkgInstallments > 1 && (
-              <>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    value={pkgFirstPay}
-                    onChange={(e) => setPkgFirstPay(e.target.value)}
-                    placeholder="รับงวดแรกวันนี้ (บาท) — ว่าง = ยังไม่รับ"
-                    className={`min-w-0 flex-1 ${inputCls}`}
-                  />
-                  <select
-                    value={pkgMethod}
-                    onChange={(e) => setPkgMethod(e.target.value as "transfer" | "cash")}
-                    className={`!w-24 shrink-0 ${inputCls}`}
-                    aria-label="รับเงินทาง"
-                  >
-                    <option value="transfer">โอน</option>
-                    <option value="cash">เงินสด</option>
-                  </select>
-                </div>
-                <p className="flex items-center gap-1 text-[10px] font-bold text-wait">
-                  <Icon name="alert" size={12} />
-                  คอร์สจะยังใช้ไม่ได้จนกว่าจะจ่ายครบทุกงวด · รับงวดถัดไปได้ที่ปุ่ม &quot;รับงวด&quot; ในรายการคอร์ส
-                </p>
-              </>
-            )}
           </div>
-        )}
-
-        {pkgPreview && (
-          <PreviewSendModal
-            messages={pkgPreview}
-            sending={pkgBusy}
-            onConfirm={sellPackage}
-            onCancel={() => setPkgPreview(null)}
-          />
-        )}
-
-        <div className="mt-2 space-y-2">
-          <CheckRow
-            checked={pkgLegacy}
-            onChange={setPkgLegacy}
-            icon="clock"
-            title="ยกมาจากระบบเก่า"
-            sub={
-              <>
-                ลูกค้าได้ครั้งครบตามปกติ แต่จะ<b>ไม่นับเป็นรายรับ</b>ของร้านเดือนนี้
-              </>
-            }
-          />
-          <CheckRow
-            checked={pkgNotify}
-            onChange={setPkgNotify}
-            icon="message"
-            title="แจ้งลูกค้าทาง LINE ด้วย"
-            sub="ส่งการ์ดบอกจำนวนครั้งคงเหลือ (เสียโควตา 1 ข้อความ) · ไม่ติ๊ก = บันทึกเงียบๆ"
-          />
-        </div>
-
-        <button
-          type="button"
-          disabled={pkgBusy || !pkgName.trim() || !pkgUses}
-          onClick={pkgNotify ? previewPackage : sellPackage}
-          className="mt-2 flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-petflow-sm bg-sage px-3 py-2.5 text-sm font-extrabold text-card disabled:opacity-40"
-        >
-          <Icon name="plus" size={16} />
-          {pkgLegacy ? "ยกคอร์สมา" : "ขายคอร์ส"}
-        </button>
-
-        <p className="mt-1.5 text-[10px] text-brown-faint">
-          เวลาลูกค้ามาใช้ กดหักที่หน้าคิดเงิน · ลูกค้าดูครั้งคงเหลือเองได้ในแอป
-        </p>
-      </div>
-
-      {(inactive || customer.lineUserId) && (
-        <div className="mb-3 flex items-center gap-3 rounded-petflow-sm border border-petflow-line bg-card/85 p-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sage/20 text-ok">
-            <Icon name="send" size={18} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-extrabold text-petflow-chocolate">ตามลูกค้าทาง LINE</p>
-            <p className="truncate text-[10px] text-brown-faint">
-              {customer.lastFollowUpAt
-                ? `ส่งล่าสุด: ${customer.lastFollowUpAt.slice(0, 10)}`
-                : !customer.lineUserId
-                  ? "ต้องผูก LINE ก่อนจึงส่งได้"
-                  : "ยังไม่เคยส่ง"}
-            </p>
-          </div>
-          <button
-            type="button"
-            disabled={followUpBusy || !customer.lineUserId}
-            onClick={sendFollowUp}
-            className="min-h-[40px] shrink-0 rounded-full bg-sage/25 px-3.5 py-2 text-xs font-bold text-ok disabled:opacity-50"
+          <a
+            href="/admin/cards?card=missYou"
+            className="mt-1.5 block text-right text-[10px] font-bold text-latte-deep underline"
           >
-            {followUpBusy ? "กำลังส่ง…" : canFollowUp ? "ส่งข้อความ" : "ส่งซ้ำ (ข้าม cooldown)"}
-          </button>
+            แก้ข้อความ/หน้าตาการ์ดนี้
+          </a>
         </div>
+      )}
+
+      {followUpPreview && (
+        <PreviewSendModal
+          messages={followUpPreview}
+          sending={followUpBusy}
+          onConfirm={sendFollowUp}
+          onCancel={() => setFollowUpPreview(null)}
+        />
       )}
 
       <div className="mb-3 rounded-petflow-sm border border-petflow-line bg-card/85 p-3">
@@ -2018,122 +2170,251 @@ function CustomerSummaryCard({
         />
       </div>
 
-      <details className="group rounded-petflow-sm border border-petflow-line bg-card/85 [&_summary::-webkit-details-marker]:hidden">
-        <summary className="flex min-h-[48px] cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-xs font-extrabold text-petflow-chocolate">
-          <Icon name="edit" size={16} className="text-latte-deep" />
-          <span className="flex-1">แก้ไขข้อมูลลูกค้า</span>
-          <Icon name="chevron" size={16} className="text-brown-faint transition group-open:rotate-90" />
-        </summary>
-        <div className="space-y-3 border-t border-petflow-line p-3">
-
-        <label className="block text-xs font-bold text-brown-soft">
-          <span className="mb-1 block">ชื่อที่ใช้ในร้าน (ตั้งเองได้)</span>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onBlur={() => {
-              const trimmed = name.trim();
-              if (trimmed && trimmed !== customer.name) save({ name: trimmed });
-            }}
-            placeholder="เช่น คุณแม่น้องมะลิ"
-            className="w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm font-bold text-brown outline-none transition focus:border-latte-deep focus:bg-card"
-          />
-        </label>
-
-        <label className="block text-xs font-bold text-brown-soft">
-          <span className="mb-1 block">เบอร์โทร</span>
-          <input
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            onBlur={() => {
-              if (phone.trim() !== (customer.phone || "")) save({ phone: phone.trim() || undefined });
-            }}
-            placeholder="08x-xxx-xxxx"
-            className="w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm outline-none transition focus:border-latte-deep focus:bg-card"
-          />
-        </label>
-        <label className="block text-xs font-bold text-brown-soft">
-          <span className="mb-1 block">อีเมล</span>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            onBlur={() => {
-              if (email.trim() !== (customer.email || "")) save({ email: email.trim() || undefined });
-            }}
-            placeholder="เช่น customer@email.com"
-            className="w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm outline-none transition focus:border-latte-deep focus:bg-card"
-          />
-        </label>
-        <label className="block text-xs font-bold text-brown-soft">
-          <span className="mb-1 block">วันเกิดลูกค้า</span>
-          <input
-            type="date"
-            value={birthday}
-            onChange={(e) => setBirthday(e.target.value)}
-            onBlur={() => {
-              if (birthday !== (customer.birthday || "")) save({ birthday: birthday || undefined });
-            }}
-            className="w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm outline-none transition focus:border-latte-deep focus:bg-card"
-          />
-        </label>
-        <label className="block text-xs font-bold text-brown-soft">
-          <span className="mb-1 block">ที่อยู่บ้าน (บริการรับ-ส่ง)</span>
-          <textarea
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-            onBlur={() => {
-              if (address.trim() !== (customer.address || "")) save({ address: address.trim() || undefined });
-            }}
-            placeholder="เช่น บ้านเลขที่ ซอย ถนน แขวง/ตำบล เขต/อำเภอ"
-            rows={2}
-            className="w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm outline-none transition focus:border-latte-deep focus:bg-card"
-          />
-        </label>
-        <label className="block text-xs font-bold text-brown-soft">
-          <span className="mb-1 block">ลิงก์ Google Maps</span>
-          <input
-            value={addressMapUrl}
-            onChange={(e) => setAddressMapUrl(e.target.value)}
-            onBlur={() => {
-              if (addressMapUrl.trim() !== (customer.addressMapUrl || ""))
-                save({ addressMapUrl: addressMapUrl.trim() || undefined });
-            }}
-            placeholder="วางลิงก์ Google Maps ที่ลูกค้าแชร์มา"
-            className="w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm outline-none transition focus:border-latte-deep focus:bg-card"
-          />
-          {addressMapUrl && (
-            <a
-              href={addressMapUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-1 inline-flex min-h-[32px] items-center gap-1 text-[11px] font-bold text-latte-deep"
+      {toolsSlot &&
+        createPortal(
+          <>
+            <CollapsibleCard
+              icon="gift"
+              title="เพิ่มแต้มพิเศษ (แต้มฟรี)"
+              sub={<>มีอยู่ <span className="font-bold text-latte-deep">{points} แต้ม</span></>}
             >
-              <Icon name="link" size={13} />
-              เปิดดูแผนที่
-            </a>
-          )}
-        </label>
-        <label className="block text-xs font-bold text-brown-soft">
-          <span className="mb-1 block">รหัสไปรษณีย์</span>
-          <input
-            value={postalCode}
-            onChange={(e) => setPostalCode(e.target.value.replace(/[^0-9]/g, "").slice(0, 5))}
-            onBlur={() => {
-              if (postalCode.trim() !== (customer.postalCode || ""))
-                save({ postalCode: postalCode.trim() || undefined });
-            }}
-            inputMode="numeric"
-            placeholder="เช่น 10260"
-            className="w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm outline-none transition focus:border-latte-deep focus:bg-card"
-          />
-        </label>
-        <p className="flex items-center gap-1.5 text-[10px] text-brown-faint">
-          <Icon name="check" size={12} />
-          พิมพ์แล้วแตะออกจากช่อง ระบบบันทึกให้อัตโนมัติ
-        </p>
-        </div>
-      </details>
+            {customer.lineUserId ? (
+              <>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    value={addAmt}
+                    onChange={(e) => setAddAmt(e.target.value)}
+                    placeholder="กี่แต้ม"
+                    className={`!w-24 shrink-0 font-bold ${inputCls}`}
+                  />
+                  <input
+                    value={addReason}
+                    onChange={(e) => setAddReason(e.target.value)}
+                    placeholder="เหตุผล เช่น รีวิวร้าน"
+                    className={`min-w-0 flex-1 ${inputCls}`}
+                  />
+                </div>
+                <button
+                  type="button"
+                  disabled={addBusy || !addAmt}
+                  onClick={addNotify ? previewBonusPoints : addBonusPoints}
+                  className="mt-2 flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-petflow-sm bg-latte-deep px-4 py-2.5 text-sm font-extrabold text-white disabled:opacity-40"
+                >
+                  {!addBusy && <Icon name={addNotify ? "eye" : "plus"} size={16} />}
+                  {addBusy ? "…" : addNotify ? "ดูการ์ด" : "เพิ่มแต้ม"}
+                </button>
+                {pointsPreview && (
+                  <PreviewSendModal
+                    messages={pointsPreview}
+                    sending={addBusy}
+                    onConfirm={addBonusPoints}
+                    onCancel={() => setPointsPreview(null)}
+                  />
+                )}
+                <label className="mt-1 flex min-h-[40px] items-center gap-2 text-[11px] font-bold text-brown-soft">
+                  <input
+                    type="checkbox"
+                    checked={addNotify}
+                    onChange={(e) => setAddNotify(e.target.checked)}
+                    className="h-5 w-5 accent-latte-deep"
+                  />
+                  แจ้งลูกค้าทาง LINE ด้วย (เสียโควตา 1 ข้อความ)
+                </label>
+                <p className="text-[10px] text-brown-faint">
+                  บันทึกในประวัติแต้มของลูกค้า (มีเหตุผลกำกับ) + แจ้งเตือนร้านเสมอ ·
+                  ปกติจะ<b>ไม่</b>ส่งข้อความหาลูกค้า ถ้าอยากแจ้งค่อยติ๊กช่องด้านบน
+                </p>
+              </>
+            ) : (
+              <p className="flex gap-2 text-[11px] font-bold text-brown-soft">
+                <Icon name="alert" size={16} className="text-wait" />
+                <span className="min-w-0 flex-1">ลูกค้ารายนี้ยังไม่ได้ผูก LINE — ต้องให้ลูกค้าเปิดแอปจาก LINE ก่อน
+                ถึงจะเพิ่มแต้มสะสมได้ค่ะ (แต้มผูกกับบัญชี LINE)</span>
+              </p>
+            )}
+            </CollapsibleCard>
+            <CollapsibleCard
+              icon="ticket"
+              title="คอร์ส / แพ็กเกจ"
+              sub={
+                <>
+                  เหลือ <span className="font-bold text-ok">{packageUsesLeft} ครั้ง</span>
+                  {packages.some((p) => p.locked && p.status !== "cancelled") && (
+                    <span className="font-bold text-wait"> · มีงวดค้าง</span>
+                  )}
+                  {" "}· แตะเพื่อขายคอร์ส
+                </>
+              }
+            >
+            {packages.filter((p) => p.status !== "cancelled").length > 0 && (
+              <ul className="mb-2 divide-y divide-petflow-line rounded-petflow-sm border border-petflow-line bg-card">
+                {packages
+                  .filter((p) => p.status !== "cancelled")
+                  .map((p) => {
+                    const left = p.totalUses - p.usedUses;
+                    return (
+                      <li key={p.id} className="flex min-h-[48px] items-center gap-2 py-1 pl-3 pr-1.5 text-xs">
+                        <span className="min-w-0 flex-1 truncate font-bold text-brown">
+                          {p.name}
+                          {p.groomProgram && (
+                            <span className="block truncate text-[10px] font-normal text-brown-faint">
+                              ใช้กับ {groomProgramName(p.groomProgram, groomPrograms) || "โปรแกรมที่ลบไปแล้ว"}
+                            </span>
+                          )}
+                          {p.planId && pkgPlans[p.planId] && (
+                            <span className={`block truncate text-[10px] font-bold ${p.locked ? "text-wait" : "text-ok"}`}>
+                              {p.locked
+                                ? `🔒 จ่ายแล้ว ${pkgPlans[p.planId].payments.length}/${pkgPlans[p.planId].installments} งวด`
+                                : `แบ่งจ่าย ${pkgPlans[p.planId].payments.length} งวด · จ่ายครบแล้ว`}
+                            </span>
+                          )}
+                        </span>
+                        {p.locked && p.planId ? (
+                          <button
+                            type="button"
+                            onClick={() => payInstallment(p.planId!, p.name)}
+                            className="flex min-h-[36px] shrink-0 items-center gap-1 rounded-full bg-petflow-chocolate px-3 text-[11px] font-extrabold text-card"
+                          >
+                            <Icon name="money" size={14} />
+                            รับงวด · ค้าง {Math.round(p.outstanding || 0).toLocaleString()}
+                          </button>
+                        ) : (
+                          <span className={`shrink-0 font-extrabold ${left > 0 ? "text-ok" : "text-brown-faint"}`}>
+                            เหลือ {left}/{p.totalUses}
+                          </span>
+                        )}
+                        <MoreMenu
+                          items={[
+                            { label: "ยกเลิกคอร์สนี้", icon: "x", danger: true, onClick: () => cancelPackage(p.id) },
+                          ]}
+                        />
+                      </li>
+                    );
+                  })}
+              </ul>
+            )}
+            <input
+              value={pkgName}
+              onChange={(e) => setPkgName(e.target.value)}
+              placeholder="ชื่อคอร์ส เช่น อาบน้ำ 10 ครั้ง"
+              className={inputCls}
+            />
+            <div className="mt-2">
+              <GroomProgramPicker value={pkgProgram} onChange={setPkgProgram} programs={groomPrograms} />
+            </div>
+            <div className="mt-2 flex gap-2">
+              <input
+                type="number"
+                value={pkgUses}
+                onChange={(e) => setPkgUses(e.target.value)}
+                placeholder="กี่ครั้ง"
+                className={`!w-24 shrink-0 ${inputCls}`}
+              />
+              <input
+                type="number"
+                value={pkgPrice}
+                onChange={(e) => setPkgPrice(e.target.value)}
+                placeholder="ราคา (บาท)"
+                className={`min-w-0 flex-1 ${inputCls}`}
+              />
+            </div>
+
+            {!pkgLegacy && (
+              <div className="mt-2 space-y-2">
+                <select
+                  value={pkgInstallments}
+                  onChange={(e) => setPkgInstallments(Number(e.target.value))}
+                  className={inputCls}
+                  aria-label="การจ่ายเงิน"
+                >
+                  <option value={1}>จ่ายเต็มครั้งเดียว</option>
+                  {Array.from({ length: 11 }, (_, i) => i + 2).map((n) => (
+                    <option key={n} value={n}>
+                      แบ่งจ่าย {n} งวด{Number(pkgPrice) > 0 ? ` (งวดละ ~${Math.ceil(Number(pkgPrice) / n).toLocaleString()})` : ""}
+                    </option>
+                  ))}
+                </select>
+                {pkgInstallments > 1 && (
+                  <>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        value={pkgFirstPay}
+                        onChange={(e) => setPkgFirstPay(e.target.value)}
+                        placeholder="รับงวดแรกวันนี้ (บาท) — ว่าง = ยังไม่รับ"
+                        className={`min-w-0 flex-1 ${inputCls}`}
+                      />
+                      <select
+                        value={pkgMethod}
+                        onChange={(e) => setPkgMethod(e.target.value as "transfer" | "cash")}
+                        className={`!w-24 shrink-0 ${inputCls}`}
+                        aria-label="รับเงินทาง"
+                      >
+                        <option value="transfer">โอน</option>
+                        <option value="cash">เงินสด</option>
+                      </select>
+                    </div>
+                    <p className="flex items-center gap-1 text-[10px] font-bold text-wait">
+                      <Icon name="alert" size={12} />
+                      คอร์สจะยังใช้ไม่ได้จนกว่าจะจ่ายครบทุกงวด · รับงวดถัดไปได้ที่ปุ่ม &quot;รับงวด&quot; ในรายการคอร์ส
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
+
+            {pkgPreview && (
+              <PreviewSendModal
+                messages={pkgPreview}
+                sending={pkgBusy}
+                onConfirm={sellPackage}
+                onCancel={() => setPkgPreview(null)}
+              />
+            )}
+
+            <div className="mt-2 space-y-2">
+              <CheckRow
+                checked={pkgLegacy}
+                onChange={setPkgLegacy}
+                icon="clock"
+                title="ยกมาจากระบบเก่า"
+                sub={
+                  <>
+                    ลูกค้าได้ครั้งครบตามปกติ แต่จะ<b>ไม่นับเป็นรายรับ</b>ของร้านเดือนนี้
+                  </>
+                }
+              />
+              <CheckRow
+                checked={pkgNotify}
+                onChange={setPkgNotify}
+                icon="message"
+                title="แจ้งลูกค้าทาง LINE ด้วย"
+                sub="ส่งการ์ดบอกจำนวนครั้งคงเหลือ (เสียโควตา 1 ข้อความ) · ไม่ติ๊ก = บันทึกเงียบๆ"
+              />
+            </div>
+
+            <button
+              type="button"
+              disabled={pkgBusy || !pkgName.trim() || !pkgUses}
+              onClick={pkgNotify ? previewPackage : sellPackage}
+              className="mt-2 flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-petflow-sm bg-sage px-3 py-2.5 text-sm font-extrabold text-card disabled:opacity-40"
+            >
+              <Icon name="plus" size={16} />
+              {pkgLegacy ? "ยกคอร์สมา" : "ขายคอร์ส"}
+            </button>
+
+            <p className="mt-1.5 text-[10px] text-brown-faint">
+              เวลาลูกค้ามาใช้ กดหักที่หน้าคิดเงิน · ลูกค้าดูครั้งคงเหลือเองได้ในแอป
+            </p>
+            </CollapsibleCard>
+          </>,
+          toolsSlot
+        )}
+
+      {editOpen && (
+        <EditCustomerSheet customer={customer} onClose={() => setEditOpen(false)} onSaved={onSaved} />
+      )}
 
       {!customer.lineUserId && (
         <AdoptLineControl customer={customer} onMerged={onSaved} />
@@ -2204,7 +2485,7 @@ function AdoptLineControl({
     if (
       !confirm(
         `ดึง LINE ของ "${source.lineDisplayName || source.name}" มาผูกกับ "${customer.name}"?\n\n` +
-          `แต้ม · คูปอง · เครดิต · บิล · แมว จะย้ายมาที่ "${customer.name}" ทั้งหมด\n` +
+          `แต้ม · คูปอง · เครดิต · บิล · น้อง จะย้ายมาที่ "${customer.name}" ทั้งหมด\n` +
           `แล้วบัญชีซ้ำ "${source.name}" จะถูกลบ (กู้ได้จากถังขยะ)\n\n` +
           `ลูกค้าไม่ต้องทำอะไรเลย`
       )
@@ -2383,7 +2664,7 @@ function MergeCustomerControl({
     if (
       !confirm(
         `รวม "${customer.name}" เข้ากับ "${target.name}"?\n\n` +
-          `แต้ม · คูปอง · เครดิต · บิล · แมว · LINE ID จะย้ายไปที่ "${target.name}" ` +
+          `แต้ม · คูปอง · เครดิต · บิล · น้อง · LINE ID จะย้ายไปที่ "${target.name}" ` +
           `แล้วลบ "${customer.name}" ทิ้ง\n\n⚠️ ทำแล้วกู้คืนไม่ได้`
       )
     )
@@ -2482,20 +2763,26 @@ function MergeCustomerControl({
  */
 function CatBreedField({
   breed,
+  species,
   onSave,
 }: {
   breed?: string;
+  /** ร้านที่รับทั้งหมาและแมว — โชว์เฉพาะสายพันธุ์ของชนิดนี้ */
+  species?: PetSpecies;
   onSave: (breed: string) => void;
 }) {
-  const isCustom = !!breed && !BREED_OPTIONS.includes(breed);
+  const { config } = useConfig();
+  const breedList = breedOptionsForSpecies(config, species);
+  const isCustom = !!breed && !breedList.includes(breed);
   const [otherMode, setOtherMode] = useState(isCustom);
   const [otherText, setOtherText] = useState(isCustom ? breed || "" : "");
 
   useEffect(() => {
-    const nowCustom = !!breed && !BREED_OPTIONS.includes(breed);
+    const nowCustom = !!breed && !breedList.includes(breed);
     setOtherMode(nowCustom);
     setOtherText(nowCustom ? breed || "" : "");
-  }, [breed]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [breed, breedList.join("\n")]);
 
   return (
     <div>
@@ -2513,7 +2800,7 @@ function CatBreedField({
         className={inputCls}
       >
         <option value="">เลือกสายพันธุ์…</option>
-        {BREED_OPTIONS.map((b) => (
+        {breedList.map((b) => (
           <option key={b} value={b}>
             {b}
           </option>
@@ -2536,8 +2823,11 @@ function CatBreedField({
 }
 
 function AddCatForm({ customerId, onAdded }: { customerId: string; onAdded: () => void }) {
+  const pw = usePetWords();
+  const { config } = useConfig();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
+  const [species, setSpecies] = useState<PetSpecies | "">("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -2546,6 +2836,7 @@ function AddCatForm({ customerId, onAdded }: { customerId: string; onAdded: () =
     setOpen(false);
     setName("");
     setNote("");
+    setSpecies("");
     setError("");
   };
 
@@ -2561,6 +2852,7 @@ function AddCatForm({ customerId, onAdded }: { customerId: string; onAdded: () =
         id: customerId,
         action: "add_cat",
         name: name.trim(),
+        species: species || undefined,
         staffNote: note.trim() || undefined,
       }),
     });
@@ -2585,7 +2877,7 @@ function AddCatForm({ customerId, onAdded }: { customerId: string; onAdded: () =
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-petflow-chocolate text-card">
           <Icon name="plus" size={20} strokeWidth={2.4} />
         </span>
-        <span className="flex-1 text-sm font-extrabold">เพิ่มน้องแมวอีกตัว</span>
+        <span className="flex-1 text-sm font-extrabold">เพิ่มน้อง{pw.th}อีกตัว</span>
         <Icon name="paw" size={22} className="text-petflow-chocolate/60" />
       </button>
 
@@ -2597,8 +2889,8 @@ function AddCatForm({ customerId, onAdded }: { customerId: string; onAdded: () =
                 <Icon name="paw" size={20} />
               </span>
               <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">New cat</p>
-                <h2 className="text-base font-extrabold text-petflow-chocolate">เพิ่มน้องแมว</h2>
+                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">New {pw.en}</p>
+                <h2 className="text-base font-extrabold text-petflow-chocolate">เพิ่มน้อง{pw.th}</h2>
               </div>
               <button
                 type="button"
@@ -2610,8 +2902,18 @@ function AddCatForm({ customerId, onAdded }: { customerId: string; onAdded: () =
               </button>
             </div>
             <form onSubmit={submit} className="space-y-3">
+              {asksSpecies(config) && (
+                <Segmented
+                  value={species}
+                  onChange={(v) => v && setSpecies(v)}
+                  options={[
+                    { id: "dog", label: "🐶 หมา" },
+                    { id: "cat", label: "🐱 แมว" },
+                  ]}
+                />
+              )}
               <label className="block text-xs font-bold text-brown-soft">
-                ชื่อน้องแมว *
+                ชื่อน้อง{speciesWords(species || undefined, config).th} *
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -2626,7 +2928,7 @@ function AddCatForm({ customerId, onAdded }: { customerId: string; onAdded: () =
                 <textarea
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
-                  placeholder="เช่น แมวดุ อาบยาก กลัวเสียง"
+                  placeholder="เช่น ดุ อาบยาก กลัวเสียง"
                   rows={3}
                   className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-xs"
                 />
@@ -2658,12 +2960,16 @@ function AddCatForm({ customerId, onAdded }: { customerId: string; onAdded: () =
 }
 
 export default function CustomersPage() {
+  const pw = usePetWords();
+  const { config } = useConfig();
   const searchParams = useSearchParams();
   const [q, setQ] = useState("");
   const [list, setList] = useState<CustomerListItem[]>([]);
   const [selected, setSelected] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(false);
   const [showTools, setShowTools] = useState(false);
+  /** ช่องท้ายหน้าที่ฟอร์มเพิ่มแต้ม/ขายคอร์สไปวาง */
+  const [toolsSlot, setToolsSlot] = useState<HTMLDivElement | null>(null);
   const [tierFilter, setTierFilter] = useState<CustomerTier | "all">("all");
   const [lineFilter, setLineFilter] = useState<"all" | "linked" | "unlinked">("all");
   const [sortKey, setSortKey] = useState<SortKey>("recent");
@@ -2785,11 +3091,16 @@ export default function CustomersPage() {
       gender?: "male" | "female";
       breed?: string;
       furLength?: "short" | "long";
+      neutered?: boolean;
       color?: string;
       ageValue?: number;
       ageUnit?: "year" | "month";
+      weightKg?: number | null;
       birthday?: string;
       medical?: string;
+      species?: PetSpecies;
+      seizureHistory?: string;
+      allergy?: string;
     }
   ) => {
     if (!selected) return;
@@ -2803,7 +3114,7 @@ export default function CustomersPage() {
         patch,
       }),
     });
-    if (res.ok) toast("✅ บันทึกข้อมูลแมวแล้ว", "success");
+    if (res.ok) toast(`✅ บันทึกข้อมูลน้องแล้ว`, "success");
     open(selected.customer.id);
   };
 
@@ -2882,6 +3193,7 @@ export default function CustomersPage() {
           inactive={selected.inactive}
           canFollowUp={selected.canFollowUp}
           onSaved={() => open(c.id)}
+          toolsSlot={toolsSlot}
         />
 
         <CustomerLinkSection
@@ -2891,11 +3203,11 @@ export default function CustomersPage() {
         />
 
         <section className="mb-4">
-          <SectionLabel>Cats · น้องแมว ({c.cats.length})</SectionLabel>
+          <SectionLabel>{`${pw.enPlural[0].toUpperCase()}${pw.enPlural.slice(1)} · น้อง${pw.th} (${c.cats.length})`}</SectionLabel>
 
           {c.cats.length === 0 && (
             <div className="rounded-petflow bg-card shadow-petflow-sm">
-              <EmptyState icon="paw" title="ยังไม่มีน้องแมว" sub="กด “เพิ่มน้องแมวอีกตัว” ด้านล่างเพื่อเพิ่ม" />
+              <EmptyState icon="paw" title={`ยังไม่มีน้อง${pw.th}`} sub={`กด “เพิ่มน้อง${pw.th}อีกตัว” ด้านล่างเพื่อเพิ่ม`} />
             </div>
           )}
           <div className="space-y-3">
@@ -2905,7 +3217,7 @@ export default function CustomersPage() {
                 {/* แตะรูปเพื่อดูเต็มจอ · ปุ่มกล้องเพื่อเปลี่ยนรูป (ลูกค้าเห็นในแอปด้วย) */}
                 <CatPhoto src={cat.photoDataUrl} name={cat.name} size={72} onPick={(f) => onPhoto(cat, f)} />
                 <label className="block min-w-0 flex-1 text-[11px] font-bold text-brown-soft">
-                  <span className="mb-1 block">ชื่อน้องแมว</span>
+                  <span className="mb-1 block">ชื่อน้อง{speciesWords(speciesOf(cat, config), config).th}</span>
                   <input
                     defaultValue={cat.name}
                     onBlur={(e) => {
@@ -2922,8 +3234,38 @@ export default function CustomersPage() {
                 />
               </div>
               <p className="-mt-1 px-4 pb-2 text-[10px] text-brown-faint">แตะรูปเพื่อดูเต็มจอ · ปุ่มกล้องเพื่อเปลี่ยนรูป (ลูกค้าเห็นในแอปด้วย)</p>
+              {(() => {
+                // อาบน้ำครั้งล่าสุดของตัวนี้ — ตอนออกบิลระบบจะเลือกแบบเดิมให้เอง
+                const last = lastGroomForPet(
+                  (selected.serviceLog?.bills || []).map((b) => ({ createdAt: b.date, items: b.items })),
+                  cat.name,
+                  c.cats.length === 1
+                );
+                return last ? (
+                  <p className="mx-4 mb-2 flex items-start gap-1.5 rounded-petflow-sm bg-honey/15 px-3 py-2 text-[11px] text-brown">
+                    <Icon name="bath" size={14} />
+                    <span>
+                      อาบครั้งก่อน {last.when ? `(${last.when.slice(0, 10)})` : ""}: {last.programName} · {last.breed}
+                      {last.sizeLabel ? ` · ${last.sizeLabel}` : ""} ·{" "}
+                      <b>฿{last.unitAmount.toLocaleString()}</b>
+                    </span>
+                  </p>
+                ) : null;
+              })()}
 
               <div className="space-y-3 border-t border-petflow-line p-4">
+                {asksSpecies(config) && (
+                  <Segmented
+                    value={speciesOf(cat, config) ?? ""}
+                    onChange={(v) => {
+                      if (v) saveCat(cat.id, { species: v });
+                    }}
+                    options={[
+                      { id: "dog", label: "🐶 หมา" },
+                      { id: "cat", label: "🐱 แมว" },
+                    ]}
+                  />
+                )}
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <Segmented
                     value={(cat.gender ?? "") as "" | "male" | "female"}
@@ -2945,11 +3287,22 @@ export default function CustomersPage() {
                       { id: "long", label: "ขนยาว" },
                     ]}
                   />
+                  <Segmented
+                    value={cat.neutered === true ? "yes" : cat.neutered === false ? "no" : ""}
+                    onChange={(v) => {
+                      if (v) saveCat(cat.id, { neutered: v === "yes" });
+                    }}
+                    options={[
+                      { id: "yes", label: "ทำหมันแล้ว" },
+                      { id: "no", label: "ยังไม่ทำ" },
+                    ]}
+                  />
                 </div>
                 <label className="block text-[11px] font-bold text-brown-soft">
                   <span className="mb-1 block">พันธุ์</span>
                   <CatBreedField
                     breed={cat.breed}
+                    species={speciesOf(cat, config)}
                     onSave={(breed) => saveCat(cat.id, { breed })}
                   />
                 </label>
@@ -3000,6 +3353,22 @@ export default function CustomersPage() {
                   </label>
                 </div>
                 <label className="block text-[11px] font-bold text-brown-soft">
+                  <span className="mb-1 block">น้ำหนัก (กก.)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    inputMode="decimal"
+                    defaultValue={cat.weightKg}
+                    placeholder="เช่น 4.5"
+                    className={inputCls}
+                    onBlur={(e) => {
+                      const v = e.target.value ? Number(e.target.value) : null;
+                      if (v !== (cat.weightKg ?? null)) saveCat(cat.id, { weightKg: v });
+                    }}
+                  />
+                </label>
+                <label className="block text-[11px] font-bold text-brown-soft">
                   วันเกิดน้อง <span className="font-normal text-brown-faint">(ถ้าทราบ)</span>
                   <BirthdayPicker
                     value={cat.birthday || ""}
@@ -3010,10 +3379,35 @@ export default function CustomersPage() {
                   />
                 </label>
                 <StaffNoteTagPicker
+                  label="โรคประจำตัว / เรื่องที่ช่างต้องรู้"
                   medicalValue={cat.medical || ""}
                   noteValue={cat.staffNote || ""}
                   onChange={(medical, staffNote) => saveCat(cat.id, { medical, staffNote })}
                 />
+                <label className="block text-[11px] font-bold text-brown-soft">
+                  <span className="mb-1 block">ประวัติการชัก/ช็อค</span>
+                  <input
+                    defaultValue={cat.seizureHistory}
+                    placeholder="เช่น ไม่เคย · หรือ เคยชักตอนตกใจ"
+                    className={inputCls}
+                    onBlur={(e) => {
+                      const v = e.target.value.trim();
+                      if (v !== (cat.seizureHistory || "")) saveCat(cat.id, { seizureHistory: v });
+                    }}
+                  />
+                </label>
+                <label className="block text-[11px] font-bold text-brown-soft">
+                  <span className="mb-1 block">ประวัติการแพ้</span>
+                  <input
+                    defaultValue={cat.allergy}
+                    placeholder="เช่น ไม่มี · หรือ แพ้ไก่ แพ้แชมพูบางยี่ห้อ"
+                    className={inputCls}
+                    onBlur={(e) => {
+                      const v = e.target.value.trim();
+                      if (v !== (cat.allergy || "")) saveCat(cat.id, { allergy: v });
+                    }}
+                  />
+                </label>
                 <label className="block rounded-petflow-sm border border-wait/40 bg-wait/5 px-3 py-2.5 text-[11px] font-bold text-wait">
                   <span className="mb-1 flex items-center gap-1.5">
                     <Icon name="eye" size={14} />
@@ -3039,7 +3433,7 @@ export default function CustomersPage() {
                         </div>
                       );
                     }
-                    const s = groomInfoSummary(gi);
+                    const s = groomInfoSummary(gi, summaryFields("groom", speciesOf(cat, config) ?? petKindOf(config), config, gi));
                     return (
                       <div className="rounded-petflow-sm border border-sage/40 bg-sage/10 px-3 py-2.5">
                         <div className="flex items-center justify-between gap-2">
@@ -3068,6 +3462,30 @@ export default function CustomersPage() {
                       </div>
                     );
                   })()}
+                  {/* ข้อมูลก่อนเข้าพัก (อาหาร/ชอบ-ไม่ชอบ/การดูแล) — โชว์เมื่อลูกค้ากรอกแล้ว */}
+                  {(() => {
+                    const si = parseGroomInfo(cat.stayInfo);
+                    if (!si) return null;
+                    const s = groomInfoSummary(si, summaryFields("stay", speciesOf(cat, config) ?? petKindOf(config), config, si));
+                    return (
+                      <div className="rounded-petflow-sm border border-sage/40 bg-sage/10 px-3 py-2.5">
+                        <p className="flex items-center gap-1.5 text-[11px] font-extrabold text-ok">
+                          <Icon name="bed" size={14} />
+                          ข้อมูลก่อนเข้าพัก (ลูกค้ากรอกไว้)
+                        </p>
+                        <dl className="mt-1.5 space-y-1 text-[11px] text-brown">
+                          {Object.entries(s)
+                            .filter(([, v]) => v !== "-")
+                            .map(([k, v]) => (
+                              <div key={k} className="flex gap-2">
+                                <dt className="w-24 shrink-0 font-bold text-brown-soft">{k}</dt>
+                                <dd className="min-w-0 flex-1 break-words">{v}</dd>
+                              </div>
+                            ))}
+                        </dl>
+                      </div>
+                    );
+                  })()}
 
                 <CatMediaGallery customerId={c.id} cat={cat} onSaved={() => open(c.id)} />
               </div>
@@ -3076,6 +3494,15 @@ export default function CustomersPage() {
           </div>
           <AddCatForm customerId={c.id} onAdded={() => open(c.id)} />
         </section>
+
+        <PetServiceHistory
+          cats={c.cats}
+          bills={selected.history.serviceBills}
+          bookings={[
+            ...(selected.history.upcomingBookings || []),
+            ...(selected.history.pastBookings || []),
+          ]}
+        />
 
         <RoomPlanSection
           customerId={c.id}
@@ -3087,12 +3514,6 @@ export default function CustomersPage() {
           customerId={c.id}
           usage={selected.history.packageUsage || []}
           onChanged={() => open(c.id)}
-        />
-
-        <MemberTopupSection
-          customerId={c.id}
-          memberCredit={c.memberCredit}
-          onDone={() => open(c.id)}
         />
 
         <MemberCreditHistorySection
@@ -3116,10 +3537,13 @@ export default function CustomersPage() {
           ]}
         />
 
+        <PastPricesSection log={selected.serviceLog} />
+
         <ServiceHistorySection
           customerId={c.id}
           services={selected.history.services}
           pastBookings={selected.history.pastBookings || []}
+          log={selected.serviceLog}
           onChanged={() => open(c.id)}
         />
 
@@ -3173,6 +3597,20 @@ export default function CustomersPage() {
             {!selected.history.points.length && <li className="px-3 py-3 text-brown-faint">ยังไม่มีประวัติแต้ม</li>}
           </ul>
         </section>
+
+        {/* ฟอร์มที่ไม่ได้ใช้ทุกครั้ง — อยู่ท้ายหน้า พับไว้ก่อน แตะหัวการ์ดเพื่อเปิด */}
+        <div className="mt-6">
+          <SectionLabel>Add &amp; sell · เพิ่มแต้ม / ขายคอร์ส / เติมเครดิต</SectionLabel>
+          <div ref={setToolsSlot} />
+          {/* ร้านปิดเครดิต Member ในตั้งค่า › เปิด/ปิดฟีเจอร์ — เติมใหม่ไม่ได้ (ยอดเดิมยังหักจ่ายได้) */}
+          {isFeatureOn(config, "memberCredit") && (
+            <MemberTopupSection
+              customerId={c.id}
+              memberCredit={c.memberCredit}
+              onDone={() => open(c.id)}
+            />
+          )}
+        </div>
       </div>
     );
   }
@@ -3204,7 +3642,7 @@ export default function CustomersPage() {
       <SearchField
         value={q}
         onChange={setQ}
-        placeholder="ค้นหาชื่อลูกค้า / แมว / เบอร์"
+        placeholder={`ค้นหาชื่อลูกค้า / น้อง${pw.th} / เบอร์`}
         className="mb-3"
       />
 
@@ -3297,7 +3735,7 @@ export default function CustomersPage() {
               <thead>
                 <tr className="border-b border-petflow-line bg-paper/60 text-[10px] font-extrabold uppercase tracking-wide text-brown-soft">
                   <SortableTh label="ลูกค้า" sortKey="name" active={sortKey} dir={sortDir} onSort={toggleSort} />
-                  <SortableTh label="แมว" sortKey="catName" active={sortKey} dir={sortDir} onSort={toggleSort} />
+                  <SortableTh label={pw.noun} sortKey="catName" active={sortKey} dir={sortDir} onSort={toggleSort} />
                   <SortableTh label="LINE" sortKey="line" active={sortKey} dir={sortDir} onSort={toggleSort} />
                   <SortableTh label="เบอร์โทร" sortKey="phone" active={sortKey} dir={sortDir} onSort={toggleSort} />
                   <SortableTh label="วันเกิด" sortKey="birthday" active={sortKey} dir={sortDir} onSort={toggleSort} />

@@ -29,6 +29,8 @@ export type GroomField = {
   options: GroomFormOption[];
   /** คำถามนี้มีปุ่ม "ไม่ทราบ" ให้ติ๊ก (เฉพาะน้ำหนัก) */
   hasUnknownToggle?: boolean;
+  /** หมวดในฟอร์มทำประวัติ (เจ้าของ / น้อง / การดูแล) — นัดอาบน้ำถามแค่เจ้าของ + น้องได้ ดู intake-rules.ts */
+  section?: "owner" | "pet" | "care";
 };
 
 /** ค่าเริ่มต้นของระบบ — key ห้ามเปลี่ยน (ข้อมูลเก่าอ้างอิงอยู่) */
@@ -164,9 +166,21 @@ export const GROOM_FORM_DEFAULTS: GroomField[] = [
   },
 ];
 
-/** รวมค่าเริ่มต้นกับที่ร้านแก้เอง — คืนรายการคำถามที่ใช้แสดงจริง */
-export function resolveGroomForm(config?: GroomFormConfig): GroomField[] {
-  return GROOM_FORM_DEFAULTS.map((def) => {
+/** หน้าแมวในตัวเลือกเริ่มต้น → หน้าคนธรรมดา สำหรับหมา / น้องที่ไม่รู้ชนิด (ตัวเลือกที่ร้านตั้งเองไม่แตะ) */
+const CAT_FACES: Record<string, string> = { "😸": "😆", "😿": "😣", "🙀": "😨", "😾": "😠" };
+const CAT_FACE_RE = new RegExp(Object.keys(CAT_FACES).join("|"), "gu");
+
+function forKind(def: GroomField, kind?: string): GroomField {
+  if (!kind || kind === "cat") return def;
+  return { ...def, options: def.options.map((o) => ({ ...o, label: o.label.replace(CAT_FACE_RE, (m) => CAT_FACES[m]) })) };
+}
+
+/**
+ * รวมค่าเริ่มต้นกับที่ร้านแก้เอง — คืนรายการคำถามที่ใช้แสดงจริง
+ * kind: ชนิดของน้อง/ร้าน ("cat" · "dog" · "both") — ไม่ใช่แมวจะไม่ใช้อีโมจิหน้าแมวในตัวเลือก
+ */
+export function resolveGroomForm(config?: GroomFormConfig, kind?: string): GroomField[] {
+  return GROOM_FORM_DEFAULTS.map((d) => forKind(d, kind)).map((def) => {
     const c = config?.[def.key];
     if (!c) return def;
     return {

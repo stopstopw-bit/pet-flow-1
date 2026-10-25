@@ -5,6 +5,7 @@ import { getSiteConfig } from "@/lib/config-store";
 import { withTenant } from "@/lib/tenant-context";
 import { listActiveTenantIds } from "@/lib/tenant-directory";
 import { verifyCronSecret } from "@/lib/cron-auth";
+import { isFeatureOn } from "@/lib/features";
 
 /** Cron — ส่งข้อความตามลูกค้าที่หายไปนาน (แนะนำ 09:00 น. ไทย) — รันแทนทุกร้าน */
 export async function GET(req: NextRequest) {
@@ -26,6 +27,8 @@ export async function GET(req: NextRequest) {
 
 async function runForTenant() {
   const config = await getSiteConfig();
+  // ร้านปิดฟีเจอร์ "ทักลูกค้าที่หายไป" ในตั้งค่า
+  if (!isFeatureOn(config, "followUp")) return { ok: true, skipped: "feature_disabled" };
   const result = await sendInactiveFollowUps({ limit: 30 });
 
   if (result.sent > 0 || result.eligible > 0) {

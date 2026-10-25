@@ -8,8 +8,7 @@ import { LoadingScreen } from "@/components/LoadingScreen";
 import { BTN_PRIMARY, PageHeader } from "@/components/PageHeader";
 import { EmptyState, SectionLabel } from "@/components/ui";
 import { Icon } from "@/components/Icon";
-
-const SLOTS = Array.from({ length: 11 }, (_, i) => `${String(9 + i).padStart(2, "0")}:00`);
+import { TimeSlotPicker } from "@/components/TimeSlotPicker";
 
 type Bk = {
   id: string;
@@ -19,6 +18,8 @@ type Bk = {
   checkout?: string;
   arrivalTime?: string;
   pickupTime?: string;
+  shopPickup?: boolean;
+  shopDropoff?: boolean;
 };
 
 function BookingTimeContent() {
@@ -29,7 +30,6 @@ function BookingTimeContent() {
 
   const [bk, setBk] = useState<Bk | null>(null);
   const [loading, setLoading] = useState(true);
-  const [custom, setCustom] = useState("");
   const [saved, setSaved] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
@@ -83,6 +83,15 @@ function BookingTimeContent() {
   };
 
   const dateLabel = isCheckin ? bk?.checkin : bk?.checkout;
+  // นัดที่ใช้บริการรับ-ส่ง: ร้านเป็นฝ่ายเดินทาง ไม่ใช่ลูกค้า "มาส่ง/มารับ"
+  const shopGoes = isCheckin ? !!bk?.shopPickup : !!bk?.shopDropoff;
+  const title = shopGoes
+    ? isCheckin
+      ? "เลือกเวลาให้ร้านไปรับน้อง"
+      : "เลือกเวลาให้ร้านไปส่งน้องที่บ้าน"
+    : isCheckin
+      ? "เลือกเวลาที่จะมาส่งน้อง"
+      : "เลือกเวลาที่จะมารับน้อง";
 
   if (done) {
     return (
@@ -95,9 +104,13 @@ function BookingTimeContent() {
           บันทึกเวลาเรียบร้อยแล้ว!
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-brown-soft">
-          {isCheckin
-            ? `เราจะเตรียมห้องรอต้อนรับ${bk?.catName || "น้อง"}ตอน ${saved} นะคะ 🐱`
-            : `เราจะเตรียม${bk?.catName || "น้อง"}ให้พร้อมก่อนกลับบ้านตอน ${saved} นะคะ 🐱`}
+          {shopGoes
+            ? isCheckin
+              ? `ร้านจะไปรับ${bk?.catName || "น้อง"}ตามจุดรับ-ส่งตอน ${saved} นะคะ 🚗`
+              : `ร้านจะพา${bk?.catName || "น้อง"}ไปส่งที่บ้านตอน ${saved} นะคะ 🚗`
+            : isCheckin
+              ? `เราจะเตรียมห้องรอต้อนรับ${bk?.catName || "น้อง"}ตอน ${saved} นะคะ 🐾`
+              : `เราจะเตรียม${bk?.catName || "น้อง"}ให้พร้อมก่อนกลับบ้านตอน ${saved} นะคะ 🐾`}
           <br />
           กลับไปที่แชท LINE ได้เลยค่ะ
         </p>
@@ -109,8 +122,8 @@ function BookingTimeContent() {
   return (
     <div className="px-4 pb-6 pt-5">
       <PageHeader
-        eyebrow={isCheckin ? "Drop-off time" : "Pick-up time"}
-        title={isCheckin ? "เลือกเวลาที่จะมาส่งน้อง" : "เลือกเวลาที่จะมารับน้อง"}
+        eyebrow={shopGoes ? (isCheckin ? "Pick-up by shop" : "Delivery time") : isCheckin ? "Drop-off time" : "Pick-up time"}
+        title={title}
         back="/app"
         backLabel="กลับหน้าแรก"
         showLang={false}
@@ -139,42 +152,8 @@ function BookingTimeContent() {
 
           <section className="mt-5">
             <SectionLabel>{saved ? "Change time · เปลี่ยนเวลา (ถ้าต้องการ)" : "Time · เลือกเวลา"}</SectionLabel>
-            <div className="rounded-petflow border border-petflow-line bg-card p-3 shadow-petflow-sm">
-              <div className="grid grid-cols-3 gap-2">
-                {SLOTS.map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    disabled={saving}
-                    onClick={() => pick(t)}
-                    className={`min-h-[44px] rounded-xl text-sm font-bold transition disabled:opacity-50 ${
-                      saved === t
-                        ? "bg-latte-deep text-card shadow-petflow-sm"
-                        : "bg-paper text-brown-soft"
-                    }`}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
-
-              <p className="mb-1.5 mt-4 text-xs font-bold text-brown-soft">หรือกรอกเวลาเอง</p>
-              <div className="flex gap-2">
-                <input
-                  type="time"
-                  value={custom}
-                  onChange={(e) => setCustom(e.target.value)}
-                  className="min-h-[44px] min-w-0 flex-1 rounded-xl border border-petflow-line bg-paper px-3 text-sm"
-                />
-                <button
-                  type="button"
-                  disabled={!custom || saving}
-                  onClick={() => pick(custom)}
-                  className="min-h-[44px] shrink-0 rounded-xl bg-honey/50 px-4 text-sm font-extrabold text-petflow-chocolate disabled:opacity-40"
-                >
-                  บันทึก
-                </button>
-              </div>
+            <div className="rounded-petflow border border-petflow-line bg-paper p-3 shadow-petflow-sm">
+              <TimeSlotPicker value={saved} onPick={pick} disabled={saving} />
             </div>
           </section>
 

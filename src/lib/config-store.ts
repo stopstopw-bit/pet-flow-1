@@ -1,9 +1,41 @@
 import { getDefaultSiteConfig } from "./defaults/site-config";
 import type { SiteConfig } from "./config-types";
 import { getSupabase } from "./supabase/server";
-import { requireTenantId } from "./tenant-context";
+import { isEnvOwnerTenant, requireTenantId } from "./tenant-context";
 import { uploadDataUrlToStorage } from "./supabase/storage";
 import { createHash } from "crypto";
+import { applyBrandCardDefaults, stripBrandCardDefaults } from "./card-brand";
+import { latestShopIntakeAnswers } from "./shop-intake-store";
+import { petKindFromIntake, speciesOfBreed, type PetKind } from "./pet-kind";
+import { withDogShopDefaults } from "./defaults/pet-format";
+
+/**
+ * ร้านที่ยังไม่ได้ตั้ง business.petKind แต่เคยตอบแบบสอบถามเปิดร้านว่าเป็นร้านหมา (เช่น ร้านที่ตอบก่อนมีค่านี้)
+ * — เอาคำตอบนั้นมาใช้เลย ไม่ต้องให้ใครไปกดตั้งซ้ำ · จำไว้ต่อร้านต่อเครื่อง จะได้ไม่ค้นทุกคำขอ
+ * ตั้งเองในหน้าตั้งค่าแล้ว = ใช้ค่าที่ตั้งเสมอ
+ */
+/**
+ * ทางสำรองเมื่อหาคำตอบแบบสอบถามของร้านไม่เจอ: รายชื่อสายพันธุ์ที่ร้านบันทึกไว้เป็นของหมาล้วน (เช่น ["ปอม"])
+ * = ร้านหมา · มีทั้งสองแบบ = รับทั้งหมาและแมว · ไม่มีพันธุ์หมาเลย = ไม่เดา (คงเป็นร้านแมวตามเดิม)
+ */
+function petKindFromBreeds(breeds: unknown): PetKind | null {
+  if (!Array.isArray(breeds)) return null;
+  const kinds = new Set(breeds.map((b) => speciesOfBreed(String(b))).filter(Boolean));
+  if (!kinds.has("dog")) return null;
+  return kinds.has("cat") ? "both" : "dog";
+}
+
+const intakePetKind = new Map<string, Promise<PetKind | null>>();
+function petKindFromShopIntake(tenant: string): Promise<PetKind | null> {
+  let p = intakePetKind.get(tenant);
+  if (!p) {
+    p = latestShopIntakeAnswers(tenant)
+      .then((ans) => petKindFromIntake((ans as { a?: Record<string, unknown> } | null)?.a?.pets))
+      .catch(() => null);
+    intakePetKind.set(tenant, p);
+  }
+  return p;
+}
 
 /**
  * ย้ายรูปที่ฝังเป็น base64 (data:image/...) ในค่าตั้งค่าออกไป Storage แล้วแทนด้วย URL
@@ -74,8 +106,91 @@ function mergeConfig(base: SiteConfig, patch: Partial<SiteConfig>): SiteConfig {
   return next;
 }
 
+/** ค่าตัวอย่างเดิมที่เคยถูกใส่ให้ทุกร้านตอนสร้าง — ไม่ใช่ข้อมูลจริงของร้านไหน */
+const OLD_PLACEHOLDERS = new Set([
+  "@petflow",
+  "02-123-4567",
+  "petflow",
+  "https://line.me/R/ti/p/@petflow",
+  "https://www.google.com/maps",
+  "https://www.instagram.com/",
+  "https://www.tiktok.com/",
+  "https://www.facebook.com/",
+  "กรุงเทพฯ",
+  "Bangkok",
+]);
+
+/**
+ * ร้านที่สร้างก่อนแก้ ได้ค่าของร้าน bootstrap/ค่าตัวอย่างติดมาใน config ที่บันทึกไว้
+ * (LINE @petflow, เบอร์, บัญชีธนาคารจาก env) — ตัดทิ้งตอนอ่าน ให้เห็นเป็นช่องว่างแทน
+ */
+function dropCopiedShopValues(stored: Partial<SiteConfig>, envOwner: boolean): Partial<SiteConfig> {
+  const out = { ...stored };
+  const clean = (v: unknown) => (typeof v === "string" && OLD_PLACEHOLDERS.has(v.trim()) ? "" : v);
+  if (stored.business) {
+    const b = { ...stored.business } as Record<string, unknown>;
+    for (const k of ["lineOa", "maps", "facebook", "reviewUrl"]) b[k] = clean(b[k]);
+    if (Array.isArray(b.phones)) b.phones = (b.phones as string[]).filter((p) => !OLD_PLACEHOLDERS.has(p));
+    if (b.location && typeof b.location === "object") {
+      const loc = b.location as { th?: string; en?: string };
+      b.location = { th: clean(loc.th) as string, en: clean(loc.en) as string };
+    }
+    if (b.social && typeof b.social === "object") {
+      b.social = Object.fromEntries(
+        Object.entries(b.social as Record<string, unknown>).map(([k, v]) => [k, clean(v)])
+      );
+    }
+    out.business = b as SiteConfig["business"];
+  }
+  const envAccount = process.env.BANK_ACCOUNT_NUMBER?.trim();
+  if (
+    stored.payment &&
+    !envOwner &&
+    (stored.payment.accountNumber === "XXX-X-XXXXX-X" ||
+      (envAccount && stored.payment.accountNumber === envAccount))
+  ) {
+    out.payment = { bankName: "", accountNumber: "", accountName: "", promptpayId: undefined };
+  }
+  return out;
+}
+
+/**
+ * ข้อความตั้งต้นของระบบเคยเขียนชื่อ "PetFlow" ตรง ๆ (ข้อความตามลูกค้า, การ์ด LINE, ชื่อโปรแกรมอาบน้ำ ฯลฯ)
+ * และหลายร้านบันทึกข้อความเหล่านั้นไว้แล้ว — ตอนอ่านเปลี่ยนเป็นชื่อร้านนั้นให้หมด
+ * ลูกค้าต้องเห็นชื่อร้านที่ตัวเองใช้บริการ ไม่ใช่ชื่อระบบ · ข้ามลิงก์/รูป (มี petflow อยู่ใน URL ได้)
+ */
+function withShopNameInTexts(config: SiteConfig): SiteConfig {
+  const name = config.business?.name?.trim();
+  if (!name || /petflow/i.test(name)) return config;
+  const walk = (v: unknown): unknown => {
+    if (typeof v === "string") {
+      if (!v.includes("PetFlow") || /^(https?:|data:|\/)/.test(v.trim())) return v;
+      return v.replace(/PetFlow/g, name);
+    }
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === "object") {
+      return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, walk(x)]));
+    }
+    return v;
+  };
+  return walk(config) as SiteConfig;
+}
+
+/** การ์ด LINE ที่ยังไม่ได้ตั้งสีเอง ใช้สีร้าน — ทุกที่ที่อ่าน config (ส่งการ์ด/หน้าหลังบ้าน) เห็นเหมือนกัน */
 export async function getSiteConfig(): Promise<SiteConfig> {
+  return applyBrandCardDefaults(await getRawSiteConfig());
+}
+
+/** config ตามที่บันทึกจริง (ยังไม่เติมสีการ์ดจากสีร้าน) — ใช้ตอนแก้แล้วบันทึกกลับ */
+async function getRawSiteConfig(): Promise<SiteConfig> {
   const defaults = getDefaultSiteConfig();
+  // บัญชีธนาคาร/พร้อมเพย์ใน env (BANK_*, PROMPTPAY_ID) เป็นของร้าน bootstrap —
+  // ร้านอื่นที่ยังไม่ตั้งเองต้องเห็นช่องว่าง ไม่ใช่เลขบัญชีร้านอื่นบนการ์ดโอนเงิน
+  // ร้าน PetFlow (/s/petflow) เป็นเจ้าของค่าใน env เหมือนร้าน bootstrap (ดู isEnvOwnerTenant)
+  const envOwner = await isEnvOwnerTenant();
+  if (!envOwner) {
+    defaults.payment = { ...defaults.payment, bankName: "", accountNumber: "", accountName: "", promptpayId: undefined };
+  }
   const sb = getSupabase();
 
   if (sb) {
@@ -97,20 +212,25 @@ export async function getSiteConfig(): Promise<SiteConfig> {
           }
         })().catch(() => {});
       }
-      return mergeConfig(defaults, {
-        ...stored,
+      const merged = mergeConfig(defaults, {
+        ...dropCopiedShopValues(stored, envOwner),
         updatedAt: data.updated_at || defaults.updatedAt,
       });
+      if (!stored.business?.petKind) {
+        const kind = (await petKindFromShopIntake(tenant)) || petKindFromBreeds(stored.options?.catBreeds);
+        if (kind) merged.business = { ...merged.business, petKind: kind };
+      }
+      return withDogShopDefaults(withShopNameInTexts(merged));
     }
   }
 
-  if (memConfig) return memConfig;
+  if (memConfig) return withDogShopDefaults(withShopNameInTexts(memConfig));
   return defaults;
 }
 
 export async function replaceSiteConfig(config: SiteConfig) {
   const next = {
-    ...(await offloadDataUrls(config, `config/${requireTenantId()}`)),
+    ...(await offloadDataUrls(stripBrandCardDefaults(config), `config/${requireTenantId()}`)),
     updatedAt: new Date().toISOString(),
     version: (config.version || 0) + 1,
   };
@@ -125,12 +245,14 @@ export async function replaceSiteConfig(config: SiteConfig) {
   } else {
     memConfig = next;
   }
-  return next;
+  return applyBrandCardDefaults(next);
 }
 
 export async function updateSiteConfig(patch: Partial<SiteConfig>) {
-  const current = await getSiteConfig();
-  const next = mergeConfig(current, await offloadDataUrls(patch, `config/${requireTenantId()}`));
+  const current = await getRawSiteConfig();
+  const next = stripBrandCardDefaults(
+    mergeConfig(current, await offloadDataUrls(patch, `config/${requireTenantId()}`))
+  );
   next.updatedAt = new Date().toISOString();
   next.version = (current.version || 0) + 1;
 
@@ -146,7 +268,7 @@ export async function updateSiteConfig(patch: Partial<SiteConfig>) {
     memConfig = next;
   }
 
-  return next;
+  return applyBrandCardDefaults(next);
 }
 
 export function getRoomFromConfig(config: SiteConfig, id: string) {

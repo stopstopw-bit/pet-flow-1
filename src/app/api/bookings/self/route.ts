@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { featureOff } from "@/lib/features-server";
 import { withResolvedTenant } from "@/lib/tenant-context";
 import { addBooking, listBookings, type StoredBooking } from "@/lib/bookings-store";
 import { findCustomerByLine } from "@/lib/customers-store";
 import { assignGroomSlots, getGroomAvailability, getRoomAvailability } from "@/lib/availability";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
-import { groomProgram } from "@/lib/grooming-prices";
-import { requireCustomerSession } from "@/lib/customer-session";
+import { groomProgram, resolveGroomPrograms } from "@/lib/grooming-prices";
+import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 import { getSiteConfig } from "@/lib/config-store";
 import { depositAmountFor, type DepositStatus } from "@/lib/booking-deposit";
 import { saveDepositSlip, depositTelegramLine } from "@/lib/booking-deposit-server";
@@ -24,9 +25,12 @@ export async function POST(req: NextRequest) {
 async function handlePost(req: NextRequest) {
   const session = await requireCustomerSession(req);
   if (!session) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return noCustomerSessionResponse();
   }
   const lineUserId = session.lineUserId;
+  // ร้านปิด "ลูกค้าจองคิวเอง" หรือปิดบริการนั้นไว้ในตั้งค่า
+  const blocked = await featureOff("selfBooking");
+  if (blocked) return blocked;
   const body = await req.json().catch(() => ({}));
   // จองได้หลายตัวพร้อมกัน (อาบน้ำ) — catNames มาก่อน ถ้าไม่มีใช้ catName เดี่ยวเดิม (เข้ากันได้กับของเก่า)
   const catNames: string[] = Array.isArray(body.catNames)
@@ -41,6 +45,8 @@ async function handlePost(req: NextRequest) {
   if (!catNames.length || !service) {
     return NextResponse.json({ error: "missing fields" }, { status: 400 });
   }
+  const serviceOff = await featureOff(service === "room" ? "hotel" : "grooming");
+  if (serviceOff) return serviceOff;
 
   const customer = await findCustomerByLine(lineUserId);
   if (!customer) return NextResponse.json({ error: "customer_not_found" }, { status: 404 });
@@ -98,7 +104,18 @@ async function handlePost(req: NextRequest) {
     if (!assignedTimes) {
       return NextResponse.json({ error: "slot_full" }, { status: 409 });
     }
-    const programId = String(body.groomProgram || "").trim() || undefined;
+    // โปรแกรมรายตัว (จองหลายตัว อาบคนละโปรแกรมได้) — รับเฉพาะ id ที่ร้านมีจริง
+    // ไม่ส่งรายตัวมา (แอปเวอร์ชันเก่า) = ทุกตัวใช้โปรแกรมเดียวกันแบบเดิม
+    const programs = resolveGroomPrograms((await getSiteConfig()).groomPricePrograms);
+    const validProgram = (v: unknown) => {
+      const pid = String(v || "").trim();
+      return pid && groomProgram(pid, programs) ? pid : undefined;
+    };
+    const programId = validProgram(body.groomProgram);
+    const perPet: Record<string, unknown> =
+      body.petPrograms && typeof body.petPrograms === "object" ? body.petPrograms : {};
+    const programOf = (name: string) =>
+      name in perPet ? validProgram(perPet[name]) : programId;
     const deposit = await depositInfo();
     const bookings: StoredBooking[] = [];
     for (let i = 0; i < catNames.length; i++) {
@@ -111,21 +128,24 @@ async function handlePost(req: NextRequest) {
           time: assignedTimes[i],
           lineUserId,
           selfBooked: true,
-          groomProgram: programId,
+          groomProgram: programOf(catNames[i]),
           // ทั้งบ้านที่จองพร้อมกันได้ยอด/สลิป/สถานะเดียวกันทุกแถว (ยอดของทั้งกลุ่ม ไม่ใช่ต่อตัว)
           ...deposit,
         })
       );
     }
+    const programName = (pid?: string) => (pid ? groomProgram(pid, programs)?.name || pid : "");
     const scheduleText = catNames
-      .map((name, i) => `${name} ${assignedTimes[i]}`)
+      .map((name, i) => {
+        const prog = programName(programOf(name));
+        return `${name} ${assignedTimes[i]}${prog ? ` (${prog})` : ""}`;
+      })
       .join(", ");
     await sendTelegram(
       formatBookingTelegram("🐾 ลูกค้าจองคิวอาบน้ำเอง (รอยืนยัน)", {
         ลูกค้า: customer.name,
         น้อง: scheduleText,
         วันที่: date,
-        ...(programId ? { โปรแกรม: groomProgram(programId)?.name || programId } : {}),
         ...depositTelegramLine(deposit),
       })
     );

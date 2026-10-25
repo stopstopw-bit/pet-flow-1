@@ -4,12 +4,17 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLiff } from "@/components/LiffProvider";
 import { useConfig } from "@/components/ConfigProvider";
+import { isFeatureOn } from "@/lib/features";
 import { PageHeader } from "@/components/PageHeader";
 import { SELF_BOOKABLE_ROOM_IDS } from "@/lib/self-bookable-rooms";
-import { GROOM_PROGRAMS } from "@/lib/grooming-prices";
+import { resolveGroomPrograms } from "@/lib/grooming-prices";
 import { extraCatChargePerNight } from "@/lib/business";
 import { roomPricing } from "@/lib/room-board";
 import { toJpegDataUrl } from "@/lib/image-convert";
+import { PetPickList, type PetPickItem } from "@/components/PetPickList";
+import { PetProgramSelect } from "@/components/GroomProgramPicker";
+import { petWords } from "@/lib/pet-kind";
+import { customerFetch } from "@/lib/customer-fetch";
 
 type Service = "groom" | "room";
 
@@ -67,6 +72,7 @@ function BookPageInner() {
   const params = useSearchParams();
   const { customer, profile, ready } = useLiff();
   const { config } = useConfig();
+  const pw = petWords(config);
   // ชื่อ/รายการห้องดึงจากตั้งค่าของร้านนี้ ไม่ใช่ค่าเริ่มต้นของ CatCha —
   // ร้านที่เปลี่ยนชื่อห้องหรือลบห้องประเภทใดออกจะเห็นรายการที่ตรงกับร้านตัวเอง
   const roomTypes = useMemo(
@@ -88,6 +94,13 @@ function BookPageInner() {
   const [service, setService] = useState<Service>(
     params.get("service") === "room" ? "room" : "groom"
   );
+  // ร้านปิดบริการไหนไว้ในตั้งค่า ก็ไม่ให้เลือกบริการนั้น
+  const groomOn = isFeatureOn(config, "grooming");
+  const hotelOn = isFeatureOn(config, "hotel");
+  useEffect(() => {
+    if (service === "groom" && !groomOn && hotelOn) setService("room");
+    if (service === "room" && !hotelOn && groomOn) setService("groom");
+  }, [service, groomOn, hotelOn]);
   // เลือกน้องได้หลายตัวทั้งอาบน้ำและเข้าพัก — เข้าพักบ้านเดียวกันอยู่ห้องเดียวกัน (เกินจุห้อง = เพิ่มห้อง)
   const [catNames, setCatNames] = useState<string[]>([]);
   const toggleCat = (name: string) => {
@@ -95,6 +108,30 @@ function BookPageInner() {
       prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]
     );
   };
+  // รูป + สายพันธุ์ของน้อง (customer.cats มีแค่ id/ชื่อ) — โหลดไม่ได้ก็ยังเลือกได้ แค่ไม่มีรูป
+  const [catDetails, setCatDetails] = useState<PetPickItem[]>([]);
+  const customerId = customer?.id;
+  useEffect(() => {
+    if (!customerId) return;
+    let cancelled = false;
+    customerFetch("/api/customers/cat-photo", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : { cats: [] }))
+      .then((d) => {
+        if (!cancelled) setCatDetails(d.cats || []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [customerId]);
+  const petItems: PetPickItem[] = useMemo(
+    () =>
+      (customer?.cats || []).map((c) => {
+        const d = catDetails.find((x) => x.id === c.id);
+        return { id: c.id, name: c.name, breed: d?.breed, species: d?.species, photoDataUrl: d?.photoDataUrl };
+      }),
+    [customer?.cats, catDetails]
+  );
 
   // groom state
   const [date, setDate] = useState(todayISO());
@@ -105,6 +142,8 @@ function BookPageInner() {
   const [time, setTime] = useState("");
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [groomProgram, setGroomProgram] = useState("");
+  // จองหลายตัว: แต่ละตัวเลือกโปรแกรมของตัวเองได้ (ทับโปรแกรมที่เลือกให้ทุกตัว)
+  const [petPrograms, setPetPrograms] = useState<Record<string, string>>({});
 
   // room state
   const [roomType, setRoomType] = useState("");
@@ -282,6 +321,9 @@ function BookPageInner() {
               date,
               time,
               groomProgram: groomProgram || undefined,
+              petPrograms: Object.fromEntries(
+                catNames.map((n) => [n, (petPrograms[n] ?? groomProgram) || ""])
+              ),
               depositSlip: (withSlip && slip) || undefined,
             }
           : {
@@ -359,7 +401,7 @@ function BookPageInner() {
               </p>
               {done.schedule.map((s, i) => (
                 <p key={i} className="flex items-center justify-between text-brown">
-                  <span>🐱 {s.catName}</span>
+                  <span>{pw.emoji} {s.catName}</span>
                   <span className="font-extrabold text-latte-deep">{s.time}</span>
                 </p>
               ))}
@@ -425,6 +467,7 @@ function BookPageInner() {
               setSlipErr("");
               setTime("");
               setGroomProgram("");
+              setPetPrograms({});
             }}
             className="mt-4 rounded-full bg-honey/30 px-4 py-2 text-xs font-bold text-latte-deep"
           >
@@ -439,6 +482,7 @@ function BookPageInner() {
     <div className="px-4 pb-6 pt-5">
       <PageHeader title="📅 จองคิวเอง" subtitle="เลือกวัน-เวลาที่ว่างได้เลย ไม่ต้องคุยกับพนักงาน" />
 
+      {groomOn && hotelOn && (
       <div className="mb-4 flex overflow-hidden rounded-full border border-petflow-line text-xs font-bold">
         <button
           type="button"
@@ -459,55 +503,71 @@ function BookPageInner() {
           🏠 เข้าพักโรงแรม
         </button>
       </div>
+      )}
 
       {!customer?.cats?.length ? (
         <p className="rounded-petflow-sm bg-wait/10 px-3 py-2.5 text-xs font-bold text-wait">
-          ยังไม่มีข้อมูลน้องแมวในระบบ — กรุณาลงทะเบียนก่อนจองนะคะ
+          ยังไม่มีข้อมูลน้อง{pw.th}ในระบบ — กรุณาลงทะเบียนก่อนจองนะคะ
         </p>
       ) : (
         <>
           <div className="rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm">
-            <p className="mb-2 text-xs font-bold text-brown-soft">
-              🐱 น้องแมว (เลือกได้หลายตัว)
-            </p>
-            <div className="mb-3 flex flex-wrap gap-2">
-              {customer.cats.map((c) => {
-                const active = catNames.includes(c.name);
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => toggleCat(c.name)}
-                    className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${
-                      active
-                        ? "border-latte-deep bg-latte-deep text-white"
-                        : "border-petflow-line bg-paper text-brown"
-                    }`}
-                  >
-                    {active ? "✓ " : ""}
-                    {c.name}
-                  </button>
-                );
-              })}
+            <div className="mb-4">
+              <PetPickList pets={petItems} selected={catNames} onToggle={toggleCat} />
             </div>
 
             {service === "groom" ? (
               <>
                 <label className="mb-3 block text-xs font-bold text-brown-soft">
-                  🧴 โปรแกรมอาบน้ำ (ไม่บังคับ)
+                  🧴 {catNames.length > 1 ? "โปรแกรมอาบน้ำ — ทุกตัว (ไม่บังคับ)" : "โปรแกรมอาบน้ำ (ไม่บังคับ)"}
                   <select
                     value={groomProgram}
-                    onChange={(e) => setGroomProgram(e.target.value)}
+                    onChange={(e) => {
+                      setGroomProgram(e.target.value);
+                      setPetPrograms({});
+                    }}
                     className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm"
                   >
                     <option value="">ยังไม่เลือก — ให้ทางร้านแนะนำหน้างาน</option>
-                    {GROOM_PROGRAMS.map((p) => (
+                    {resolveGroomPrograms(config.groomPricePrograms).map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name}
                       </option>
                     ))}
                   </select>
+                  {(() => {
+                    const tags = resolveGroomPrograms(config.groomPricePrograms).find((p) => p.id === groomProgram)?.includes;
+                    return tags?.length ? (
+                      <span className="mt-1.5 flex flex-wrap gap-1">
+                        {tags.map((t) => (
+                          <span key={t} className="rounded-full bg-sage/25 px-2 py-0.5 text-[10px] font-bold text-brown">
+                            ✓ {t}
+                          </span>
+                        ))}
+                      </span>
+                    ) : null;
+                  })()}
                 </label>
+                {catNames.length > 1 && (
+                  <div className="mb-3 space-y-1.5">
+                    <p className="text-[11px] text-brown-faint">แต่ละตัวอาบไม่เหมือนกัน เปลี่ยนรายตัวได้เลย</p>
+                    {catNames.map((n) => (
+                      <div
+                        key={n}
+                        className="flex flex-wrap items-center gap-2 rounded-petflow-sm bg-paper px-3 py-1.5"
+                      >
+                        <span className="min-w-0 flex-1 truncate text-sm font-bold text-brown">{n}</span>
+                        <PetProgramSelect
+                          cat={n}
+                          value={petPrograms[n] ?? groomProgram}
+                          onChange={(v) => setPetPrograms((p) => ({ ...p, [n]: v }))}
+                          programs={resolveGroomPrograms(config.groomPricePrograms)}
+                          emptyLabel="ยังไม่เลือก — ให้ทางร้านแนะนำ"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <label className="mb-3 block text-xs font-bold text-brown-soft">
                   📅 วันที่
                   <input
@@ -580,7 +640,7 @@ function BookPageInner() {
                         <p className="mb-1 font-bold text-brown-soft">🕒 คิวที่จะได้:</p>
                         {catNames.map((name, i) => (
                           <p key={i} className="flex items-center justify-between text-brown">
-                            <span>🐱 {name}</span>
+                            <span>{pw.emoji} {name}</span>
                             <span className="font-extrabold text-latte-deep">
                               {assignedPreview[i]}
                             </span>

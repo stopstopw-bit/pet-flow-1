@@ -1,4 +1,5 @@
 import { getSecrets, type GoogleSecrets } from "./secrets-store";
+import { isEnvOwnerTenant } from "./tenant-context";
 
 export type GoogleCredentials = {
   serviceAccountEmail: string;
@@ -52,7 +53,9 @@ export async function getGoogleCredentials(): Promise<GoogleCredentials | null> 
   const calendarId = process.env.GOOGLE_CALENDAR_ID?.trim();
   const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID?.trim();
 
-  if (email && key && calendarId && spreadsheetId) {
+  // Google Sheet/Calendar ใน env เป็นของร้าน bootstrap — ถ้าให้ทุกร้านใช้ backup ทุกคืน
+  // จะเขียนข้อมูลทุกร้านลงชีตเดียวกัน (ทับกัน + ข้อมูลลูกค้าปนกัน)
+  if (email && key && calendarId && spreadsheetId && (await isEnvOwnerTenant())) {
     return {
       serviceAccountEmail: email,
       privateKey: key,

@@ -1,3 +1,5 @@
+import { applyPetFormat } from "./pet-format";
+import type { PetKind } from "../pet-kind";
 import {
   BUSINESS,
   ROOM_INVENTORY,
@@ -18,6 +20,18 @@ import { BREED_OPTIONS } from "../cat-breeds";
 import { GROOM_PROGRAMS } from "../grooming-prices";
 import type { SiteConfig } from "../config-types";
 
+/**
+ * ค่าเริ่มต้นของร้านที่เพิ่งสร้าง — ทุกอย่างที่เป็นของแต่ละร้าน (บัญชีธนาคาร, LINE, เบอร์, ลิงก์)
+ * ว่างหมด ห้ามดึงค่าจาก env หรือร้านอื่นมาใส่ให้
+ */
+/** config ของร้านใหม่ — ชื่อร้าน + แบบร้าน (แมว/หมา/ทั้งสองแบบ) ตามที่เลือกตอนสร้าง (ดู pet-format.ts) */
+export function getBlankShopConfig(name: string, petKind: PetKind = "cat"): SiteConfig {
+  const config = getDefaultSiteConfig();
+  config.business.name = name;
+  config.payment = { bankName: "", accountNumber: "", accountName: "", promptpayId: undefined };
+  return applyPetFormat(config, petKind);
+}
+
 export function getDefaultSiteConfig(): SiteConfig {
   return JSON.parse(
     JSON.stringify({
@@ -27,7 +41,7 @@ export function getDefaultSiteConfig(): SiteConfig {
         inactiveDays: 60,
         followUpCooldownDays: 30,
         followUpMessage:
-          "สวัสดีค่ะ {name} จาก PetFlow 🐱\nคิดถึงน้อง{cats} นะคะ มาไม่ได้นาน {days} วันแล้ว มีโปรพิเศษรออยู่ที่แอปนะคะ 💛",
+          "สวัสดีค่ะ {name} จาก {shop} 🐾\nคิดถึงน้อง{pets} นะคะ มาไม่ได้นาน {days} วันแล้ว มีโปรพิเศษรออยู่ที่แอปนะคะ 💛",
         tierPresets: ["VIP", "Gold", "Silver"],
         tierRules: {
           regularMinVisits: 1,
@@ -52,6 +66,7 @@ export function getDefaultSiteConfig(): SiteConfig {
         reviewRequestEnabled: true,
         reviewRequestDaysAfter: 1,
         groomInfoEnabled: true,
+        intakeAutoEnabled: true,
         freeLitterMinNights: 3,
         birthdayEnabled: true,
         birthdayCouponEnabled: true,

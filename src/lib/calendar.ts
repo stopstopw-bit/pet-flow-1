@@ -1,15 +1,23 @@
 /**
- * Google Calendar + iPhone (.ics) — ปฏิทินร่วม PetFlow
+ * Google Calendar + iPhone (.ics) — ปฏิทินร่วมของร้าน
  */
 
 import type { calendar_v3 } from "googleapis";
 import { getGoogleCredentials, isGoogleConfigured } from "./google-config";
 import { getSiteConfig } from "./config-store";
+import type { StoredBooking } from "./bookings-store";
+import { hasTransport, transportLabel, type BookingTransport } from "./transport";
 
 /** อีเมล "เจ้าของปฏิทิน" ของร้านปัจจุบัน — ตั้งค่าได้ต่อร้านในหน้าตั้งค่า ร้านอื่นไม่เห็นค่านี้ */
 async function ownerEmails(): Promise<string[]> {
   const cfg = await getSiteConfig();
   return cfg.business.calendarOwnerEmails || [];
+}
+
+/** สถานที่ในนัด — ที่อยู่ร้าน (ไม่มีก็ใช้ชื่อร้าน) ห้ามใส่ชื่อระบบ/ร้านอื่น */
+async function shopLocation(): Promise<string> {
+  const b = (await getSiteConfig()).business;
+  return [b.name, b.location?.th].map((x) => x?.trim()).filter(Boolean).join(" · ");
 }
 
 const TIMEZONE = "Asia/Bangkok";
@@ -99,7 +107,7 @@ export async function buildIcsContent(event: {
   return [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//PetFlow//TH",
+    "PRODID:-//Shop Calendar//TH",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     "BEGIN:VEVENT",
@@ -109,7 +117,7 @@ export async function buildIcsContent(event: {
     dtEnd,
     `SUMMARY:${event.summary}`,
     `DESCRIPTION:${event.description.replace(/\n/g, "\\n")}`,
-    `LOCATION:PetFlow Bang Na`,
+    `LOCATION:${await shopLocation()}`,
     ...(attendees ? [attendees] : []),
     "END:VEVENT",
     "END:VCALENDAR",
@@ -135,7 +143,7 @@ export async function buildGoogleCalendarUrl(event: {
   const params = new URLSearchParams({
     text: event.summary,
     details,
-    location: "PetFlow Bang Na",
+    location: await shopLocation(),
     dates,
   });
   return `${base}&${params.toString()}`;
@@ -189,13 +197,14 @@ async function buildGoogleEventResource(
   const emails = await ownerEmails();
   const description = [
     booking.description,
-    booking.bookingId ? `— PetFlow Booking ${booking.bookingId}` : "",
+    booking.bookingId ? `— เลขที่จอง ${booking.bookingId}` : "",
     `สถานะ: ${confirmed ? "ยืนยันแล้ว" : "รอยืนยัน"}`,
     emails.length ? `เจ้าของ: ${emails.join(", ")}` : "",
   ]
     .filter(Boolean)
     .join("\n");
 
+  const location = await shopLocation();
   const isRoom = booking.service === "room" || booking.allDay;
   const colorId = confirmed ? "10" : isRoom ? "9" : "5";
 
@@ -205,7 +214,7 @@ async function buildGoogleEventResource(
     return {
       summary,
       description,
-      location: "PetFlow Bang Na",
+      location,
       colorId,
       start: { date: checkin },
       end: { date: addDaysYmd(checkout, 1) },
@@ -218,7 +227,7 @@ async function buildGoogleEventResource(
   return {
     summary,
     description,
-    location: "PetFlow Bang Na",
+    location,
     colorId,
     start: { dateTime: startDt, timeZone: TIMEZONE },
     end: { dateTime: endDt, timeZone: TIMEZONE },
@@ -412,4 +421,30 @@ export async function deleteCalendarEvent(googleEventId: string) {
   } catch (e) {
     return { ok: false, reason: e instanceof Error ? e.message : String(e) };
   }
+}
+
+/** บรรทัดรับ-ส่งในปฏิทิน — ให้คนขับเปิดแผนที่จากปฏิทินได้เลย */
+export function transportCalendarText(t?: BookingTransport) {
+  if (!hasTransport(t)) return "";
+  return [
+    `\n🚗 ${transportLabel(t)}`,
+    t.address ? `จุดรับ-ส่ง: ${t.address}` : "",
+    t.mapUrl ? `แผนที่: ${t.mapUrl}` : "ยังไม่ได้ส่งแผนที่",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** ข้อมูลนัดสำหรับสร้าง/แก้ event ใน Google Calendar */
+export function bookingCalendarPayload(b: StoredBooking) {
+  return {
+    summary: `${b.service === "room" ? "🏠" : "🛁"}${hasTransport(b.transport) ? "🚗" : ""} ${b.catName} (${b.customerName})`,
+    description: `${b.service === "room" ? "ห้องพัก" : "อาบน้ำ"} · ${b.notes || ""}${transportCalendarText(b.transport)}`,
+    start: b.date || b.checkin || "",
+    end: b.checkout || b.date || b.checkin || "",
+    time: b.time,
+    allDay: b.service === "room" && !b.time,
+    service: b.service === "room" ? ("room" as const) : ("groom" as const),
+    eventId: b.id,
+  };
 }

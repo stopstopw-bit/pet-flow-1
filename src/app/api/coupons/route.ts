@@ -11,9 +11,12 @@ import {
 } from "@/lib/coupons-store";
 import { getLineCredentials } from "@/lib/line-config";
 import { buildLiffUrl } from "@/lib/liff-urls";
+import { getSiteConfig } from "@/lib/config-store";
+import { isFeatureOn } from "@/lib/features";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { withResolvedTenant, withTenant } from "@/lib/tenant-context";
+import { requireCustomerSession } from "@/lib/customer-session";
 
 async function getAdminSession(req: NextRequest) {
   return verifySession(req.cookies.get(SESSION_COOKIE)?.value);
@@ -22,13 +25,23 @@ async function getAdminSession(req: NextRequest) {
 /** กระเป๋าคูปองของลูกค้า + รหัสชวนเพื่อน (เรียกจากแอปด้วย lineUserId, หรือหลังบ้านด้วย customerId) */
 export async function GET(req: NextRequest) {
   const session = await getAdminSession(req);
-  if (session) return withTenant(session.tenantId, () => handleGet(req));
-  return withResolvedTenant(req, () => handleGet(req));
+  if (session) return withTenant(session.tenantId, () => handleGet(req, true));
+  return withResolvedTenant(req, () => handleGet(req, false));
 }
 
-async function handleGet(req: NextRequest) {
-  const lineUserId = req.nextUrl.searchParams.get("lineUserId")?.trim();
-  const customerId = req.nextUrl.searchParams.get("customerId")?.trim();
+async function handleGet(req: NextRequest, isAdmin: boolean) {
+  // ลูกค้า: ดูได้เฉพาะของตัวเองจากคุกกี้ที่ตรวจกับ LINE แล้ว — ห้ามเชื่อ lineUserId/customerId ใน query
+  const lineUserId = isAdmin
+    ? req.nextUrl.searchParams.get("lineUserId")?.trim()
+    : (await requireCustomerSession(req))?.lineUserId;
+  const customerId = isAdmin ? req.nextUrl.searchParams.get("customerId")?.trim() : undefined;
+  // ลูกค้ายังไม่มีคุกกี้ — เดิมตอบ found:false เงียบๆ หน้ากระเป๋าเลยว่าง ปุ่มชวนเพื่อนกดไม่ได้โดยไม่บอกเหตุผล
+  if (!isAdmin && !lineUserId) {
+    return NextResponse.json(
+      { error: "ระบบยังยืนยันบัญชี LINE ไม่สำเร็จ — ปิดหน้านี้แล้วเปิดลิงก์จากแชท LINE ใหม่อีกครั้งนะคะ", code: "no_session" },
+      { status: 401 }
+    );
+  }
   const activeOnly = req.nextUrl.searchParams.get("active") === "1";
 
   const cust = customerId
@@ -41,8 +54,10 @@ async function handleGet(req: NextRequest) {
   const coupons = activeOnly
     ? await activeCustomerCoupons(cust.id)
     : await listCustomerCoupons(cust.id);
-  const referralCode = referralCodeFor(cust.id);
-  const liffId = (await getLineCredentials())?.liffId;
+  // ร้านปิด "ชวนเพื่อนรับคูปอง" — ไม่ส่งลิงก์ชวนเพื่อนให้แอป
+  const referralOn = isFeatureOn(await getSiteConfig(), "referral");
+  const referralCode = referralOn ? referralCodeFor(cust.id) : "";
+  const liffId = referralOn ? (await getLineCredentials())?.liffId : undefined;
   const referralUrl = liffId
     ? buildLiffUrl(liffId, { path: "register", ref: referralCode })
     : "";

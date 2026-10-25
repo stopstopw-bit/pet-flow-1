@@ -1,7 +1,9 @@
+import type { IntakeRules } from "./intake-rules";
 import type { RoomType } from "./business";
 import type { GroomFormConfig } from "./groom-form";
 import type { GroomProgram } from "./grooming-prices";
 import type { RoomClosure } from "./room-board";
+import type { LinePromo } from "./line-discount";
 
 /** บล็อกเนื้อหาหน้ากฎระเบียบการฝาก — ใส่ได้ทั้งรูปและ/หรือข้อความ เรียงตามลำดับที่ตั้งไว้ */
 export type BookingDepositConfig = {
@@ -42,7 +44,7 @@ export type CrmConfig = {
   inactiveDays: number;
   /** ไม่ส่งตามซ้ำภายในกี่วัน */
   followUpCooldownDays: number;
-  /** ข้อความตามลูกค้า — ใช้ {name} {days} {cats} */
+  /** ข้อความตามลูกค้า — ใช้ {name} {days} {pets} (เดิม {cats} ยังใช้ได้) {shop} */
   followUpMessage: string;
   /** tier ที่ตั้งเองได้ในโปรไฟล์ลูกค้า */
   tierPresets: string[];
@@ -90,6 +92,10 @@ export type MessagesConfig = {
   consentTitle: string;
   /** ข้อตกลงก่อนเข้าพัก — บรรทัดละ 1 ข้อ */
   consentTerms: string[];
+  /** หัวเรื่องข้อตกลงก่อนอาบน้ำ (นัดอาบน้ำ) */
+  groomConsentTitle: string;
+  /** ข้อตกลงก่อนอาบน้ำ — บรรทัดละ 1 ข้อ ("หัวข้อ — เนื้อหา" ได้) */
+  groomConsentTerms: string[];
   /** การ์ดเรียกเก็บมัดจำ (ส่งก่อนลูกค้าโอน) — หัวเรื่อง */
   depositRequestTitle: string;
   /** การ์ดเรียกเก็บมัดจำ — ข้อความ ({name} {cat} {amount}) */
@@ -142,6 +148,11 @@ export type AutomationConfig = {
   reviewRequestDaysAfter: number;
   /** ส่งการ์ดสอบถามประวัติน้องก่อนอาบน้ำ (พ่วงกับยืนยันนัด) */
   groomInfoEnabled: boolean;
+  /**
+   * ถามข้อมูลก่อนรับน้องอัตโนมัติ (ข้อมูลก่อนเข้าพัก / สมุดวัคซีน / บัตรประชาชน / กฎ + กดยินยอม)
+   * ส่งเฉพาะใบที่ลูกค้ายังไม่ได้ส่ง — ไม่มีค่า = เปิด
+   */
+  intakeAutoEnabled?: boolean;
   /** เข้าพักกี่คืนขึ้นไป ถึงแถมทรายฟรี (ถ้าน้อยกว่านี้ ให้ลูกค้าเตรียมทรายมาเอง) */
   freeLitterMinNights: number;
   /** อวยพรวันเกิดแมวอัตโนมัติ */
@@ -180,6 +191,13 @@ export type CardStyleConfig = {
 export type SiteConfig = {
   version: number;
   updatedAt: string;
+  /**
+   * เปิด/ปิดฟีเจอร์รายร้าน (key ตาม FeatureKey ใน src/lib/features.ts)
+   * false = ปิด · ไม่มี key = เปิด (ร้านเดิมใช้งานได้เหมือนเดิม)
+   */
+  features?: Partial<Record<string, boolean>>;
+  /** ชวนเพื่อนรับคูปอง — มูลค่าคูปองต่อคน/อายุคูปอง (ไม่ตั้ง = 100 บาท · 60 วัน) ดู src/lib/referral.ts */
+  referral?: { amount?: number; expiresInDays?: number };
   crm: CrmConfig;
   messages: MessagesConfig;
   automation: AutomationConfig;
@@ -202,6 +220,8 @@ export type SiteConfig = {
     /** ข้อความในป้าย (ไม่ใส่ = ใช้ข้อความมาตรฐาน) */
     byAppointmentNote?: { th: string; en: string };
     location: { th: string; en: string };
+    /** ร้านดูแลน้องอะไร (ดู lib/pet-kind.ts) — ไม่ตั้ง = แมว · ตั้งจากแบบสอบถามเปิดร้านหรือหน้าตั้งค่า › ร้าน */
+    petKind?: "cat" | "dog" | "both";
     pointsRate: number;
     /**
      * จ่ายด้วยเครดิต Member แล้วไม่ต้องให้แต้ม — ลูกค้าได้ส่วนลดตอนซื้อเครดิตไปแล้ว
@@ -242,6 +262,8 @@ export type SiteConfig = {
    * ยอดเป็นบาทต่อ 1 การจอง (ทั้งบ้านที่จองพร้อมกัน = 1 ยอด ไม่คูณจำนวนตัว)
    */
   bookingDeposit?: BookingDepositConfig;
+  /** โปรลดเฉพาะรายการ (เช่น ลด 5% เฉพาะห้องพัก/อาบน้ำ ไม่ลดค่ารับ-ส่ง) — เลือกตอนออกบิล */
+  linePromos?: LinePromo[];
   /** ข้อความหัวเรื่อง/ปิดท้าย ของสรุปที่ก๊อป/ส่งให้ลูกค้า (แก้ได้ในตั้งค่า) */
   billing: {
     summaryBookingTitle: string;
@@ -284,6 +306,10 @@ export type SiteConfig = {
   closedWeekdays?: number[];
   /** วันหยุดเฉพาะวัน (ปีใหม่, ปิดพักร้อน ฯลฯ) — เพิ่ม/ลบได้ในหลังบ้าน */
   closedDates?: { date: string; note?: string }[];
+  /** งานดูแลรายวันของน้องที่เข้าพัก (เช็คลิสต์) — ไม่ตั้ง = ใช้ DEFAULT_CARE_TASKS */
+  careTasks?: { id: string; label: string }[];
+  /** ป้ายช่วงน้ำหนักของไซส์อาบน้ำ (เช่น "0–4 กก.") — ไม่ตั้ง = ใช้ค่าใน GROOM_SIZES */
+  groomSizeLabels?: Partial<Record<"kitten" | "m" | "l", string>>;
   transport: LocalizedLines;
   pointsRewards: PointsRewardConfig[];
   grooming: GroomingConfig;
@@ -302,6 +328,8 @@ export type SiteConfig = {
   cards?: Record<string, CardStyleConfig>;
   /** คำถาม/ตัวเลือกในฟอร์มประวัติน้องก่อนอาบน้ำ — แก้เองได้ในหลังบ้าน */
   groomForm?: GroomFormConfig;
+  /** ขอข้อมูลอะไรบ้างตามบริการ (การ์ดในนัดอาบน้ำ, ฟอร์มที่ใช้, บังคับตอบ) — ดู src/lib/intake-rules.ts */
+  intakeRules?: IntakeRules;
   /** สีประจำร้าน — แต่ละร้านปรับเองได้ ไม่ตั้ง = ใช้โทนสีเริ่มต้นของ PetFlow */
   branding?: {
     /** สีหลัก (ปุ่ม, ลิงก์เด่น) */

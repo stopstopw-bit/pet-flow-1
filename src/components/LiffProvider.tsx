@@ -5,6 +5,12 @@ import { usePathname, useRouter } from "next/navigation";
 import type { CustomerProfile } from "@/lib/business";
 import type { PointsHistoryEntry } from "@/lib/points-store";
 import type { CustomerTier } from "@/lib/customer-tier";
+import { firstFlowHref } from "@/lib/intake-flow";
+import {
+  customerFetch,
+  setCustomerSessionIssue,
+  setCustomerSessionRefresher,
+} from "@/lib/customer-fetch";
 
 type LineCustomer = {
   id: string;
@@ -45,7 +51,7 @@ async function fetchAccount(lineUserId: string, displayName: string, customerId?
   const q = new URLSearchParams({ lineUserId, displayName });
   if (customerId) q.set("customerId", customerId);
   // no-store — กัน webview ของ LINE เก็บผลแต้มเก่าไว้แล้วโชว์ค้าง (เช่น 0 ทั้งที่มีแต้ม)
-  const res = await fetch(`/api/points?${q}`, { cache: "no-store" });
+  const res = await customerFetch(`/api/points?${q}`, { cache: "no-store" });
   if (!res.ok) return null;
   return res.json() as Promise<{
     points: number;
@@ -57,21 +63,67 @@ async function fetchAccount(lineUserId: string, displayName: string, customerId?
  * แลก LIFF ID token (LINE เซ็นให้ ปลอมไม่ได้) เป็นคุกกี้เซสชันลูกค้า — ต้องเรียกก่อนเสมอ
  * ห้ามส่ง lineUserId ตรงๆ อีกต่อไป เพราะ server จะไม่เชื่อค่านี้แล้ว (ดู liff-auth.ts)
  */
-async function syncLineCustomer(
-  auth: { idToken: string } | { devUserId: string },
-  displayName: string
-) {
-  const res = await fetch("/api/customers/line", {
-    method: "POST",
-    cache: "no-store",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...auth, displayName }),
-  });
-  if (!res.ok) return null;
+type LiffAuth = { idToken?: string; accessToken?: string } | { devUserId: string };
+
+async function syncLineCustomer(auth: LiffAuth, displayName: string) {
+  let res: Response;
+  try {
+    res = await fetch("/api/customers/line", {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...auth, displayName }),
+    });
+  } catch {
+    setCustomerSessionIssue("network");
+    return null;
+  }
+  if (!res.ok) {
+    // จำสาเหตุไว้ — customerFetch แปะเป็น "(รหัส: …)" ท้ายข้อความถ้ายังแลกเซสชันไม่ได้
+    const d = await res.json().catch(() => ({}));
+    setCustomerSessionIssue(String(d?.reason || `http_${res.status}`));
+    return null;
+  }
+  setCustomerSessionIssue("");
   return res.json() as Promise<{
     customer: LineCustomer;
     needsRegistration: boolean;
   }>;
+}
+
+type LiffAuthModule = {
+  getIDToken: () => string | null;
+  getAccessToken: () => string | null;
+  getDecodedIDToken: () => { exp?: number } | null;
+  login: (config?: { redirectUri?: string }) => void;
+  logout: () => void;
+  isInClient: () => boolean;
+};
+
+const RELOGIN_KEY = "petflow-liff-relogin";
+
+/**
+ * ID token ของ LIFF หมดอายุราว 1 ชม. แต่เปิดในเบราว์เซอร์นอก LINE แล้ว isLoggedIn() ยังเป็น true
+ * และ getIDToken() คืน token เก่าที่หมดอายุแล้ว — server ตรวจไม่ผ่าน ลูกค้าเลยไม่มีข้อมูลบัญชี
+ * (ขึ้น "สมัครสมาชิกให้เสร็จ" ค้าง / จองแล้วบอกว่าไม่มีแมว ทั้งที่สมัครไปแล้ว)
+ * หมดอายุแล้ว → ล็อกอินใหม่เพื่อเอา token สด (กันวนซ้ำ: ลองได้ครั้งเดียวต่อ 1 นาที)
+ * คืน true = กำลังพาไปล็อกอินใหม่ อย่าทำอะไรต่อ
+ */
+function reloginIfTokenExpired(liff: LiffAuthModule | null): boolean {
+  // ในแอป LINE เปิดใหม่ทุกครั้งได้ token สดอยู่แล้ว (login() ใช้ในนั้นไม่ได้)
+  if (!liff || typeof window === "undefined" || liff.isInClient()) return false;
+  const exp = liff.getDecodedIDToken()?.exp;
+  if (exp && exp * 1000 > Date.now() + 30_000) return false;
+  try {
+    const last = Number(sessionStorage.getItem(RELOGIN_KEY) || 0);
+    if (Date.now() - last < 60_000) return false;
+    sessionStorage.setItem(RELOGIN_KEY, String(Date.now()));
+  } catch {
+    return false;
+  }
+  liff.logout();
+  liff.login({ redirectUri: window.location.href });
+  return true;
 }
 
 export function LiffProvider({ children }: { children: React.ReactNode }) {
@@ -84,18 +136,22 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
   const [history, setHistory] = useState<PointsHistoryEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   // เก็บ liff module ไว้เรียก getIDToken() ซ้ำได้ทุกครั้งที่ sync (dev mode ไม่มีตัวนี้)
-  const liffModRef = useRef<{ getIDToken: () => string | null } | null>(null);
+  const liffModRef = useRef<LiffAuthModule | null>(null);
   const devUserIdRef = useRef<string | null>(null);
 
   /** ตัวยืนยันตัวตนสำหรับส่งให้ server แลกคุกกี้เซสชัน — ห้ามส่ง lineUserId ตรงๆ อีกต่อไป */
-  const getAuth = useCallback((): { idToken: string } | { devUserId: string } | null => {
+  // ไม่มี ID token = LIFF app ไม่ได้ติ๊ก scope "openid" ใน LINE Developers — ส่ง access token ไปด้วยเสมอ
+  // เซิร์ฟเวอร์ใช้ยืนยันแทนได้ (ดู verifyLiffAccessTokenDetailed)
+  const getAuth = useCallback((): LiffAuth | null => {
     if (devUserIdRef.current) return { devUserId: devUserIdRef.current };
-    const idToken = liffModRef.current?.getIDToken();
-    return idToken ? { idToken } : null;
+    const idToken = liffModRef.current?.getIDToken() || undefined;
+    const accessToken = liffModRef.current?.getAccessToken() || undefined;
+    return idToken || accessToken ? { idToken, accessToken } : null;
   }, []);
 
   const refreshCustomer = useCallback(async () => {
     if (!profile?.lineUserId) return;
+    if (reloginIfTokenExpired(liffModRef.current)) return;
     const auth = getAuth();
     if (!auth) return;
     const sync = await syncLineCustomer(auth, profile.displayName);
@@ -122,13 +178,29 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
       async function applyAccount(base: CustomerProfile) {
         const auth = getAuth();
         if (!auth) {
-          setError("เชื่อมต่อ LINE ไม่สำเร็จ — ปิดหน้านี้แล้วเปิดใหม่จาก LINE อีกครั้งนะคะ");
+          // LINE ไม่ส่งทั้ง ID token และ access token มา
+          setCustomerSessionIssue("no_token");
+          setError("เชื่อมต่อ LINE ไม่สำเร็จ — ปิดหน้านี้แล้วเปิดใหม่จาก LINE อีกครั้งนะคะ (รหัส L1)");
           setReady(true);
           return;
         }
+        // เก็บไว้ให้ customerFetch แลกเซสชันใหม่ได้เองตอนเซิร์ฟเวอร์ตอบว่าไม่มีเซสชัน (คุกกี้หาย/หมดอายุ)
+        setCustomerSessionRefresher(async () => {
+          const a = getAuth();
+          if (!a) {
+            setCustomerSessionIssue("no_token");
+            return false;
+          }
+          return Boolean(await syncLineCustomer(a, base.displayName));
+        });
         // sync ก่อนเพื่อรู้ customerId แล้วค่อยดึงแต้มด้วย customerId นั้น —
         // แต้มจะได้ผูกกับลูกค้าคนเดียวเสมอ ไม่แตกตามอุปกรณ์/LINE ID
-        const sync = await syncLineCustomer(auth, base.displayName);
+        // ไม่ผ่านรอบแรก (เน็ตสะดุด/LINE ตอบช้า) ลองซ้ำอีกครั้ง
+        let sync = await syncLineCustomer(auth, base.displayName);
+        if (!sync) {
+          await new Promise((r) => setTimeout(r, 800));
+          sync = await syncLineCustomer(getAuth() || auth, base.displayName);
+        }
         if (sync) {
           setCustomer(sync.customer);
           setNeedsRegistration(sync.needsRegistration);
@@ -143,14 +215,17 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
         setReady(true);
       }
 
-      let liffId = process.env.NEXT_PUBLIC_LIFF_ID?.trim() || "";
-      if (!liffId) {
+      // ถามเซิร์ฟเวอร์ทุกครั้งว่าร้านนี้ใช้ LIFF ไหน — ห้ามใช้ค่าใน env ตรง ๆ เพราะเป็นของร้านเดียว
+      let liffId = "";
+      let liffErr = "";
+      {
         try {
           // no-store — LINE's in-app webview can hold onto a stale cached response,
           // ทำให้ตกไปเป็น "dev-user" ค้างแม้ร้านตั้ง LIFF ID เสร็จแล้วก็ตาม
           const res = await fetch("/api/line/liff", { cache: "no-store" });
           const data = await res.json();
           liffId = data.liffId || "";
+          liffErr = res.ok ? `${data.shop || "?"}@${window.location.pathname}` : `${res.status}`;
         } catch {
           /* fallback dev */
         }
@@ -164,7 +239,10 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
         const isLocalDev =
           host === "localhost" || host === "127.0.0.1" || /^(10\.|192\.168\.)/.test(host);
         if (!isLocalDev) {
-          setError("เชื่อมต่อ LINE ไม่สำเร็จ — ปิดหน้านี้แล้วเปิดใหม่จาก LINE อีกครั้งนะคะ");
+          // ร้านนี้หา LIFF ID ไม่เจอ (ยังไม่ตั้ง / หาร้านไม่เจอ) — แนบรหัสไว้ให้ไล่ปัญหาจากรูปหน้าจอได้
+          setError(
+            `เชื่อมต่อ LINE ไม่สำเร็จ — ปิดหน้านี้แล้วเปิดใหม่จาก LINE อีกครั้งนะคะ (รหัส L2${liffErr ? `-${liffErr}` : ""})`
+          );
           setReady(true);
           return;
         }
@@ -184,7 +262,8 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
               liff.default.login();
               return;
             }
-            liffModRef.current = liff.default;
+            liffModRef.current = liff.default as unknown as LiffAuthModule;
+            if (reloginIfTokenExpired(liffModRef.current)) return;
             const p = await liff.default.getProfile();
             await applyAccount({
               lineUserId: p.userId,
@@ -195,7 +274,7 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
           })
         )
         .catch((e) => {
-          setError(String(e));
+          setError(`เชื่อมต่อ LINE ไม่สำเร็จ (รหัส L3: ${String(e)})`);
           setReady(true);
         });
     }
@@ -215,74 +294,102 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!ready || typeof window === "undefined") return;
 
+    // คงอยู่ในลิงก์ร้านเดิม (/s/<slug>) — ห้ามเด้งไป /app เปล่า ๆ ซึ่งเป็นร้าน PetFlow
+    const shop = window.location.pathname.match(/^\/s\/[a-z0-9-]+/i)?.[0] || "";
     const params = new URLSearchParams(window.location.search);
     const path = params.get("path");
     const bookingId = params.get("id");
 
     if (path === "bookings") {
       router.replace(
-        bookingId ? `/app/bookings?id=${bookingId}` : "/app/bookings"
+        bookingId ? `${shop}/app/bookings?id=${bookingId}` : `${shop}/app/bookings`
       );
       return;
     }
     if (path === "promos") {
-      router.replace("/app/promos");
+      router.replace(`${shop}/app/promos`);
       return;
     }
     if (path === "grooming") {
-      router.replace("/app/grooming");
+      router.replace(`${shop}/app/grooming`);
       return;
     }
     if (path === "rooms") {
-      router.replace("/app/rooms");
+      router.replace(`${shop}/app/rooms`);
       return;
     }
     if (path === "services") {
-      router.replace("/app/services");
+      router.replace(`${shop}/app/services`);
       return;
     }
     if (path === "consent") {
       const bkId = params.get("id");
-      router.replace(bkId ? `/app/consent?id=${encodeURIComponent(bkId)}` : "/app/consent");
+      if (params.get("mode") === "customer") {
+        router.replace(`${shop}/app/consent?mode=customer`);
+        return;
+      }
+      router.replace(bkId ? `${shop}/app/consent?id=${encodeURIComponent(bkId)}` : `${shop}/app/consent`);
       return;
     }
     if (path === "booking-time") {
       const bkId = params.get("id");
       const type = params.get("type") || "checkin";
       router.replace(
-        `/app/booking-time?id=${bkId || ""}&type=${type}`
+        `${shop}/app/booking-time?id=${bkId || ""}&type=${type}`
       );
       return;
     }
     if (path === "booking-transport") {
       const bkId = params.get("id");
-      router.replace(`/app/booking-transport?id=${encodeURIComponent(bkId || "")}`);
+      router.replace(`${shop}/app/booking-transport?id=${encodeURIComponent(bkId || "")}`);
       return;
     }
     if (path === "profile") {
-      router.replace("/app/profile");
+      router.replace(`${shop}/app/profile`);
       return;
     }
     if (path === "coupons") {
-      router.replace("/app/coupons");
+      router.replace(`${shop}/app/coupons`);
       return;
     }
     if (path === "claim-coupon") {
       const offer = params.get("offer");
-      router.replace(offer ? `/app/claim-coupon?offer=${encodeURIComponent(offer)}` : "/app/coupons");
+      router.replace(offer ? `${shop}/app/claim-coupon?offer=${encodeURIComponent(offer)}` : `${shop}/app/coupons`);
+      return;
+    }
+    if (path === "intake") {
+      // การ์ดรวมขอข้อมูล ปุ่มเดียว → หน้าแรกของลำดับ แล้วแต่ละหน้าพาไปขั้นต่อไปเอง
+      router.replace(`${shop}${firstFlowHref(params) || "/app"}`);
+      return;
+    }
+    if (path === "pet-docs") {
+      const q = new URLSearchParams({ need: params.get("need") === "idcard" ? "idcard" : "vaccine" });
+      // ลิงก์จากนัด (id) หรือจากหน้าข้อมูลลูกค้า (cats = ตัวน้อง ไม่ต้องมีนัด)
+      if (params.get("id")) q.set("id", params.get("id")!);
+      if (params.get("cats")) q.set("cats", params.get("cats")!);
+      router.replace(`${shop}/app/pet-docs?${q}`);
       return;
     }
     if (path === "groom-info") {
+      const cats = params.get("cats");
+      if (cats) {
+        const kind = params.get("kind") === "stay" ? "stay" : "groom";
+        router.replace(`${shop}/app/groom-info?cats=${encodeURIComponent(cats)}&kind=${kind}`);
+        return;
+      }
       const bkId = params.get("id");
-      router.replace(`/app/groom-info?id=${bkId || ""}`);
+      const bkKind = params.get("kind");
+      router.replace(
+        `${shop}/app/groom-info?id=${bkId || ""}${bkKind === "stay" || bkKind === "groom" ? `&kind=${bkKind}` : ""}`
+      );
       return;
     }
     if (path === "register") {
       if (needsRegistration) {
         const ref = params.get("ref");
-        router.replace(ref ? `/app/register?ref=${encodeURIComponent(ref)}` : "/app/register");
+        router.replace(ref ? `${shop}/app/register?ref=${encodeURIComponent(ref)}` : `${shop}/app/register`);
       } else {
-        router.replace("/app");
+        router.replace(`${shop}/app`);
       }
       return;
     }
@@ -290,8 +397,8 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
       const customerId = params.get("customerId");
       router.replace(
         customerId
-          ? `/app/link?customerId=${encodeURIComponent(customerId)}`
-          : "/app"
+          ? `${shop}/app/link?customerId=${encodeURIComponent(customerId)}`
+          : `${shop}/app`
       );
       return;
     }
@@ -310,11 +417,12 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
       pathname.startsWith("/app/booking-transport") ||
       pathname.startsWith("/app/profile") ||
       pathname.startsWith("/app/groom-info") ||
+      pathname.startsWith("/app/pet-docs") ||
       pathname.startsWith("/app/coupons") ||
       pathname.startsWith("/app/claim-coupon");
 
     if (needsRegistration && !skipRegister) {
-      router.replace("/app/register");
+      router.replace(`${shop}/app/register`);
     }
   }, [ready, needsRegistration, pathname, router]);
 

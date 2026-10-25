@@ -1,15 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
+import { featureOff } from "@/lib/features-server";
 import { withResolvedTenant } from "@/lib/tenant-context";
 import { claimCustomerPromo } from "@/lib/promos-store";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
-import { requireCustomerSession } from "@/lib/customer-session";
+import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 
 /** ลูกค้ากดใช้โปรจากหน้าแอป */
 async function postHandler(req: NextRequest) {
   const session = await requireCustomerSession(req);
   if (!session) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return noCustomerSessionResponse();
   }
+  const blocked = await featureOff("promos");
+  if (blocked) return blocked;
   const body = await req.json().catch(() => ({}));
   const promoId = String(body.promoId || "").trim();
 

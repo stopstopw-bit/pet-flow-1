@@ -2,10 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useLiff } from "@/components/LiffProvider";
+import { useConfig } from "@/components/ConfigProvider";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { BTN_PRIMARY, BTN_SECONDARY, PageHeader } from "@/components/PageHeader";
 import { EmptyState, SectionLabel } from "@/components/ui";
 import { Icon } from "@/components/Icon";
+import { isFeatureOn } from "@/lib/features";
+import { referralReward } from "@/lib/referral";
+import { copyText, lineShareUrl } from "@/lib/copy-text";
 
 type Coupon = {
   id: string;
@@ -24,11 +28,15 @@ function daysLeft(iso?: string) {
 
 export default function CouponsPage() {
   const { ready, profile, customer } = useLiff();
+  const { config } = useConfig();
   const [loading, setLoading] = useState(true);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [referralUrl, setReferralUrl] = useState("");
   const [referralCode, setReferralCode] = useState("");
   const [copied, setCopied] = useState(false);
+  // คัดลอกไม่ได้ (เบราว์เซอร์ในแอปบางรุ่น) → โชว์ลิงก์ให้กดค้างคัดลอกเอง
+  const [copyFailed, setCopyFailed] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const [packages, setPackages] = useState<
     { id: string; name: string; totalUses: number; usedUses: number }[]
   >([]);
@@ -42,13 +50,19 @@ export default function CouponsPage() {
       ? `customerId=${customer.id}`
       : `lineUserId=${profile.lineUserId}`;
     fetch(`/api/coupons?${couponWho}`, { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d) => {
+      .then(async (r) => {
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          setLoadError(d.error || "โหลดคูปองไม่สำเร็จ ลองเปิดหน้านี้ใหม่อีกครั้งนะคะ");
+          return;
+        }
+        setLoadError("");
         if (!d.found) return;
         setCoupons(d.coupons || []);
         setReferralUrl(d.referralUrl || "");
         setReferralCode(d.referralCode || "");
       })
+      .catch(() => setLoadError("โหลดคูปองไม่สำเร็จ ลองเปิดหน้านี้ใหม่อีกครั้งนะคะ"))
       .finally(() => setLoading(false));
     // คอร์ส: API บังคับใช้ lineUserId (กันเดา id คนอื่น) — ยิงด้วย lineUserId ของตัวเอง
     fetch(`/api/packages?lineUserId=${profile.lineUserId}&active=1`, { cache: "no-store" })
@@ -57,14 +71,19 @@ export default function CouponsPage() {
       .catch(() => {});
   }, [profile?.lineUserId, customer?.id]);
 
+  // ร้านปิด "ชวนเพื่อนรับคูปอง" ในตั้งค่า — ไม่โชว์กล่องชวนเพื่อน
+  const referralOn = isFeatureOn(config, "referral");
+  const reward = referralReward(config).amount;
+  const shareText = `🐾 มาใช้บริการที่ ${config.business.name} กันนะ! สมัครผ่านลิงก์นี้ (หรือกรอกโค้ด ${referralCode} ตอนสมัคร) รับคูปองส่วนลด ${reward}฿ ทั้งคู่ทันที 🎁\n${referralUrl}`;
+
   const share = async () => {
-    const text = `🐱 มาเลี้ยงน้องแมวที่ PetFlow กันนะ! สมัครผ่านลิงก์นี้ + มาใช้บริการครั้งแรก รับคูปองส่วนลด 100฿ ทั้งคู่เลย 🎁\n${referralUrl}`;
-    try {
-      await navigator.clipboard.writeText(text);
+    if (await copyText(shareText)) {
       setCopied(true);
+      setCopyFailed(false);
       setTimeout(() => setCopied(false), 2500);
-    } catch {
+    } else {
       setCopied(false);
+      setCopyFailed(true);
     }
   };
 
@@ -82,15 +101,16 @@ export default function CouponsPage() {
       />
 
       {/* ── ชวนเพื่อน ── */}
+      {referralOn && (
       <div className="rounded-petflow border border-honey/50 bg-gradient-to-br from-honey/25 via-card to-latte/15 p-4 shadow-petflow-sm">
         <div className="flex items-start gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-honey/40 text-petflow-chocolate">
             <Icon name="users" size={20} />
           </span>
           <div className="min-w-0">
-            <p className="text-sm font-extrabold text-petflow-chocolate">ชวนเพื่อน รับคนละ 100฿</p>
+            <p className="text-sm font-extrabold text-petflow-chocolate">ชวนเพื่อน รับคนละ {reward}฿</p>
             <p className="mt-0.5 text-xs leading-relaxed text-brown-soft">
-              ส่งลิงก์ให้เพื่อนสมัคร + <b className="text-latte-deep">มาใช้บริการครั้งแรก</b> — ได้คูปองส่วนลด <b className="text-latte-deep">100฿ ทั้งคุณและเพื่อน</b> 🧡
+              ส่งลิงก์หรือโค้ดให้เพื่อน <b className="text-latte-deep">สมัครเสร็จ</b> — ได้คูปองส่วนลด <b className="text-latte-deep">{reward}฿ ทั้งคุณและเพื่อน</b> ทันที 🧡
             </p>
           </div>
         </div>
@@ -108,7 +128,29 @@ export default function CouponsPage() {
           <Icon name={copied ? "check" : "link"} size={18} />
           {copied ? "คัดลอกลิงก์แล้ว — เอาไปส่งเพื่อนได้เลย!" : "คัดลอกลิงก์ชวนเพื่อน"}
         </button>
+        {referralUrl && (
+          <a
+            href={lineShareUrl(shareText)}
+            className="mt-2 flex items-center justify-center gap-1.5 text-xs font-extrabold text-latte-deep underline-offset-2 active:underline"
+          >
+            <Icon name="send" size={14} />
+            หรือส่งให้เพื่อนในแชท LINE เลย
+          </a>
+        )}
+        {copyFailed && referralUrl && (
+          <div className="mt-2 rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2">
+            <p className="text-[11px] font-bold text-brown-soft">เครื่องนี้คัดลอกอัตโนมัติไม่ได้ — กดค้างที่ลิงก์เพื่อคัดลอกนะคะ</p>
+            <p className="mt-1 select-all break-all text-xs font-bold text-petflow-chocolate">{referralUrl}</p>
+          </div>
+        )}
+        {loadError && (
+          <p className="mt-2 text-[11px] font-bold text-red-600">{loadError}</p>
+        )}
       </div>
+      )}
+      {!referralOn && loadError && (
+        <p className="text-[11px] font-bold text-red-600">{loadError}</p>
+      )}
 
       {/* ── คอร์ส/แพ็กเกจ ── */}
       {packages.length > 0 && (
@@ -148,7 +190,7 @@ export default function CouponsPage() {
                 <EmptyState
                   icon="ticket"
                   title="ยังไม่มีคูปอง"
-                  sub="ชวนเพื่อนมาใช้บริการ รับ 100฿ ได้เลยนะคะ 🧡"
+                  sub={referralOn ? `ชวนเพื่อนสมัครด้วยโค้ดของคุณ รับ ${reward}฿ ทั้งคู่เลยนะคะ 🧡` : "มีคูปองเมื่อไหร่ จะขึ้นที่นี่นะคะ 🧡"}
                 />
               ) : (
                 <ul className="divide-y divide-petflow-line">

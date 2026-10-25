@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { getSecrets } from "./secrets-store";
+import { isEnvOwnerTenant } from "./tenant-context";
 
 export type TelegramCredentials = {
   botToken: string;
@@ -74,7 +75,8 @@ export async function getTelegramCredentials(): Promise<TelegramCredentials | nu
     .map((s) => s.trim())
     .filter(Boolean);
 
-  if (envToken) {
+  // บอท/แชทเจ้าของใน env เป็นของร้าน bootstrap — ไม่งั้นยอดขายร้านอื่นจะเด้งไปหาเจ้าของร้านนี้
+  if (envToken && (await isEnvOwnerTenant())) {
     return {
       botToken: envToken,
       ownerChatIds: envChats,
@@ -118,6 +120,7 @@ export const TELEGRAM_BOT_COMMANDS = [
   { command: "start", description: "เริ่มใช้ + ดู Chat ID" },
   { command: "today", description: "นัดวันนี้" },
   { command: "tomorrow", description: "เตรียมตัวพรุ่งนี้ (นัด + เช็คอิน/เอาท์)" },
+  { command: "transport", description: "รายการรับ-ส่งน้อง วันนี้ + พรุ่งนี้ (พร้อมลิงก์แผนที่)" },
   { command: "queue", description: "คิวรอยืนยัน" },
   { command: "month", description: "ตารางเดือนนี้" },
   { command: "sales", description: "ยอดขายวันนี้" },

@@ -14,6 +14,8 @@ export type SessionPayload = {
   name: string;
   /** ร้านที่ล็อกอินอยู่ — ทุก query ต้องกรองด้วยค่านี้ */
   tenantId: string;
+  /** slug ของร้านนั้น — ใช้กันเปิดลิงก์ /s/<ร้านอื่น>/admin แล้วเห็นหลังบ้านร้านที่ล็อกอินค้างไว้ */
+  tenantSlug?: string;
   /** เมนูที่พนักงานคนนี้เปิดดูได้ — undefined = เข้าได้ทุกเมนู (เจ้าของร้าน) */
   menus?: string[];
   /** session นี้มาจากผู้ดูแลระบบกด "เข้าดูแทน" ไม่ใช่เจ้าของร้านล็อกอินเอง — โชว์แถบเตือนใน UI */
@@ -31,6 +33,17 @@ export function getBootstrapTenantId(): string | null {
 }
 
 export const SESSION_COOKIE = "petflow_session";
+
+/**
+ * คุกกี้ล็อกอินแยกต่อร้าน — ล็อกอินหลายร้านในเบราว์เซอร์เดียวกันได้โดยไม่ทับกัน
+ * middleware เลือกคุกกี้ของร้านที่กำลังเปิดอยู่ แล้วส่งต่อให้ route ในชื่อ SESSION_COOKIE เดิม
+ */
+export function shopSessionCookie(slug: string) {
+  return `${SESSION_COOKIE}__${slug.toLowerCase()}`;
+}
+
+/** middleware บอก route ว่าคำขอนี้ใช้คุกกี้ล็อกอินชื่อไหน (ใช้ตอนออกจากระบบ) */
+export const SESSION_COOKIE_NAME_HEADER = "x-session-cookie-name";
 const SESSION_DAYS = 7;
 
 /**

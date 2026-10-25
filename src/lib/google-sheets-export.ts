@@ -50,10 +50,10 @@ export const CUSTOMER_COLUMNS: CustomerColumn[] = [
   { key: "credit", label: "เครดิตคงเหลือ", get: (c) => String(c.memberCredit) },
   { key: "depositCredit", label: "เครดิตมัดจำล่วงหน้า", get: (c) => String(c.depositCredit || 0) },
   { key: "tier", label: "กลุ่มลูกค้า", get: (c) => c.tier || "" },
-  { key: "catName", label: "ชื่อแมว", get: (_c, cat) => cat?.name || "" },
+  { key: "catName", label: "ชื่อน้อง", get: (_c, cat) => cat?.name || "" },
   {
     key: "catGender",
-    label: "เพศแมว",
+    label: "เพศน้อง",
     get: (_c, cat) =>
       cat?.gender === "male" ? "ผู้" : cat?.gender === "female" ? "เมีย" : "",
   },
@@ -66,10 +66,10 @@ export const CUSTOMER_COLUMNS: CustomerColumn[] = [
   },
   { key: "catColor", label: "สี/ลักษณะเด่น", get: (_c, cat) => cat?.color || "" },
   { key: "catAge", label: "อายุ", get: (_c, cat) => (cat ? catCurrentAgeLabel(cat) : "") },
-  { key: "catBirthday", label: "วันเกิดแมว", get: (_c, cat) => cat?.birthday || "" },
+  { key: "catBirthday", label: "วันเกิดน้อง", get: (_c, cat) => cat?.birthday || "" },
   { key: "catMedical", label: "โรคประจำตัว", get: (_c, cat) => cat?.medical || "" },
   { key: "catGroomInfo", label: "ประวัติก่อนอาบน้ำ", get: (_c, cat) => groomInfoCell(cat) },
-  { key: "catNote", label: "โน้ตแมว", get: (_c, cat) => cat?.staffNote || "" },
+  { key: "catNote", label: "โน้ตน้อง", get: (_c, cat) => cat?.staffNote || "" },
   { key: "catPrivateNote", label: "โน้ตลับร้าน", get: (_c, cat) => cat?.staffPrivateNote || "" },
   { key: "createdAt", label: "วันที่สมัคร", get: (c) => c.createdAt.slice(0, 10) },
   { key: "updatedAt", label: "อัปเดตล่าสุด", get: (c) => c.updatedAt.slice(0, 10) },
@@ -125,7 +125,7 @@ function financeRows(records: FinanceRecord[]): string[][] {
 }
 
 const BOOKING_HEADERS = [
-  "รหัสนัด", "ลูกค้า", "น้องแมว", "บริการ", "วันที่", "เวลา",
+  "รหัสนัด", "ลูกค้า", "น้อง", "บริการ", "วันที่", "เวลา",
   "เช็คอิน", "เช็คเอาท์", "ห้อง", "สถานะ",
   "เวลามาส่ง", "เวลามารับ", "ยอมรับข้อตกลงเมื่อ", "มีลายเซ็น",
   "โน้ต", "แจ้งดูแลพิเศษ", "ปิดข้อความอัตโนมัติ", "LINE User ID", "สร้างเมื่อ",
@@ -156,7 +156,7 @@ function bookingRows(list: StoredBooking[]): string[][] {
 }
 
 const INVOICE_HEADERS = [
-  "รหัสบิล", "รหัสลูกค้า", "ลูกค้า", "น้องแมว", "รายการ",
+  "รหัสบิล", "รหัสลูกค้า", "ลูกค้า", "น้อง", "รายการ",
   "ยอดก่อนลด", "ส่วนลด", "มัดจำ", "ยอดสุทธิ", "สถานะ",
   "วิธีชำระ", "ชำระเมื่อ", "แต้มที่ได้", "รหัสนัด", "ออกบิลเมื่อ",
 ];
@@ -227,7 +227,7 @@ async function writeSheet(
     valueInputOption: "RAW",
     requestBody: {
       values: [
-        [`PetFlow — ส่งออกเมื่อ ${exportedAt}`],
+        [`ส่งออกเมื่อ ${exportedAt}`],
         headers,
         ...rows,
       ],

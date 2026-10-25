@@ -61,7 +61,7 @@ alter table tenants
   add column if not exists trial_ends_at timestamptz,
   add column if not exists created_at timestamptz not null default now();
 create unique index if not exists tenants_slug_key on tenants (slug);
-create unique index if not exists tenants_owner_username_key on tenants (owner_username);
+create index if not exists tenants_owner_username_idx on tenants (owner_username);
 create index if not exists tenants_owner_code_hash_idx on tenants (owner_code_hash);
 create index if not exists tenants_status_idx on tenants (status);
 
@@ -87,6 +87,7 @@ create table if not exists customers (
   address text,
   address_map_url text,
   postal_code text,
+  tax_invoice jsonb,
   tier text not null default 'new',              -- new | regular | member | vip
   is_member boolean not null default false,
   member_credit numeric not null default 0,
@@ -115,6 +116,7 @@ alter table customers
   add column if not exists address text,
   add column if not exists address_map_url text,
   add column if not exists postal_code text,
+  add column if not exists tax_invoice jsonb,
   add column if not exists tier text not null default 'new',
   add column if not exists is_member boolean not null default false,
   add column if not exists member_credit numeric not null default 0,
@@ -141,6 +143,8 @@ create table if not exists cats (
   breed text,
   color text,
   fur_length text,
+  weight_kg numeric,
+  species text,
   age text,
   age_value integer,
   age_unit text,
@@ -162,6 +166,8 @@ alter table cats
   add column if not exists breed text,
   add column if not exists color text,
   add column if not exists fur_length text,
+  add column if not exists weight_kg numeric,
+  add column if not exists species text,
   add column if not exists age text,
   add column if not exists age_value integer,
   add column if not exists age_unit text,
@@ -780,7 +786,7 @@ create unique index if not exists articles_tenant_slug_key on articles (tenant_i
 
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 13) พนักงาน — username unique ทั้งแพลตฟอร์ม (login ก่อนรู้ว่าเป็นร้านไหน)
+-- 13) พนักงาน — username ห้ามซ้ำในร้านเดียวกัน (คนละร้านซ้ำได้ ล็อกอินผ่านลิงก์ร้าน)
 -- ─────────────────────────────────────────────────────────────────────────────
 create table if not exists staff_users (
   id text primary key,
@@ -807,7 +813,7 @@ alter table staff_users
   add column if not exists created_at timestamptz not null default now();
 alter table staff_users alter column code drop not null;
 create index if not exists staff_users_tenant_idx on staff_users (tenant_id);
-create unique index if not exists staff_users_username_key on staff_users (username);
+create unique index if not exists staff_users_tenant_username_key on staff_users (tenant_id, username);
 
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -1102,6 +1108,34 @@ create unique index if not exists pos_closings_tenant_date_idx on pos_closings (
 
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- 19b) บอร์ดคิวอาบน้ำ + เช็คลิสต์ดูแลรายวัน + เงินเดือน/ค่าคอมพนักงาน
+-- ─────────────────────────────────────────────────────────────────────────────
+create table if not exists booking_ops (
+  booking_id text primary key,
+  tenant_id text not null,
+  groom_started_at timestamptz,
+  groomer text,                                   -- payroll_employees.id
+  care_checks jsonb not null default '{}'::jsonb, -- { "YYYY-MM-DD": { taskId: { at, by } } }
+  updated_at timestamptz not null default now()
+);
+create index if not exists booking_ops_tenant_idx on booking_ops (tenant_id);
+alter table booking_ops enable row level security;
+
+create table if not exists payroll_employees (
+  id text primary key,
+  tenant_id text not null,
+  name text not null,
+  base_salary numeric not null default 0,
+  groom_commission_pct numeric not null default 0,
+  groom_commission_per_cat numeric not null default 0,
+  active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+create index if not exists payroll_employees_tenant_idx on payroll_employees (tenant_id);
+alter table payroll_employees enable row level security;
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- 20) Storage bucket "media" (โค้ดสร้างเองตอนใช้ครั้งแรกด้วย แต่สร้างไว้ก่อนกันพลาด)
 -- ─────────────────────────────────────────────────────────────────────────────
 do $$
@@ -1130,6 +1164,16 @@ begin
   end if;
 end $$;
 
+
+-- เปิด RLS ทุกตาราง (ดู migrations/012) — ต้องใช้ service_role key ใน Vercel ตามคู่มือ
+do $$
+declare
+  r record;
+begin
+  for r in select tablename from pg_tables where schemaname = 'public' loop
+    execute format('alter table public.%I enable row level security', r.tablename);
+  end loop;
+end $$;
 
 -- ให้ PostgREST โหลด schema ใหม่
 notify pgrst, 'reload schema';

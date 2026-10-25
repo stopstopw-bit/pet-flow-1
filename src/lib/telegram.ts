@@ -10,6 +10,7 @@ import {
   syncTelegramBotCommands,
 } from "./telegram-config";
 import { requireTenantId } from "./tenant-context";
+import { getSiteConfig } from "./config-store";
 
 const TELEGRAM_API = "https://api.telegram.org";
 
@@ -29,6 +30,7 @@ export const TELEGRAM_MENU_BUTTONS = {
   book: "➕ เพิ่มนัด",
   summary: "📋 สรุปลูกค้า",
   confirm: "✅ ส่งยืนยันนัด",
+  transport: "🚗 รับ-ส่งน้อง",
   help: "❓ วิธีใช้",
 } as const;
 
@@ -42,6 +44,7 @@ const MENU_TO_COMMAND: Record<string, string> = {
   [TELEGRAM_MENU_BUTTONS.book]: "/book",
   [TELEGRAM_MENU_BUTTONS.summary]: "/summary",
   [TELEGRAM_MENU_BUTTONS.confirm]: "/confirm",
+  [TELEGRAM_MENU_BUTTONS.transport]: "/transport",
   [TELEGRAM_MENU_BUTTONS.help]: "/help",
 };
 
@@ -65,6 +68,7 @@ export function getTelegramMenuKeyboard() {
         { text: TELEGRAM_MENU_BUTTONS.summary },
       ],
       [
+        { text: TELEGRAM_MENU_BUTTONS.transport },
         { text: TELEGRAM_MENU_BUTTONS.confirm },
         { text: TELEGRAM_MENU_BUTTONS.help },
       ],
@@ -78,6 +82,7 @@ export function getTelegramMenuKeyboard() {
 export function normalizeTelegramInput(text: string) {
   const trimmed = text.trim();
   if (MENU_TO_COMMAND[trimmed]) return MENU_TO_COMMAND[trimmed];
+  if (/รับ-?ส่ง/.test(trimmed)) return "/transport";
   if (/คิว.*ยืนยัน/.test(trimmed)) return "/queue";
   if (/นัดวันนี้/.test(trimmed)) return "/today";
   if (/เตรียมตัวพรุ่งนี้|พรุ่งนี้/.test(trimmed)) return "/tomorrow";
@@ -206,6 +211,10 @@ export async function sendTelegram(text: string) {
   if (!creds?.botToken || !creds.ownerChatIds.length) {
     return { ok: false, reason: "not_configured" };
   }
+  if (text.includes(SHOP_NAME_TOKEN)) {
+    const name = (await getSiteConfig().catch(() => null))?.business?.name?.trim() || "แจ้งเตือนร้าน";
+    text = text.split(SHOP_NAME_TOKEN).join(escapeHtml(name));
+  }
 
   if (creds.appUrl) {
     await ensureTelegramWebhook(creds.botToken, creds.appUrl, requireTenantId()).catch(() => {});
@@ -256,12 +265,19 @@ export async function setTelegramBotCommands(token: string) {
 
 export function buildStartReply(chatId: number | string) {
   return (
-    `🐱 <b>สวัสดีจาก PetFlow Bot</b>\n\n` +
+    `🐾 <b>สวัสดีจากบอทของร้าน</b>\n\n` +
     `Chat ID ของคุณ: <code>${chatId}</code>\n` +
     `👇 กดปุ่มเมนูด้านล่างได้เลย\n` +
     `➕ เพิ่มนัด · 📋 สรุปลูกค้า · ✅ ส่งยืนยันนัด\n` +
     `พิมพ์ <code>/help</code> ดูตัวอย่างคำสั่ง`
   );
+}
+
+/** แทนด้วยชื่อร้านตอน sendTelegram (ฟังก์ชันจัดข้อความเป็น sync อ่านตั้งค่าร้านไม่ได้) */
+const SHOP_NAME_TOKEN = "\u0000shop\u0000";
+
+function escapeHtml(s: string) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 export function formatBookingTelegram(
@@ -271,5 +287,5 @@ export function formatBookingTelegram(
   const lines = Object.entries(detail)
     .map(([k, v]) => `<b>${k}</b>: ${v}`)
     .join("\n");
-  return `🐱 <b>PetFlow</b>\n${title}\n\n${lines}`;
+  return `🐾 <b>${SHOP_NAME_TOKEN}</b>\n${title}\n\n${lines}`;
 }

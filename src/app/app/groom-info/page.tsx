@@ -1,10 +1,15 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { IntakeFlowBar } from "@/components/IntakeFlowBar";
+import { flowProgress } from "@/lib/intake-flow";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLiff } from "@/components/LiffProvider";
 import { useConfig } from "@/components/ConfigProvider";
-import { resolveGroomForm, type GroomField } from "@/lib/groom-form";
+import { type GroomField } from "@/lib/groom-form";
+import { intakeFields } from "@/lib/intake-rules";
+import { normalizeSpecies, petKindOf, petWords, speciesWords } from "@/lib/pet-kind";
+import { BATH_SHARED_WITH_STAY } from "@/lib/stay-form";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { BTN_PRIMARY, PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/ui";
@@ -15,10 +20,21 @@ type Answers = Record<string, string | string[]>;
 type CatForm = {
   id: string;
   catName: string;
+  /** คำถามของน้องตัวนี้ — หมากับแมวคนละชุด (หมาไม่ถามเรื่องทราย) */
+  fields: GroomField[];
+  /** อีโมจิของน้องตัวนี้ 🐶 / 🐱 */
+  emoji: string;
   answers: Answers;
   /** ติ๊ก "ไม่ทราบน้ำหนัก" */
   weightUnknown: boolean;
+  /** คำถามที่ข้ามให้ตัวนี้ (เช่น โรคประจำตัวที่ตอบไว้แล้วตอนสมัครสมาชิก) */
+  skip: string[];
+  /** เข้าพัก + อาบก่อนกลับ — ถามเรื่องอาบน้ำต่อท้ายในฟอร์มเดียว (key ขึ้นต้น "g:") */
+  bath: boolean;
 };
+
+/** คำถามอาบน้ำในฟอร์มรวม — ใส่ "g:" กัน key ชนกับฝั่งเข้าพัก */
+const BATH_PREFIX = "g:";
 
 function emptyAnswers(fields: GroomField[]): Answers {
   const a: Answers = {};
@@ -44,18 +60,20 @@ function loadAnswers(fields: GroomField[], info: Record<string, unknown> | null)
 
 function GroomInfoContent() {
   const params = useSearchParams();
-  const ids = (params.get("id") || "")
+  // ลิงก์จากนัด (id = bookingId) หรือจากหน้าข้อมูลลูกค้า (cats = ตัวน้อง ยังไม่ต้องมีนัด)
+  const catMode = !!params.get("cats");
+  const ids = (params.get("cats") || params.get("id") || "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
   const { profile } = useLiff();
   const { config } = useConfig();
 
-  // คำถามทั้งหมด — ตามที่ร้านตั้งไว้ในหลังบ้าน (ไม่ตั้ง = ค่าเริ่มต้นของระบบ)
-  const fields = useMemo(
-    () => resolveGroomForm(config.groomForm),
-    [config.groomForm]
-  );
+  // คำถามทั้งหมด — ก่อนอาบน้ำ: ตามที่ร้านตั้งไว้ในหลังบ้าน · ก่อนเข้าพัก: ชุดการกิน/การดูแล (stay-form)
+  // เลือกชุดตามชนิดของน้องแต่ละตัว (หมา/แมว) · ไม่รู้ชนิด = ชนิดที่ร้านรับ
+  const petKind = petKindOf(config);
+  const groomForm = config.groomForm;
+  const rules = config.intakeRules;
 
   const [forms, setForms] = useState<CatForm[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,36 +81,68 @@ function GroomInfoContent() {
   const [done, setDone] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [attempted, setAttempted] = useState(false);
+  // โหลดไม่ขึ้นเพราะยืนยัน LINE ไม่ผ่าน (401) — บอกลูกค้าให้เปิดลิงก์ใหม่ แทน "ไม่พบข้อมูลการนัด"
+  const [loadError, setLoadError] = useState("");
+  // นัดเข้าพัก / ลิงก์ kind=stay → ฟอร์มก่อนเข้าพัก (คนละชุดคำถามกับก่อนอาบน้ำ)
+  const kindParam = params.get("kind") || "";
+  const [isStay, setIsStay] = useState(kindParam === "stay");
 
   useEffect(() => {
     if (ids.length === 0) {
       setLoading(false);
       return;
     }
+    // รอเชื่อม LINE เสร็จก่อน (ได้คุกกี้เซสชันลูกค้า) — ยิงก่อนจะโดน 401 แล้วขึ้น "ไม่พบข้อมูลการนัด"
+    if (!profile?.lineUserId) return;
     Promise.all(
       ids.map((id) =>
-        fetch(`/api/bookings/groom-info?id=${id}`)
-          .then((r) => r.json())
+        fetch(
+          `/api/bookings/groom-info?${catMode ? "cat" : "id"}=${encodeURIComponent(id)}${kindParam ? `&kind=${kindParam}` : ""}`
+        )
+          .then(async (r) => (r.status === 401 ? { unauthorized: true } : r.json()))
           .catch(() => null)
       )
     )
       .then((results) => {
         const loaded: CatForm[] = [];
+        // เซิร์ฟเวอร์บอกว่าเป็นฟอร์มไหน (นัดเข้าพัก = ก่อนเข้าพัก) — ใช้ชุดคำถามนั้นทั้งหน้า
+        // ไม่มีตัวไหนโหลดขึ้น → คงฟอร์มตามลิงก์ไว้ (ไม่งั้นการ์ดก่อนเข้าพักจะโชว์หัว "ก่อนอาบน้ำ")
+        const anyFound = results.some((d) => d?.found);
+        const stay = anyFound ? results.some((d) => d?.kind === "stay") : kindParam === "stay";
+        setIsStay(stay);
+        if (!anyFound && results.some((d) => d?.unauthorized)) {
+          setLoadError("ระบบยังยืนยันบัญชี LINE ไม่สำเร็จ — ปิดหน้านี้แล้วเปิดลิงก์จากแชท LINE ใหม่อีกครั้งนะคะ");
+        }
         results.forEach((d, i) => {
           if (!d?.found) return;
           const info = d.info || null;
+          const species = normalizeSpecies(d.species);
+          const kind = species ?? petKind;
+          const own = intakeFields(stay ? "stay" : "groom", kind, { groomForm, intakeRules: rules });
+          // เข้าพัก + อาบก่อนกลับ — ถามเรื่องอาบน้ำต่อท้าย ข้อที่ซ้ำกับฟอร์มเข้าพักถามครั้งเดียว
+          const bath = stay && !!d.withBath;
+          const bathFs = bath
+            ? intakeFields("groom", kind, { groomForm, intakeRules: rules })
+                .filter((fd) => !(fd.key in BATH_SHARED_WITH_STAY) && !own.some((o) => o.key === fd.key))
+                .map((fd) => ({ ...fd, key: BATH_PREFIX + fd.key }))
+            : [];
+          const fs = [...own, ...bathFs];
           loaded.push({
             id: ids[i],
             catName: d.booking?.catName || "น้อง",
-            answers: loadAnswers(fields, info),
+            fields: fs,
+            emoji: speciesWords(species, config).emoji,
+            answers: loadAnswers(fs, info),
             weightUnknown: info?.weight === "unknown",
+            skip: d.knownMedical ? ["medical"] : [],
+            bath,
           });
         });
         setForms(loaded);
       })
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.toString(), fields]);
+  }, [params.toString(), groomForm, rules, petKind, profile?.lineUserId]);
 
   const setAnswer = (idx: number, key: string, value: string | string[]) =>
     setForms((prev) =>
@@ -120,14 +170,16 @@ function GroomInfoContent() {
 
   /** คำถามที่บังคับตอบแล้วยังว่างอยู่ */
   const missingKeys = (f: CatForm) =>
-    fields
+    f.fields
       .filter((fd) => {
-        if (!fd.required) return false;
-        if (fd.key === "weight" && f.weightUnknown) return false;
+        if (!fd.required || f.skip.includes(fd.key)) return false;
+        if (fd.hasUnknownToggle && f.weightUnknown) return false;
         const v = f.answers[fd.key];
         return Array.isArray(v) ? v.length === 0 : !String(v || "").trim();
       })
       .map((fd) => fd.key);
+
+  const nextStep = flowProgress(params)?.next;
 
   const submit = async () => {
     if (forms.length === 0) return;
@@ -140,23 +192,38 @@ function GroomInfoContent() {
     setSaveError("");
     try {
       const results = await Promise.all(
-        forms.map((f) =>
-          fetch("/api/bookings/groom-info", {
+        forms.map((f) => {
+          const own: Answers = {};
+          const bath: Answers = {};
+          for (const [k, v] of Object.entries(f.answers)) {
+            if (k.startsWith(BATH_PREFIX)) bath[k.slice(BATH_PREFIX.length)] = v;
+            else own[k] = v;
+          }
+          return fetch("/api/bookings/groom-info", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              bookingId: f.id,
+              ...(catMode ? { catId: f.id } : { bookingId: f.id }),
+              kind: isStay ? "stay" : "groom",
               lineUserId: profile?.lineUserId,
               info: {
-                ...f.answers,
-                weight: f.weightUnknown ? "unknown" : f.answers.weight || "",
+                ...own,
+                weight: f.weightUnknown ? "unknown" : own.weight || "",
               },
+              ...(f.bath
+                ? { groomInfo: { ...bath, weight: f.weightUnknown ? "unknown" : bath.weight || "" } }
+                : {}),
             }),
-          }).then((r) => r.ok)
-        )
+          }).then((r) => r.ok);
+        })
       );
       if (!results.every(Boolean)) {
         setSaveError("บันทึกไม่สำเร็จบางตัว — ลองใหม่อีกครั้ง หรือแจ้งพนักงานที่ร้านได้เลยค่ะ");
+        return;
+      }
+      // มาจากการ์ดรวมขอข้อมูล → ไปขั้นต่อไปเลย (สมุดวัคซีน / บัตร / กฎ) ไม่ปิดหน้า
+      if (nextStep) {
+        window.location.href = nextStep.href;
         return;
       }
       try {
@@ -208,7 +275,7 @@ function GroomInfoContent() {
           ขอบคุณที่แจ้งประวัติน้องนะคะ!
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-brown-soft">
-          เราจะดูแล{forms.map((f) => f.catName).join(", ") || "น้อง"}อย่างระมัดระวังที่สุด 🐱
+          เราจะดูแล{forms.map((f) => f.catName).join(", ") || "น้อง"}อย่างระมัดระวังที่สุด {petWords(config).emoji}
           <br />
           กลับไปที่แชท LINE ได้เลยค่ะ
         </p>
@@ -223,18 +290,22 @@ function GroomInfoContent() {
   return (
     <div className="px-4 pb-6 pt-5">
       <PageHeader
-        eyebrow="Before grooming"
-        title="ประวัติน้องก่อนอาบน้ำ"
+        eyebrow={isStay ? "Before your stay" : "Before grooming"}
+        title={isStay ? (forms.some((f) => f.bath) ? "ข้อมูลน้องก่อนเข้าพัก + อาบน้ำ" : "ข้อมูลน้องก่อนเข้าพัก") : "ประวัติน้องก่อนอาบน้ำ"}
         back="/app"
         backLabel="กลับหน้าแรก"
         showLang={false}
       />
+      <IntakeFlowBar mode="progress" />
 
       {loading ? (
         <LoadingScreen />
       ) : forms.length === 0 ? (
         <div className="rounded-petflow border border-petflow-line bg-card shadow-petflow-sm">
-          <EmptyState icon="calendar" title="ไม่พบข้อมูลการนัด" />
+          <EmptyState
+            icon="calendar"
+            title={loadError || (catMode ? "ไม่พบข้อมูลน้องในบัญชี LINE นี้" : "ไม่พบข้อมูลการนัด")}
+          />
         </div>
       ) : (
         <>
@@ -254,7 +325,7 @@ function GroomInfoContent() {
               >
                 <p className="flex items-center gap-2 text-sm font-extrabold text-petflow-chocolate">
                   <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-honey/25">
-                    <Icon name="paw" size={16} />
+                    <span aria-hidden className="text-base">{f.emoji}</span>
                   </span>
                   {f.catName}
                 </p>
@@ -264,11 +335,22 @@ function GroomInfoContent() {
                   </p>
                 )}
 
-                {fields.map((fd) => {
+                {f.fields.filter((fd) => !f.skip.includes(fd.key)).map((fd) => {
                   const isMissing = attempted && missing.includes(fd.key);
                   const value = f.answers[fd.key];
                   return (
                     <div key={fd.key}>
+                      {fd.key === f.fields.find((x) => x.key.startsWith(BATH_PREFIX))?.key && (
+                        <div className="mt-5 border-t border-petflow-line pt-4">
+                          <p className="flex items-center gap-1.5 text-sm font-extrabold text-petflow-chocolate">
+                            <Icon name="bath" size={16} />
+                            ก่อนอาบน้ำ (อาบก่อนกลับบ้าน)
+                          </p>
+                          <p className="mt-0.5 text-[11px] text-brown-faint">
+                            น้องอาบน้ำก่อนกลับด้วย ขอถามเพิ่มอีกนิด ข้อที่ตอบไปแล้วด้านบนไม่ถามซ้ำค่ะ
+                          </p>
+                        </div>
+                      )}
                       <p
                         className={`mt-3 mb-1.5 text-xs font-bold ${
                           isMissing ? "text-wait" : "text-brown-soft"
@@ -317,7 +399,7 @@ function GroomInfoContent() {
                             onChange={(e) => setAnswer(idx, fd.key, e.target.value)}
                             disabled={fd.hasUnknownToggle && f.weightUnknown}
                             placeholder={fd.placeholder}
-                            inputMode={fd.key === "weight" ? "decimal" : undefined}
+                            inputMode={fd.hasUnknownToggle ? "decimal" : undefined}
                             className={`${inputClass} disabled:bg-paper/50 disabled:text-brown-faint`}
                           />
                           {fd.hasUnknownToggle && (
@@ -373,9 +455,11 @@ function GroomInfoContent() {
             {!saving && <Icon name="send" size={18} />}
             {saving
               ? "กำลังบันทึก…"
-              : forms.length > 1
-                ? `ส่งข้อมูลให้ร้าน (${forms.length} ตัว)`
-                : "ส่งข้อมูลให้ร้าน"}
+              : nextStep
+                ? `บันทึก แล้วไปขั้นต่อไป: ${nextStep.label}`
+                : forms.length > 1
+                  ? `ส่งข้อมูลให้ร้าน (${forms.length} ตัว)`
+                  : "ส่งข้อมูลให้ร้าน"}
           </button>
         </>
       )}

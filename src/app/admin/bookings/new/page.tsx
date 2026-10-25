@@ -7,12 +7,21 @@ import type { RoomType } from "@/lib/business";
 import type { CustomerRecord } from "@/lib/customers-store";
 import { GROOM_PROGRAMS, resolveGroomPrograms, type GroomProgram } from "@/lib/grooming-prices";
 import { CustomerSendButtons } from "@/components/CustomerSendButtons";
-import { toast } from "@/components/Toast";
+import { CustomerIntakeCards } from "@/components/CustomerIntakeCards";
+import { savedPopup, toast } from "@/components/Toast";
 import { Icon } from "@/components/Icon";
 import { TransportPicker } from "@/components/TransportPicker";
+import { PastPricesHint } from "@/components/PastPrices";
+import { pastPriceList, type PastInvoice, type PastPrice } from "@/lib/special-price";
 import type { BookingTransport } from "@/lib/transport";
 import { Avatar, SearchField, Segmented } from "@/components/ui";
+import { useConfig, usePetWords } from "@/components/ConfigProvider";
+import { petWords } from "@/lib/pet-kind";
+import { isFeatureOn } from "@/lib/features";
+import { GroomClashNote, confirmClashes, useGroomClashes } from "@/components/GroomClashNote";
+import { PetProgramSelect } from "@/components/GroomProgramPicker";
 import { UNKNOWN_CAT, isUnknownCat } from "@/lib/unknown-cat";
+import { dayCarePrice } from "@/lib/day-care";
 import {
   typeAvailability,
   attachClosures,
@@ -25,7 +34,7 @@ import {
 
 type CustomerListItem = CustomerRecord & { upcomingAppointments?: number };
 
-const FREEBIE_OPTIONS = ["กล้องวงจรปิด (CCTV)", "น้ำพุแมว", "รับ-ส่ง", "ขนม/ทรีท"];
+const FREEBIE_OPTIONS = ["กล้องวงจรปิด (CCTV)", "รับ-ส่ง", "ขนม/ทรีท"];
 
 
 type GroomSlot = { time: string; capacity: number; booked: number; remaining: number; endTime?: string };
@@ -82,6 +91,7 @@ function ClientPetPicker({
   onRemoveCat: (name: string) => void;
   onSelectAll: (names: string[]) => void;
 }) {
+  const pw = usePetWords();
   const [q, setQ] = useState("");
   const [results, setResults] = useState<CustomerListItem[]>([]);
   const [recent, setRecent] = useState<CustomerListItem[]>([]);
@@ -168,7 +178,7 @@ function ClientPetPicker({
           </div>
         ) : (
           <>
-            <SearchField value={q} onChange={setQ} placeholder="ค้นหาชื่อ เบอร์ หรือชื่อน้องแมว" />
+            <SearchField value={q} onChange={setQ} placeholder={`ค้นหาชื่อ เบอร์ หรือชื่อน้อง${pw.th}`} />
 
             <p className="mb-1 mt-3 px-1 text-[11px] font-bold text-brown-soft">
               {q.trim() ? (loading ? "กำลังค้นหา…" : `ผลการค้นหา ${results.length} ราย`) : "ลูกค้าล่าสุด"}
@@ -239,7 +249,7 @@ function ClientPetPicker({
       <section>
         <div className="mb-2 flex items-end justify-between gap-2">
           <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">
-            Cats · น้องแมวที่มา *
+            {`${pw.enPlural[0].toUpperCase()}${pw.enPlural.slice(1)} · น้อง${pw.th}ที่มา *`}
           </p>
           {knownCats.length > 1 && (
             <button
@@ -382,6 +392,15 @@ export default function NewBookingPage() {
   const searchParams = useSearchParams();
   const presetDate = searchParams.get("date") || "";
   const [service, setService] = useState<"groom" | "room">("groom");
+  // ร้านที่ปิดอาบน้ำหรือรับฝากไว้ในตั้งค่า — เหลือแค่บริการที่เปิด
+  const { config: siteConfig } = useConfig();
+  const pw = petWords(siteConfig);
+  const groomOn = isFeatureOn(siteConfig, "grooming");
+  const hotelOn = isFeatureOn(siteConfig, "hotel");
+  useEffect(() => {
+    if (service === "groom" && !groomOn && hotelOn) setService("room");
+    if (service === "room" && !hotelOn && groomOn) setService("groom");
+  }, [service, groomOn, hotelOn]);
   const [saved, setSaved] = useState(false);
   const [lastBookings, setLastBookings] = useState<
     {
@@ -404,13 +423,34 @@ export default function NewBookingPage() {
   const [lineUserId, setLineUserId] = useState("");
   const [freebies, setFreebies] = useState<string[]>([]);
   const [groomProgram, setGroomProgram] = useState("");
+  // แต่ละตัวอาบคนละโปรแกรมได้ — ค่าที่แก้รายตัว (ตามชื่อน้อง) ทับโปรแกรมรวมด้านบน
+  const [petPrograms, setPetPrograms] = useState<Record<string, string>>({});
   const [appointmentDate, setAppointmentDate] = useState(presetDate);
+  /** Day Care = ฝากรายวัน ไม่ค้างคืน — วันออก = วันเข้า คิดครึ่งราคาห้อง */
+  const [dayCare, setDayCare] = useState(false);
   const [checkoutDate, setCheckoutDate] = useState(() => {
     if (!presetDate) return "";
     const d = new Date(`${presetDate}T12:00:00`);
     d.setDate(d.getDate() + 1);
     return d.toISOString().slice(0, 10);
   });
+
+  // ราคาที่ลูกค้าคนนี้เคยจ่าย — บอกราคาเดิมตอนรับจองได้เลย ไม่ต้องไปเปิดบิลเก่า
+  const [pastPrices, setPastPrices] = useState<PastPrice[]>([]);
+  useEffect(() => {
+    setPastPrices([]);
+    if (!customerId) return;
+    let cancelled = false;
+    fetch(`/api/invoices?customerId=${encodeURIComponent(customerId)}`)
+      .then((r) => (r.ok ? r.json() : { invoices: [] }))
+      .then((d: { invoices?: PastInvoice[] }) => {
+        if (!cancelled) setPastPrices(pastPriceList(d.invoices || [], customerId));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [customerId]);
 
   useEffect(() => {
     const d = searchParams.get("date");
@@ -443,7 +483,23 @@ export default function NewBookingPage() {
       });
   }, []);
 
-  // เวลานัดอาบน้ำ — ใช้เช็กว่าชนกับคิวที่มีอยู่ไหม
+  /** เข้าพัก + อาบน้ำด้วย — บันทึกแล้วสร้างนัดอาบน้ำให้อีกนัด (ตั้งต้น = วันออก) */
+  const [alsoGroom, setAlsoGroom] = useState(false);
+  const [addGroomDate, setAddGroomDate] = useState("");
+  const [addGroomTime, setAddGroomTime] = useState("12:30");
+  const [addGroomProgram, setAddGroomProgram] = useState("");
+  const [addPetPrograms, setAddPetPrograms] = useState<Record<string, string>>({});
+  const withGroom = service === "room" && alsoGroom && groomOn;
+  const clashes = useGroomClashes(withGroom ? addGroomDate : "", addGroomTime);
+  /** นัดอาบน้ำก่อนกลับที่เพิ่งบันทึกไปพร้อมการเข้าพัก — โชว์ในแผงจองสำเร็จ */
+  const [lastBath, setLastBath] = useState<{ date: string; time: string } | null>(null);
+  // วันอาบน้ำตั้งต้นเป็นวันออก (อาบก่อนกลับบ้าน) — เลื่อนวันเข้า/ออกแล้วตามไปด้วยจนกว่าจะแก้เอง
+  const [groomDateTouched, setGroomDateTouched] = useState(false);
+  /** วันออกที่ใช้คิดห้องว่าง — Day Care ใช้ห้องแค่วันเดียว */
+  const stayOut = dayCare ? appointmentDate : checkoutDate || appointmentDate;
+  useEffect(() => {
+    if (!groomDateTouched) setAddGroomDate(stayOut);
+  }, [stayOut, groomDateTouched]);
 
   const [roomId, setRoomId] = useState("");
   // ห้องจริงที่ปักหมุด (เลขห้อง) — เฉพาะห้องเดี่ยว ไม่ใช่ห้องเชื่อม (ห้องเชื่อมจัดให้อัตโนมัติเหมือนเดิม)
@@ -528,12 +584,12 @@ export default function NewBookingPage() {
         existing,
         r.id,
         appointmentDate,
-        checkoutDate || appointmentDate
+        stayOut
       );
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [service, appointmentDate, checkoutDate, rooms, existing]);
+  }, [service, appointmentDate, stayOut, rooms, existing]);
 
   // ห้องที่เลือกไว้เต็มไปแล้ว (เช่นเพิ่งเปลี่ยนวัน) → เด้งไปห้องที่ยังว่าง
   useEffect(() => {
@@ -556,10 +612,10 @@ export default function NewBookingPage() {
       existing,
       roomId,
       appointmentDate,
-      checkoutDate || appointmentDate
+      stayOut
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [service, roomId, appointmentDate, checkoutDate, rooms, existing]);
+  }, [service, roomId, appointmentDate, stayOut, rooms, existing]);
 
   // เปลี่ยนห้อง/วัน แล้วเลขที่เคยเลือกไว้ไม่ว่างแล้ว → เคลียร์ทิ้ง (ให้ระบบเดาเองแทน)
   useEffect(() => {
@@ -573,11 +629,11 @@ export default function NewBookingPage() {
   const free2 = (id: string) => (availability[id]?.free ?? 0) - (id === roomId ? 1 : 0);
   const freeUnits2 = useMemo(() => {
     if (service !== "room" || !room2Id || !appointmentDate || compositionOf(room2Id, boardRooms)) return [];
-    return freeUnitsForRange(boardRooms, existing, room2Id, appointmentDate, checkoutDate || appointmentDate).filter(
+    return freeUnitsForRange(boardRooms, existing, room2Id, appointmentDate, stayOut).filter(
       (u) => !(room2Id === roomId && u === roomUnit)
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [service, room2Id, roomId, roomUnit, appointmentDate, checkoutDate, rooms, existing]);
+  }, [service, room2Id, roomId, roomUnit, appointmentDate, stayOut, rooms, existing]);
   useEffect(() => {
     if (room2Unit != null && !freeUnits2.includes(room2Unit)) setRoom2Unit(null);
   }, [freeUnits2, room2Unit]);
@@ -619,7 +675,12 @@ export default function NewBookingPage() {
     const fd = new FormData(form);
     const cats = catNames.length > 0 ? catNames : catInput.trim() ? [catInput.trim()] : [];
     if (cats.length === 0) {
-      toast("กรอกชื่อน้องแมวอย่างน้อย 1 ชื่อ (หรือกด “ยังไม่ทราบชื่อ”)", "error");
+      toast(`กรอกชื่อน้อง${pw.th}อย่างน้อย 1 ชื่อ (หรือกด “ยังไม่ทราบชื่อ”)`, "error");
+      return;
+    }
+    if (withGroom && !confirmClashes(clashes)) return;
+    if (withGroom && (!addGroomDate || !addGroomTime)) {
+      toast("ใส่วันและเวลาอาบน้ำด้วยนะ (หรือปิด “อาบน้ำด้วย”)", "error");
       return;
     }
 
@@ -643,8 +704,12 @@ export default function NewBookingPage() {
           ? Number(fd.get("roomUnit")) || undefined
           : undefined,
       checkin: service === "room" ? String(fd.get("checkin") || "") : undefined,
-      checkout: service === "room" ? String(fd.get("checkout") || "") : undefined,
-      groomProgram: service === "groom" ? groomProgram || undefined : undefined,
+      checkout:
+        service !== "room"
+          ? undefined
+          : dayCare
+            ? String(fd.get("checkin") || "")
+            : String(fd.get("checkout") || ""),
       notes,
       transport: transport.pickup || transport.dropoff ? transport : undefined,
     };
@@ -695,6 +760,9 @@ export default function NewBookingPage() {
               ? { roomUnit: unit1 ?? undefined }
               : {}),
           time,
+          ...(service === "groom"
+            ? { groomProgram: (petPrograms[cat] ?? groomProgram) || undefined }
+            : {}),
           catName: cat,
         }),
       });
@@ -714,9 +782,54 @@ export default function NewBookingPage() {
       }
     }
 
+    // อาบน้ำด้วย: นัดอาบน้ำของน้องทุกตัวที่จองห้องได้ — ใช้ลูกค้าที่เพิ่งสร้าง/ผูกจากนัดแรก
+    // (ไม่ใส่รถรับ-ส่ง/ของแถม/โน้ตซ้ำ — อยู่กับนัดเข้าพักแล้ว)
+    if (withGroom && created.length > 0) {
+      for (const stay of [...created]) {
+        const res = await fetch("/api/bookings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            customerId: created[0].customerId || customerId || undefined,
+            customerName: customerNameValue,
+            lineUserId: lineUserId || undefined,
+            service: "groom",
+            date: addGroomDate,
+            time: addGroomTime,
+            groomProgram: (addPetPrograms[stay.catName] ?? addGroomProgram) || undefined,
+            catName: stay.catName,
+          }),
+        });
+        const data = res.ok ? await res.json().catch(() => ({})) : null;
+        if (data?.booking?.id) {
+          created.push({
+            id: data.booking.id,
+            customerId: data.customerId,
+            lineUserId: lineUserId || undefined,
+            service: "groom",
+            catName: stay.catName,
+          });
+        } else {
+          failed += 1;
+        }
+      }
+    }
+
     if (created.length > 0) {
+      // ปุ่มบันทึกอยู่ล่างสุด แผง "จองแล้ว" อยู่บนสุด → เด้งป๊อปอัปกลางจอ แล้วเลื่อนขึ้นไปหาแผงทำต่อ
+      const savedCats = Array.from(new Set(created.map((x) => x.catName)));
+      savedPopup(
+        failed > 0 ? `บันทึกแล้ว ${savedCats.length} ตัว` : "บันทึกการจองแล้ว",
+        [savedCats.join(", "), "ออกบิล / ส่ง LINE ต่อได้ที่ด้านบน"]
+      );
+      window.scrollTo({ top: 0, behavior: "smooth" });
       setSaved(true);
       setLastBookings(created);
+      setLastBath(
+        created.some((x) => x.service === "groom") && created.some((x) => x.service === "room")
+          ? { date: addGroomDate, time: addGroomTime }
+          : null
+      );
       setCustomerId("");
       setPickedCustomer(null);
       setCustomerName("");
@@ -725,8 +838,15 @@ export default function NewBookingPage() {
       setLineUserId("");
       setFreebies([]);
       setTransport({});
+      setAlsoGroom(false);
+      setGroomDateTouched(false);
+      setAddGroomProgram("");
+      setAddPetPrograms({});
+      // ลูกค้า Day Care มีน้อย — จองเสร็จกลับไปที่ "ค้างคืน" เสมอ
+      setDayCare(false);
       setRoomUnit(null);
       setGroomProgram("");
+      setPetPrograms({});
       setAvailTick((n) => n + 1);
       closeRoom2();
       form.reset();
@@ -757,45 +877,67 @@ export default function NewBookingPage() {
               <Icon name="check" size={22} strokeWidth={2.4} />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-extrabold text-ok">จองแล้ว {lastBookings.length} ตัว</p>
+              {/* เข้าพัก + อาบน้ำด้วย = น้องตัวเดียวมีสองนัด → นับตัว ไม่ใช่นับนัด */}
+              <p className="text-sm font-extrabold text-ok">
+                จองแล้ว {new Set(lastBookings.map((b) => b.catName)).size} ตัว
+                {lastBath ? " · เข้าพัก + อาบน้ำ" : ""}
+              </p>
               <p className="truncate text-xs text-brown-soft">
-                {lastBookings.map((b) => b.catName).join(", ")}
+                {Array.from(new Set(lastBookings.map((b) => b.catName))).join(", ")}
               </p>
             </div>
             <button
               type="button"
-              onClick={() => setLastBookings([])}
+              onClick={() => {
+                setLastBookings([]);
+                setLastBath(null);
+              }}
               className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full bg-card px-3.5 text-xs font-bold text-brown shadow-petflow-sm"
             >
               <Icon name="plus" size={16} />
               จองอีกคน
             </button>
           </div>
-          {lastBookings.map((b) => (
-            <div key={b.id} className="rounded-petflow-sm border border-sage/30 bg-card p-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="flex min-w-0 items-center gap-1.5 text-sm font-extrabold text-petflow-chocolate">
-                  <Icon name="paw" size={16} className="text-brown-soft" />
-                  <span className="truncate">{b.catName}</span>
-                </p>
-                <Link
-                  href={`/admin/billing?bookingId=${b.id}`}
-                  className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full bg-petflow-chocolate px-3.5 text-xs font-extrabold text-card"
-                >
-                  <Icon name="receipt" size={16} />
-                  ออกบิลเลย
-                </Link>
+          {/* จองหลายตัวในครั้งเดียว = บ้านเดียวกัน → บิลเดียว ส่ง LINE ชุดเดียว (การ์ดรวมชื่อทุกตัว)
+              เข้าพัก + อาบน้ำก่อนกลับ = นัดเดียวกัน: การ์ดเดียว บิลเดียว (คิวอาบน้ำกันเวลาช่างไว้ข้างหลัง) */}
+          {(() => {
+            const stays = lastBookings.filter((x) => x.service === "room");
+            const list = stays.length > 0 ? stays : lastBookings;
+            const b = list[0];
+            const many = list.length > 1;
+            return (
+              <div className="rounded-petflow-sm border border-sage/30 bg-card p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="flex min-w-0 items-center gap-1.5 text-sm font-extrabold text-petflow-chocolate">
+                    <Icon name="paw" size={16} className="shrink-0 text-brown-soft" />
+                    <span className="truncate">{many ? "ทั้งบ้าน" : b.catName}</span>
+                  </p>
+                  <Link
+                    href={`/admin/billing?bookingId=${b.id}`}
+                    className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full bg-petflow-chocolate px-3.5 text-xs font-extrabold text-card"
+                  >
+                    <Icon name="receipt" size={16} />
+                    {many || lastBath ? "ออกบิลรวม" : "ออกบิลเลย"}
+                  </Link>
+                </div>
+                {lastBath && (
+                  <p className="mt-1.5 flex items-center gap-1.5 text-xs font-bold text-brown-soft">
+                    <Icon name="bath" size={14} />
+                    อาบน้ำก่อนกลับ {lastBath.date} · {lastBath.time} น. (รวมในบิลเดียวกัน)
+                  </p>
+                )}
+                <div className="mt-2 border-t border-petflow-line pt-2">
+                  <CustomerSendButtons
+                    bookingId={b.id}
+                    customerId={b.customerId}
+                    lineUserId={b.lineUserId}
+                    service={b.service}
+                    groomBookingIds={many ? list.map((x) => x.id) : undefined}
+                  />
+                </div>
               </div>
-              <div className="mt-2 border-t border-petflow-line pt-2">
-                <CustomerSendButtons
-                  bookingId={b.id}
-                  customerId={b.customerId}
-                  lineUserId={b.lineUserId}
-                  service={b.service}
-                />
-              </div>
-            </div>
-          ))}
+            );
+          })()}
         </div>
       )}
       {appointmentDate && (
@@ -805,15 +947,20 @@ export default function NewBookingPage() {
         </p>
       )}
 
-      <Segmented
-        value={service}
-        onChange={setService}
-        className="mb-4"
-        options={[
-          { id: "groom", label: "อาบน้ำ", icon: "bath" },
-          { id: "room", label: "ห้องพัก", icon: "bed" },
-        ]}
-      />
+      {groomOn && hotelOn && (
+        <Segmented
+          value={service}
+          onChange={(v) => {
+            setService(v);
+            setDayCare(false);
+          }}
+          className="mb-4"
+          options={[
+            { id: "groom", label: "อาบน้ำ", icon: "bath" },
+            { id: "room", label: "ห้องพัก", icon: "bed" },
+          ]}
+        />
+      )}
 
       <form onSubmit={submit} className="space-y-4 rounded-petflow bg-card p-4 shadow-petflow-sm sm:p-5">
         <ClientPetPicker
@@ -857,6 +1004,16 @@ export default function NewBookingPage() {
           }
         />
 
+        <PastPricesHint prices={pastPrices} />
+
+        {/* ถามข้อมูลก่อนรับน้องได้เลยตั้งแต่ตอนเลือกลูกค้า — ยังไม่ต้องกดบันทึกนัด */}
+        {pickedCustomer && <CustomerIntakeCards
+            key={pickedCustomer.id}
+            customer={pickedCustomer}
+            onDone={() => {}}
+            bookingKind={service === "groom" ? "groom" : withGroom ? "room+groom" : "room"}
+          />}
+
         {lineUserId && (
           <p className="flex items-center gap-2 rounded-petflow-sm bg-sage/15 px-3 py-2 text-[11px] font-bold text-ok">
             <Icon name="check" size={14} strokeWidth={2.4} />
@@ -876,7 +1033,7 @@ export default function NewBookingPage() {
             />
             <div>
               <p className="text-xs font-bold text-brown-soft">
-                {groomMode === "together" ? "เวลาเริ่ม (คิดเวลาตามจำนวนแมว)" : "รอบเวลา (1 แมว = 1 คิว)"}
+                {groomMode === "together" ? `เวลาเริ่ม (คิดเวลาตามจำนวนน้อง)` : `รอบเวลา (น้อง 1 ตัว = 1 คิว)`}
               </p>
               <p className="mb-1.5 text-[10px] text-brown-faint">
                 {groomMode === "together"
@@ -936,7 +1093,7 @@ export default function NewBookingPage() {
                   {bookingCats.map((cat, i) => (
                     <li
                       key={`${cat}-${i}`}
-                      className="flex items-center gap-2 rounded-petflow-sm bg-paper px-3 py-1.5"
+                      className="flex flex-wrap items-center gap-2 rounded-petflow-sm bg-paper px-3 py-1.5"
                     >
                       <span className="min-w-0 flex-1 truncate text-sm font-bold text-brown">{cat}</span>
                       <input
@@ -953,6 +1110,15 @@ export default function NewBookingPage() {
                         }
                         className="min-h-[40px] w-[7.5rem] shrink-0 rounded-petflow-sm border border-petflow-line bg-card px-2 py-1.5 text-sm text-brown"
                       />
+                      {bookingCats.length > 1 && (
+                        <PetProgramSelect
+                          cat={cat}
+                          value={petPrograms[cat] ?? groomProgram}
+                          onChange={(v) => setPetPrograms((p) => ({ ...p, [cat]: v }))}
+                          programs={groomPrograms}
+                          emptyLabel="ยังไม่เลือก — ถามหน้างาน"
+                        />
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -971,10 +1137,13 @@ export default function NewBookingPage() {
               )}
             </div>
             <label className="block text-xs font-bold text-brown-soft">
-              โปรแกรมอาบน้ำ (ไม่บังคับ)
+              {bookingCats.length > 1 ? "โปรแกรมอาบน้ำ — เลือกให้ทุกตัว (ไม่บังคับ)" : "โปรแกรมอาบน้ำ (ไม่บังคับ)"}
               <select
                 value={groomProgram}
-                onChange={(e) => setGroomProgram(e.target.value)}
+                onChange={(e) => {
+                  setGroomProgram(e.target.value);
+                  setPetPrograms({});
+                }}
                 className="mt-1 min-h-[44px] w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm text-brown"
               >
                 <option value="">ยังไม่เลือก — ถามหน้างาน</option>
@@ -985,16 +1154,29 @@ export default function NewBookingPage() {
                 ))}
               </select>
               <p className="mt-1 text-[10px] text-brown-faint">
+                {bookingCats.length > 1
+                  ? "ตัวไหนอาบไม่เหมือนกัน เปลี่ยนได้ที่ช่องโปรแกรมใต้ชื่อน้องแต่ละตัวด้านบน · "
+                  : ""}
                 เลือกไว้แล้วจะแจ้งในการ์ดยืนยันนัดให้ลูกค้าเห็นเลย และตอนออกบิลจะเลือกโปรแกรมนี้ไว้ให้อัตโนมัติ
               </p>
             </label>
           </>
         ) : (
           <>
+            <Segmented
+              value={dayCare ? "day" : "stay"}
+              onChange={(v) => setDayCare(v === "day")}
+              options={[
+                { id: "stay", label: "ค้างคืน", icon: "bed" },
+                { id: "day", label: "Day Care", icon: "clock" },
+              ]}
+            />
             <div>
               <p className="text-xs font-bold text-brown-soft">ห้อง</p>
               <p className="mb-1.5 text-[10px] text-brown-faint">
-                ตัวเลขคือห้องที่ว่างจริงตลอดช่วงที่เลือก · ห้องเต็มจะกดไม่ได้
+                {dayCare
+                  ? "ฝากรายวัน ไม่ค้างคืน · คิดครึ่งราคาห้อง · ตัวเลขคือห้องที่ว่างวันนั้น"
+                  : "ตัวเลขคือห้องที่ว่างจริงตลอดช่วงที่เลือก · ห้องเต็มจะกดไม่ได้"}
               </p>
               <input type="hidden" name="room" value={roomId} />
               <div className="space-y-1.5">
@@ -1027,7 +1209,7 @@ export default function NewBookingPage() {
                           </span>
                         </span>
                         <span className="block text-[10px] text-brown-soft">
-                          {r.price} บาท/คืน
+                          {dayCare ? `${dayCarePrice(r.price)} บาท/วัน` : `${r.price} บาท/คืน`}
                           {full && a
                             ? ` · เต็มวันที่ ${a.tightestDate}`
                             : combo
@@ -1126,7 +1308,7 @@ export default function NewBookingPage() {
                       const f = free2(r.id);
                       return (
                         <option key={r.id} value={r.id} disabled={tracked && f <= 0}>
-                          {r.name} · {r.price} บาท/คืน{tracked ? (f > 0 ? ` · ว่าง ${f}` : " · เต็ม") : ""}
+                          {r.name} · {dayCare ? `${dayCarePrice(r.price)} บาท/วัน` : `${r.price} บาท/คืน`}{tracked ? (f > 0 ? ` · ว่าง ${f}` : " · เต็ม") : ""}
                         </option>
                       );
                     })}
@@ -1180,21 +1362,144 @@ export default function NewBookingPage() {
               )}
             </div>
             <Field
-              label="เช็คอิน"
+              label={dayCare ? "วันที่ฝาก" : "เช็คอิน"}
               name="checkin"
               type="date"
               required
               value={appointmentDate}
               onChange={setAppointmentDate}
             />
-            <Field
-              label="เช็คเอาท์"
-              name="checkout"
-              type="date"
-              required
-              value={checkoutDate}
-              onChange={setCheckoutDate}
-            />
+            {!dayCare && (
+              <Field
+                label="เช็คเอาท์"
+                name="checkout"
+                type="date"
+                required
+                value={checkoutDate}
+                onChange={setCheckoutDate}
+              />
+            )}
+
+            {/* เข้าพัก + อาบน้ำ ลงทีเดียว — ระบบสร้างนัดอาบน้ำแยกอีกนัดให้ (ขอข้อมูล/แจ้งเตือนของอาบน้ำแยกกัน) */}
+            {groomOn && (
+            <div className="rounded-petflow-sm border border-petflow-line bg-paper p-3">
+              <button
+                type="button"
+                onClick={() => setAlsoGroom((v) => !v)}
+                aria-pressed={alsoGroom}
+                className="flex w-full items-center justify-between gap-2 text-left"
+              >
+                <span className="flex items-center gap-1.5 text-xs font-extrabold text-petflow-chocolate">
+                  <Icon name="bath" size={15} />
+                  อาบน้ำด้วย
+                </span>
+                <span
+                  className={`flex h-6 w-11 items-center rounded-full p-0.5 transition ${
+                    alsoGroom ? "justify-end bg-petflow-chocolate" : "justify-start bg-petflow-line"
+                  }`}
+                >
+                  <span className="h-5 w-5 rounded-full bg-card shadow" />
+                </span>
+              </button>
+              {alsoGroom && (
+                <div className="mt-3 space-y-3">
+                  <div>
+                    <Field
+                      label="วันอาบน้ำ"
+                      name="addGroomDate"
+                      type="date"
+                      required
+                      value={addGroomDate}
+                      onChange={(v) => {
+                        setGroomDateTouched(true);
+                        setAddGroomDate(v);
+                      }}
+                    />
+                    {appointmentDate && checkoutDate && (
+                      <div className="mt-1.5 flex gap-2">
+                        {[
+                          { d: appointmentDate, label: "วันเข้า" },
+                          { d: checkoutDate, label: "วันออก" },
+                        ].map((o) => (
+                          <button
+                            key={o.label}
+                            type="button"
+                            onClick={() => {
+                              setGroomDateTouched(true);
+                              setAddGroomDate(o.d);
+                            }}
+                            className={`min-h-[32px] rounded-full px-3 text-[11px] font-bold ${
+                              addGroomDate === o.d
+                                ? "bg-petflow-chocolate text-card"
+                                : "bg-card text-brown-soft ring-1 ring-petflow-line"
+                            }`}
+                          >
+                            {o.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <label className="block text-xs font-bold text-brown-soft">
+                    เวลาอาบน้ำ
+                    <input
+                      type="time"
+                      list="groom-slots-stay"
+                      value={addGroomTime}
+                      onChange={(e) => setAddGroomTime(e.target.value)}
+                      className="mt-1 min-h-[44px] w-full rounded-petflow-sm border border-petflow-line bg-card px-3 py-2.5 text-sm text-brown"
+                    />
+                    <datalist id="groom-slots-stay">
+                      {groomSlots.map((t) => (
+                        <option key={t} value={t} />
+                      ))}
+                    </datalist>
+                    <GroomClashNote clashes={clashes} />
+                  </label>
+                  <label className="block text-xs font-bold text-brown-soft">
+                    {bookingCats.length > 1 ? "โปรแกรมอาบน้ำ — ทุกตัว (ถ้าเลือกแล้ว)" : "โปรแกรมอาบน้ำ (ถ้าเลือกแล้ว)"}
+                    <select
+                      value={addGroomProgram}
+                      onChange={(e) => {
+                        setAddGroomProgram(e.target.value);
+                        setAddPetPrograms({});
+                      }}
+                      className="mt-1 min-h-[44px] w-full rounded-petflow-sm border border-petflow-line bg-card px-3 py-2.5 text-sm text-brown"
+                    >
+                      <option value="">— ยังไม่ระบุ (เลือกตอนคิดเงิน) —</option>
+                      {groomPrograms.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {bookingCats.length > 1 && (
+                    <ul className="space-y-1.5">
+                      {bookingCats.map((cat, i) => (
+                        <li
+                          key={`${cat}-${i}`}
+                          className="flex flex-wrap items-center gap-2 rounded-petflow-sm bg-card px-3 py-1.5"
+                        >
+                          <span className="min-w-0 flex-1 truncate text-sm font-bold text-brown">{cat}</span>
+                          <PetProgramSelect
+                            cat={cat}
+                            value={addPetPrograms[cat] ?? addGroomProgram}
+                            onChange={(v) => setAddPetPrograms((p) => ({ ...p, [cat]: v }))}
+                            programs={groomPrograms}
+                            emptyLabel="ยังไม่ระบุ (เลือกตอนคิดเงิน)"
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <p className="text-[10px] text-brown-faint">
+                    รวมเป็นนัดเดียวกับการเข้าพัก บิลใบเดียว · ระบบจองคิวอาบน้ำวันนั้นให้น้องทุกตัวที่เลือก (กันเวลาช่าง) ไม่ส่งยืนยันนัดอาบน้ำแยก
+                  </p>
+                </div>
+              )}
+            </div>
+            )}
           </>
         )}
 

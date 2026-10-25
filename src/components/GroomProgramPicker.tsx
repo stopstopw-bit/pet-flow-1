@@ -68,3 +68,37 @@ export function GroomProgramPicker({
     </div>
   );
 }
+
+/**
+ * ช่องเลือกโปรแกรมอาบน้ำของน้องตัวเดียว — ใช้ใต้ชื่อน้องแต่ละตัวตอนจองหลายตัวพร้อมกัน
+ * (แต่ละตัวอาบคนละโปรแกรมได้ ค่าตั้งต้นตามโปรแกรมที่เลือกให้ทุกตัว)
+ */
+export function PetProgramSelect({
+  cat,
+  value,
+  onChange,
+  programs,
+  emptyLabel,
+}: {
+  cat: string;
+  value: string;
+  onChange: (id: string) => void;
+  programs: GroomProgram[];
+  emptyLabel: string;
+}) {
+  return (
+    <select
+      aria-label={`โปรแกรมอาบน้ำของ ${cat}`}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="min-h-[40px] w-full basis-full rounded-petflow-sm border border-petflow-line bg-card px-2 py-1.5 text-sm text-brown"
+    >
+      <option value="">{emptyLabel}</option>
+      {programs.map((p) => (
+        <option key={p.id} value={p.id}>
+          {p.name}
+        </option>
+      ))}
+    </select>
+  );
+}

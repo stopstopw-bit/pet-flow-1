@@ -5,6 +5,7 @@ import {
 } from "@/lib/customers-store";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { withResolvedTenant } from "@/lib/tenant-context";
+import { requireCustomerSession } from "@/lib/customer-session";
 
 /** ดูข้อมูลลูกค้าก่อนผูก LINE (จากลิงก์เชิญ) */
 export async function GET(req: NextRequest) {
@@ -33,7 +34,8 @@ export async function POST(req: NextRequest) {
 async function handlePost(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const customerId = String(body.customerId || "").trim();
-  const lineUserId = String(body.lineUserId || "").trim();
+  // ผูกได้เฉพาะ LINE ของตัวเอง (คุกกี้ที่ตรวจกับ LINE แล้ว) ห้ามเชื่อ body.lineUserId
+  const lineUserId = (await requireCustomerSession(req))?.lineUserId || "";
   const displayName = String(body.displayName || "").trim();
 
   if (!customerId || !lineUserId) {

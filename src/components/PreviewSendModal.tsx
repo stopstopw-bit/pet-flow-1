@@ -7,12 +7,15 @@ import { Icon } from "@/components/Icon";
 export function PreviewSendModal({
   messages,
   skipped,
+  recipients,
   sending,
   onConfirm,
   onCancel,
 }: {
   messages: Record<string, unknown>[];
   skipped?: string[];
+  /** ส่งแบบกลุ่ม — ชื่อผู้รับที่เลือกไว้ แสดงใต้การ์ด */
+  recipients?: string[];
   sending: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -37,6 +40,16 @@ export function PreviewSendModal({
 
         <FlexPreviewStack messages={messages} />
 
+        {recipients && (
+          <div className="mt-3 rounded-petflow-sm bg-card px-3 py-2 text-[11px] shadow-petflow-sm">
+            <p className="flex items-center gap-1.5 font-extrabold text-petflow-chocolate">
+              <Icon name="users" size={14} />
+              ส่งหา {recipients.length} คน
+            </p>
+            <p className="mt-0.5 line-clamp-3 text-brown-soft">{recipients.join(", ")}</p>
+          </div>
+        )}
+
         {skipped && skipped.length > 0 && (
           <p className="mt-3 flex items-start gap-2 rounded-petflow-sm bg-wait/10 px-3 py-2 text-[11px] font-bold text-wait">
             <Icon name="alert" size={16} />
@@ -60,7 +73,7 @@ export function PreviewSendModal({
             className="flex min-h-[44px] flex-[1.4] items-center justify-center gap-2 rounded-petflow-sm bg-[#06C755] py-3 text-sm font-extrabold text-white disabled:opacity-50"
           >
             {!sending && <Icon name="send" size={16} />}
-            {sending ? "กำลังส่ง…" : "ยืนยันส่งจริง"}
+            {sending ? "กำลังส่ง…" : recipients ? `ยืนยันส่ง ${recipients.length} คน` : "ยืนยันส่งจริง"}
           </button>
         </div>
       </div>

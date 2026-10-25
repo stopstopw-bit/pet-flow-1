@@ -1,5 +1,4 @@
-import { uploadDataUrlToStorage } from "./supabase/storage";
-import { requireTenantId } from "./tenant-context";
+import { uploadPrivateDataUrl } from "./supabase/storage";
 import type { DepositStatus } from "./booking-deposit";
 
 /** สลิปใหญ่สุดที่รับ (ความยาว data URL) — ฝั่งแอปย่อรูปเป็น JPEG ~1400px ก่อนส่งอยู่แล้ว */
@@ -14,7 +13,7 @@ export async function saveDepositSlip(dataUrl: string): Promise<string | undefin
   if (!/^data:image\/(png|jpe?g|webp|heic|heif|gif);base64,/i.test(v)) return undefined;
   if (v.length > MAX_SLIP_DATA_URL) return undefined;
   const rand = Math.random().toString(36).slice(2, 8);
-  return uploadDataUrlToStorage(`deposit-slips/${requireTenantId()}/${Date.now()}-${rand}`, v);
+  return uploadPrivateDataUrl(`deposit-slips/${Date.now()}-${rand}`, v);
 }
 
 /** บรรทัด "มัดจำ" ในข้อความ Telegram แจ้งร้าน — ไม่มียอดมัดจำ = ไม่ใส่บรรทัดนี้ */
