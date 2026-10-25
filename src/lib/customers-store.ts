@@ -2505,6 +2505,23 @@ export async function countCustomerVisits(customerId: string) {
   return countVisitDays(await getCustomerHistory(customerId));
 }
 
+/**
+ * จำนวนครั้งที่มา ไม่นับนัดที่กำลังออกบิลอยู่ — ใช้ตัดสิน "ลูกค้าใหม่" ตอนออกบิล
+ * (น้องรอกลับบ้านแล้ว นัดเป็น ready → ถ้านับด้วย ลูกค้าที่มาครั้งแรกจะกลายเป็นลูกค้าเก่าทันที)
+ */
+export async function countCustomerVisitsExcluding(
+  customerId: string,
+  excludeBookingIds: string[] = []
+) {
+  const history = await getCustomerHistory(customerId);
+  if (!excludeBookingIds.length) return countVisitDays(history);
+  const skip = new Set(excludeBookingIds);
+  return countVisitDays({
+    services: history.services,
+    bookings: history.bookings.filter((b) => !skip.has(b.id)),
+  });
+}
+
 /** ยอดสะสมรวม (บิลที่ชำระแล้ว) — ใช้เป็นเงื่อนไขเลื่อนระดับ VIP */
 export async function customerTotalSpend(customerId: string) {
   const { listInvoices } = await import("./invoices-store");
