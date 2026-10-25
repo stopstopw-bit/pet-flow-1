@@ -1306,6 +1306,19 @@ export async function updateCat(
   const cat = c.cats.find((x) => x.id === catId);
   if (!cat) return null;
 
+  // เปลี่ยนชื่อน้อง — นัด/บิล/ประวัติผูกกับชื่อ ต้องตามไปแก้ทุกที่ (ทำหลังบันทึกด้านล่าง)
+  // ชื่อซ้ำกับน้องอีกตัวในบ้าน → ไม่เปลี่ยนชื่อ ไม่งั้นประวัติสองตัวจะปนกันแยกไม่ออก
+  const oldName = cat.name;
+  if (patch.name !== undefined) {
+    const nextName = cleanPetName(patch.name);
+    const clash = c.cats.some((x) => x.id !== catId && catKey(x.name) === catKey(nextName));
+    if (!nextName || clash) {
+      const { name: _drop, ...restPatch } = patch;
+      void _drop;
+      patch = restPatch;
+    }
+  }
+
   // เก็บรูปเป็นไฟล์ใน Supabase Storage แทนยัด base64 ลงฐานข้อมูลตรงๆ (ประหยัดพื้นที่ + bandwidth)
   if (patch.photoDataUrl?.startsWith("data:")) {
     patch = {
@@ -1422,6 +1435,10 @@ export async function updateCat(
     }
   } else {
     memCustomers.set(customerId, c);
+  }
+  if (catKey(cat.name) !== catKey(oldName)) {
+    const { renameCatEverywhere } = await import("./cat-rename");
+    await renameCatEverywhere(c, oldName, cat.name);
   }
   return c;
 }
@@ -2291,6 +2308,45 @@ export async function deleteServiceRecord(id: string) {
 }
 
 /** ทุกรายการ ทุกลูกค้า — ใช้สำหรับสำรองข้อมูลทั้งร้าน */
+/** เปลี่ยนชื่อน้องในประวัติบริการของลูกค้า (ดู cat-rename.ts) — คืนจำนวนที่แก้ */
+export async function renameCatInServiceRecords(
+  customerId: string,
+  oldName: string,
+  newName: string
+) {
+  const { replaceCatInList } = await import("./cat-rename");
+  const sb = getSupabase();
+  const tenantId = sb ? requireTenantId() : "";
+  const rows: { id: string; catName: string }[] = sb
+    ? (
+        ((
+          await sb
+            .from("service_records")
+            .select("id, cat_name")
+            .eq("customer_id", customerId)
+            .eq("tenant_id", tenantId)
+        ).data as { id: string; cat_name: string }[] | null) || []
+      ).map((r) => ({ id: r.id, catName: r.cat_name }))
+    : memServices.filter((r) => r.customerId === customerId);
+  let n = 0;
+  for (const r of rows) {
+    const catName = replaceCatInList(r.catName || "", oldName, newName);
+    if (catName === r.catName) continue;
+    if (sb)
+      await sb
+        .from("service_records")
+        .update({ cat_name: catName })
+        .eq("id", r.id)
+        .eq("tenant_id", tenantId);
+    else {
+      const rec = memServices.find((x) => x.id === r.id);
+      if (rec) rec.catName = catName;
+    }
+    n++;
+  }
+  return n;
+}
+
 export async function listAllServiceRecords(): Promise<ServiceRecord[]> {
   const sb = getSupabase();
   if (sb) {

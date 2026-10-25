@@ -3203,7 +3203,18 @@ export default function CustomersPage() {
         patch,
       }),
     });
-    if (res.ok) toast(`✅ บันทึกข้อมูลน้องแล้ว`, "success");
+    const oldName = selected.customer.cats.find((c) => c.id === catId)?.name;
+    if (res.ok) {
+      toast(
+        patch.name !== undefined && oldName && patch.name.trim() !== oldName
+          ? "✅ เปลี่ยนชื่อแล้ว · นัดและบิลเปลี่ยนตามให้ด้วย"
+          : "✅ บันทึกข้อมูลน้องแล้ว",
+        "success"
+      );
+    } else {
+      const j = await res.json().catch(() => ({}));
+      toast(j.error || "บันทึกไม่สำเร็จ", "error");
+    }
     open(selected.customer.id);
   };
 

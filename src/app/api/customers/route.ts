@@ -221,6 +221,19 @@ async function handlePatch(req: NextRequest) {
       if (sp) catPatch.species = sp;
       else delete catPatch.species;
     }
+    // ชื่อซ้ำกับน้องอีกตัวในบ้านเดียวกัน — ไม่ให้เปลี่ยน (นัด/บิลผูกด้วยชื่อ จะปนกันแยกไม่ออก)
+    const newName = typeof catPatch.name === "string" ? catPatch.name.trim() : undefined;
+    if (newName !== undefined) {
+      const cur = await getCustomer(id);
+      const key = (n: string) => n.normalize("NFC").replace(/\s/g, "").toLowerCase();
+      if (!newName) return NextResponse.json({ error: "กรุณาใส่ชื่อน้อง" }, { status: 400 });
+      if (cur?.cats.some((x) => x.id !== body.catId && key(x.name) === key(newName))) {
+        return NextResponse.json(
+          { error: `บ้านนี้มีน้องชื่อ "${newName}" อยู่แล้ว ตั้งชื่อให้ต่างกันนิดนึงนะคะ` },
+          { status: 409 }
+        );
+      }
+    }
     const c = await updateCat(id, body.catId, catPatch);
     if (!c) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json({ ok: true, customer: c });
