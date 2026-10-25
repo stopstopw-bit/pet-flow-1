@@ -26,6 +26,9 @@ type Invoice = {
   discount: number;
   promoLabel?: string;
   total: number;
+  /** มัดจำ — นับเป็นเงินที่จ่ายแล้วเฉพาะเมื่อร้านกดรับแล้ว (depositReceivedAt) */
+  deposit?: number;
+  depositReceivedAt?: string;
   status: string;
 };
 
@@ -53,6 +56,11 @@ export default function PayPage() {
   if (!invoice) {
     return <LoadingScreen message="กำลังโหลดข้อมูลบิล..." />;
   }
+
+  // รับมัดจำไปแล้ว → ลูกค้าต้องเห็นยอดที่เหลือจริง ไม่ใช่ยอดเต็ม (เดิมโชว์ยอดเต็ม เสี่ยงโอนเกิน)
+  const paidDeposit =
+    invoice.status !== "paid" && invoice.depositReceivedAt ? invoice.deposit || 0 : 0;
+  const due = Math.max(0, invoice.total - paidDeposit);
 
   return (
     <div className="px-4 pb-6 pt-5">
@@ -107,10 +115,24 @@ export default function PayPage() {
             </li>
           )}
         </ul>
+        {paidDeposit > 0 && (
+          <div className="space-y-1 border-t border-petflow-line px-4 py-3 text-sm">
+            <div className="flex justify-between gap-3 text-brown">
+              <span>ยอดรวม</span>
+              <span className="font-bold">{invoice.total.toLocaleString()} ฿</span>
+            </div>
+            <div className="flex justify-between gap-3 text-ok">
+              <span>มัดจำที่ชำระแล้ว</span>
+              <span className="font-bold">-{paidDeposit.toLocaleString()} ฿</span>
+            </div>
+          </div>
+        )}
         <div className="flex items-end justify-between gap-3 bg-honey/15 px-4 py-4">
-          <span className="text-xs font-bold text-brown-soft">ยอดรวม</span>
+          <span className="text-xs font-bold text-brown-soft">
+            {paidDeposit > 0 ? "ยอดคงเหลือที่ต้องชำระ" : "ยอดรวม"}
+          </span>
           <span className="text-2xl font-extrabold text-latte-deep">
-            {invoice.total.toLocaleString()} <span className="text-sm">บาท</span>
+            {due.toLocaleString()} <span className="text-sm">บาท</span>
           </span>
         </div>
       </div>

@@ -879,6 +879,8 @@ export function buildBillSummaryFlex(data: {
   bankName?: string;
   accountNumber?: string;
   accountName?: string;
+  /** ไม่แสดงรายการ — ใช้เมื่อส่งคู่กับการ์ด "สรุปการจอง" ในชุดเดียวกัน (ลูกค้าเห็นรายการแล้ว ไม่ต้องซ้ำ) */
+  hideItems?: boolean;
 }, style?: CardStyleConfig) {
   const st = style || {};
   const show = (k: string) => st.show?.[k] !== false;
@@ -937,6 +939,8 @@ export function buildBillSummaryFlex(data: {
           },
         ]
       : []),
+  ];
+  if (!data.hideItems && paidItems.length > 0) body.push(
     { type: "separator", margin: "lg" },
     {
       type: "box",
@@ -984,9 +988,9 @@ export function buildBillSummaryFlex(data: {
         ];
       }),
     },
-  ];
+  );
 
-  if (data.discount && data.discount > 0) {
+  if (data.discount && data.discount > 0 && !data.hideItems) {
     body.push({
       type: "box",
       layout: "horizontal",
@@ -1042,7 +1046,7 @@ export function buildBillSummaryFlex(data: {
   });
 
   // 🎁 ของแถมฟรี — โชว์ให้ลูกค้าเห็นว่าแถมอะไรบ้าง
-  if (freebieItems.length && show("freebies")) {
+  if (freebieItems.length && show("freebies") && !data.hideItems) {
     body.push({
       type: "box",
       layout: "vertical",

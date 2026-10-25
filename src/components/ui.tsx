@@ -37,7 +37,7 @@ export function SearchField({
 }) {
   return (
     <div
-      className={`flex items-center gap-2 rounded-full border border-petflow-line bg-paper px-4 py-2.5 focus-within:border-honey-deep ${className}`}
+      className={`flex min-w-0 items-center gap-2 rounded-full border border-petflow-line bg-paper px-4 py-2.5 focus-within:border-honey-deep ${className}`}
     >
       <Icon name="search" size={18} className="text-brown-soft" />
       <input

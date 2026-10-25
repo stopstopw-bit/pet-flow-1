@@ -33,6 +33,9 @@ async function getHandler(req: NextRequest) {
       checkout: b.checkout,
       arrivalTime: b.arrivalTime,
       pickupTime: b.pickupTime,
+      // ร้านไปรับ/ไปส่งเอง → หน้าเลือกเวลาเปลี่ยนคำให้ตรง (ส่งแค่ว่ามีไหม ไม่ส่งที่อยู่)
+      shopPickup: !!b.transport?.pickup,
+      shopDropoff: !!b.transport?.dropoff,
     },
   });
 }

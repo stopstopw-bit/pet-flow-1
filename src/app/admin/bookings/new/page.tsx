@@ -1007,7 +1007,12 @@ export default function NewBookingPage() {
         <PastPricesHint prices={pastPrices} />
 
         {/* ถามข้อมูลก่อนรับน้องได้เลยตั้งแต่ตอนเลือกลูกค้า — ยังไม่ต้องกดบันทึกนัด */}
-        {pickedCustomer && <CustomerIntakeCards key={pickedCustomer.id} customer={pickedCustomer} onDone={() => {}} />}
+        {pickedCustomer && <CustomerIntakeCards
+            key={pickedCustomer.id}
+            customer={pickedCustomer}
+            onDone={() => {}}
+            bookingKind={service === "groom" ? "groom" : withGroom ? "room+groom" : "room"}
+          />}
 
         {lineUserId && (
           <p className="flex items-center gap-2 rounded-petflow-sm bg-sage/15 px-3 py-2 text-[11px] font-bold text-ok">

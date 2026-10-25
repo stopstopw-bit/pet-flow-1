@@ -378,7 +378,8 @@ async function handlePatch(req: NextRequest, admin: boolean) {
       if (!admin && !(!!lineUserId && bk.lineUserId === lineUserId)) continue;
       await updateBooking(bk.id, {
         status: "confirmed",
-        ...(checkinTime ? { checkinTime, arrivalTime: checkinTime } : {}),
+        // เวลามาส่งน้องเป็นของการเข้าพัก — อาบน้ำก่อนกลับที่ยืนยันมาพร้อมกันไม่ต้องได้เวลานี้
+        ...(checkinTime && bk.service !== "groom" ? { checkinTime, arrivalTime: checkinTime } : {}),
       });
       if (bk.calendarEventId) {
         await updateCalendarEventConfirmed(bk.calendarEventId, {
@@ -1086,6 +1087,8 @@ function groomInfoCardFor(
               bankName: payment.bankName,
               accountNumber: payment.accountNumber,
               accountName: payment.accountName,
+              // ชุดเดียวกันมี "สรุปการจอง" แล้ว → การ์ดนี้บอกแค่ยอด ไม่ไล่รายการซ้ำอีกรอบ
+              hideItems: parts.includes("summary"),
             }, cfg.cards?.billSummary)
           );
         }
