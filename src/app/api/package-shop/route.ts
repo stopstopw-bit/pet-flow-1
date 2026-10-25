@@ -294,6 +294,11 @@ async function handlePatch(req: NextRequest) {
     if (!res.ok) {
       return NextResponse.json({ error: res.error }, { status: 400 });
     }
+    // ฟอร์มแก้ไขส่งรูปมาด้วยเมื่อเปลี่ยน/เอาออก ("" = เอาออก) — บันทึกทีเดียวจบ
+    if (body.image !== undefined) {
+      const img = await setPackageOfferImage(String(body.offerId || ""), body.image ? String(body.image) : "");
+      if (!img.ok) return NextResponse.json({ error: img.error }, { status: 400 });
+    }
     return NextResponse.json({ ok: true });
   }
 
