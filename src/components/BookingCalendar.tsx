@@ -2040,7 +2040,16 @@ export function BookingCalendar() {
           ) : (
             shownGroups.map((group) => {
               const b = group[0];
-              const allConfirmed = group.every((x) => x.status === "confirmed");
+              // นับแบบเดียวกับป้ายสถานะ — ออกบิลแล้ว/เลยเวลานัดแล้ว ถือว่ายืนยันแล้ว
+              // (เมื่อก่อนป้ายขึ้น "ยืนยันแล้ว" แต่ปุ่มหลักยังเป็น "ยืนยันนัด")
+              // บิลเดียวคลุมทั้งบ้าน (รวมอาบน้ำก่อนกลับ) → ตัวไหนมีบิล ถือว่าทั้งการ์ดคิดเงินแล้ว
+              const groupBilled = group.some((x) => billedIds.has(x.id));
+              const allConfirmed = group.every(
+                (x) =>
+                  x.status === "confirmed" ||
+                  (x.status === "pending" && groupBilled) ||
+                  effectiveBookingStatus(x, today, billedIds) === "confirmed"
+              );
               const stage = effectiveBookingStatus(group[0], today, billedIds);
               const catNames = group.map((x) => x.catName).join(", ");
               const caseDone = paidCases[b.id] === true;
@@ -2052,7 +2061,9 @@ export function BookingCalendar() {
 
               // ปุ่มหลักของการ์ด — ขั้นถัดไปของงาน (ยืนยัน → พร้อมรับกลับ → ปิดงาน) มีได้ทีละปุ่มเดียว
               const primary =
-                !allConfirmed && stage !== "ready" && stage !== "done"
+                stage === "no_show" || stage === "cancelled"
+                  ? null
+                  : !allConfirmed && stage !== "ready" && stage !== "done"
                   ? { label: "ยืนยันนัด", icon: "check", run: () => confirmGroup(group) }
                   : allConfirmed && stage !== "ready" && stage !== "done"
                     ? { label: "พร้อมกลับบ้าน", icon: "send", run: () => setStageFor(group, "set_ready") }

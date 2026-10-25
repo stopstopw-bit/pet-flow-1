@@ -146,8 +146,10 @@ function ConsentContent() {
   const [careNote, setCareNote] = useState("");
   const [signature, setSignature] = useState("");
   const [signError, setSignError] = useState(false);
-  const [vaccinePhotos, setVaccinePhotos] = useState<string[]>([]);
-  const [vaccineUploading, setVaccineUploading] = useState(false);
+  /** น้องทุกตัวในนัดเดียวกัน — สมุดวัคซีนแนบแยกทีละตัว (เมื่อก่อนชุดเดียวไปติดตัวแรก) */
+  const [groupCats, setGroupCats] = useState<{ id: string; catName: string }[]>([]);
+  const [vaccineByCat, setVaccineByCat] = useState<Record<string, string[]>>({});
+  const [vaccineUploading, setVaccineUploading] = useState("");
   const [fleaTickTreated, setFleaTickTreated] = useState(false);
   const [idCardUrl, setIdCardUrl] = useState("");
   // เคยแนบบัตรไว้แล้วจากรอบก่อน → ไม่ถามซ้ำ (ขอครั้งเดียวพอ)
@@ -180,7 +182,12 @@ function ConsentContent() {
         setBooking(stay);
         if (stay) {
           const key = bookingGroupKey(stay);
-          setCatLabel(groupCatNames(list.filter((b) => bookingGroupKey(b) === key)));
+          const group = list.filter((b) => bookingGroupKey(b) === key && b.status !== "cancelled");
+          setCatLabel(groupCatNames(group));
+          // ตัวที่ลิงก์ชี้มาก่อน แล้วตามด้วยตัวอื่นในบ้าน
+          setGroupCats(
+            [stay, ...group.filter((b) => b.id !== stay.id)].map((b) => ({ id: b.id, catName: b.catName }))
+          );
         }
         if (stay?.consentAcceptedAt) setAccepted(true);
         if (stay?.careNote) setCareNote(stay.careNote);
@@ -254,7 +261,8 @@ function ConsentContent() {
           lineUserId: profile.lineUserId,
           careNote: careNote.trim(),
           signature,
-          vaccinePhotos,
+          vaccinePhotos: booking ? vaccineByCat[booking.id] || [] : [],
+          vaccinePhotosByBooking: vaccineByCat,
           fleaTickTreated,
         }),
       });
@@ -271,10 +279,10 @@ function ConsentContent() {
   };
 
   // สมุดวัคซีนมักมีหลายหน้า → เลือกได้ทีละหลายรูป และกดเพิ่มต่อได้จนครบ MAX_VACCINE_PHOTOS
-  const addVaccinePhotos = async (files: FileList) => {
-    setVaccineUploading(true);
+  const addVaccinePhotos = async (catId: string, files: FileList) => {
+    setVaccineUploading(catId);
     try {
-      const room = MAX_VACCINE_PHOTOS - vaccinePhotos.length;
+      const room = MAX_VACCINE_PHOTOS - (vaccineByCat[catId]?.length || 0);
       const picked = Array.from(files).slice(0, Math.max(0, room));
       const urls: string[] = [];
       for (const f of picked) {
@@ -284,9 +292,12 @@ function ConsentContent() {
           /* แปลงรูปไหนไม่สำเร็จก็ข้ามรูปนั้นไป */
         }
       }
-      setVaccinePhotos((prev) => [...prev, ...urls].slice(0, MAX_VACCINE_PHOTOS));
+      setVaccineByCat((prev) => ({
+        ...prev,
+        [catId]: [...(prev[catId] || []), ...urls].slice(0, MAX_VACCINE_PHOTOS),
+      }));
     } finally {
-      setVaccineUploading(false);
+      setVaccineUploading("");
     }
   };
 
@@ -469,51 +480,73 @@ function ConsentContent() {
                     รวมถึงความเสี่ยงจากการที่ทางร้านไม่ได้ตรวจสอบประวัติวัคซีนของน้อง
                   </span>
                 </p>
-                {vaccinePhotos.length > 0 && (
-                  <div className="mb-2 grid grid-cols-3 gap-2">
-                    {vaccinePhotos.map((src, i) => (
-                      <div key={i} className="relative">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={src}
-                          alt={`สมุดวัคซีน ${i + 1}`}
-                          className="aspect-square w-full rounded-lg object-cover"
-                        />
-                        <button
-                          type="button"
-                          aria-label="ลบรูปนี้"
-                          onClick={() => setVaccinePhotos((prev) => prev.filter((_, j) => j !== i))}
-                          className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white"
-                        >
-                          <Icon name="x" size={14} />
-                        </button>
+                {(groupCats.length ? groupCats : booking ? [{ id: booking.id, catName: booking.catName }] : []).map(
+                  (cat) => {
+                    const photos = vaccineByCat[cat.id] || [];
+                    return (
+                      <div key={cat.id} className={groupCats.length > 1 ? "mt-3 first:mt-0" : ""}>
+                        {groupCats.length > 1 && (
+                          <p className="mb-1.5 flex items-center gap-1 text-xs font-extrabold text-petflow-chocolate">
+                            <Icon name="paw" size={13} className="text-brown-soft" />
+                            {cat.catName}
+                          </p>
+                        )}
+                        {photos.length > 0 && (
+                          <div className="mb-2 grid grid-cols-3 gap-2">
+                            {photos.map((src, i) => (
+                              <div key={i} className="relative">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={src}
+                                  alt={`สมุดวัคซีน ${cat.catName} ${i + 1}`}
+                                  className="aspect-square w-full rounded-lg object-cover"
+                                />
+                                <button
+                                  type="button"
+                                  aria-label="ลบรูปนี้"
+                                  onClick={() =>
+                                    setVaccineByCat((prev) => ({
+                                      ...prev,
+                                      [cat.id]: (prev[cat.id] || []).filter((_, j) => j !== i),
+                                    }))
+                                  }
+                                  className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white"
+                                >
+                                  <Icon name="x" size={14} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {photos.length < MAX_VACCINE_PHOTOS && (
+                          <label className="flex min-h-[56px] cursor-pointer items-center gap-3 rounded-petflow-sm border border-dashed border-petflow-line bg-paper px-3 py-3">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              className="hidden"
+                              onChange={(e) => {
+                                if (e.target.files?.length) addVaccinePhotos(cat.id, e.target.files);
+                                e.target.value = "";
+                              }}
+                            />
+                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-card text-brown-soft">
+                              <Icon name={photos.length ? "plus" : "image"} size={20} />
+                            </span>
+                            <span className="text-xs font-bold text-brown-soft">
+                              {vaccineUploading === cat.id
+                                ? "กำลังแนบรูป…"
+                                : photos.length
+                                  ? `เพิ่มรูปอีก (แนบได้สูงสุด ${MAX_VACCINE_PHOTOS} รูป)`
+                                  : groupCats.length > 1
+                                    ? `แตะเพื่อแนบสมุดวัคซีนของ${cat.catName}`
+                                    : "แตะเพื่อแนบภาพสมุดวัคซีน (เลือกได้หลายรูป)"}
+                            </span>
+                          </label>
+                        )}
                       </div>
-                    ))}
-                  </div>
-                )}
-                {vaccinePhotos.length < MAX_VACCINE_PHOTOS && (
-                  <label className="flex min-h-[56px] cursor-pointer items-center gap-3 rounded-petflow-sm border border-dashed border-petflow-line bg-paper px-3 py-3">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      className="hidden"
-                      onChange={(e) => {
-                        if (e.target.files?.length) addVaccinePhotos(e.target.files);
-                        e.target.value = "";
-                      }}
-                    />
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-card text-brown-soft">
-                      <Icon name={vaccinePhotos.length ? "plus" : "image"} size={20} />
-                    </span>
-                    <span className="text-xs font-bold text-brown-soft">
-                      {vaccineUploading
-                        ? "กำลังแนบรูป…"
-                        : vaccinePhotos.length
-                          ? `เพิ่มรูปอีก (แนบได้สูงสุด ${MAX_VACCINE_PHOTOS} รูป)`
-                          : "แตะเพื่อแนบภาพสมุดวัคซีน (เลือกได้หลายรูป)"}
-                    </span>
-                  </label>
+                    );
+                  }
                 )}
               </section>
               )}

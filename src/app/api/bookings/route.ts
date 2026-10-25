@@ -1087,6 +1087,8 @@ function groomInfoCardFor(
               bankName: payment.bankName,
               accountNumber: payment.accountNumber,
               accountName: payment.accountName,
+              // ชุดเดียวกันมี "สรุปการจอง" แล้ว → การ์ดนี้บอกแค่ยอด ไม่ไล่รายการซ้ำอีกรอบ
+              hideItems: parts.includes("summary"),
             }, cfg.cards?.billSummary)
           );
         }

@@ -7,7 +7,7 @@ import {
   listBookingsByCustomerName,
 } from "@/lib/bookings-store";
 import { bookingGroupKey } from "@/lib/booking-group";
-import { splitVaccinePhotos } from "@/lib/vaccine-photos";
+import { MAX_VACCINE_PHOTOS, splitVaccinePhotos } from "@/lib/vaccine-photos";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 
@@ -37,6 +37,15 @@ async function postHandler(req: NextRequest) {
   )
     .map((v: unknown) => String(v || "").trim())
     .filter(Boolean);
+  // บ้านหลายตัว: สมุดวัคซีนแนบแยกทีละตัว { [bookingId]: รูป[] }
+  const byBooking: Record<string, string[]> = {};
+  if (body.vaccinePhotosByBooking && typeof body.vaccinePhotosByBooking === "object") {
+    for (const [id, list] of Object.entries(body.vaccinePhotosByBooking as Record<string, unknown>)) {
+      if (!Array.isArray(list)) continue;
+      const urls = list.map((v) => String(v || "").trim()).filter(Boolean).slice(0, MAX_VACCINE_PHOTOS);
+      if (urls.length) byBooking[String(id)] = urls;
+    }
+  }
   const fleaTickTreated = Boolean(body.fleaTickTreated);
   if (!bookingId) {
     return NextResponse.json({ error: "bookingId required" }, { status: 400 });
@@ -61,7 +70,7 @@ async function postHandler(req: NextRequest) {
     const b = await getBooking(bookingId);
     // ลิงก์ข้อตกลงชี้นัดตัวแรกของบ้าน แต่ลูกค้ากดยอมรับครั้งเดียวสำหรับทั้งรอบเข้าพักนี้
     // → ประทับให้น้องทุกตัวในนัดเดียวกัน ไม่งั้นระบบเห็นว่าตัวอื่น "ยังไม่กด" แล้วขอซ้ำทุกรอบ
-    // (สมุดวัคซีนเป็นของแต่ละตัว จึงไม่คัดลอกไปให้ตัวอื่น)
+    // (สมุดวัคซีนเป็นของแต่ละตัว — ไม่คัดลอกข้ามตัว ใช้รูปที่แนบให้ตัวนั้นเอง)
     if (b) {
       const key = bookingGroupKey(b);
       const siblings = (await listBookingsByCustomerName(b.customerName)).filter(
@@ -72,7 +81,14 @@ async function postHandler(req: NextRequest) {
           bookingGroupKey(x) === key
       );
       for (const x of siblings) {
-        await acceptBookingConsent(x.id, lineUserId, careNote, b.consentSignature, [], fleaTickTreated);
+        await acceptBookingConsent(
+          x.id,
+          lineUserId,
+          careNote,
+          b.consentSignature,
+          byBooking[x.id] || [],
+          fleaTickTreated
+        );
       }
     }
     if (b) {
