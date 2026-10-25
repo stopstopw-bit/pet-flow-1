@@ -19,6 +19,7 @@ import { MyPackagesSection } from "@/components/MyPackagesSection";
 import { MyMemberCreditSection } from "@/components/MyMemberCreditSection";
 import { PackageShopSection } from "@/components/PackageShopSection";
 import { HeaderBand, IconChip } from "@/components/HeaderBand";
+import { lineChatUrl } from "@/components/PageHeader";
 import { isFeatureOn, type FeatureKey } from "@/lib/features";
 import { referralReward } from "@/lib/referral";
 import { bookingGroupKey, groupCatNames, stayForGroom } from "@/lib/booking-group";
@@ -260,14 +261,16 @@ export default function CustomerHome() {
         </section>
       ) : null}
 
-      <a
-        href="https://line.me/R/ti/p/@petflow"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="mt-4 block rounded-petflow-sm border border-petflow-line bg-card py-3 text-center text-xs font-bold text-brown-soft"
-      >
-        💬 LINE {config.business.lineOa} · {m.chatBook}
-      </a>
+      {lineChatUrl(config.business.lineOa) && (
+        <a
+          href={lineChatUrl(config.business.lineOa)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-4 block rounded-petflow-sm border border-petflow-line bg-card py-3 text-center text-xs font-bold text-brown-soft"
+        >
+          💬 LINE {config.business.lineOa} · {m.chatBook}
+        </a>
+      )}
       </div>
     </div>
   );

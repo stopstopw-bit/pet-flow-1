@@ -195,7 +195,7 @@ export async function listFinanceEnriched(
       let displayTitle = desc;
       if (customerName && (!desc || genericDesc || !hasCustomerInDesc)) {
         displayTitle = catName
-          ? `🐱 ${catName} · ${customerName}`
+          ? `🐾 ${catName} · ${customerName}`
           : `👤 ${customerName}`;
         if (desc && genericDesc && desc !== r.category) {
           displayTitle += ` — ${desc}`;

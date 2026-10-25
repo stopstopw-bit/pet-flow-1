@@ -95,7 +95,7 @@ const CARDS: CardMeta[] = [
         key: "groomPrepNote",
         label: "ข้อความเตือนพกขนม/ตะกร้า (เฉพาะนัดอาบน้ำ)",
         placeholder:
-          "🍬 อย่าลืมพกขนม/แมวเลียมาด้วยอย่างน้อย 1-2 ซองนะคะ\n🧺 และให้น้องอยู่ในตะกร้า/กระเป๋าทุกครั้งที่มาใช้บริการด้วยค่ะ",
+          "🍬 อย่าลืมพกขนมที่น้องชอบมาด้วยนะคะ\n🧺 และให้น้องอยู่ในตะกร้า/กระเป๋า หรือใส่สายจูงทุกครั้งที่มาใช้บริการด้วยค่ะ",
         multiline: true,
       },
       {
@@ -242,7 +242,7 @@ const CARDS: CardMeta[] = [
         key: "bodyRoom",
         label: "เนื้อความ — เข้าพักโรงแรมอย่างเดียว (แนบท้ายใบเสร็จ)",
         placeholder:
-          "ตลอดช่วงที่น้องเข้าพัก พวกเราตั้งใจดูแลเหมือนเป็นหนึ่งในครอบครัว\nหวังว่าน้องจะกลับบ้านไปอย่างมีความสุขนะคะ 🐱✨",
+          "ตลอดช่วงที่น้องเข้าพัก พวกเราตั้งใจดูแลเหมือนเป็นหนึ่งในครอบครัว\nหวังว่าน้องจะกลับบ้านไปอย่างมีความสุขนะคะ 🐾✨",
         multiline: true,
       },
       {
@@ -253,7 +253,7 @@ const CARDS: CardMeta[] = [
       {
         key: "bodyGroom",
         label: "เนื้อความ — อาบน้ำอย่างเดียว (แนบท้ายใบเสร็จ)",
-        placeholder: "หวังว่าน้องจะกลับบ้านไปตัวหอม นุ่มฟู และมีความสุขนะคะ 🐱✨",
+        placeholder: "หวังว่าน้องจะกลับบ้านไปตัวหอม นุ่มฟู และมีความสุขนะคะ 🐾✨",
         multiline: true,
       },
     ],
@@ -882,7 +882,7 @@ function Preview({
               <p className="whitespace-pre-line rounded-lg bg-[#FBEEE0] px-2.5 py-2 text-[10px] font-bold text-[#B4553B]">
                 {t(
                   "groomPrepNote",
-                  "🍬 อย่าลืมพกขนม/แมวเลียมาด้วยอย่างน้อย 1-2 ซองนะคะ\n🧺 และให้น้องอยู่ในตะกร้า/กระเป๋าทุกครั้งที่มาใช้บริการด้วยค่ะ"
+                  "🍬 อย่าลืมพกขนมที่น้องชอบมาด้วยนะคะ\n🧺 และให้น้องอยู่ในตะกร้า/กระเป๋า หรือใส่สายจูงทุกครั้งที่มาใช้บริการด้วยค่ะ"
                 )}
               </p>
             )}
@@ -976,7 +976,7 @@ function Preview({
           <p className="text-[10px]" style={{ color: c("headerTextColor", "#FFFFFF") }}>{shop}</p>
         </div>
         <div className="space-y-2 px-4 py-3 text-[11px] text-[#4E3E32]">
-          <p>🐱 <b>ลูกค้า</b> — Soju · ตาล</p>
+          <p>🐾 <b>ลูกค้า</b> — Soju · ตาล</p>
           {show("invoiceNo") && <p>🔖 <b>เลขที่</b> — INV1784047676893</p>}
           <div className="rounded-xl bg-[#FBF4E9] px-3 py-3 text-center">
             <p className="text-[10px] text-[#A2907E]">ชำระแล้ว</p>
@@ -1035,7 +1035,7 @@ function Preview({
           <p className={`${titleCls} font-extrabold`} style={{ color: c("accentColor", "#5C4033") }}>
             {texts.consentTitle || "ข้อตกลงและเงื่อนไขการเข้าพัก"}
           </p>
-          <p className="text-[10px] text-[#A2907E]">{shop} · 🐱 น้องเรเนล</p>
+          <p className="text-[10px] text-[#A2907E]">{shop} · 🐾 น้องเรเนล</p>
           <p className="text-[10px]">🗓️ {t("stayLabel", "เข้าพัก")} 20 ก.ค. → 26 ก.ค.</p>
           <div className="rounded-xl bg-[#FBF4E9] px-3 py-2.5">
             <p className="font-extrabold text-[#5C4033]">{t("stepsTitle", "⚠️ ก่อนฝากน้อง รบกวนทำ 2 ขั้นตอนนี้ก่อนนะคะ")}</p>
@@ -1079,7 +1079,7 @@ function Preview({
           </p>
         </div>
         <div className="space-y-2 px-4 py-3 text-[11px] text-[#4E3E32]">
-          <p className={`${titleCls} font-extrabold`} style={{ color: c("accentColor", "#5C4033") }}>🐱 เรเนล</p>
+          <p className={`${titleCls} font-extrabold`} style={{ color: c("accentColor", "#5C4033") }}>🐾 เรเนล</p>
           <p className="text-[10px] text-[#A2907E]">{shop}</p>
           <p>สวัสดีค่ะ 🧡 ใกล้ถึงวันเข้าพักของน้องแล้วนะคะ</p>
           {(show("dates") || show("room")) && (
@@ -1565,7 +1565,7 @@ function Preview({
         <p className="text-xs font-extrabold" style={{ color: c("headerTextColor", "#FFFFFF") }}>{t("header", "🩺 ประวัติน้องก่อนอาบน้ำ")}</p>
       </div>
       <div className="space-y-2 px-4 py-3 text-[11px] text-[#4E3E32]">
-        <p className={`${titleCls} font-extrabold`} style={{ color: c("accentColor", "#5C4033") }}>🐱 Soju</p>
+        <p className={`${titleCls} font-extrabold`} style={{ color: c("accentColor", "#5C4033") }}>🐾 Soju</p>
         {show("date") && <p className="text-[10px] text-[#A2907E]">📅 นัดอาบน้ำ: 24 ก.ค. 12:30</p>}
         <p className="whitespace-pre-line">
           {(texts.groomInfoIntro || "รบกวนแจ้งประวัติน้องสั้นๆ นะคะ 🐾")
@@ -2227,7 +2227,7 @@ export default function CardsStudioPage() {
             <div className="rounded-2xl bg-[#efe6d6] p-3">
               <div className="rounded-petflow bg-[#fdfaf4] p-3">
                 <p className="text-sm font-extrabold text-[#4a3a12]">🩺 ประวัติน้องก่อนอาบน้ำ</p>
-                <p className="mt-0.5 text-[10px] text-[#8a7a5c]">🐱 Soju</p>
+                <p className="mt-0.5 text-[10px] text-[#8a7a5c]">🐾 Soju</p>
                 {resolveGroomForm(groomForm).map((fd) => (
                   <div key={fd.key} className="mt-2.5">
                     <p className="mb-1 text-[10px] font-bold text-[#6b5c40]">

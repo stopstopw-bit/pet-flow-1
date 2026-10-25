@@ -93,7 +93,7 @@ async function handlePost(req: NextRequest) {
   await sendTelegram(
     formatBookingTelegram("📍 ลูกค้าส่งจุดรับ-ส่ง", {
       ลูกค้า: b.customerName,
-      น้องแมว: b.catName,
+      น้อง: b.catName,
       บริการ: transportLabel(b.transport),
       วันที่: b.checkin || b.date || "-",
       ...(address ? { ที่อยู่: address } : {}),

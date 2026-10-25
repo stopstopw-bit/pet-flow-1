@@ -304,7 +304,7 @@ async function handlePatch(req: NextRequest) {
     try {
       const c = await deleteCat(id, String(body.catId || ""));
       if (!c) {
-        return NextResponse.json({ error: "ไม่พบน้องแมว" }, { status: 404 });
+        return NextResponse.json({ error: "ไม่พบข้อมูลน้อง" }, { status: 404 });
       }
       return NextResponse.json({ ok: true, customer: c });
     } catch (e) {

@@ -75,7 +75,7 @@ export function transportLabel(t?: BookingTransport | null): string {
 
 /** ชื่อรายการบริการที่เป็นค่ารับ-ส่ง (ตั้งชื่อเองในตั้งค่าได้ เช่น "ค่ารับ-ส่ง") */
 export function isTransportLabel(label?: string): boolean {
-  return /รับ\s*-?\s*ส่ง/.test(String(label || "").replace(/^🐱 .+? · /, ""));
+  return /รับ\s*-?\s*ส่ง/.test(String(label || "").replace(/^(?:🐱|🐶|🐾) .+? · /, ""));
 }
 
 /** จำนวนเที่ยวของนัด — ติ๊กทั้งรับและส่ง = ไป-กลับ 2 เที่ยว */

@@ -62,9 +62,9 @@ async function handlePost(req: NextRequest) {
     const cat = customer.cats.find((c) => c.id === catId);
     await updateCat(customer.id, catId, { photoDataUrl });
     await sendTelegram(
-      formatBookingTelegram("📷 ลูกค้าอัปโหลดรูปน้องแมวแล้ว", {
+      formatBookingTelegram("📷 ลูกค้าอัปโหลดรูปน้องแล้ว", {
         ลูกค้า: customer.name,
-        น้องแมว: cat?.name || catId,
+        น้อง: cat?.name || catId,
       })
     );
     return NextResponse.json({ ok: true });

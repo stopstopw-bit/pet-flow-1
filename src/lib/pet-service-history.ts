@@ -85,7 +85,7 @@ type HistoryBooking = CountBooking & {
   billBookingId?: string;
 };
 
-const stripCat = (label: string) => label.replace(/^🐱 .+? · /, "").trim();
+const stripCat = (label: string) => label.replace(/^(?:🐱|🐶|🐾) .+? · /, "").trim();
 /** "🐱 ส้ม · Catcha Premium · เปอร์เซีย · M × 2" → "Catcha Premium" */
 const groomLineName = (label: string) => stripCat(label).split(" · ")[0].replace(/\s*×\s*\d+$/, "").trim();
 /** "🐱 ส้ม · ห้อง MiNi Meow × 3 คืน (พักต่อ …)" → "MiNi Meow" · Day Care ตัดคำนำหน้าออกด้วย */

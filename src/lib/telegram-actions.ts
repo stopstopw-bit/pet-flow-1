@@ -31,8 +31,8 @@ export async function bookFromTelegram(payload: string) {
       ok: false as const,
       message:
         "รูปแบบ:\n" +
-        "/book อาบ ชื่อแมว วันที่ เวลา\n" +
-        "/book ห้อง ชื่อแมว เช็คอิน เช็คเอาท์\n\n" +
+        "/book อาบ ชื่อน้อง วันที่ เวลา\n" +
+        "/book ห้อง ชื่อน้อง เช็คอิน เช็คเอาท์\n\n" +
         "ตัวอย่าง:\n" +
         "/book อาบ น้องส้ม 2026-07-15 12:30\n" +
         "/book ห้อง น้องมิว 2026-07-15 2026-07-20",
@@ -70,7 +70,7 @@ export async function bookFromTelegram(payload: string) {
   }
 
   if (!catName) {
-    return { ok: false as const, message: "ระบุชื่อแมว" };
+    return { ok: false as const, message: "ระบุชื่อน้อง" };
   }
 
   const customer = await resolveCustomerForBooking({
@@ -78,7 +78,7 @@ export async function bookFromTelegram(payload: string) {
     catName,
   });
   if (!customer) {
-    return { ok: false as const, message: "ไม่พบลูกค้า — ตรวจชื่อแมว" };
+    return { ok: false as const, message: "ไม่พบลูกค้า — ตรวจชื่อน้อง" };
   }
 
   const booking = await addBooking({
@@ -116,7 +116,7 @@ export async function bookFromTelegram(payload: string) {
   await sendTelegram(
     formatBookingTelegram("📌 จองใหม่ (Telegram)", {
       ลูกค้า: customer.name,
-      น้องแมว: catName,
+      น้อง: catName,
       บริการ: service === "room" ? "ห้องพัก" : "อาบน้ำ",
       วันที่: when,
       รหัส: booking.id,
@@ -141,7 +141,7 @@ export async function customerSummaryForTelegram(query: string) {
   if (!q) {
     return {
       message:
-        "พิมพ์ /summary ชื่อลูกค้าหรือชื่อแมว\nตัวอย่าง: /summary น้องส้ม",
+        "พิมพ์ /summary ชื่อลูกค้าหรือชื่อน้อง\nตัวอย่าง: /summary น้องส้ม",
     };
   }
 
@@ -161,7 +161,7 @@ export async function customerSummaryForTelegram(query: string) {
 
   const lines = [
     `📋 สรุป ${customer.name}${customer.isMember ? " 💎" : ""}`,
-    `แมว: ${customer.cats.map((c) => c.name).join(", ") || "-"}`,
+    `น้อง: ${customer.cats.map((c) => c.name).join(", ") || "-"}`,
     `แต้ม: ${summary.points} · มาใช้บริการ ${summary.visits} ครั้ง`,
     `เครดิต Member: ${customer.memberCredit.toLocaleString()} บาท`,
   ];

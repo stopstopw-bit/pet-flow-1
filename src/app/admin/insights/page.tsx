@@ -137,7 +137,7 @@ export default function InsightsPage() {
         if (it.amount <= 0) continue;
         const key =
           (it.label || "")
-            .replace(/^🐱\s.+?\s·\s/, "")
+            .replace(/^(?:🐱|🐶|🐾)\s.+?\s·\s/, "")
             .split(" · ")[0]
             .split(" ×")[0]
             .trim() || "อื่นๆ";

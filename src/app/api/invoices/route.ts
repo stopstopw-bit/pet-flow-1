@@ -280,7 +280,7 @@ async function handlePost(req: NextRequest) {
       await sendTelegram(
         formatBookingTelegram("💰 หักมัดจำล่วงหน้าเข้าบิลอัตโนมัติ", {
           ลูกค้า: invoice.customerName,
-          น้องแมว: invoice.catName,
+          น้อง: invoice.catName,
           มัดจำที่หักให้: `${invoice.autoAppliedCredit} บาท`,
           บิล: invoice.id,
           หมายเหตุ: "เคยเรียกเก็บมัดจำไว้ก่อนออกบิล — ระบบหักให้แล้ว",
@@ -302,7 +302,7 @@ async function handlePost(req: NextRequest) {
     const cfgDep = await getSiteConfig();
     const msgs = cfgDep.messages;
     const payment = await getPaymentConfig();
-    const catName = customer.cats[0]?.name || "น้องแมว";
+    const catName = customer.cats[0]?.name || "น้อง";
     const pctNum = Number(body.pct) || 0;
     const depositFlex = buildDepositRequestFlex({
       title: msgs.depositRequestTitle,
@@ -358,7 +358,7 @@ async function handlePost(req: NextRequest) {
     if (customer?.lineUserId) {
       const cfgDt = await getSiteConfig();
       const msgs = cfgDt.messages;
-      const catName = customer.cats[0]?.name || "น้องแมว";
+      const catName = customer.cats[0]?.name || "น้อง";
       dtNotifyErr = await notifyCustomer(customer.lineUserId, [
         buildDepositThanksFlex({
           title: msgs.depositThanksTitle,
@@ -604,7 +604,7 @@ async function handlePatch(req: NextRequest) {
     await sendTelegram(
       formatBookingTelegram("↩️ ยกเลิกการชำระ (แก้ไข)", {
         ลูกค้า: inv.customerName,
-        น้องแมว: inv.catName,
+        น้อง: inv.catName,
         บิล: inv.id,
         ยอด: `${inv.total} บาท`,
       })
@@ -678,7 +678,7 @@ async function handlePatch(req: NextRequest) {
         gotDeposit ? "💰 รับยอดคงเหลือแล้ว (ปิดบิล)" : "💰 รับชำระเงินแล้ว",
         {
           ลูกค้า: paid.customerName,
-          น้องแมว: paid.catName,
+          น้อง: paid.catName,
           ...(gotDeposit
             ? {
                 มัดจำที่รับไปแล้ว: `${result.alreadyReceived} บาท`,
@@ -788,7 +788,7 @@ async function handlePatch(req: NextRequest) {
     await sendTelegram(
       formatBookingTelegram("💵 รับเงินบางส่วน", {
         ลูกค้า: inv.customerName,
-        น้องแมว: inv.catName,
+        น้อง: inv.catName,
         รับรอบนี้: `${Number(body.amount)} บาท`,
         รับแล้วรวม: `${res.received} บาท`,
         คงเหลือ: `${res.remaining} บาท`,
@@ -807,7 +807,7 @@ async function handlePatch(req: NextRequest) {
     await sendTelegram(
       formatBookingTelegram("💰 รับมัดจำแล้ว", {
         ลูกค้า: inv.customerName,
-        น้องแมว: inv.catName,
+        น้อง: inv.catName,
         มัดจำ: `${res.deposit} บาท`,
         คงเหลือ: `${res.remaining} บาท`,
         บิล: inv.id,
@@ -824,7 +824,7 @@ async function handlePatch(req: NextRequest) {
     await sendTelegram(
       formatBookingTelegram("💰 รับมัดจำแล้ว", {
         ลูกค้า: inv.customerName,
-        น้องแมว: inv.catName,
+        น้อง: inv.catName,
         มัดจำ: `${res.deposit} บาท`,
         คงเหลือ: `${res.remaining} บาท`,
         บิล: inv.id,

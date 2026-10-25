@@ -45,5 +45,5 @@ export function groomClashes(
 
 /** ข้อความสั้นๆ ไว้โชว์/ถามยืนยัน เช่น "12:30 น้องส้ม (คุณมาย)" */
 export function clashLine(b: ClashBooking) {
-  return `${b.time || "?"} ${b.catName || "น้องแมว"}${b.customerName ? ` (${b.customerName})` : ""}`;
+  return `${b.time || "?"} ${b.catName || "น้อง"}${b.customerName ? ` (${b.customerName})` : ""}`;
 }

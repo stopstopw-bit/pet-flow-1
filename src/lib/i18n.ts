@@ -68,7 +68,7 @@ const messages = {
     },
     bookings: {
       title: "คิวของฉัน",
-      empty: "ยังไม่มีนัดค่ะ — ทัก LINE @petflow เพื่อจอง",
+      empty: "ยังไม่มีนัดค่ะ — ทักแชท LINE ของร้านเพื่อจองได้เลย",
       pending: "รอยืนยัน",
       confirmed: "ยืนยันแล้ว",
       cancelled: "ยกเลิกแล้ว",
@@ -190,7 +190,7 @@ const messages = {
     },
     bookings: {
       title: "My bookings",
-      empty: "No bookings yet — chat us on LINE @petflow",
+      empty: "No bookings yet — chat with the shop on LINE to book",
       pending: "Pending",
       confirmed: "Confirmed",
       cancelled: "Cancelled",

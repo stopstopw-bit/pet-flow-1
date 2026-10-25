@@ -50,7 +50,7 @@ const TAB_GROUPS: { title: string; items: { id: Tab; icon: string; hint?: string
       { id: "shop", icon: "home", hint: "ชื่อร้าน ช่องทางติดต่อ ที่อยู่" },
       { id: "payment", icon: "wallet", hint: "บัญชีรับโอน" },
       { id: "linePromos", icon: "ticket", hint: "เช่น ลด 5% เฉพาะห้องพัก/อาบน้ำ" },
-      { id: "lists", icon: "doc", hint: "ร้านหมา/แมว · สายพันธุ์ · ของแถม" },
+      { id: "lists", icon: "doc", hint: "ประเภทร้าน · สายพันธุ์ · ของแถม" },
       { id: "points", icon: "star", hint: "อัตราแต้มสะสม" },
       { id: "crm", icon: "users" },
     ],
@@ -1614,7 +1614,7 @@ function GroomProgramsTab({
       {
         id: `program-${Date.now()}`,
         name: "โปรแกรมใหม่",
-        breeds: [{ breed: "แมวไทย", prices: { kitten: 0, m: 0, l: 0 } }],
+        breeds: [{ breed: "ขนสั้น", prices: { kitten: 0, m: 0, l: 0 } }],
       },
     ]);
   };
@@ -1749,7 +1749,7 @@ function GroomProgramsTab({
                   <input
                     value={b.breed}
                     onChange={(e) => updateBreedRow(progIdx, breedIdx, { breed: e.target.value })}
-                    placeholder="เช่น แมวไทย, แมวพันธุ์ขนสั้น"
+                    placeholder="เช่น ขนสั้น, ขนยาว"
                     className="min-w-0 flex-1 rounded-petflow-sm border border-petflow-line bg-card px-2 py-1.5 text-xs font-bold"
                   />
                   <button

@@ -34,7 +34,7 @@ import {
 
 type CustomerListItem = CustomerRecord & { upcomingAppointments?: number };
 
-const FREEBIE_OPTIONS = ["กล้องวงจรปิด (CCTV)", "น้ำพุแมว", "รับ-ส่ง", "ขนม/ทรีท"];
+const FREEBIE_OPTIONS = ["กล้องวงจรปิด (CCTV)", "รับ-ส่ง", "ขนม/ทรีท"];
 
 
 type GroomSlot = { time: string; capacity: number; booked: number; remaining: number; endTime?: string };

@@ -47,7 +47,7 @@ export function itemIsForPet(
   const key = petKey(name);
   const names = (it.catName || "").split(",").map((s) => petKey(s)).filter(Boolean);
   if (names.length) return names.includes(key);
-  const m = it.label.match(/^🐱([^·]*)·/u);
+  const m = it.label.match(/^(?:🐱|🐶|🐾)([^·]*)·/u);
   if (m) return m[1].split(",").some((s) => petKey(s) === key);
   return onlyPet;
 }

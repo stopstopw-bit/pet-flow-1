@@ -91,16 +91,27 @@ export function BookingOnlyNotice({ locale }: { locale: "th" | "en" }) {
     </div>
   );
 }
+/** ลิงก์แชท LINE OA ของร้าน — ว่าง = ร้านยังไม่ได้ใส่ LINE OA (ห้ามตกไปเป็น @petflow ของแพลตฟอร์ม) */
+export function lineChatUrl(lineOa?: string): string {
+  const id = (lineOa || "").trim();
+  if (!id) return "";
+  return `https://line.me/R/ti/p/${encodeURIComponent(id.startsWith("@") ? id : `@${id}`)}`;
+}
+
 export function LineBookingCta({ locale }: { locale: "th" | "en" }) {
+  const { config } = useConfig();
+  const lineOa = (config.business.lineOa || "").trim();
+  const href = lineChatUrl(lineOa);
+  if (!href) return null;
   return (
     <a
-      href="https://line.me/R/ti/p/@petflow"
+      href={href}
       target="_blank"
       rel="noopener noreferrer"
       className={`mt-5 ${BTN_PRIMARY}`}
     >
       <Icon name="message" size={18} />
-      {locale === "th" ? "ทัก LINE @petflow เพื่อจอง" : "Chat LINE @petflow to book"}
+      {locale === "th" ? `ทัก LINE ${lineOa} เพื่อจอง` : `Chat LINE ${lineOa} to book`}
     </a>
   );
 }

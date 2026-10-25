@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "PetFlow",
-  description: "โรงแรมแมว · อาบน้ำ & กรูมมิ่ง บางนา",
+  description: "จองคิว อาบน้ำ ฝากเลี้ยง และสะสมแต้มกับร้านสัตว์เลี้ยงของคุณ",
 };
 
 export const viewport: Viewport = {
