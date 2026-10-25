@@ -18,7 +18,7 @@ import { useConfig } from "@/components/ConfigProvider";
 import { FEATURES, FEATURE_GROUPS, isFeatureOn, type FeatureKey } from "@/lib/features";
 import { GROOM_EXTRA_CARDS, groomUsesCard, type IntakeRules } from "@/lib/intake-rules";
 import { REFERRAL_DEFAULT, referralReward } from "@/lib/referral";
-import { breedOptionsFor, petKindOf, petWords, withDefaultBreeds, type PetKind } from "@/lib/pet-kind";
+import { breedOptionsFor, petKindOf, petWords, usesLitter, withDefaultBreeds, type PetKind } from "@/lib/pet-kind";
 
 type Tab =
   | "features"
@@ -885,6 +885,8 @@ function MessagesTab({
   const [msgs, setMsgs] = useState(config.messages);
   const [crm, setCrm] = useState(config.crm);
   const [open, setOpen] = useState<Set<MessageSectionId>>(new Set());
+  // ร้านหมาล้วนไม่มีทราย — ซ่อนช่องข้อความเตรียมทราย
+  const litter = usesLitter(config);
   useEffect(() => setBill(config.billing), [config.billing]);
   useEffect(() => setMsgs(config.messages), [config.messages]);
   useEffect(() => setCrm(config.crm), [config.crm]);
@@ -1118,17 +1120,19 @@ function MessagesTab({
             onChange={(v) => setMsgs({ ...msgs, prestayCareNote: v })}
             rows={3}
           />
-          <TextAreaField
-            label="ข้อความเตือนให้เตรียมทราย (เฉพาะเข้าพักสั้นกว่าเกณฑ์แถมฟรี)"
-            hint="ใช้ได้: {min} = จำนวนคืนขั้นต่ำที่แถมทรายฟรี (ตั้งในแท็บ ⏰ อัตโนมัติ)"
-            value={msgs?.prestayLitterNote || ""}
-            onChange={(v) => setMsgs({ ...msgs, prestayLitterNote: v })}
-            rows={3}
-          />
+          {litter && (
+            <TextAreaField
+              label="ข้อความเตือนให้เตรียมทราย (เฉพาะเข้าพักสั้นกว่าเกณฑ์แถมฟรี)"
+              hint="ใช้ได้: {min} = จำนวนคืนขั้นต่ำที่แถมทรายฟรี (ตั้งในแท็บ ⏰ อัตโนมัติ)"
+              value={msgs?.prestayLitterNote || ""}
+              onChange={(v) => setMsgs({ ...msgs, prestayLitterNote: v })}
+              rows={3}
+            />
+          )}
           {sub("เตือนเช็คอิน (ก่อนวันเข้าพัก)")}
           <TextAreaField
             label="ข้อความ"
-            hint="ใช้ได้: {shop} {cat} {checkin} {room} {litterNote}"
+            hint={litter ? "ใช้ได้: {shop} {cat} {checkin} {room} {litterNote}" : "ใช้ได้: {shop} {cat} {checkin} {room}"}
             value={msgs?.checkinReminder || ""}
             onChange={(v) => setMsgs({ ...msgs, checkinReminder: v })}
             rows={8}
@@ -3079,15 +3083,19 @@ function AutomationTab({
                   value={String(form.prestayReminderDays)}
                   onChange={(v) => set({ prestayReminderDays: Math.max(0, Number(v) || 0) })}
                 />
-                <Field
-                  label="แถมทรายฟรีเมื่อเข้าพัก (คืน) ขึ้นไป"
-                  type="number"
-                  value={String(form.freeLitterMinNights)}
-                  onChange={(v) => set({ freeLitterMinNights: Math.max(1, Number(v) || 1) })}
-                />
-                <p className="text-[10px] text-brown-faint">
-                  เข้าพักน้อยกว่านี้ การ์ดเตรียมตัวจะบอกให้เตรียมทรายมาเอง (ใส่ {"{litterNote}"} ในข้อความ)
-                </p>
+                {usesLitter(config) && (
+                  <>
+                    <Field
+                      label="แถมทรายฟรีเมื่อเข้าพัก (คืน) ขึ้นไป"
+                      type="number"
+                      value={String(form.freeLitterMinNights)}
+                      onChange={(v) => set({ freeLitterMinNights: Math.max(1, Number(v) || 1) })}
+                    />
+                    <p className="text-[10px] text-brown-faint">
+                      เข้าพักน้อยกว่านี้ การ์ดเตรียมตัวจะบอกให้เตรียมทรายมาเอง (ใส่ {"{litterNote}"} ในข้อความ)
+                    </p>
+                  </>
+                )}
               </>
             ),
           })}

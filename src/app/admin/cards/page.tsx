@@ -17,7 +17,7 @@ import { Icon } from "@/components/Icon";
 import { FormFieldsEditor, FormFieldsPreview, resetFormConfig } from "@/components/FormFieldsEditor";
 import { RegisterFormEditor, RegisterFormPreview, resetRegisterForm } from "@/components/RegisterFormEditor";
 import { resolveStayForm, stayFormDefaults } from "@/lib/stay-form";
-import type { PetKind } from "@/lib/pet-kind";
+import { usesLitter, type PetKind } from "@/lib/pet-kind";
 import type { RegisterFieldConfig, RegisterFormConfig } from "@/lib/register-form";
 import { brandColorsFor } from "@/lib/card-brand";
 import { DEPOSIT_REMINDER_DEFAULTS, DOC_REQUEST_DEFAULTS, INTAKE_CARD_DEFAULTS } from "@/lib/line-card-defaults";
@@ -1132,7 +1132,7 @@ function Preview({
               )}
             </p>
           )}
-          {show("litter") && (
+          {show("litter") && usesLitter(config) && (
             <p className="rounded-lg bg-[#FBEEE0] px-2.5 py-1.5 text-[10px] text-[#B4553B]">⚠️ ห้องนี้พักไม่ถึง 3 วัน รบกวนเตรียมทรายมาด้วยนะคะ</p>
           )}
           {show("care") && (
@@ -1667,7 +1667,18 @@ export default function CardsStudioPage() {
       .finally(() => setLoaded(true));
   }, []);
 
-  const meta = useMemo(() => CARDS.find((c) => c.key === activeKey)!, [activeKey]);
+  const meta = useMemo(() => {
+    const m = CARDS.find((c) => c.key === activeKey)!;
+    if (usesLitter({ business: { petKind } })) return m;
+    // ร้านหมาล้วนไม่มีทราย — ไม่โชว์ช่อง/ข้อความเตรียมทราย และไม่บอกว่าใช้ {litterNote} ได้
+    return {
+      ...m,
+      fields: m.fields.filter((f) => f.key !== "litter"),
+      texts: m.texts
+        .filter((t) => t.stateKey !== "prestayLitterNote")
+        .map((t) => (t.hint ? { ...t, hint: t.hint.replace(" {litterNote}", "") } : t)),
+    };
+  }, [activeKey, petKind]);
   const st = cards[activeKey] || {};
   // สีที่ไม่ได้ตั้งเองรายใบ = สีร้าน (ตรงกับตอนส่งการ์ดจริง) — ไม่ใช่น้ำตาล/ชมพูเริ่มต้น
   const shownSt: CardStyleConfig = hasBrand

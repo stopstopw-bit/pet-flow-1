@@ -183,7 +183,7 @@ export default function ArticlesAdminPage() {
             <input
               value={form.title}
               onChange={(e) => patch({ title: e.target.value })}
-              placeholder="เช่น 5 สัญญาณว่าน้องแมวเครียด และวิธีช่วย"
+              placeholder="เช่น 5 สัญญาณว่าน้องเครียด และวิธีช่วย"
               className={`${field} mt-1`}
             />
           </label>
