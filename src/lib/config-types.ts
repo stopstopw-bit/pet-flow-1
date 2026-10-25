@@ -297,6 +297,10 @@ export type SiteConfig = {
   groomSlotCapacity?: Record<string, number>;
   /** จำนวนคิวเริ่มต้นต่อสล็อต เมื่อไม่ได้ตั้งไว้ใน groomSlotCapacity */
   groomSlotDefaultCapacity?: number;
+  /** รอบเวลานวด (คิวแยกจากอาบน้ำ) — ไม่ตั้ง = ใช้รอบเดียวกับอาบน้ำ (groomSlots) */
+  massageSlots?: string[];
+  /** นวดรับพร้อมกันได้กี่ตัวต่อรอบ — ไม่ตั้ง = 1 */
+  massageSlotCapacity?: number;
   /**
    * คิดเวลาอาบน้ำตามจำนวนแมวของบ้านเดียวกัน — ตั้ง firstCatMinutes > 0 = เปิดใช้
    * บ้านที่มา N ตัว เริ่มพร้อมกันเวลาเดียว ใช้เวลา first + (N-1) × extra นาที

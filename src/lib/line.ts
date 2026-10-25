@@ -195,13 +195,15 @@ export function buildAppointmentConfirmFlex(booking: {
   program?: string;
   /** จองหลายตัว อาบคนละโปรแกรม/คนละเวลา — แถวรายตัว (ชื่อ · เวลา · โปรแกรม) */
   petLines?: { catName: string; time?: string; program?: string }[];
+  /** true = นัดนวด — หัวการ์ดเป็น "นวด" แทน "อาบน้ำ & กรูมมิ่ง" */
+  massage?: boolean;
 }, style?: CardStyleConfig) {
   const st = style || {};
   const show = (k: string) => st.show?.[k] !== false;
   const isRoom = booking.service === "room";
   const serviceTitle = isRoom
     ? `${st.texts?.roomServicePrefix || "ห้องพัก"} · ${politeCat(booking.catName)}`
-    : `${st.texts?.groomServicePrefix || "อาบน้ำ & กรูมมิ่ง"} · ${politeCat(booking.catName)}${booking.program ? ` (${booking.program})` : ""}`;
+    : `${booking.massage ? "นวด" : st.texts?.groomServicePrefix || "อาบน้ำ & กรูมมิ่ง"} · ${politeCat(booking.catName)}${booking.program ? ` (${booking.program})` : ""}`;
   const dateText = isRoom
     ? formatBookingWhen({
         service: booking.service,

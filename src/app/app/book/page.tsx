@@ -7,7 +7,7 @@ import { useConfig } from "@/components/ConfigProvider";
 import { isFeatureOn } from "@/lib/features";
 import { PageHeader } from "@/components/PageHeader";
 import { SELF_BOOKABLE_ROOM_IDS } from "@/lib/self-bookable-rooms";
-import { resolveGroomPrograms } from "@/lib/grooming-prices";
+import { bathPrograms, resolveGroomPrograms, resolveMassagePrograms } from "@/lib/grooming-prices";
 import { extraCatChargePerNight } from "@/lib/business";
 import { roomPricing } from "@/lib/room-board";
 import { toJpegDataUrl } from "@/lib/image-convert";
@@ -91,16 +91,26 @@ function BookPageInner() {
         })),
     [config.rooms]
   );
-  const [service, setService] = useState<Service>(
-    params.get("service") === "room" ? "room" : "groom"
-  );
+  // แท็บ นวด = จองคิวแบบ groom ที่เลือกโปรแกรมนวด (คิวแยกจากอาบน้ำ)
+  const [tab, setTab] = useState<Service | "massage">(() => {
+    const p = params.get("service");
+    return p === "room" ? "room" : p === "massage" ? "massage" : "groom";
+  });
+  const service: Service = tab === "room" ? "room" : "groom";
+  const massage = tab === "massage";
   // ร้านปิดบริการไหนไว้ในตั้งค่า ก็ไม่ให้เลือกบริการนั้น
   const groomOn = isFeatureOn(config, "grooming");
   const hotelOn = isFeatureOn(config, "hotel");
+  const massageOn = isFeatureOn(config, "massage");
   useEffect(() => {
-    if (service === "groom" && !groomOn && hotelOn) setService("room");
-    if (service === "room" && !hotelOn && groomOn) setService("groom");
-  }, [service, groomOn, hotelOn]);
+    const on = { groom: groomOn, room: hotelOn, massage: massageOn };
+    if (on[tab]) return;
+    const next = (["groom", "room", "massage"] as const).find((t) => on[t]);
+    if (next) setTab(next);
+  }, [tab, groomOn, hotelOn, massageOn]);
+  const tabPrograms = massage
+    ? resolveMassagePrograms(config.groomPricePrograms)
+    : bathPrograms(resolveGroomPrograms(config.groomPricePrograms));
   // เลือกน้องได้หลายตัวทั้งอาบน้ำและเข้าพัก — เข้าพักบ้านเดียวกันอยู่ห้องเดียวกัน (เกินจุห้อง = เพิ่มห้อง)
   const [catNames, setCatNames] = useState<string[]>([]);
   const toggleCat = (name: string) => {
@@ -180,6 +190,7 @@ function BookPageInner() {
   const [done, setDone] = useState<
     null | {
       service: Service;
+      massage?: boolean;
       schedule?: { catName: string; time: string }[];
       ids: string[];
       depositAmount: number;
@@ -234,7 +245,9 @@ function BookPageInner() {
     let alive = true;
     setLoadingSlots(true);
     // ส่งจำนวนน้องไปด้วย — โหมดคิดเวลา รอบที่ว่างขึ้นกับว่ามากี่ตัว (ใช้เวลานานแค่ไหน)
-    fetch(`/api/bookings/availability?service=groom&date=${date}&cats=${Math.max(1, catNames.length)}`)
+    fetch(
+      `/api/bookings/availability?service=${massage ? "massage" : "groom"}&date=${date}&cats=${Math.max(1, catNames.length)}`
+    )
       .then((r) => r.json())
       .then((d) => {
         if (!alive) return;
@@ -247,12 +260,12 @@ function BookPageInner() {
     return () => {
       alive = false;
     };
-  }, [service, date, catNames.length]);
+  }, [service, massage, date, catNames.length]);
 
   // เปลี่ยนวัน = รอบเดิมอาจไม่มี/เต็มแล้ว ให้เลือกใหม่
   useEffect(() => {
     setTime("");
-  }, [service, date]);
+  }, [service, massage, date]);
 
   useEffect(() => {
     if (service !== "room") return;
@@ -317,7 +330,7 @@ function BookPageInner() {
           ? {
               lineUserId: profile.lineUserId,
               catNames,
-              service,
+              service: massage ? "massage" : service,
               date,
               time,
               groomProgram: groomProgram || undefined,
@@ -353,6 +366,7 @@ function BookPageInner() {
           Array.isArray(d.bookings) ? d.bookings : d.booking ? [d.booking] : [];
         setDone({
           service,
+          massage,
           schedule,
           ids: created.map((b) => b.id),
           depositAmount: Number(created[0]?.depositAmount) || 0,
@@ -392,7 +406,7 @@ function BookPageInner() {
         <div className="rounded-petflow border border-petflow-line bg-card p-5 text-center shadow-petflow-sm">
           <p className="text-4xl">🐾</p>
           <p className="mt-2 text-sm font-bold text-brown">
-            ส่งคำขอ{done.service === "groom" ? "จองคิวอาบน้ำ" : "จองห้องพัก"}เรียบร้อยแล้วค่ะ
+            ส่งคำขอ{done.service === "room" ? "จองห้องพัก" : done.massage ? "จองคิวนวด" : "จองคิวอาบน้ำ"}เรียบร้อยแล้วค่ะ
           </p>
           {done.schedule && done.schedule.length > 1 && (
             <div className="mt-3 space-y-1 rounded-petflow-sm bg-paper px-3 py-2.5 text-left text-xs">
@@ -482,26 +496,30 @@ function BookPageInner() {
     <div className="px-4 pb-6 pt-5">
       <PageHeader title="📅 จองคิวเอง" subtitle="เลือกวัน-เวลาที่ว่างได้เลย ไม่ต้องคุยกับพนักงาน" />
 
-      {groomOn && hotelOn && (
+      {[groomOn, massageOn, hotelOn].filter(Boolean).length > 1 && (
       <div className="mb-4 flex overflow-hidden rounded-full border border-petflow-line text-xs font-bold">
-        <button
-          type="button"
-          onClick={() => setService("groom")}
-          className={`flex-1 py-2.5 transition ${
-            service === "groom" ? "bg-latte-deep text-white" : "bg-card text-brown-soft"
-          }`}
-        >
-          🛁 อาบน้ำ
-        </button>
-        <button
-          type="button"
-          onClick={() => setService("room")}
-          className={`flex-1 py-2.5 transition ${
-            service === "room" ? "bg-latte-deep text-white" : "bg-card text-brown-soft"
-          }`}
-        >
-          🏠 เข้าพักโรงแรม
-        </button>
+        {(
+          [
+            groomOn && { id: "groom", label: "🛁 อาบน้ำ" },
+            massageOn && { id: "massage", label: "💆 นวด" },
+            hotelOn && { id: "room", label: "🏠 เข้าพักโรงแรม" },
+          ].filter(Boolean) as { id: Service | "massage"; label: string }[]
+        ).map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => {
+              setTab(t.id);
+              setGroomProgram("");
+              setPetPrograms({});
+            }}
+            className={`flex-1 py-2.5 transition ${
+              tab === t.id ? "bg-latte-deep text-white" : "bg-card text-brown-soft"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
       )}
 
@@ -519,7 +537,9 @@ function BookPageInner() {
             {service === "groom" ? (
               <>
                 <label className="mb-3 block text-xs font-bold text-brown-soft">
-                  🧴 {catNames.length > 1 ? "โปรแกรมอาบน้ำ — ทุกตัว (ไม่บังคับ)" : "โปรแกรมอาบน้ำ (ไม่บังคับ)"}
+                  {massage
+                    ? `💆 ${catNames.length > 1 ? "โปรแกรมนวด — ทุกตัว" : "โปรแกรมนวด"}`
+                    : `🧴 ${catNames.length > 1 ? "โปรแกรมอาบน้ำ — ทุกตัว (ไม่บังคับ)" : "โปรแกรมอาบน้ำ (ไม่บังคับ)"}`}
                   <select
                     value={groomProgram}
                     onChange={(e) => {
@@ -528,15 +548,15 @@ function BookPageInner() {
                     }}
                     className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm"
                   >
-                    <option value="">ยังไม่เลือก — ให้ทางร้านแนะนำหน้างาน</option>
-                    {resolveGroomPrograms(config.groomPricePrograms).map((p) => (
+                    {!massage && <option value="">ยังไม่เลือก — ให้ทางร้านแนะนำหน้างาน</option>}
+                    {tabPrograms.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name}
                       </option>
                     ))}
                   </select>
                   {(() => {
-                    const tags = resolveGroomPrograms(config.groomPricePrograms).find((p) => p.id === groomProgram)?.includes;
+                    const tags = tabPrograms.find((p) => p.id === groomProgram)?.includes;
                     return tags?.length ? (
                       <span className="mt-1.5 flex flex-wrap gap-1">
                         {tags.map((t) => (
@@ -550,7 +570,9 @@ function BookPageInner() {
                 </label>
                 {catNames.length > 1 && (
                   <div className="mb-3 space-y-1.5">
-                    <p className="text-[11px] text-brown-faint">แต่ละตัวอาบไม่เหมือนกัน เปลี่ยนรายตัวได้เลย</p>
+                    <p className="text-[11px] text-brown-faint">
+                      {massage ? "แต่ละตัวนวดไม่เหมือนกัน" : "แต่ละตัวอาบไม่เหมือนกัน"} เปลี่ยนรายตัวได้เลย
+                    </p>
                     {catNames.map((n) => (
                       <div
                         key={n}
@@ -561,7 +583,7 @@ function BookPageInner() {
                           cat={n}
                           value={petPrograms[n] ?? groomProgram}
                           onChange={(v) => setPetPrograms((p) => ({ ...p, [n]: v }))}
-                          programs={resolveGroomPrograms(config.groomPricePrograms)}
+                          programs={tabPrograms}
                           emptyLabel="ยังไม่เลือก — ให้ทางร้านแนะนำ"
                         />
                       </div>

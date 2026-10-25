@@ -26,7 +26,7 @@ import { splitVaccinePhotos } from "@/lib/vaccine-photos";
 import { AUTO_MESSAGE_TOPICS } from "@/lib/auto-messages";
 import { rescheduleGroup, type DatePatch } from "@/lib/stay-sync";
 import { bookingMatchesCustomer } from "@/lib/booking-customer-match";
-import { groomProgram, resolveGroomPrograms } from "@/lib/grooming-prices";
+import { groomProgram, isMassageProgram, resolveGroomPrograms } from "@/lib/grooming-prices";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { withResolvedTenant, withTenant } from "@/lib/tenant-context";
 import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
@@ -226,10 +226,13 @@ async function handlePost(req: NextRequest) {
     pickupTime: isRoom ? transport?.dropoffTime : undefined,
   });
 
+  const massage = body.service !== "room" && isMassageProgram(
+      groomProgram(String(body.groomProgram || ""), resolveGroomPrograms((await getSiteConfig()).groomPricePrograms))
+    );
   const serviceLabel =
-    body.service === "room" ? (isDayCareStay(body) ? "Day Care" : "ห้องพัก") : "อาบน้ำ";
+    body.service === "room" ? (isDayCareStay(body) ? "Day Care" : "ห้องพัก") : massage ? "นวด" : "อาบน้ำ";
   const cal = await createCalendarEvent({
-    summary: `${body.service === "room" ? "🏠" : "🛁"}${hasTransport(booking.transport) ? "🚗" : ""} ${body.catName} (${customer.name})`,
+    summary: `${body.service === "room" ? "🏠" : massage ? "💆" : "🛁"}${hasTransport(booking.transport) ? "🚗" : ""} ${body.catName} (${customer.name})`,
     description: `${serviceLabel} · ${body.notes || ""}${transportCalendarText(booking.transport)}`,
     start: body.date || body.checkin,
     end: body.checkout || body.date || body.checkin,

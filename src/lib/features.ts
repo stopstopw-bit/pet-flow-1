@@ -15,6 +15,7 @@ export type FeatureKey =
   | "prestay"
   | "checkinTime"
   | "grooming"
+  | "massage"
   | "groomInfo"
   | "vaccine"
   | "consent"
@@ -47,6 +48,8 @@ export type FeatureDef = {
   hint: string;
   group: string;
   requires?: FeatureKey;
+  /** true = ฟีเจอร์ใหม่ที่ "ปิดไว้ก่อน" — ร้านต้องกดเปิดเอง (ไม่มี key = ปิด) ไม่กระทบร้านเดิม */
+  defaultOff?: boolean;
   /** เมนูหลังร้านที่ซ่อนเมื่อปิด */
   adminHrefs?: string[];
   /** หน้าในแอปลูกค้าที่เข้าไม่ได้เมื่อปิด */
@@ -109,6 +112,13 @@ export const FEATURES: FeatureDef[] = [
     group: "บริการของร้าน",
     requires: "grooming",
     adminHrefs: ["/admin/queue"],
+  },
+  {
+    key: "massage",
+    label: "นวด",
+    hint: "แท็บนวดในหน้าจองของร้านและของลูกค้า คิวแยกจากอาบน้ำ ตั้งราคาที่ ตั้งค่า › ราคานวด",
+    group: "บริการของร้าน",
+    defaultOff: true,
   },
   {
     key: "transport",
@@ -325,9 +335,11 @@ const BY_KEY = Object.fromEntries(FEATURES.map((f) => [f.key, f])) as Record<Fea
 
 type WithFeatures = Pick<SiteConfig, "features"> | null | undefined;
 
-/** ฟีเจอร์นี้เปิดอยู่ไหม — ไม่ได้ตั้ง = เปิด · ฟีเจอร์แม่ปิด = ปิดตาม */
+/** ฟีเจอร์นี้เปิดอยู่ไหม — ไม่ได้ตั้ง = เปิด (ยกเว้น defaultOff = ปิด) · ฟีเจอร์แม่ปิด = ปิดตาม */
 export function isFeatureOn(config: WithFeatures, key: FeatureKey): boolean {
-  if (config?.features?.[key] === false) return false;
+  const v = config?.features?.[key];
+  if (v === false) return false;
+  if (v !== true && BY_KEY[key]?.defaultOff) return false;
   const parent = BY_KEY[key]?.requires;
   return parent ? isFeatureOn(config, parent) : true;
 }

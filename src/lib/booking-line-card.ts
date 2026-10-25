@@ -3,7 +3,7 @@ import { bookingConfirmUrl as buildConfirmUrl, bookingTransportUrl, shopAppBase 
 import { hasTransport, type BookingTransport } from "./transport";
 import { getLineCredentials } from "./line-config";
 import { buildAppointmentConfirmFlex } from "./line";
-import { groomProgramName, resolveGroomPrograms } from "./grooming-prices";
+import { groomProgramName, isMassageBooking, resolveGroomPrograms } from "./grooming-prices";
 
 export async function bookingConfirmUrl(bookingId: string) {
   const creds = await getLineCredentials();
@@ -57,6 +57,7 @@ export async function buildBookingConfirmFlex(
     ...rest,
     program,
     petLines,
+    massage: isMassageBooking({ service: booking.service, groomProgram: group[0]?.groomProgram ?? groomProgramId }, programs),
     confirmUrl: await bookingConfirmUrl(booking.id),
     transportUrl: hasTransport(booking.transport)
       ? bookingTransportUrl(booking.id, creds?.liffId, await shopAppBase())
