@@ -22,6 +22,8 @@ export type GroomProgram = {
   breeds: GroomBreedPrice[];
   /** บริการย่อยที่รวมอยู่ในโปรแกรม (แท็ก เช่น ตัดเล็บ, เช็ดหู) — โชว์ตอนเลือกโปรแกรม/บนบอร์ดคิว */
   includes?: string[];
+  /** "massage" = โปรแกรมนวด (แท็บนวดแยกจากอาบน้ำ คิวแยกกัน) — ไม่ระบุ = อาบน้ำ/กรูมมิ่ง */
+  kind?: "massage";
 };
 
 export const GROOM_PROGRAMS: GroomProgram[] = [
@@ -85,14 +87,64 @@ export function resolveGroomPrograms(config?: GroomProgram[]): GroomProgram[] {
   return config && config.length > 0 ? config : GROOM_PROGRAMS;
 }
 
+/**
+ * โปรแกรมนวดตั้งต้น (ราคาตัวอย่าง — ร้านแก้ได้ในตั้งค่า › ราคานวด) ใช้เมื่อร้านเปิดบริการนวดแต่ยังไม่ได้ตั้งราคาเอง
+ * ราคาตามไซส์ ไม่แยกพันธุ์ (พันธุ์เดียว "ทุกพันธุ์")
+ */
+export const DEFAULT_MASSAGE_PROGRAMS: GroomProgram[] = [
+  {
+    id: "massage-30",
+    name: "นวดผ่อนคลาย 30 นาที",
+    kind: "massage",
+    breeds: [{ breed: "ทุกพันธุ์", prices: { kitten: 300, m: 400, l: 500 } }],
+  },
+  {
+    id: "massage-60",
+    name: "นวดผ่อนคลาย 60 นาที",
+    kind: "massage",
+    breeds: [{ breed: "ทุกพันธุ์", prices: { kitten: 500, m: 700, l: 900 } }],
+  },
+];
+
+export function isMassageProgram(p?: Pick<GroomProgram, "kind"> | null) {
+  return p?.kind === "massage";
+}
+
+/** โปรแกรมอาบน้ำ/กรูมมิ่งล้วน (ตัดโปรแกรมนวดออก) — ใช้กับตัวเลือกโปรแกรมของแท็บอาบน้ำ */
+export function bathPrograms(programs: GroomProgram[]) {
+  return programs.filter((p) => !isMassageProgram(p));
+}
+
+/** โปรแกรมนวดของร้าน — ร้านยังไม่ได้ตั้งเอง = ใช้ตัวอย่าง DEFAULT_MASSAGE_PROGRAMS */
+export function resolveMassagePrograms(config?: GroomProgram[]): GroomProgram[] {
+  const own = (config || []).filter(isMassageProgram);
+  return own.length > 0 ? own : DEFAULT_MASSAGE_PROGRAMS;
+}
+
+/** โปรแกรมทั้งหมดรวมนวด (ไม่ซ้ำ id) — ใช้ในหน้าคิดเงิน/ที่ต้องหาชื่อ-ราคาได้ทุกโปรแกรม */
+export function allServicePrograms(config?: GroomProgram[]): GroomProgram[] {
+  const base = resolveGroomPrograms(config);
+  const ids = new Set(base.map((p) => p.id));
+  return [...base, ...resolveMassagePrograms(config).filter((p) => !ids.has(p.id))];
+}
+
+/** หาโปรแกรมจาก id — หาไม่เจอในรายการของร้าน ลองโปรแกรมนวดตั้งต้น (ร้านที่ยังไม่ได้ตั้งราคานวดเอง) */
 export function groomProgram(id: string, programs: GroomProgram[] = GROOM_PROGRAMS) {
-  return programs.find((p) => p.id === id);
+  return programs.find((p) => p.id === id) || DEFAULT_MASSAGE_PROGRAMS.find((p) => p.id === id);
+}
+
+/** นัด groom นี้เป็นนัดนวดไหม (ดูจากโปรแกรมที่เลือกไว้) */
+export function isMassageBooking(
+  b: { service?: string; groomProgram?: string },
+  programs: GroomProgram[] = GROOM_PROGRAMS
+) {
+  return b.service === "groom" && !!b.groomProgram && isMassageProgram(groomProgram(b.groomProgram, programs));
 }
 
 /** ชื่อโปรแกรมจาก id — "" ถ้าไม่เจอ (ใช้โชว์ในนัด/การ์ด/บิล) */
 export function groomProgramName(id?: string, programs: GroomProgram[] = GROOM_PROGRAMS) {
   if (!id) return "";
-  return programs.find((p) => p.id === id)?.name || "";
+  return groomProgram(id, programs)?.name || "";
 }
 
 /** ไซส์อาบน้ำพร้อมป้ายช่วงน้ำหนักที่ร้านตั้งเอง (ไม่ตั้ง = ค่าเริ่มต้น) */

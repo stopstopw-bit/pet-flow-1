@@ -5,7 +5,13 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import type { RoomType } from "@/lib/business";
 import type { CustomerRecord } from "@/lib/customers-store";
-import { GROOM_PROGRAMS, resolveGroomPrograms, type GroomProgram } from "@/lib/grooming-prices";
+import {
+  GROOM_PROGRAMS,
+  bathPrograms,
+  resolveGroomPrograms,
+  resolveMassagePrograms,
+  type GroomProgram,
+} from "@/lib/grooming-prices";
 import { CustomerSendButtons } from "@/components/CustomerSendButtons";
 import { CustomerIntakeCards } from "@/components/CustomerIntakeCards";
 import { savedPopup, toast } from "@/components/Toast";
@@ -391,16 +397,23 @@ function ClientPetPicker({
 export default function NewBookingPage() {
   const searchParams = useSearchParams();
   const presetDate = searchParams.get("date") || "";
-  const [service, setService] = useState<"groom" | "room">("groom");
+  // แท็บที่เลือก — นวดบันทึกเป็นนัดแบบ groom (คิวแยก) ที่เลือกโปรแกรมนวด
+  const [tab, setTab] = useState<"groom" | "room" | "massage">("groom");
+  const service: "groom" | "room" = tab === "room" ? "room" : "groom";
+  const massage = tab === "massage";
   // ร้านที่ปิดอาบน้ำหรือรับฝากไว้ในตั้งค่า — เหลือแค่บริการที่เปิด
   const { config: siteConfig } = useConfig();
   const pw = petWords(siteConfig);
   const groomOn = isFeatureOn(siteConfig, "grooming");
   const hotelOn = isFeatureOn(siteConfig, "hotel");
+  const massageOn = isFeatureOn(siteConfig, "massage");
+  const tabOn = { groom: groomOn, room: hotelOn, massage: massageOn };
   useEffect(() => {
-    if (service === "groom" && !groomOn && hotelOn) setService("room");
-    if (service === "room" && !hotelOn && groomOn) setService("groom");
-  }, [service, groomOn, hotelOn]);
+    if (tabOn[tab]) return;
+    const next = (["groom", "room", "massage"] as const).find((t) => tabOn[t]);
+    if (next) setTab(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, groomOn, hotelOn, massageOn]);
   const [saved, setSaved] = useState(false);
   const [lastBookings, setLastBookings] = useState<
     {
@@ -413,7 +426,10 @@ export default function NewBookingPage() {
   >([]);
   const [rooms, setRooms] = useState<RoomType[]>([]);
   const [groomSlots, setGroomSlots] = useState<string[]>(["09:30", "12:30", "15:30"]);
-  const [groomPrograms, setGroomPrograms] = useState<GroomProgram[]>(GROOM_PROGRAMS);
+  const [groomPrograms, setGroomPrograms] = useState<GroomProgram[]>(bathPrograms(GROOM_PROGRAMS));
+  const [massagePrograms, setMassagePrograms] = useState<GroomProgram[]>(resolveMassagePrograms());
+  /** โปรแกรมของแท็บที่เลือก (อาบน้ำ หรือ นวด) */
+  const tabPrograms = massage ? massagePrograms : groomPrograms;
   const [freebies_, setFreebies_] = useState<string[]>(FREEBIE_OPTIONS);
   const [customerId, setCustomerId] = useState("");
   const [pickedCustomer, setPickedCustomer] = useState<CustomerListItem | null>(null);
@@ -468,7 +484,8 @@ export default function NewBookingPage() {
         if (d.config?.rooms) setRooms(attachClosures(d.config.rooms as RoomType[], d.config.roomClosures));
         if (d.config?.groomSlots) setGroomSlots(d.config.groomSlots);
         if (d.config?.options?.freebies?.length) setFreebies_(d.config.options.freebies);
-        setGroomPrograms(resolveGroomPrograms(d.config?.groomPricePrograms));
+        setGroomPrograms(bathPrograms(resolveGroomPrograms(d.config?.groomPricePrograms)));
+        setMassagePrograms(resolveMassagePrograms(d.config?.groomPricePrograms));
       });
   }, []);
 
@@ -522,7 +539,7 @@ export default function NewBookingPage() {
     }
     let alive = true;
     fetch(
-      `/api/bookings/availability?service=groom&date=${appointmentDate}&cats=${Math.max(1, bookingCats.length)}`
+      `/api/bookings/availability?service=${massage ? "massage" : "groom"}&date=${appointmentDate}&cats=${Math.max(1, bookingCats.length)}`
     )
       .then((r) => r.json())
       .then((d) => {
@@ -534,7 +551,7 @@ export default function NewBookingPage() {
     return () => {
       alive = false;
     };
-  }, [service, appointmentDate, availTick, bookingCats.length]);
+  }, [service, massage, appointmentDate, availTick, bookingCats.length]);
   useEffect(() => {
     setCatTimes(
       groomMode === "together"
@@ -761,7 +778,11 @@ export default function NewBookingPage() {
               : {}),
           time,
           ...(service === "groom"
-            ? { groomProgram: (petPrograms[cat] ?? groomProgram) || undefined }
+            ? {
+                // นัดนวดต้องมีโปรแกรมนวดเสมอ (ใช้แยกคิวนวดออกจากอาบน้ำ) — ไม่เลือก = โปรแกรมแรก
+                groomProgram:
+                  (petPrograms[cat] ?? groomProgram) || (massage ? massagePrograms[0]?.id : undefined) || undefined,
+              }
             : {}),
           catName: cat,
         }),
@@ -947,17 +968,21 @@ export default function NewBookingPage() {
         </p>
       )}
 
-      {groomOn && hotelOn && (
+      {[groomOn, hotelOn, massageOn].filter(Boolean).length > 1 && (
         <Segmented
-          value={service}
+          value={tab}
           onChange={(v) => {
-            setService(v);
+            setTab(v);
             setDayCare(false);
+            // โปรแกรมอาบน้ำกับนวดเป็นคนละชุด — เปลี่ยนแท็บแล้วล้างที่เลือกไว้
+            setGroomProgram(v === "massage" ? massagePrograms[0]?.id || "" : "");
+            setPetPrograms({});
           }}
           className="mb-4"
           options={[
-            { id: "groom", label: "อาบน้ำ", icon: "bath" },
-            { id: "room", label: "ห้องพัก", icon: "bed" },
+            ...(groomOn ? [{ id: "groom" as const, label: "อาบน้ำ", icon: "bath" }] : []),
+            ...(massageOn ? [{ id: "massage" as const, label: "นวด", icon: "sparkle" }] : []),
+            ...(hotelOn ? [{ id: "room" as const, label: "ห้องพัก", icon: "bed" }] : []),
           ]}
         />
       )}
@@ -1115,7 +1140,7 @@ export default function NewBookingPage() {
                           cat={cat}
                           value={petPrograms[cat] ?? groomProgram}
                           onChange={(v) => setPetPrograms((p) => ({ ...p, [cat]: v }))}
-                          programs={groomPrograms}
+                          programs={tabPrograms}
                           emptyLabel="ยังไม่เลือก — ถามหน้างาน"
                         />
                       )}
@@ -1137,7 +1162,13 @@ export default function NewBookingPage() {
               )}
             </div>
             <label className="block text-xs font-bold text-brown-soft">
-              {bookingCats.length > 1 ? "โปรแกรมอาบน้ำ — เลือกให้ทุกตัว (ไม่บังคับ)" : "โปรแกรมอาบน้ำ (ไม่บังคับ)"}
+              {massage
+                ? bookingCats.length > 1
+                  ? "โปรแกรมนวด — เลือกให้ทุกตัว"
+                  : "โปรแกรมนวด"
+                : bookingCats.length > 1
+                  ? "โปรแกรมอาบน้ำ — เลือกให้ทุกตัว (ไม่บังคับ)"
+                  : "โปรแกรมอาบน้ำ (ไม่บังคับ)"}
               <select
                 value={groomProgram}
                 onChange={(e) => {
@@ -1146,8 +1177,8 @@ export default function NewBookingPage() {
                 }}
                 className="mt-1 min-h-[44px] w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm text-brown"
               >
-                <option value="">ยังไม่เลือก — ถามหน้างาน</option>
-                {groomPrograms.map((p) => (
+                {!massage && <option value="">ยังไม่เลือก — ถามหน้างาน</option>}
+                {tabPrograms.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
                   </option>

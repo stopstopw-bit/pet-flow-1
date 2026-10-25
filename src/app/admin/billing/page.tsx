@@ -26,6 +26,7 @@ import {
   groomProgramName,
   type GroomSize,
   type GroomProgram,
+  allServicePrograms,
 } from "@/lib/grooming-prices";
 import { priceSignature, findLastPrice } from "@/lib/special-price";
 import { groomPrefillForPet, itemIsForPet, lastGroomForPet, type PetCard } from "@/lib/pet-groom-memory";
@@ -690,7 +691,10 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
       dayCare: true,
     }));
     setRooms([...nightly, ...daily]);
-    const progs = resolveGroomPrograms(config?.groomPricePrograms);
+    // เปิดบริการนวด = โปรแกรมนวดเลือกในบิลได้ด้วย (ร้านยังไม่ตั้งราคานวดเอง ใช้ราคาตัวอย่าง)
+    const progs = isFeatureOn(config, "massage")
+      ? allServicePrograms(config?.groomPricePrograms)
+      : resolveGroomPrograms(config?.groomPricePrograms);
     setGroomPrograms(progs);
     // รายการอาบน้ำที่สร้างไว้ก่อนโหลดค่าร้านเสร็จ ใช้โปรแกรม/พันธุ์ตั้งต้นของระบบ (ร้านแมว)
     // — ถ้าไม่ตรงกับของร้าน เปลี่ยนเป็นตัวแรกของร้าน (ร้านหมาเคยเห็น "แมวไทย" ในบิล)

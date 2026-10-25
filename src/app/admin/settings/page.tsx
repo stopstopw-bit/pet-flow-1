@@ -7,7 +7,15 @@ import Image from "next/image";
 import Link from "next/link";
 import type { SiteConfig, BoardingRuleBlock } from "@/lib/config-types";
 import type { RoomType } from "@/lib/business";
-import { GROOM_SIZES, resolveGroomPrograms, type GroomProgram, type GroomSize } from "@/lib/grooming-prices";
+import {
+  GROOM_SIZES,
+  bathPrograms,
+  isMassageProgram,
+  resolveGroomPrograms,
+  resolveMassagePrograms,
+  type GroomProgram,
+  type GroomSize,
+} from "@/lib/grooming-prices";
 import { roomColorMap } from "@/lib/room-colors";
 import { adminJson } from "@/lib/admin-fetch";
 import { toJpegDataUrl } from "@/lib/image-convert";
@@ -30,6 +38,7 @@ type Tab =
   | "lists"
   | "rooms"
   | "groomPrograms"
+  | "massagePrograms"
   | "boardingRules"
   | "roomsPageBlocks"
   | "groomingPageBlocks"
@@ -67,6 +76,7 @@ const TAB_GROUPS: { title: string; items: { id: Tab; icon: string; hint?: string
     items: [
       { id: "grooming", icon: "bath" },
       { id: "groomPrograms", icon: "sparkle", hint: "โปรแกรมและราคาอาบน้ำ" },
+      { id: "massagePrograms", icon: "paw", hint: "โปรแกรม ราคา และรอบเวลานวด (เปิดบริการนวดที่ เปิด/ปิดฟีเจอร์)" },
       { id: "groomingPageBlocks", icon: "grid", hint: "เนื้อหาท้ายหน้าอาบน้ำ" },
     ],
   },
@@ -90,6 +100,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "lists", label: "รายการ" },
   { id: "rooms", label: "ห้อง" },
   { id: "groomPrograms", label: "โปรแกรมอาบน้ำ" },
+  { id: "massagePrograms", label: "ราคานวด" },
   { id: "boardingRules", label: "กฎระเบียบ" },
   { id: "roomsPageBlocks", label: "เนื้อหาห้องพัก" },
   { id: "groomingPageBlocks", label: "เนื้อหาอาบน้ำ" },
@@ -278,6 +289,9 @@ export default function SettingsPage() {
       )}
       {tab === "groomPrograms" && (
         <GroomProgramsTab config={config} saving={saving} onSave={save} />
+      )}
+      {tab === "massagePrograms" && (
+        <GroomProgramsTab config={config} saving={saving} onSave={save} massage />
       )}
       {tab === "boardingRules" && (
         <ContentBlocksTab
@@ -1484,22 +1498,40 @@ function RoomsTab({
   );
 }
 
+/**
+ * ตารางราคาอาบน้ำ หรือ ราคานวด (massage) — เก็บรวมกันใน groomPricePrograms (นวดมี kind "massage")
+ * แต่ละหน้าแก้เฉพาะชุดของตัวเอง แล้วรวมกับอีกชุดตอนบันทึก (ไม่ทับกัน)
+ */
 function GroomProgramsTab({
   config,
   saving,
   onSave,
+  massage = false,
 }: {
   config: SiteConfig;
   saving: boolean;
   onSave: (p: Partial<SiteConfig>) => void;
+  massage?: boolean;
 }) {
-  const [programs, setPrograms] = useState<GroomProgram[]>(
-    resolveGroomPrograms(config.groomPricePrograms)
-  );
+  const own = (list?: GroomProgram[]) =>
+    massage ? resolveMassagePrograms(list) : bathPrograms(resolveGroomPrograms(list));
+  const [programs, setPrograms] = useState<GroomProgram[]>(own(config.groomPricePrograms));
   useEffect(
-    () => setPrograms(resolveGroomPrograms(config.groomPricePrograms)),
-    [config.groomPricePrograms]
+    () => setPrograms(own(config.groomPricePrograms)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [config.groomPricePrograms, massage]
   );
+  // รอบเวลา/จำนวนรับของนวด (คิวแยกจากอาบน้ำ)
+  const [massageSlots, setMassageSlots] = useState((config.massageSlots || []).join(", "));
+  const [massageCap, setMassageCap] = useState(String(config.massageSlotCapacity ?? 1));
+  /** รวมชุดที่แก้กับอีกชุดที่ไม่ได้แก้ — ร้านที่ยังใช้ค่าตั้งต้นจะถูกบันทึกเป็นของร้านไปด้วย */
+  const mergedPrograms = () => {
+    const other = massage
+      ? bathPrograms(resolveGroomPrograms(config.groomPricePrograms))
+      : (config.groomPricePrograms || []).filter(isMassageProgram);
+    const mine = programs.map((p) => (massage ? { ...p, kind: "massage" as const } : { ...p, kind: undefined }));
+    return massage ? [...other, ...mine] : [...mine, ...other];
+  };
   // ป้ายช่วงน้ำหนักของ 3 ไซส์ — ราคาในตารางคิดตามช่วงนี้
   const [sizeLabels, setSizeLabels] = useState<Partial<Record<GroomSize, string>>>(
     config.groomSizeLabels || {}
@@ -1514,11 +1546,18 @@ function GroomProgramsTab({
   const addProgram = () => {
     setPrograms((prev) => [
       ...prev,
-      {
-        id: `program-${Date.now()}`,
-        name: "โปรแกรมใหม่",
-        breeds: [{ breed: "ขนสั้น", prices: { kitten: 0, m: 0, l: 0 } }],
-      },
+      massage
+        ? {
+            id: `massage-${Date.now()}`,
+            name: "นวดแบบใหม่",
+            kind: "massage" as const,
+            breeds: [{ breed: "ทุกพันธุ์", prices: { kitten: 0, m: 0, l: 0 } }],
+          }
+        : {
+            id: `program-${Date.now()}`,
+            name: "โปรแกรมใหม่",
+            breeds: [{ breed: "ขนสั้น", prices: { kitten: 0, m: 0, l: 0 } }],
+          },
     ]);
   };
 
@@ -1563,8 +1602,36 @@ function GroomProgramsTab({
   return (
     <div className="space-y-4">
       <p className="text-[11px] text-brown-faint">
-        ตารางราคาที่ใช้ตอนคิดเงินและตอนลูกค้าเลือกโปรแกรมตอนจอง — เพิ่ม/ลบโปรแกรมหรือแถวพันธุ์ได้เอง
+        {massage
+          ? "ราคานวดที่ใช้ตอนคิดเงินและตอนเลือกโปรแกรมในแท็บนวด — ไซส์ใช้ช่วงน้ำหนักเดียวกับอาบน้ำ · เปิดบริการนวดที่ ตั้งค่า › เปิด/ปิดฟีเจอร์"
+          : "ตารางราคาที่ใช้ตอนคิดเงินและตอนลูกค้าเลือกโปรแกรมตอนจอง — เพิ่ม/ลบโปรแกรมหรือแถวพันธุ์ได้เอง"}
       </p>
+      {massage && (
+        <div className="rounded-petflow border border-petflow-line bg-card p-4">
+          <p className="text-xs font-extrabold text-petflow-chocolate">🕒 รอบเวลานวด</p>
+          <p className="mb-2 mt-0.5 text-[10px] text-brown-faint">
+            คิวนวดแยกจากคิวอาบน้ำ · ใส่เวลาคั่นด้วยจุลภาค เช่น 10:00, 13:00, 15:00 · เว้นว่าง = ใช้รอบเดียวกับอาบน้ำ
+          </p>
+          <div className="grid gap-2 sm:grid-cols-[1fr_10rem]">
+            <input
+              value={massageSlots}
+              onChange={(e) => setMassageSlots(e.target.value)}
+              placeholder={(config.groomSlots || []).join(", ")}
+              className="min-w-0 rounded-petflow-sm border border-petflow-line bg-paper px-2.5 py-2 text-xs font-bold text-brown"
+            />
+            <label className="text-[10px] font-bold text-brown-soft">
+              รับพร้อมกันต่อรอบ (ตัว)
+              <input
+                type="number"
+                min={1}
+                value={massageCap}
+                onChange={(e) => setMassageCap(e.target.value)}
+                className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-2.5 py-2 text-xs font-bold text-brown"
+              />
+            </label>
+          </div>
+        </div>
+      )}
       <div className="rounded-petflow border border-petflow-line bg-card p-4">
         <p className="text-xs font-extrabold text-petflow-chocolate">⚖️ ช่วงน้ำหนัก (ไซส์)</p>
         <p className="mb-2 mt-0.5 text-[10px] text-brown-faint">
@@ -1705,11 +1772,27 @@ function GroomProgramsTab({
       <button
         type="button"
         disabled={saving}
-        onClick={() => onSave({ groomPricePrograms: programs, groomSizeLabels: sizeLabels })}
+        onClick={() =>
+          onSave({
+            groomPricePrograms: mergedPrograms(),
+            groomSizeLabels: sizeLabels,
+            ...(massage
+              ? {
+                  massageSlots: massageSlots
+                    .split(/[,\s]+/)
+                    .map((t) => t.trim())
+                    .filter((t) => /^\d{1,2}:\d{2}$/.test(t))
+                    .map((t) => t.padStart(5, "0"))
+                    .sort(),
+                  massageSlotCapacity: Math.max(1, Math.round(Number(massageCap) || 1)),
+                }
+              : {}),
+          })
+        }
         className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-petflow-chocolate text-sm font-extrabold text-card shadow-petflow-sm disabled:opacity-50"
       >
         <Icon name="check" size={18} strokeWidth={2.2} />
-        {saving ? "กำลังบันทึก…" : "บันทึกโปรแกรมอาบน้ำทั้งหมด"}
+        {saving ? "กำลังบันทึก…" : massage ? "บันทึกราคานวดทั้งหมด" : "บันทึกโปรแกรมอาบน้ำทั้งหมด"}
       </button>
     </div>
   );
@@ -2674,7 +2757,9 @@ function FeaturesTab({
   onSave: (patch: Partial<SiteConfig>) => void;
 }) {
   const [form, setForm] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(FEATURES.map((f) => [f.key, config.features?.[f.key] !== false]))
+    Object.fromEntries(
+      FEATURES.map((f) => [f.key, f.defaultOff ? config.features?.[f.key] === true : config.features?.[f.key] !== false])
+    )
   );
   const draft = { features: form };
   const parentOff = (key?: FeatureKey) => (key ? !isFeatureOn(draft, key) : false);
