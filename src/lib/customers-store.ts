@@ -5,7 +5,7 @@ import {
   DEFAULT_TIER_RULES,
   type CustomerTier,
 } from "./customer-tier";
-import { listBookings } from "./bookings-store";
+import { listBookings, type StoredBooking } from "./bookings-store";
 import { getAccount, getPointsHistory } from "./points-store";
 import { getSupabase } from "./supabase/server";
 import { seedEnabled } from "./demo-seed";
@@ -2762,9 +2762,9 @@ export async function setCatVaccinePhotos(customerId: string, catId: string, url
 /** ลูกค้ายอมรับข้อตกลงของร้าน (จากลิงก์หน้าลูกค้า ยังไม่ต้องมีนัด) — เก็บครั้งล่าสุดไว้ที่ลูกค้า */
 export async function setCustomerConsent(
   customerId: string,
-  data: { signature: string; careNote?: string; fleaTick: boolean }
+  data: { signature: string; careNote?: string; fleaTick: boolean; at?: string }
 ) {
-  const now = new Date().toISOString();
+  const now = data.at || new Date().toISOString();
   let sig = data.signature.trim();
   if (sig.startsWith("data:")) {
     sig = await uploadPrivateDataUrl(`consent-signatures/customer-${customerId}-${Date.now()}`, sig);
@@ -2791,6 +2791,64 @@ export async function setCustomerConsent(
     }
   }
   return { ok: true as const, acceptedAt: now };
+}
+
+/**
+ * สมุดวัคซีน + ข้อตกลงที่ลูกค้าส่งผ่านนัด (หน้ายอมรับข้อตกลง / ลิงก์ขอสมุดวัคซีนของนัด) เก็บไว้ที่นัด
+ * → ยกขึ้นตัวน้อง/ลูกค้าด้วย ไม่งั้นหน้าข้อมูลลูกค้าขึ้น "ยังไม่ได้รับ" และรอบหน้าขอซ้ำ
+ * newPhotos = รูปที่เพิ่งแนบเข้านัด (ต่อท้ายที่ตัวน้อง) · ไม่ใส่ = ยกรูปของนัดขึ้นเฉพาะตอนตัวน้องยังไม่มีรูปเลย
+ * (กันรูปที่พนักงานลบออกจากตัวน้องแล้วเด้งกลับมา)
+ */
+export async function copyBookingDocsToCustomer(
+  b: StoredBooking,
+  opts: { customer?: CustomerRecord; newPhotos?: string[] } = {}
+) {
+  const c = opts.customer || (await findCustomerForBooking(b));
+  if (!c) return false;
+  let changed = false;
+  const key = catKey(String(b.catName || ""));
+  const cat = c.cats.find((x) => catKey(x.name) === key);
+  if (cat) {
+    const have = splitVaccinePhotos(cat.vaccinePhotos);
+    const incoming = opts.newPhotos ?? (have.length ? [] : splitVaccinePhotos(b.vaccinePhotoUrl));
+    const add = incoming.filter((u) => u && !have.includes(u));
+    if (add.length) {
+      const urls = [...have, ...add].slice(-MAX_VACCINE_PHOTOS);
+      if ((await setCatVaccinePhotos(c.id, cat.id, urls)).ok) {
+        cat.vaccinePhotos = joinVaccinePhotos(urls);
+        changed = true;
+      }
+    }
+  }
+  // ข้อตกลงของนัดที่ใหม่กว่าครั้งล่าสุดที่ลูกค้า → ประทับที่ลูกค้าด้วย (ใช้เวลา/ลายเซ็นของนัดนั้น)
+  if (b.consentAcceptedAt && b.consentAcceptedAt > (c.consentAcceptedAt || "")) {
+    const res = await setCustomerConsent(c.id, {
+      signature: b.consentSignature || "",
+      careNote: b.careNote,
+      fleaTick: Boolean(b.fleaTickTreated),
+      at: b.consentAcceptedAt,
+    });
+    if (res.ok) {
+      c.consentAcceptedAt = b.consentAcceptedAt;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+/** ยกสมุดวัคซีน/ข้อตกลงจากทุกนัดของลูกค้าขึ้นตัวน้อง/ลูกค้า (ข้อมูลเก่าก่อนมีการยกอัตโนมัติ) */
+export async function syncCustomerDocsFromBookings(customerId: string) {
+  const c = await getCustomer(customerId);
+  if (!c) return false;
+  const all = await listBookings();
+  // เก่า → ใหม่ ให้ตัวน้องได้รูปจากนัดแรกที่มี และข้อตกลงล่าสุดทับทีหลัง
+  const mine = all
+    .filter((b) => b.status !== "cancelled" && bookingMatchesCustomer(b, c))
+    .filter((b) => b.vaccinePhotoUrl || b.consentAcceptedAt)
+    .sort((a, b) => (a.consentAcceptedAt || a.createdAt || "").localeCompare(b.consentAcceptedAt || b.createdAt || ""));
+  let changed = false;
+  for (const b of mine) if (await copyBookingDocsToCustomer(b, { customer: c })) changed = true;
+  return changed;
 }
 
 /** บันทึกข้อมูลน้องก่อนเข้าพักไว้ที่ตัวน้อง (ตอบครั้งเดียว รอบหน้าดึงคำตอบเดิมมาให้แก้) */

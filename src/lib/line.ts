@@ -1983,6 +1983,9 @@ export function buildIntakeFlex(data: {
   if (st.closing) {
     contents.push({ type: "text", text: st.closing, size: "xs", color: "#A2907E", margin: "md", wrap: true });
   }
+  // มีเรื่องข้อตกลงในการ์ดนี้ → แจ้งว่าไม่ตอบ/ไม่แนบ แต่ยังพาน้องมา = ยอมรับข้อตกลงแล้ว
+  const kinds = data.start ? data.start.steps.map((x) => x.kind) : data.buttons.map((x) => x.kind);
+  if (kinds.includes("consent")) contents.push(deemedConsentBox(data.service === "groom"));
 
   const buttons = data.start
     ? [

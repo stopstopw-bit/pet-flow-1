@@ -9,6 +9,7 @@ import {
 import { bookingGroupKey } from "@/lib/booking-group";
 import { MAX_VACCINE_PHOTOS, splitVaccinePhotos } from "@/lib/vaccine-photos";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
+import { copyBookingDocsToCustomer } from "@/lib/customers-store";
 import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 
 /**
@@ -80,8 +81,10 @@ async function postHandler(req: NextRequest) {
           x.status !== "cancelled" &&
           bookingGroupKey(x) === key
       );
+      // ข้อตกลง + สมุดวัคซีนที่แนบมา ยกขึ้นตัวน้อง/ลูกค้าด้วย — หน้าข้อมูลลูกค้าจะได้ขึ้น "ได้รับแล้ว"
+      await copyBookingDocsToCustomer(b, { newPhotos: res.vaccineAdded });
       for (const x of siblings) {
-        await acceptBookingConsent(
+        const r = await acceptBookingConsent(
           x.id,
           lineUserId,
           careNote,
@@ -89,6 +92,8 @@ async function postHandler(req: NextRequest) {
           byBooking[x.id] || [],
           fleaTickTreated
         );
+        const fresh = r.ok ? await getBooking(x.id) : undefined;
+        if (fresh && r.ok) await copyBookingDocsToCustomer(fresh, { newPhotos: r.vaccineAdded });
       }
     }
     if (b) {

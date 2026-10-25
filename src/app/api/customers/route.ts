@@ -27,6 +27,7 @@ import {
   getOrCreateWalkInCustomer,
   addCatVaccinePhotos,
   setCatVaccinePhotos,
+  syncCustomerDocsFromBookings,
   normalizeSpecies,
 } from "@/lib/customers-store";
 import { splitVaccinePhotos } from "@/lib/vaccine-photos";
@@ -77,6 +78,8 @@ async function handleGet(req: NextRequest) {
   }
 
   if (id) {
+    // สมุดวัคซีน/ข้อตกลงที่ลูกค้าส่งผ่านนัด (ข้อมูลก่อนมีการยกอัตโนมัติ) → ยกขึ้นตัวน้อง/ลูกค้าก่อนโชว์
+    await syncCustomerDocsFromBookings(id).catch(() => false);
     const activity = await customerActivityInfo(id);
     if (!activity) return NextResponse.json({ error: "not found" }, { status: 404 });
     const serviceLog = await customerServiceLog(

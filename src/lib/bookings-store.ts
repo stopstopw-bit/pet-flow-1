@@ -355,7 +355,7 @@ export async function acceptBookingConsent(
       mem[idx].fleaTickTreated = treated;
     }
   }
-  return { ok: true as const, acceptedAt: now };
+  return { ok: true as const, acceptedAt: now, vaccineAdded: vaccineUrls };
 }
 
 /**
@@ -375,7 +375,7 @@ export async function addBookingVaccinePhotos(id: string, photos: string[]) {
   if (added.length === 0) return { ok: false as const, error: "no_photo" };
   const urls = [...splitVaccinePhotos(b.vaccinePhotoUrl), ...added].slice(-MAX_VACCINE_PHOTOS);
   const res = await setBookingVaccinePhotos(id, urls);
-  return res.ok ? { ok: true as const, urls, added: added.length } : res;
+  return res.ok ? { ok: true as const, urls, added: added.length, addedUrls: added } : res;
 }
 
 /** เขียนรายการรูปสมุดวัคซีนของนัดทับทั้งชุด (ใช้ตอนลบรูปออกทีละรูป) */

@@ -113,9 +113,8 @@ async function handlePost(req: NextRequest) {
         ),
       });
     } else if (part === "vaccine") {
-      // น้องที่ร้านมีสมุดวัคซีนแล้ว ไม่ขอซ้ำ
-      const ask = cats.filter((x) => !x.vaccinePhotos?.trim());
-      for (const x of cats) if (!ask.includes(x)) skipped.push(`${x.name}: มีสมุดวัคซีนแล้ว ไม่ขอซ้ำ`);
+      // สมุดวัคซีนขอใหม่ได้ทุกรอบ (วัคซีนหมดอายุได้) — ร้านกดส่งเองก็ส่งเลย
+      const ask = cats;
       if (ask.length === 0) continue;
       const url = buildCatVaccineUrl(liffId, ask.map((x) => x.id));
       addIntake({
