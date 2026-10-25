@@ -396,7 +396,8 @@ export default function RegisterPage() {
         )}
 
         {/* ร้านที่ถามประวัติตอนสมัคร (เช่น Back Home) ไม่ขออีเมล — ลิสต์ของร้านไม่มี */}
-        <div className={isCompany || ownerHistory.length ? "" : "grid grid-cols-2 gap-3"}>
+        {/* จอมือถือ: อีเมล/วันเกิดคนละแถว — วางคู่กันแล้วช่องวัน/เดือน/ปีแคบจนอ่านไม่ออก */}
+        <div className={isCompany || ownerHistory.length ? "" : "grid gap-3 sm:grid-cols-2"}>
           {!ownerHistory.length && (
             <label className="block">
               <span className="mb-1 block text-xs font-bold text-brown">อีเมล</span>

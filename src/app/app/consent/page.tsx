@@ -22,6 +22,7 @@ import { MAX_VACCINE_PHOTOS } from "@/lib/vaccine-photos";
 import { idCardPurpose, watermarkIdCard } from "@/lib/id-card-watermark";
 import { isFeatureOn } from "@/lib/features";
 import { customerFetch } from "@/lib/customer-fetch";
+import { bookingGroupKey, groupCatNames } from "@/lib/booking-group";
 
 type StayBooking = Booking & {
   checkin?: string;
@@ -136,6 +137,8 @@ function ConsentContent() {
   const { profile, ready } = useLiff();
   const { config } = useConfig();
   const [booking, setBooking] = useState<StayBooking | null>(null);
+  /** ชื่อน้องทุกตัวในนัดเดียวกัน — กดยอมรับครั้งเดียวได้ทั้งบ้าน */
+  const [catLabel, setCatLabel] = useState("");
   const [loading, setLoading] = useState(true);
   const [accepted, setAccepted] = useState(false);
   const [checked, setChecked] = useState(false);
@@ -175,6 +178,10 @@ function ConsentContent() {
               .filter((b) => b.service === "room" && b.status !== "cancelled")
               .sort((a, b) => (a.checkin || a.date).localeCompare(b.checkin || b.date))[0] || null;
         setBooking(stay);
+        if (stay) {
+          const key = bookingGroupKey(stay);
+          setCatLabel(groupCatNames(list.filter((b) => bookingGroupKey(b) === key)));
+        }
         if (stay?.consentAcceptedAt) setAccepted(true);
         if (stay?.careNote) setCareNote(stay.careNote);
       })
@@ -310,7 +317,7 @@ function ConsentContent() {
                 <Icon name={isGroom ? "bath" : "bed"} size={20} />
               </span>
               <div className="min-w-0">
-                <p className="truncate text-sm font-extrabold text-petflow-chocolate">{booking.catName}</p>
+                <p className="truncate text-sm font-extrabold text-petflow-chocolate">{catLabel || booking.catName}</p>
                 <p className="text-xs text-brown-soft">
                   {isGroom ? (
                     <>
@@ -321,7 +328,9 @@ function ConsentContent() {
                     <>
                       เข้าพัก: {booking.checkin || booking.date}
                       {booking.checkout ? ` → ${booking.checkout}` : ""}
-                      {booking.room ? ` · ห้อง ${booking.room}` : ""}
+                      {booking.room
+                        ? ` · ห้อง ${config.rooms.find((r) => r.id === booking.room)?.name || booking.room}`
+                        : ""}
                     </>
                   )}
                 </p>

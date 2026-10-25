@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withResolvedTenant } from "@/lib/tenant-context";
 import { featureOff } from "@/lib/features-server";
-import { acceptBookingConsent, getBooking } from "@/lib/bookings-store";
+import {
+  acceptBookingConsent,
+  getBooking,
+  listBookingsByCustomerName,
+} from "@/lib/bookings-store";
+import { bookingGroupKey } from "@/lib/booking-group";
 import { splitVaccinePhotos } from "@/lib/vaccine-photos";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
@@ -54,6 +59,22 @@ async function postHandler(req: NextRequest) {
 
   if (res.ok) {
     const b = await getBooking(bookingId);
+    // ลิงก์ข้อตกลงชี้นัดตัวแรกของบ้าน แต่ลูกค้ากดยอมรับครั้งเดียวสำหรับทั้งรอบเข้าพักนี้
+    // → ประทับให้น้องทุกตัวในนัดเดียวกัน ไม่งั้นระบบเห็นว่าตัวอื่น "ยังไม่กด" แล้วขอซ้ำทุกรอบ
+    // (สมุดวัคซีนเป็นของแต่ละตัว จึงไม่คัดลอกไปให้ตัวอื่น)
+    if (b) {
+      const key = bookingGroupKey(b);
+      const siblings = (await listBookingsByCustomerName(b.customerName)).filter(
+        (x) =>
+          x.id !== b.id &&
+          !x.consentAcceptedAt &&
+          x.status !== "cancelled" &&
+          bookingGroupKey(x) === key
+      );
+      for (const x of siblings) {
+        await acceptBookingConsent(x.id, lineUserId, careNote, b.consentSignature, [], fleaTickTreated);
+      }
+    }
     if (b) {
       const groom = b.service === "groom";
       await sendTelegram(

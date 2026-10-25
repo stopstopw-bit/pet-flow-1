@@ -76,9 +76,11 @@ function BillButton({
   /** แจ้งการ์ดแม่ว่าบิลของนัดนี้จ่ายจบแล้วหรือยัง — เอาไว้ติดป้าย "จบเคส" ทั้งใบ */
   onPaidState?: (paid: boolean) => void;
 }) {
-  const [inv, setInv] = useState<{ id: string; status: string; total: number } | null | undefined>(
-    undefined
-  );
+  const [inv, setInv] = useState<
+    | { id: string; status: string; total: number; deposit?: number; depositReceivedAt?: string }
+    | null
+    | undefined
+  >(undefined);
 
   useEffect(() => {
     let alive = true;
@@ -116,14 +118,16 @@ function BillButton({
     );
   }
   if (inv) {
+    // รับมัดจำแล้ว → ป้ายบอกยอดที่ยังค้างจริง (เดิมโชว์ยอดเต็มทั้งที่จ่ายมาแล้วบางส่วน)
+    const due = Math.max(0, inv.total - (inv.depositReceivedAt ? inv.deposit || 0 : 0));
     return (
       <Link
         href={`/admin/billing?bookingId=${bookingId}`}
-        title={`แก้ไขบิล (${inv.total.toLocaleString()}฿ · ค้างอยู่)`}
+        title={`แก้ไขบิล (${inv.total.toLocaleString()}฿ · ค้างอยู่ ${due.toLocaleString()}฿)`}
         className={`${chip} border border-honey-deep/50 bg-honey/20 text-petflow-chocolate`}
       >
         <Icon name="receipt" size={16} />
-        บิลค้าง {inv.total.toLocaleString()}฿
+        บิลค้าง {due.toLocaleString()}฿
       </Link>
     );
   }
