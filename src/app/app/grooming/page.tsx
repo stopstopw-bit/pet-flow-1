@@ -7,10 +7,14 @@ import { useConfig } from "@/components/ConfigProvider";
 import { BookingOnlyNotice, LineBookingCta, PageHeader } from "@/components/PageHeader";
 import { ContentBlocks } from "@/components/ContentBlocks";
 import { petKindOf } from "@/lib/pet-kind";
+import { isFeatureOn } from "@/lib/features";
 import { resolveGroomPrograms, resolveGroomSizes } from "@/lib/grooming-prices";
 
 const GROOMING_MENU_POSTER = "/catalog/grooming/grooming-menu.jpg";
+// รูปที่ติดมากับระบบ (ของร้านตัวอย่าง PetFlow) — ถ้าค่าที่บันทึกไว้เป็นรูปพวกนี้ ถือว่าร้านยังไม่ได้อัปเอง
+// grooming-menu.jpg ติดอยู่ในค่าตั้งต้นของร้านเก่า เลยเคยหลุดไปโชว์โปสเตอร์ร้านแมว + LINE @petflow ในร้านหมา
 const LEGACY_POSTERS = new Set([
+  GROOMING_MENU_POSTER,
   "/catalog/grooming/bath-menu.jpg",
   "/catalog/grooming/advance-menu.jpg",
 ]);
@@ -94,12 +98,15 @@ export default function GroomingPage() {
 
       <ContentBlocks blocks={config.groomingPageBlocks} />
 
-      <Link
-        href="/app/book?service=groom"
-        className="mt-5 block rounded-petflow-sm bg-latte-deep py-3.5 text-center text-sm font-extrabold text-white shadow-petflow-sm"
-      >
-        📅 จองคิวอาบน้ำเอง
-      </Link>
+      {/* ร้านปิด "จองคิวเอง" ไว้ → ไม่โชว์ปุ่ม (เดิมกดแล้วไปเจอหน้าปิดใช้งาน) */}
+      {isFeatureOn(config, "selfBooking") && (
+        <Link
+          href="/app/book?service=groom"
+          className="mt-5 block rounded-petflow-sm bg-latte-deep py-3.5 text-center text-sm font-extrabold text-white shadow-petflow-sm"
+        >
+          📅 จองคิวอาบน้ำเอง
+        </Link>
+      )}
       <LineBookingCta locale={locale} />
     </div>
   );

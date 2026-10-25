@@ -1,4 +1,11 @@
+"use client";
+
 import Image from "next/image";
+import { useConfig } from "@/components/ConfigProvider";
+import { petKindOf } from "@/lib/pet-kind";
+
+/** รูปห้องตัวอย่างที่ติดมากับระบบ (ห้องแมวของร้านตัวอย่าง PetFlow มีเบอร์/LINE ตัวอย่างในรูป) */
+const SAMPLE_ROOM_IMAGE = /^\/catalog\/rooms\//;
 
 /** แสดงโปสเตอร์ห้องเต็มใบ — ไม่ crop */
 export function RoomPoster({
@@ -12,6 +19,9 @@ export function RoomPoster({
   priority?: boolean;
   className?: string;
 }) {
+  const { config } = useConfig();
+  // ร้านหมา / หมาและแมว ที่ยังใช้รูปห้องแมวตัวอย่างค้างจากค่าตั้งต้น — ถือว่ายังไม่มีรูป
+  if (src && SAMPLE_ROOM_IMAGE.test(src) && petKindOf(config) !== "cat") src = "";
   // ร้านใหม่ (แบบร้านหมา / หมาและแมว) ยังไม่มีรูปห้อง — โชว์การ์ดชื่อห้องแทน ไม่โชว์รูปแตก
   if (!src) {
     return (
