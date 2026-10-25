@@ -8,7 +8,7 @@ import { BookingOnlyNotice, LineBookingCta, PageHeader } from "@/components/Page
 import { ContentBlocks } from "@/components/ContentBlocks";
 import { petKindOf } from "@/lib/pet-kind";
 import { isFeatureOn } from "@/lib/features";
-import { resolveGroomPrograms, resolveGroomSizes } from "@/lib/grooming-prices";
+import { bathPrograms, resolveGroomPrograms, resolveMassagePrograms, resolveGroomSizes } from "@/lib/grooming-prices";
 
 const GROOMING_MENU_POSTER = "/catalog/grooming/grooming-menu.jpg";
 // รูปที่ติดมากับระบบ (ของร้านตัวอย่าง PetFlow) — ถ้าค่าที่บันทึกไว้เป็นรูปพวกนี้ ถือว่าร้านยังไม่ได้อัปเอง
@@ -21,7 +21,7 @@ const LEGACY_POSTERS = new Set([
 
 export default function GroomingPage() {
   const { locale } = useLocale();
-  const { config } = useConfig();
+  const { config, loading: configLoading } = useConfig();
   const m = t(locale).grooming;
 
   const menus = config.grooming.menus as {
@@ -63,7 +63,11 @@ export default function GroomingPage() {
 
       {showTable && (
         <div className="space-y-4">
-          {resolveGroomPrograms(config.groomPricePrograms).map((p) => (
+          {[
+            ...bathPrograms(resolveGroomPrograms(config.groomPricePrograms)),
+            // ร้านเปิดบริการนวด — โชว์ราคานวดต่อท้ายในหน้าเดียวกัน
+            ...(isFeatureOn(config, "massage") ? resolveMassagePrograms(config.groomPricePrograms) : []),
+          ].map((p) => (
             <div key={p.id} className="overflow-hidden rounded-petflow border border-petflow-line bg-card shadow-petflow-sm">
               <p className="bg-honey/25 px-4 py-2.5 text-sm font-extrabold text-petflow-chocolate">{p.name}</p>
               <table className="w-full text-xs">
@@ -99,12 +103,20 @@ export default function GroomingPage() {
       <ContentBlocks blocks={config.groomingPageBlocks} />
 
       {/* ร้านปิด "จองคิวเอง" ไว้ → ไม่โชว์ปุ่ม (เดิมกดแล้วไปเจอหน้าปิดใช้งาน) */}
-      {isFeatureOn(config, "selfBooking") && (
+      {!configLoading && isFeatureOn(config, "selfBooking") && (
         <Link
           href="/app/book?service=groom"
           className="mt-5 block rounded-petflow-sm bg-latte-deep py-3.5 text-center text-sm font-extrabold text-white shadow-petflow-sm"
         >
           📅 จองคิวอาบน้ำเอง
+        </Link>
+      )}
+      {isFeatureOn(config, "selfBooking") && isFeatureOn(config, "massage") && (
+        <Link
+          href="/app/book?service=massage"
+          className="mt-3 block rounded-petflow-sm border border-latte-deep bg-card py-3.5 text-center text-sm font-extrabold text-latte-deep shadow-petflow-sm"
+        >
+          💆 จองคิวนวดเอง
         </Link>
       )}
       <LineBookingCta locale={locale} />

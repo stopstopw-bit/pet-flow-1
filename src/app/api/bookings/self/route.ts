@@ -6,7 +6,13 @@ import { addBooking, listBookings, type StoredBooking } from "@/lib/bookings-sto
 import { findCustomerByLine } from "@/lib/customers-store";
 import { assignGroomSlots, getGroomAvailability, getRoomAvailability } from "@/lib/availability";
 import { sendTelegramLater, formatBookingTelegram } from "@/lib/telegram";
-import { groomProgram, resolveGroomPrograms } from "@/lib/grooming-prices";
+import {
+  allServicePrograms,
+  groomProgram,
+  isMassageBooking,
+  isMassageProgram,
+  resolveGroomPrograms,
+} from "@/lib/grooming-prices";
 import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 import { getSiteConfig } from "@/lib/config-store";
 import { depositAmountFor, type DepositStatus } from "@/lib/booking-deposit";
@@ -42,14 +48,17 @@ async function handlePost(req: NextRequest) {
         ),
       ]
     : [String(body.catName || "").trim()].filter(Boolean);
-  const service = body.service === "room" ? "room" : body.service === "groom" ? "groom" : null;
+  // นวด = นัดแบบ groom ที่เลือกโปรแกรมนวด (คิวแยกจากอาบน้ำ) — เก็บในตารางเป็น service "groom"
+  const massage = body.service === "massage";
+  const service =
+    body.service === "room" ? "room" : body.service === "groom" || massage ? "groom" : null;
 
   if (!catNames.length || !service) {
     return NextResponse.json({ error: "missing fields" }, { status: 400 });
   }
   // อ่านที่ไม่ขึ้นต่อกันพร้อมกันรอบเดียว (เดิมรอทีละอย่าง) — ตั้งค่าร้านอ่านครั้งเดียวต่อ request อยู่แล้ว
   const [serviceOff, customer, siteCfg, allMine] = await Promise.all([
-    featureOff(service === "room" ? "hotel" : "grooming"),
+    featureOff(service === "room" ? "hotel" : massage ? "massage" : "grooming"),
     findCustomerByLine(lineUserId),
     getSiteConfig(),
     listBookings(lineUserId),
@@ -93,10 +102,20 @@ async function handlePost(req: NextRequest) {
     if (date < todayBkk) {
       return NextResponse.json({ error: "past_date" }, { status: 400 });
     }
-    if (myBookings.some((x) => x.service === "groom" && catNames.includes(x.catName) && x.date === date)) {
+    // อาบน้ำกับนวดวันเดียวกันได้ — ซ้ำ = บริการเดียวกัน วันเดียวกัน ตัวเดียวกัน
+    const cfgPrograms = resolveGroomPrograms(siteCfg.groomPricePrograms);
+    if (
+      myBookings.some(
+        (x) =>
+          x.service === "groom" &&
+          catNames.includes(x.catName) &&
+          x.date === date &&
+          isMassageBooking(x, cfgPrograms) === massage
+      )
+    ) {
       return NextResponse.json({ error: "duplicate_booking" }, { status: 409 });
     }
-    const { closed, slots, mode } = await getGroomAvailability(date, catNames.length);
+    const { closed, slots, mode } = await getGroomAvailability(date, catNames.length, massage);
     if (closed) {
       return NextResponse.json({ error: "shop_closed" }, { status: 409 });
     }
@@ -113,16 +132,19 @@ async function handlePost(req: NextRequest) {
     }
     // โปรแกรมรายตัว (จองหลายตัว อาบคนละโปรแกรมได้) — รับเฉพาะ id ที่ร้านมีจริง
     // ไม่ส่งรายตัวมา (แอปเวอร์ชันเก่า) = ทุกตัวใช้โปรแกรมเดียวกันแบบเดิม
-    const programs = resolveGroomPrograms(siteCfg.groomPricePrograms);
+    // นวดต้องเป็นโปรแกรมนวด อาบน้ำต้องไม่ใช่โปรแกรมนวด (กันนัดไปลงผิดคิว)
+    const programs = allServicePrograms(siteCfg.groomPricePrograms);
     const validProgram = (v: unknown) => {
       const pid = String(v || "").trim();
-      return pid && groomProgram(pid, programs) ? pid : undefined;
+      const p = pid ? groomProgram(pid, programs) : undefined;
+      return p && isMassageProgram(p) === massage ? pid : undefined;
     };
-    const programId = validProgram(body.groomProgram);
+    const fallbackMassage = massage ? programs.find(isMassageProgram)?.id : undefined;
+    const programId = validProgram(body.groomProgram) || fallbackMassage;
     const perPet: Record<string, unknown> =
       body.petPrograms && typeof body.petPrograms === "object" ? body.petPrograms : {};
     const programOf = (name: string) =>
-      name in perPet ? validProgram(perPet[name]) : programId;
+      (name in perPet ? validProgram(perPet[name]) : programId) || fallbackMassage;
     const deposit = await depositInfo();
     // ทุกตัวบันทึกพร้อมกัน (id สุ่มไม่ชนกัน) — เดิมรอทีละตัว ตัวละ 2-3 รอบ DB
     const bookings: StoredBooking[] = await Promise.all(
@@ -149,7 +171,7 @@ async function handlePost(req: NextRequest) {
       })
       .join(", ");
     sendTelegramLater(
-      formatBookingTelegram("🐾 ลูกค้าจองคิวอาบน้ำเอง (รอยืนยัน)", {
+      formatBookingTelegram(massage ? "💆 ลูกค้าจองคิวนวดเอง (รอยืนยัน)" : "🐾 ลูกค้าจองคิวอาบน้ำเอง (รอยืนยัน)", {
         ลูกค้า: customer.name,
         น้อง: scheduleText,
         วันที่: date,

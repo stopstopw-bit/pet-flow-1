@@ -15,11 +15,11 @@ async function handleGet(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const service = sp.get("service");
 
-  if (service === "groom") {
+  if (service === "groom" || service === "massage") {
     const date = sp.get("date")?.trim();
     if (!date) return NextResponse.json({ error: "date required" }, { status: 400 });
     const cats = Math.min(20, Math.max(1, Number(sp.get("cats")) || 1));
-    return NextResponse.json(await getGroomAvailability(date, cats));
+    return NextResponse.json(await getGroomAvailability(date, cats, service === "massage"));
   }
 
   if (service === "room") {

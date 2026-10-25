@@ -2,6 +2,7 @@ import { getSiteConfig } from "./config-store";
 import type { SiteConfig } from "./config-types";
 import { listGroomBookingsOn, listRoomBookingsOverlapping } from "./bookings-store";
 import { SELF_BOOKABLE_ROOM_INVENTORY_KEY } from "./self-bookable-rooms";
+import { isMassageBooking, resolveGroomPrograms } from "./grooming-prices";
 
 /**
  * ร้านปิดในวันที่ระบุไหม (วันหยุดประจำสัปดาห์ หรือวันหยุดเฉพาะวันที่ตั้งไว้ในหลังบ้าน)
@@ -44,7 +45,9 @@ export function groomMinutesFor(config: Pick<SiteConfig, "groomDuration">, n: nu
  */
 export async function getGroomAvailability(
   date: string,
-  catCount = 1
+  catCount = 1,
+  /** true = คิวนวด (รอบ/จำนวนรับของนวด นับเฉพาะนัดนวด) · false = คิวอาบน้ำ (ไม่นับนัดนวด) */
+  massage = false
 ): Promise<{
   closed: boolean;
   slots: GroomSlotAvailability[];
@@ -53,16 +56,21 @@ export async function getGroomAvailability(
   minutes?: number;
 }> {
   const config = await getSiteConfig();
-  const minutes = groomMinutesFor(config, Math.max(1, catCount));
-  if (minutes > 0) return groomAvailabilityByDuration(config, date, Math.max(1, catCount));
-  const slots = config.groomSlots || [];
-  const defaultCap = config.groomSlotDefaultCapacity ?? 1;
+  const programs = resolveGroomPrograms(config.groomPricePrograms);
+  const sameQueue = (b: { service?: string; groomProgram?: string }) =>
+    isMassageBooking(b, programs) === massage;
+  const minutes = massage ? 0 : groomMinutesFor(config, Math.max(1, catCount));
+  if (minutes > 0) return groomAvailabilityByDuration(config, date, Math.max(1, catCount), sameQueue);
+  const slots = massage ? config.massageSlots?.length ? config.massageSlots : config.groomSlots || [] : config.groomSlots || [];
+  const defaultCap = massage ? Math.max(1, config.massageSlotCapacity ?? 1) : config.groomSlotDefaultCapacity ?? 1;
+  const capOf = (time: string) => (massage ? defaultCap : config.groomSlotCapacity?.[time] ?? defaultCap);
   const closed = isShopClosedOn(config, date);
 
   const all = await listGroomBookingsOn(date);
   const bookedByTime = new Map<string, number>();
   for (const b of all) {
     if (b.service !== "groom" || b.date !== date || b.status === "cancelled" || !b.time) continue;
+    if (!sameQueue(b)) continue;
     bookedByTime.set(b.time, (bookedByTime.get(b.time) || 0) + 1);
   }
 
@@ -75,7 +83,7 @@ export async function getGroomAvailability(
     closed,
     mode: "per_cat",
     slots: slots.map((time) => {
-      const capacity = config.groomSlotCapacity?.[time] ?? defaultCap;
+      const capacity = capOf(time);
       const booked = bookedByTime.get(time) || 0;
       const past = date === todayBkk && time <= timeNowBkk;
       // วันปิด/รอบที่ผ่านไปแล้ว = จองไม่ได้เลย ไม่ว่าจะเหลือคิวตามตัวเลขจริงเท่าไหร่
@@ -94,7 +102,12 @@ export async function getGroomAvailability(
  * รอบที่จะเริ่มได้ = ทุกจุดในช่วง [เริ่ม, เริ่ม + เวลาที่บ้านใหม่ต้องใช้) ยังมีช่างว่างอย่างน้อย 1
  * (จำนวนที่รับพร้อมกัน = ตัวเลขคิว/รอบเดิมในตั้งค่า แปลว่ารับพร้อมกันได้กี่บ้าน)
  */
-async function groomAvailabilityByDuration(config: SiteConfig, date: string, catCount: number) {
+async function groomAvailabilityByDuration(
+  config: SiteConfig,
+  date: string,
+  catCount: number,
+  sameQueue: (b: { service?: string; groomProgram?: string }) => boolean
+) {
   const slots = config.groomSlots || [];
   const defaultCap = config.groomSlotDefaultCapacity ?? 1;
   const closed = isShopClosedOn(config, date);
@@ -103,6 +116,7 @@ async function groomAvailabilityByDuration(config: SiteConfig, date: string, cat
   const households = new Map<string, { start: number; cats: number }>();
   for (const b of await listGroomBookingsOn(date)) {
     if (b.service !== "groom" || b.date !== date || b.status === "cancelled" || !b.time) continue;
+    if (!sameQueue(b)) continue;
     const key = `${b.customerName}|${b.time}`;
     const h = households.get(key) || { start: toMin(b.time), cats: 0 };
     h.cats += 1;

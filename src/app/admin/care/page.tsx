@@ -8,6 +8,7 @@ import { bookingOnDate } from "@/lib/booking-customer-match";
 import { bangkokToday } from "@/lib/bangkok-date";
 import { formatThaiDateShort } from "@/lib/format-thai-date";
 import { resolveCareTasks, type CareTask } from "@/lib/care-tasks";
+import { petKindOf } from "@/lib/pet-kind";
 import { roomColorMap } from "@/lib/room-colors";
 import type { BookingStatus } from "@/lib/business";
 
@@ -95,7 +96,7 @@ export default function CareChecklistPage() {
     fetch("/api/config")
       .then((r) => r.json())
       .then((d) => {
-        setTasks(resolveCareTasks(d.config?.careTasks));
+        setTasks(resolveCareTasks(d.config?.careTasks, petKindOf(d.config)));
         setRooms(d.config?.rooms || []);
       })
       .catch(() => {});
