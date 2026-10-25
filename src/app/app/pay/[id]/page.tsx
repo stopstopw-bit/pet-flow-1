@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { useConfig } from "@/components/ConfigProvider";
 import Link from "next/link";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { PageHeader } from "@/components/PageHeader";
@@ -38,7 +37,6 @@ type Payment = {
 
 export default function PayPage() {
   const params = useParams();
-  const { config } = useConfig();
   const id = String(params.id);
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [payment, setPayment] = useState<Payment | null>(null);
