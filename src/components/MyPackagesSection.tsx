@@ -9,6 +9,13 @@ type CustomerPackage = {
   totalUses: number;
   usedUses: number;
   status: "active" | "done" | "cancelled";
+  /** คืน = คอร์สวันพัก (ไม่ระบุ = ครั้ง) */
+  unit?: "use" | "night";
+  /** "ห้อง Mid Cozy" — คอร์สวันพักที่ผูกห้อง */
+  roomLabel?: string;
+  /** แบ่งจ่ายยังไม่ครบ — ยังใช้ไม่ได้ */
+  locked?: boolean;
+  outstanding?: number;
 };
 
 /**
@@ -55,15 +62,27 @@ export function MyPackagesSection({
       <div className="space-y-2">
         {packages.map((p) => {
           const left = Math.max(0, p.totalUses - p.usedUses);
+          const unit = p.unit === "night" ? "คืน" : "ครั้ง";
           const usedPct = p.totalUses > 0 ? (p.usedUses / p.totalUses) * 100 : 0;
           return (
             <div key={p.id} className="rounded-petflow-sm bg-card/80 px-3 py-2.5">
               <div className="flex items-baseline justify-between gap-2">
                 <p className="min-w-0 truncate text-xs font-bold text-brown">{p.name}</p>
                 <p className="shrink-0 text-xs font-extrabold text-latte-deep">
-                  เหลือ {left}/{p.totalUses} ครั้ง
+                  เหลือ {left}/{p.totalUses} {unit}
                 </p>
               </div>
+              {(p.roomLabel || p.locked) && (
+                <p className="mt-0.5 text-[11px] text-brown-soft">
+                  {p.roomLabel && `ใช้กับ${p.roomLabel}`}
+                  {p.roomLabel && p.locked && " · "}
+                  {p.locked && (
+                    <span className="font-bold text-wait">
+                      🔒 ใช้ได้เมื่อจ่ายครบ (ค้าง {Math.round(p.outstanding || 0).toLocaleString()} บาท)
+                    </span>
+                  )}
+                </p>
+              )}
               {/* แถบแสดงว่าใช้ไปเท่าไหร่แล้ว — เห็นภาพเร็วกว่าตัวเลขอย่างเดียว */}
               <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-paper">
                 <div

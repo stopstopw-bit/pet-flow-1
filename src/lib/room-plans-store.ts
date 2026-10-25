@@ -330,6 +330,8 @@ export async function createPackagePlan(data: {
   totalUses: number;
   price: number;
   groomProgram?: string;
+  /** คอร์สห้องพัก / ชุดรวม / แถมฟรี — รายการละ 1 คอร์ส (ไม่มี = คอร์สนับครั้งใบเดียวแบบเดิม) */
+  items?: import("./package-shop-store").OfferItem[];
   installments: number;
   firstPayment?: number;
   paymentMethod?: "transfer" | "cash";
@@ -353,16 +355,28 @@ export async function createPackagePlan(data: {
   };
   // บันทึกแผนก่อน — ถ้าฐานข้อมูลยังไม่พร้อมจะได้ล้มก่อนสร้างคอร์สที่ไม่ล็อก
   await savePlan(plan);
-  const pkg = await sellPackage({
-    customerId: plan.customerId,
-    customerName: plan.customerName,
-    name: data.name,
-    totalUses: data.totalUses,
-    price,
-    groomProgram: data.groomProgram,
-    planId: plan.id,
-    noIncome: true,
-  });
+  const pkg = data.items?.length
+    ? (
+        await (await import("./package-shop-store")).sellOfferItems({
+          customerId: plan.customerId,
+          customerName: plan.customerName,
+          name: data.name,
+          price,
+          items: data.items,
+          planId: plan.id,
+          noIncome: true,
+        })
+      )[0]
+    : await sellPackage({
+        customerId: plan.customerId,
+        customerName: plan.customerName,
+        name: data.name,
+        totalUses: data.totalUses,
+        price,
+        groomProgram: data.groomProgram,
+        planId: plan.id,
+        noIncome: true,
+      });
 
   let payment: Awaited<ReturnType<typeof receiveRoomPlanPayment>> | undefined;
   const first = Math.round(Number(data.firstPayment) || 0);

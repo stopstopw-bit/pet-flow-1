@@ -8,8 +8,38 @@ import { Icon } from "@/components/Icon";
 import { EmptyState, MoreMenu, SectionLabel, Segmented } from "@/components/ui";
 import { GroomProgramPicker, useGroomPrograms } from "@/components/GroomProgramPicker";
 import { groomProgramName, type GroomProgram } from "@/lib/grooming-prices";
+import { RoomTypePicker, useRoomOptions, type RoomOption } from "@/components/RoomTypePicker";
+import {
+  OfferItemsEditor,
+  itemsFromOffer,
+  itemsToPayload,
+  type OfferItemDraft,
+} from "@/components/OfferItemsEditor";
 
-type OfferKind = "package" | "credit" | "nights";
+type OfferKind = "package" | "credit" | "nights" | "bundle";
+
+type OfferItem = { unit: "night" | "use"; paid: number; free?: number; roomType?: string; groomProgram?: string };
+
+/** รายการที่ส่งให้ API: ชุดรวม = ตามฟอร์ม · คอร์สเดี่ยวที่มีของแถม = 1 รายการ · ไม่มีแถม = [] (แบบเดิม) */
+function payloadItems(
+  kind: OfferKind,
+  drafts: OfferItemDraft[],
+  single: { paid: number; free: number; roomType?: string; groomProgram?: string }
+) {
+  if (kind === "bundle") return itemsToPayload(drafts);
+  if (kind === "credit" || single.free <= 0) return [];
+  return [
+    kind === "nights"
+      ? { unit: "night" as const, paid: single.paid, free: single.free, roomType: single.roomType || undefined }
+      : { unit: "use" as const, paid: single.paid, free: single.free, groomProgram: single.groomProgram || undefined },
+  ];
+}
+
+/** ราคา 0 = ลูกค้าได้คอร์สฟรี — ถามก่อน กันลืมใส่ราคา */
+function confirmFreePrice(kind: OfferKind, price: number) {
+  if (kind === "credit" || price > 0) return true;
+  return confirm("ราคา 0 บาท — ลูกค้ากดซื้อแล้วได้คอร์สนี้ฟรี ตั้งใจแบบนี้ไหม?");
+}
 
 type Offer = {
   id: string;
@@ -17,12 +47,18 @@ type Offer = {
   kind: OfferKind;
   totalUses: number;
   price: number;
-  /** เฉพาะ kind==="credit" — เครดิตที่ลูกค้าได้รับ (ตั้งสูงกว่า price ได้เพื่อแถมโบนัส) */
+  /** เฉพาะ kind==="credit" — เครดิตที่ได้เพิ่มฟรี */
   creditAmount?: number;
   description?: string;
   imageUrl?: string;
   /** เฉพาะ kind==="package" — ผูกโปรแกรมอาบน้ำ ไม่ระบุ = ทุกโปรแกรม */
   groomProgram?: string;
+  /** เฉพาะ kind==="nights" — ผูกประเภทห้อง ไม่ระบุ = ทุกห้อง */
+  roomType?: string;
+  roomLabel?: string;
+  /** ชุดรวม / ของแถม */
+  items?: OfferItem[];
+  itemLabels?: string[];
   active: boolean;
 };
 
@@ -109,9 +145,11 @@ function OfferRow({
   patch,
   pickImage,
   programs,
+  rooms,
 }: {
   offer: Offer;
   programs: GroomProgram[];
+  rooms: RoomOption[];
   patch: (body: Record<string, unknown>, okMsg: string, key: string) => Promise<void>;
   pickImage: (file: File, onDone: (dataUrl: string) => void) => Promise<void>;
 }) {
@@ -123,33 +161,48 @@ function OfferRow({
   const [creditAmount, setCreditAmount] = useState(String(o.creditAmount ?? o.price));
   const [desc, setDesc] = useState(o.description || "");
   const [program, setProgram] = useState(o.groomProgram || "");
+  const [room, setRoom] = useState(o.roomType || "");
+  const [free, setFree] = useState("");
+  const [items, setItems] = useState<OfferItemDraft[]>([]);
   /** รูปหน้าปก: undefined = ไม่ได้เปลี่ยน · "" = เอารูปออก · data URL = รูปใหม่ */
   const [image, setImage] = useState<string | undefined>(undefined);
   const [saving, setSaving] = useState(false);
   const isCredit = o.kind === "credit";
   const isNights = o.kind === "nights";
+  const isBundle = o.kind === "bundle";
   const unitWord = isNights ? "คืน" : "ครั้ง";
+  // คอร์สเดี่ยวที่มีของแถม เก็บเป็นรายการเดียว — จำนวนที่จ่าย/แถมอยู่ในนั้น
+  const single = !isBundle && o.items?.length === 1 ? o.items[0] : undefined;
+  // คอร์สวันพักที่ผูกห้องและมีราคาเต็ม — ก๊อปไปห้องอื่นได้ (ลด % เท่ากัน)
+  const copyRoom = isNights ? rooms.find((r) => r.id === (o.roomType || single?.roomType) && r.price > 0) : undefined;
 
   const startEdit = () => {
     setName(o.name);
-    setUses(String(o.totalUses));
+    setUses(String(single ? single.paid : o.totalUses));
     setPrice(String(o.price));
     setCreditAmount(String(o.creditAmount ?? o.price));
     setDesc(o.description || "");
     setProgram(o.groomProgram || "");
+    setRoom(o.roomType || "");
+    setFree(single?.free ? String(single.free) : "");
+    setItems(itemsFromOffer(o.items));
     setImage(undefined);
     setEditing(true);
   };
 
   const save = async () => {
-    if (!name.trim()) {
-      toast("กรอกชื่อ" + (isCredit ? "รายการ" : "คอร์ส"), "error");
+    const bundleItems = isBundle ? itemsToPayload(items) : [];
+    if (
+      !name.trim() ||
+      (isBundle ? bundleItems.length === 0 : !isCredit && Math.round(Number(uses) || 0) <= 0)
+    ) {
+      toast(
+        isCredit ? "กรอกชื่อรายการ" : isBundle ? "กรอกชื่อคอร์สและใส่รายการอย่างน้อย 1 อย่าง" : `กรอกชื่อคอร์สและจำนวน${unitWord}`,
+        "error"
+      );
       return;
     }
-    if (!isCredit && Math.round(Number(uses) || 0) <= 0) {
-      toast(`กรอกจำนวน${unitWord}`, "error");
-      return;
-    }
+    if (!confirmFreePrice(o.kind, Math.round(Number(price) || 0))) return;
     setSaving(true);
     try {
       await patch(
@@ -163,6 +216,17 @@ function OfferRow({
           description: desc.trim(),
           ...(image !== undefined ? { image } : {}),
           ...(o.kind === "package" ? { groomProgram: program } : {}),
+          ...(isNights ? { roomType: room } : {}),
+          ...(isCredit
+            ? {}
+            : {
+                items: payloadItems(o.kind, items, {
+                  paid: Math.round(Number(uses) || 0),
+                  free: Math.round(Number(free) || 0),
+                  roomType: room,
+                  groomProgram: program,
+                }),
+              }),
         },
         isCredit ? "แก้ไขรายการเติมเครดิตแล้ว ✏️" : "แก้ไขคอร์สแล้ว ✏️",
         o.id
@@ -195,7 +259,31 @@ function OfferRow({
           </Labeled>
           {isCredit ? (
             <div className="flex gap-2">
-              <Labeled label="ลูกค้าจ่าย (บาท)">
+                <Labeled label="ลูกค้าจ่าย (บาท)">
+                  <input
+                    type="number"
+                    min={0}
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    placeholder="0"
+                    className={field}
+                  />
+                </Labeled>
+                <Labeled label="ได้เครดิต (บาท)">
+                  <input
+                    type="number"
+                    min={0}
+                    value={creditAmount}
+                    onChange={(e) => setCreditAmount(e.target.value)}
+                    placeholder="0"
+                    className={field}
+                  />
+                </Labeled>
+            </div>
+          ) : isBundle ? (
+            <>
+              <OfferItemsEditor items={items} onChange={setItems} rooms={rooms} programs={programs} />
+              <Labeled label="ราคาทั้งชุด (บาท)">
                 <input
                   type="number"
                   min={0}
@@ -205,17 +293,7 @@ function OfferRow({
                   className={field}
                 />
               </Labeled>
-              <Labeled label="ได้เครดิต (บาท)">
-                <input
-                  type="number"
-                  min={0}
-                  value={creditAmount}
-                  onChange={(e) => setCreditAmount(e.target.value)}
-                  placeholder="0"
-                  className={field}
-                />
-              </Labeled>
-            </div>
+            </>
           ) : (
             <div className="flex gap-2">
               <Labeled label={isNights ? "กี่คืน" : "กี่ครั้ง"}>
@@ -225,6 +303,16 @@ function OfferRow({
                   value={uses}
                   onChange={(e) => setUses(e.target.value)}
                   placeholder={isNights ? "กี่คืน" : "กี่ครั้ง"}
+                  className={field}
+                />
+              </Labeled>
+              <Labeled label="แถมฟรี">
+                <input
+                  type="number"
+                  min={0}
+                  value={free}
+                  onChange={(e) => setFree(e.target.value)}
+                  placeholder="0"
                   className={field}
                 />
               </Labeled>
@@ -251,6 +339,16 @@ function OfferRow({
           </Labeled>
           {o.kind === "package" && (
             <GroomProgramPicker value={program} onChange={setProgram} programs={programs} />
+          )}
+          {isNights && (
+            <RoomTypePicker
+              value={room}
+              onChange={setRoom}
+              rooms={rooms}
+              nights={Math.round(Number(uses) || 0)}
+              price={Math.round(Number(price) || 0)}
+              onPrice={(v) => setPrice(String(v))}
+            />
           )}
           <CoverImagePicker
             image={shownImage}
@@ -327,8 +425,13 @@ function OfferRow({
         <span className="block truncate text-[11px] text-brown-soft">
           {isCredit
             ? `จ่าย ${o.price.toLocaleString()}฿ ได้เครดิต ${(o.creditAmount ?? o.price).toLocaleString()}฿`
-            : `${o.totalUses} ${unitWord} · ${o.price.toLocaleString()} ฿`}
+            : isBundle
+              ? `${o.itemLabels?.join(" + ") || "ชุดรวม"} · ${o.price.toLocaleString()} ฿`
+              : single?.free
+                ? `${single.paid} ${unitWord} + แถม ${single.free} · ${o.price.toLocaleString()} ฿`
+                : `${o.totalUses} ${unitWord} · ${o.price.toLocaleString()} ฿`}
           {o.groomProgram && ` · ${groomProgramName(o.groomProgram, programs) || "โปรแกรมที่ลบไปแล้ว"}`}
+          {isNights && ` · ${o.roomType ? o.roomLabel || "ห้องที่ลบไปแล้ว" : "ทุกห้อง"}`}
         </span>
         {o.description ? (
           <span className="block truncate text-[11px] text-brown-faint">{o.description}</span>
@@ -337,6 +440,34 @@ function OfferRow({
       <MoreMenu
         items={[
           { label: "แก้ไข", icon: "edit", onClick: startEdit },
+          ...(copyRoom
+            ? [
+                {
+                  label: "ทำคอร์สนี้ให้ทุกห้อง",
+                  icon: "plus",
+                  onClick: () => {
+                    const nights = single ? single.paid : o.totalUses;
+                    const ratio = o.price / (copyRoom.price * nights);
+                    const lines = rooms
+                      .filter((r) => r.id !== copyRoom.id && r.price > 0)
+                      .map((r) => `• ${r.name}: ${nights} คืน ${Math.round(r.price * nights * ratio).toLocaleString()}฿`);
+                    if (lines.length === 0) {
+                      toast("ยังไม่มีห้องอื่นในตั้งค่า", "error");
+                      return;
+                    }
+                    if (
+                      !confirm(
+                        `สร้างคอร์สแบบเดียวกัน (ลด ${Math.round((1 - ratio) * 100)}% จากราคาเต็ม) ให้ห้องอื่น:\n` +
+                          lines.join("\n") +
+                          `\n\nใช้รูปและคำอธิบายเดียวกัน · ห้องที่มีคอร์ส ${nights} คืนอยู่แล้วจะข้าม`
+                      )
+                    )
+                      return;
+                    patch({ action: "copy_to_rooms", offerId: o.id }, "สร้างคอร์สให้ทุกห้องแล้ว 🏠", o.id);
+                  },
+                },
+              ]
+            : []),
           {
             label: o.active ? "ปิดขาย" : "เปิดขาย",
             icon: o.active ? "eye" : "check",
@@ -382,7 +513,11 @@ export default function AdminPackagesPage() {
   const [desc, setDesc] = useState("");
   const [image, setImage] = useState("");
   const [program, setProgram] = useState("");
+  const [room, setRoom] = useState("");
+  const [free, setFree] = useState("");
+  const [items, setItems] = useState<OfferItemDraft[]>([]);
   const groomPrograms = useGroomPrograms();
+  const rooms = useRoomOptions();
 
   /** ย่อรูปก่อนส่งเสมอ — รูปจากมือถือ 5MB ยิงขึ้นไปตรงๆ จะโดนตีกลับ */
   const pickImage = async (file: File, onDone: (dataUrl: string) => void) => {
@@ -410,23 +545,24 @@ export default function AdminPackagesPage() {
     load();
   }, [load]);
 
-  const isCreditForm = kind === "credit";
-
   const addOffer = async () => {
-    if (!name.trim()) {
+    const n = Math.round(Number(uses) || 0);
+    const bundleItems = kind === "bundle" ? itemsToPayload(items) : [];
+    if (
+      !name.trim() ||
+      (kind === "bundle" ? bundleItems.length === 0 : kind !== "credit" && n <= 0)
+    ) {
       toast(
-        isCreditForm
+        kind === "credit"
           ? "กรอกชื่อรายการ"
-          : `กรอกชื่อคอร์สและจำนวน${kind === "nights" ? "คืน" : "ครั้ง"}`,
+          : kind === "bundle"
+            ? "กรอกชื่อคอร์สและใส่รายการอย่างน้อย 1 อย่าง"
+            : `กรอกชื่อคอร์สและจำนวน${kind === "nights" ? "คืน" : "ครั้ง"}`,
         "error"
       );
       return;
     }
-    const n = Math.round(Number(uses) || 0);
-    if (!isCreditForm && n <= 0) {
-      toast(`กรอกจำนวน${kind === "nights" ? "คืน" : "ครั้ง"}`, "error");
-      return;
-    }
+    if (!confirmFreePrice(kind, Math.round(Number(price) || 0))) return;
     setBusy("add");
     try {
       const res = await fetch("/api/package-shop", {
@@ -434,19 +570,26 @@ export default function AdminPackagesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "create_offer",
-          kind,
           name: name.trim(),
-          totalUses: isCreditForm ? 0 : n,
+          kind,
+          totalUses: kind === "credit" ? 0 : n,
           price: Math.round(Number(price) || 0),
-          ...(isCreditForm ? { creditAmount: Math.round(Number(creditAmount) || 0) } : {}),
+          ...(kind === "credit" ? { creditAmount: Math.round(Number(creditAmount) || 0) } : {}),
           description: desc.trim() || undefined,
           image: image || undefined,
           groomProgram: kind === "package" ? program || undefined : undefined,
+          roomType: kind === "nights" ? room || undefined : undefined,
+          items: payloadItems(kind, items, {
+            paid: n,
+            free: Math.round(Number(free) || 0),
+            roomType: room,
+            groomProgram: program,
+          }),
         }),
       });
       if (res.ok) {
         toast(
-          isCreditForm
+          kind === "credit"
             ? "เพิ่มรายการเติมเครดิตแล้ว — ลูกค้าเห็นในแอปทันที 💰"
             : "เพิ่มคอร์สที่ขายแล้ว — ลูกค้าเห็นในแอปทันที 🛍️",
           "success"
@@ -458,6 +601,9 @@ export default function AdminPackagesPage() {
         setDesc("");
         setImage("");
         setProgram("");
+        setRoom("");
+        setFree("");
+        setItems([]);
         load();
       } else {
         toast("เพิ่มไม่สำเร็จ", "error");
@@ -542,10 +688,19 @@ export default function AdminPackagesPage() {
                 { id: "package", label: "นับครั้ง", icon: "ticket" },
                 { id: "credit", label: "เครดิต", icon: "wallet" },
                 { id: "nights", label: "วันพัก", icon: "bed" },
+                { id: "bundle", label: "ชุดรวม", icon: "gift" },
               ]}
             />
             {kind === "credit" && (
               <p className="text-[11px] text-brown-soft">เติมเครดิต Member — ลูกค้าจ่ายแล้วได้เครดิตไว้หักค่าบริการ</p>
+            )}
+            {kind === "bundle" && (
+              <p className="rounded-petflow-sm bg-honey/15 px-3 py-2 text-[11px] font-bold text-petflow-chocolate">
+                คอร์สเดียวรวมหลายอย่าง เช่น พัก 5 คืน + อาบน้ำ 6 ครั้ง แต่ละอย่างแถมฟรีได้
+                <span className="mt-0.5 block font-normal text-brown-soft">
+                  ร้านยืนยันรับเงินแล้ว ลูกค้าได้คอร์สแยกตามรายการ ตัดตอนออกบิลเหมือนคอร์สปกติ
+                </span>
+              </p>
             )}
             {kind === "nights" && (
               <p className="rounded-petflow-sm bg-honey/15 px-3 py-2 text-[11px] font-bold text-petflow-chocolate">
@@ -560,33 +715,54 @@ export default function AdminPackagesPage() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={
-                isCreditForm
+                kind === "credit"
                   ? "ชื่อรายการ เช่น เติมเครดิต 1,000"
                   : kind === "nights"
                     ? "ชื่อคอร์ส เช่น แพ็กรายเดือน 30 คืน (ลด 30%)"
-                    : "ชื่อคอร์ส เช่น อาบน้ำ 10 ครั้ง"
+                    : kind === "bundle"
+                      ? "ชื่อคอร์ส เช่น ชุดพักผ่อน พัก 5 คืน + อาบน้ำ 6 ครั้ง"
+                      : "ชื่อคอร์ส เช่น อาบน้ำ 10 ครั้ง"
               }
               className={field}
             />
-            {isCreditForm ? (
-              <div className="flex gap-2">
+            {kind === "credit" ? (
+              <>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    placeholder="ลูกค้าจ่าย (บาท)"
+                    className={`${field} min-w-0`}
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    value={creditAmount}
+                    onChange={(e) => setCreditAmount(e.target.value)}
+                    placeholder="ได้เครดิต (บาท)"
+                    className={`${field} min-w-0`}
+                  />
+                </div>
+                {Number(creditAmount) > Number(price) && Number(price) > 0 && (
+                  <p className="rounded-petflow-sm bg-sage/10 px-3 py-2 text-[11px] font-bold text-ok">
+                    ลูกค้าจ่าย {Number(price).toLocaleString()}฿ ได้เครดิต {Number(creditAmount).toLocaleString()}฿ — แถม {(Number(creditAmount) - Number(price)).toLocaleString()}฿
+                  </p>
+                )}
+              </>
+            ) : kind === "bundle" ? (
+              <>
+                <OfferItemsEditor items={items} onChange={setItems} rooms={rooms} programs={groomPrograms} />
                 <input
                   type="number"
                   min={0}
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
-                  placeholder="ลูกค้าจ่าย (บาท)"
-                  className={`${field} min-w-0`}
+                  placeholder="ราคาทั้งชุด (บาท)"
+                  className={field}
                 />
-                <input
-                  type="number"
-                  min={0}
-                  value={creditAmount}
-                  onChange={(e) => setCreditAmount(e.target.value)}
-                  placeholder="ได้เครดิต (บาท)"
-                  className={`${field} min-w-0`}
-                />
-              </div>
+              </>
             ) : (
               <div className="flex gap-2">
                 <input
@@ -600,6 +776,14 @@ export default function AdminPackagesPage() {
                 <input
                   type="number"
                   min={0}
+                  value={free}
+                  onChange={(e) => setFree(e.target.value)}
+                  placeholder="แถมฟรี"
+                  className={`${field} min-w-0`}
+                />
+                <input
+                  type="number"
+                  min={0}
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
                   placeholder="ราคา (บาท)"
@@ -607,24 +791,25 @@ export default function AdminPackagesPage() {
                 />
               </div>
             )}
-            {isCreditForm && Number(creditAmount) > Number(price) && Number(price) > 0 && (
-              <p className="rounded-petflow-sm bg-sage/10 px-3 py-2 text-[11px] font-bold text-ok">
-                ลูกค้าจ่าย {Number(price).toLocaleString()}฿ ได้เครดิต {Number(creditAmount).toLocaleString()}฿ — แถม {(Number(creditAmount) - Number(price)).toLocaleString()}฿
-              </p>
-            )}
             <textarea
               value={desc}
               onChange={(e) => setDesc(e.target.value)}
               rows={3}
-              placeholder={
-                isCreditForm
-                  ? "รายละเอียด / คำโปรย (ถ้ามี) เช่น เติมเลยวันนี้ รับโบนัสฟรี 200฿ (ขึ้นบรรทัดใหม่ได้)"
-                  : "รายละเอียด / คำโปรย (ถ้ามี) เช่น ประหยัดกว่าซื้อแยก 500฿ (ขึ้นบรรทัดใหม่ได้)"
-              }
+              placeholder="รายละเอียด / คำโปรย (ถ้ามี) เช่น ประหยัดกว่าซื้อแยก 500฿ (ขึ้นบรรทัดใหม่ได้)"
               className={`${field} resize-y leading-relaxed`}
             />
             {kind === "package" && (
               <GroomProgramPicker value={program} onChange={setProgram} programs={groomPrograms} />
+            )}
+            {kind === "nights" && (
+              <RoomTypePicker
+                value={room}
+                onChange={setRoom}
+                rooms={rooms}
+                nights={Math.round(Number(uses) || 0)}
+                price={Math.round(Number(price) || 0)}
+                onPrice={(v) => setPrice(String(v))}
+              />
             )}
 
             <CoverImagePicker
@@ -642,7 +827,7 @@ export default function AdminPackagesPage() {
               <Icon name="plus" size={18} />
               {busy === "add"
                 ? "กำลังเพิ่ม…"
-                : isCreditForm
+                : kind === "credit"
                   ? "เพิ่มรายการเติมเครดิต"
                   : "เพิ่มคอร์สที่จะขาย"}
             </button>
@@ -666,7 +851,10 @@ export default function AdminPackagesPage() {
                 <li key={o.id} className="px-4 py-3">
                   <div className="flex items-start gap-3">
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-honey/30 text-petflow-chocolate">
-                      <Icon name={o.kind === "credit" ? "wallet" : o.kind === "nights" ? "bed" : "ticket"} size={20} />
+                      <Icon
+                        name={o.kind === "credit" ? "wallet" : o.kind === "nights" ? "bed" : o.kind === "bundle" ? "gift" : "ticket"}
+                        size={20}
+                      />
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-extrabold text-petflow-chocolate">{o.name}</p>
@@ -713,15 +901,15 @@ export default function AdminPackagesPage() {
                             `ยืนยันว่าได้รับเงิน ${o.price.toLocaleString()} บาท จาก ${o.customerName}?\n` +
                               (o.kind === "credit"
                                 ? `ระบบจะเติมเครดิต ${(o.creditAmount ?? o.price).toLocaleString()}฿ ให้ลูกค้าทันที`
-                                : `ระบบจะเพิ่มคอร์ส "${o.name}" (${o.totalUses} ${o.kind === "nights" ? "คืน" : "ครั้ง"}) ให้ลูกค้าทันที`)
+                                : o.kind === "bundle"
+                                  ? `ระบบจะเพิ่มคอร์สชุด "${o.name}" (แยกตามรายการ) ให้ลูกค้าทันที`
+                                  : `ระบบจะเพิ่มคอร์ส "${o.name}" (${o.totalUses} ${o.kind === "nights" ? "คืน" : "ครั้ง"}) ให้ลูกค้าทันที`)
                           )
                         )
                           return;
                         patch(
                           { action: "confirm_order", orderId: o.id },
-                          o.kind === "credit"
-                            ? "ยืนยันรับเงินแล้ว — เติมเครดิตให้ลูกค้าเรียบร้อย 💰"
-                            : "ยืนยันรับเงินแล้ว — เพิ่มคอร์สให้ลูกค้าเรียบร้อย 🎫",
+                          "ยืนยันรับเงินแล้ว — เพิ่มคอร์สให้ลูกค้าเรียบร้อย 🎫",
                           o.id
                         );
                       }}
@@ -761,7 +949,14 @@ export default function AdminPackagesPage() {
           ) : (
             <ul className="divide-y divide-petflow-line">
               {offers.map((o) => (
-                <OfferRow key={o.id} offer={o} patch={patch} pickImage={pickImage} programs={groomPrograms} />
+                <OfferRow
+                  key={o.id}
+                  offer={o}
+                  patch={patch}
+                  pickImage={pickImage}
+                  programs={groomPrograms}
+                  rooms={rooms}
+                />
               ))}
             </ul>
           )}

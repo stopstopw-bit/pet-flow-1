@@ -42,10 +42,15 @@ import {
 import { dayCareLabel, dayCarePrice, isDayCareLabel, isDayCareStay } from "@/lib/day-care";
 import {
   LINE_PROMO_KINDS,
+  freeNightsFor,
+  isFreeNightsPromo,
   normalizeLineDiscount,
   stripDiscountTag,
   type LinePromo,
   type LinePromoKind,
+  type PromoBillRule,
+  promoAsLinePromo,
+  billRuleLabel,
 } from "@/lib/line-discount";
 
 type Customer = {
@@ -65,6 +70,7 @@ type Promo = {
   title: { th: string };
   discountPercent?: number;
   discountAmount?: number;
+  billRule?: PromoBillRule;
 };
 
 type Invoice = {
@@ -88,6 +94,8 @@ type Invoice = {
     amount: number;
     kind?: string;
     productId?: string;
+    offerId?: string;
+    packageIds?: string[];
     program?: string;
     breed?: string;
     size?: string;
@@ -119,6 +127,24 @@ type Booking = {
   transport?: BookingTransport;
 };
 
+type CourseOffer = {
+  id: string;
+  name: string;
+  kind: string;
+  price: number;
+  totalUses: number;
+  roomLabel?: string;
+  itemLabels?: string[];
+  active: boolean;
+};
+
+function courseOfferDetail(o: CourseOffer) {
+  if (o.itemLabels?.length) return o.itemLabels.join(" + ");
+  return o.kind === "nights"
+    ? `${o.roomLabel || "ทุกห้อง"} ${o.totalUses} คืน`
+    : `อาบน้ำ ${o.totalUses} ครั้ง`;
+}
+
 type ItemKind = "grooming" | "room" | "service" | "custom" | "freebie" | "package" | "product";
 type Item = {
   kind: ItemKind;
@@ -147,6 +173,10 @@ type Item = {
   roomLine?: { note?: string };
   /** สินค้าหน้าร้าน (kind "product") — ออก/แก้/ลบบิลแล้วตัด/คืนสต็อกให้เอง */
   productId?: string;
+  /** คอร์สที่ขาย (kind "package") — จ่ายบิลแล้วระบบเพิ่มคอร์สให้ลูกค้าเอง */
+  offerId?: string;
+  /** คอร์สที่เพิ่มให้ลูกค้าไปแล้วจากบรรทัดนี้ — กันเพิ่มซ้ำ */
+  packageIds?: string[];
 };
 
 /**
@@ -257,9 +287,31 @@ function linePromoKindOf(it: Item): LinePromoKind | null {
  * ใส่ส่วนลดจากโปรที่เลือกให้รายการที่ตรงประเภท — รายการที่ใส่ส่วนลดเองไว้แล้วใช้ของเดิม
  * (ไม่ได้เขียนทับลง state เพิ่มรายการทีหลังก็ได้ส่วนลดเอง เปลี่ยน/เลิกโปรก็กลับเป็นราคาเต็ม)
  */
+/** จำนวนคืนของรายการห้องพัก (บรรทัดค่าห้องจากบิลเดิมเก็บคืนไว้ใน qty) */
+function stayNightsOf(it: Item): number {
+  if (it.roomLine) return Math.max(1, Math.round(it.qty || 1));
+  return it.kind === "room" ? it.nights || 0 : 0;
+}
+
+/** บิลนี้พักถึงจำนวนคืนที่โปรกำหนดไหม (โปรที่ไม่ได้ตั้งขั้นต่ำ = ใช้ได้ทุกบิล) */
+function linePromoQualifies(items: Item[], promo?: LinePromo): boolean {
+  if (promo && isFreeNightsPromo(promo))
+    return items.some((it) => linePromoKindOf(it) === "stay" && freeNightsFor(promo, stayNightsOf(it)) > 0);
+  if (!promo?.minNights) return true;
+  return items.some((it) => linePromoKindOf(it) === "stay" && stayNightsOf(it) >= promo.minNights!);
+}
+
 function withLinePromo(it: Item, promo?: LinePromo): Item {
   if (!promo || (it.discount || 0) > 0) return it;
   const kind = linePromoKindOf(it);
+  // แถมคืนฟรี — ลดเป็นบาทเท่าค่าห้องของคืนที่แถม เฉพาะห้องพัก (ไม่ใช่ Day Care)
+  if (isFreeNightsPromo(promo)) {
+    if (kind !== "stay") return it;
+    const free = freeNightsFor(promo, stayNightsOf(it));
+    const unit = it.priceOverride ?? (it.roomLine ? it.amount || 0 : it.roomPrice || 0);
+    if (free <= 0 || unit <= 0) return it;
+    return { ...it, discount: free * unit, discountMode: "baht", discountName: `${promo.name} แถม ${free} คืน` };
+  }
   if (!kind || !promo.kinds.includes(kind)) return it;
   return { ...it, discount: promo.percent, discountMode: "percent", discountName: promo.name };
 }
@@ -469,6 +521,16 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
       .then((d) => setPosProducts(d.products || []))
       .catch(() => {});
   }, []);
+  /** คอร์สที่ตั้งไว้ในขายคอร์ส — เลือกใส่บิลได้ (ลูกค้าไม่ได้กดซื้อในแอปเอง) ไม่รวมเครดิต Member */
+  const [courseOffers, setCourseOffers] = useState<CourseOffer[]>([]);
+  useEffect(() => {
+    fetch("/api/package-shop")
+      .then((r) => r.json())
+      .then((d) =>
+        setCourseOffers(((d.offers || []) as CourseOffer[]).filter((o) => o.kind !== "credit"))
+      )
+      .catch(() => {});
+  }, []);
   const [freebiePresets, setFreebiePresets] = useState<string[]>(FREEBIE_PRESETS);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [bookingId, setBookingId] = useState<string | undefined>(undefined);
@@ -566,9 +628,11 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
   const [productTab, setProductTab] = useState("ทั้งหมด");
   // ส่วนลดกรอกได้ทั้งบาทและเปอร์เซ็นต์ — ร้านคิดโปรเป็น % บ่อย จะได้ไม่ต้องกดเครื่องคิดเลขเอง
   const [discountMode, setDiscountMode] = useState<"baht" | "percent">("baht");
-  /** โปรลดเฉพาะรายการ (ตั้งในตั้งค่า) + ตัวที่เลือกใช้กับบิลนี้ */
-  const [linePromos, setLinePromos] = useState<LinePromo[]>([]);
-  const [linePromoId, setLinePromoId] = useState("");
+  /**
+   * แก้บิลเก่าที่ใช้โปรลดเฉพาะรายการ — ส่วนลดโหลดกลับมาอยู่ในแต่ละรายการแล้ว
+   * ยังไม่คิดโปรซ้ำจนกว่าจะเปลี่ยนโปร
+   */
+  const [lineFromEdit, setLineFromEdit] = useState(false);
   const [creating, setCreating] = useState(false);
   const [pay, setPay] = useState({ bankName: "", accountNumber: "", accountName: "" });
   const [shopName, setShopName] = useState("");
@@ -643,7 +707,6 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
     if (config?.business?.name) setShopName(config.business.name);
     if (config?.billing) setBillMsg(config.billing);
     if (config?.options?.servicePresets?.length) setServicePresets(config.options.servicePresets);
-    setLinePromos(config?.linePromos || []);
     if (config?.options?.freebies?.length) setFreebiePresets(config.options.freebies);
     // ดึงจากนัดเฉพาะที่ยังไม่จบ — เสร็จสิ้น/ยกเลิก/ไม่มา ไม่ควรโผล่ให้ออกบิลซ้ำอีก
     // (บิลที่ออกไปแล้วตัดออกด้วย paidForGroup ด้านล่าง)
@@ -787,8 +850,13 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
       if (aDue !== bDue) return aDue ? -1 : 1;
       return aDue ? kb.localeCompare(ka) : ka.localeCompare(kb);
     });
-  const linePromo = linePromos.find((p) => p.id === linePromoId);
-  const lines = items.map((it) => computeLine(withLinePromo(it, linePromo), groomPrograms, groomSizeLabels));
+  // โปรลดเฉพาะรายการ / แถมคืนฟรี = โปรในรายการโปรที่มี billRule — ลดทีละรายการ ไม่ลดทั้งบิล
+  const linePromo = lineFromEdit ? undefined : promoAsLinePromo(promos.find((p) => p.id === promoId));
+  // โปรที่ตั้งขั้นต่ำไว้ (เช่น พัก 30 คืนขึ้นไป) ลดให้เฉพาะบิลที่พักถึง
+  const linePromoOk = linePromoQualifies(items, linePromo);
+  const lines = items.map((it) =>
+    computeLine(withLinePromo(it, linePromoOk ? linePromo : undefined), groomPrograms, groomSizeLabels)
+  );
   /** ยอดที่โปรลดเฉพาะรายการลดให้ในบิลนี้ (ไม่นับรายการที่ใส่ส่วนลดเองไว้) */
   const linePromoOff = lines.reduce(
     (sum, l, i) =>
@@ -817,7 +885,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
       : promoMinNights > 0 && billNights < promoMinNights
         ? `บิลนี้พัก ${billNights} คืน — โปรนี้ต้องพัก ${promoMinNights} คืนขึ้นไป`
         : "";
-  const promoDiscount = selectedPromo
+  const promoDiscount = selectedPromo && !promoAsLinePromo(selectedPromo)
     ? Math.min(
         subtotal,
         Math.max(
@@ -1384,7 +1452,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
     promoPickSeq.current++;
     setNewCustomerInfo(null);
     setBillBookingIds([]);
-    setLinePromoId("");
+    setLineFromEdit(false);
     setBillDeposit("");
     setBillDepPct(null);
     setBookingId(undefined);
@@ -1432,6 +1500,9 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
             : it.kind,
         ...(it.kind === "grooming" ? { program: it.program, breed: it.breed, size: it.size } : {}),
         ...(it.kind === "product" && it.productId ? { productId: it.productId } : {}),
+        ...(it.kind === "package" && it.offerId
+          ? { offerId: it.offerId, ...(it.packageIds?.length ? { packageIds: it.packageIds } : {}) }
+          : {}),
       }))
       .filter((l) => l.label.trim());
 
@@ -1555,6 +1626,18 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
             amount: it.unitAmount ?? Math.round(it.amount / qty),
           };
         }
+        if (it.kind === "package") {
+          return {
+            ...newGrooming(undefined, groomPrograms),
+            kind: "package" as const,
+            label: it.label.replace(/^🐱 .+? · /, "").replace(/ × \d+$/, ""),
+            offerId: it.offerId,
+            packageIds: it.packageIds,
+            catName: it.catName,
+            qty,
+            amount: it.unitAmount ?? Math.round(it.amount / qty),
+          };
+        }
         if (it.amount > 0 && isTransportLabel(it.label)) {
           // ค่ารับ-ส่ง → กลับมาเป็นบริการรับ-ส่ง เลือกเที่ยวเดียว/ไป-กลับได้เหมือนตอนออกบิล
           return {
@@ -1635,7 +1718,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
     // ทั้งที่บิลยังลดอยู่ (คิดแบบเดียวกับ calcPromoDiscount ฝั่งเซิร์ฟเวอร์)
     const oldPromo = promos.find((p) => p.id === inv.promoId);
     const oldSubtotal = inv.subtotal ?? 0;
-    const oldPromoOff = oldPromo
+    const oldPromoOff = oldPromo && !promoAsLinePromo(oldPromo)
       ? Math.min(
           oldSubtotal,
           Math.max(
@@ -1652,7 +1735,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
     setSuggestedPromo(null);
     setDiscount(keptExtra ? String(keptExtra) : "");
     setDiscountMode("baht");
-    setLinePromoId(""); // ส่วนลดจากโปรเดิมโหลดกลับมาเป็นส่วนลดของแต่ละรายการแล้ว
+    setLineFromEdit(true); // ส่วนลดจากโปรเดิมโหลดกลับมาเป็นส่วนลดของแต่ละรายการแล้ว
     setEditingId(inv.id);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -2612,6 +2695,29 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
                       </select>
                     ))}
 
+                  {item.kind === "package" && courseOffers.length > 0 && (
+                    <select
+                      value={item.offerId || ""}
+                      onChange={(e) => {
+                        const o = courseOffers.find((x) => x.id === e.target.value);
+                        updateItem(
+                          i,
+                          o
+                            ? { offerId: o.id, label: o.name, amount: o.price, priceOverride: undefined }
+                            : { offerId: undefined }
+                        );
+                      }}
+                      className={sub}
+                    >
+                      <option value="">— เลือกคอร์สที่ตั้งไว้ (หรือพิมพ์ชื่อเองด้านล่าง) —</option>
+                      {courseOffers.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.name} · {courseOfferDetail(o)} · {o.price.toLocaleString()} ฿
+                          {o.active ? "" : " (ปิดขายในแอป)"}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   {(item.kind === "custom" || item.kind === "package") && (
                     <input
                       value={item.label}
@@ -2626,6 +2732,9 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
                   )}
                   {item.kind === "package" && (
                     <p className="text-[10px] text-brown-faint">
+                      {item.offerId
+                        ? "จ่ายบิลแล้วระบบเพิ่มคอร์สนี้ให้ลูกค้าเอง · "
+                        : "พิมพ์ชื่อเอง = แค่ลงยอดในบิล ต้องไปเพิ่มคอร์สให้ลูกค้าเองที่หน้าลูกค้า · "}
                       ยอดนี้ไม่นับเป็นฐานแต้ม — ลูกค้าจะได้แต้มตอนเอาคอร์สมาใช้บริการ
                       (คอร์สแบบเครดิตได้แต้มตอนเติมอยู่แล้ว)
                     </p>
@@ -2931,75 +3040,57 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
         {/* ── โปร + ส่วนลด ── */}
         <section>
         <SectionLabel>Discount · โปร / ส่วนลด</SectionLabel>
-        {/* โปรลดเฉพาะรายการ — ลดแค่ประเภทที่ตั้งไว้ (เช่น ห้องพัก/อาบน้ำ) ค่ารับ-ส่งไม่ลด */}
-        <div className="mb-3 rounded-petflow-sm border border-petflow-line bg-paper/60 p-3">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-bold text-brown-soft">โปรลดเฉพาะรายการ</span>
-            <Link
-              href="/admin/settings?tab=linePromos"
-              className="text-[11px] font-bold text-latte-deep underline-offset-2 hover:underline"
-            >
-              {linePromos.length ? "แก้โปร" : "+ ตั้งโปร"}
-            </Link>
-          </div>
-          {linePromos.length === 0 ? (
-            <p className="mt-1 text-[11px] text-brown-faint">
-              ตั้งไว้ครั้งเดียว เช่น &quot;ลด 5% เฉพาะห้องพัก + อาบน้ำ&quot; แล้วกดเลือกตอนออกบิล
-            </p>
-          ) : (
-            <>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {[{ id: "", name: "ไม่ใช้", percent: 0, kinds: [] } as LinePromo, ...linePromos].map(
-                  (p) => {
-                    const on = linePromoId === p.id;
-                    return (
-                      <button
-                        key={p.id || "none"}
-                        type="button"
-                        onClick={() => setLinePromoId(p.id)}
-                        className={`min-h-[36px] rounded-full border px-3 text-xs font-bold ${
-                          on
-                            ? "border-petflow-chocolate bg-petflow-chocolate text-card"
-                            : "border-petflow-line bg-card text-brown"
-                        }`}
-                      >
-                        {p.id ? `${p.name} ${p.percent}%` : p.name}
-                      </button>
-                    );
-                  }
-                )}
-              </div>
-              {linePromo && (
-                <p className="mt-2 text-[11px] font-bold text-ok">
-                  ลด {linePromo.percent}% เฉพาะ{" "}
-                  {LINE_PROMO_KINDS.filter((k) => linePromo.kinds.includes(k.id))
-                    .map((k) => k.label)
-                    .join(" · ") || "—"}
-                  {linePromoOff > 0
-                    ? ` = -${linePromoOff.toLocaleString()} บาท`
-                    : " (บิลนี้ยังไม่มีรายการที่เข้าโปร)"}
-                </p>
-              )}
-            </>
-          )}
-        </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="block text-xs font-bold text-brown-soft">
-            โปรโมชั่น
+            <span className="flex items-center justify-between gap-2">
+              โปรโมชั่น
+              <Link
+                href="/admin/promos"
+                className="text-[11px] font-bold text-latte-deep underline-offset-2 hover:underline"
+              >
+                + ตั้งโปร
+              </Link>
+            </span>
+            {/* โปรทุกแบบอยู่ในรายการโปรเดียว: ลดทั้งบิล / ลดเฉพาะรายการ / แถมคืนฟรี / แต้ม */}
             <select
               value={promoId}
-              onChange={(e) => setPromoId(e.target.value)}
+              onChange={(e) => {
+                setPromoId(e.target.value);
+                setLineFromEdit(false);
+              }}
               className={`mt-1 min-h-[40px] ${field}`}
             >
               <option value="">ไม่ใช้โปร</option>
-              {promos.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.title.th}
-                  {p.discountPercent ? ` (${p.discountPercent}%)` : ""}
-                  {p.discountAmount ? ` (-${p.discountAmount}฿)` : ""}
-                </option>
-              ))}
+              {promos.map((p) => {
+                const lp = promoAsLinePromo(p);
+                return (
+                  <option key={p.id} value={p.id}>
+                    {p.title.th}
+                    {lp
+                      ? ` (${billRuleLabel(lp)})`
+                      : `${p.discountPercent ? ` (${p.discountPercent}%)` : ""}${p.discountAmount ? ` (-${p.discountAmount}฿)` : ""}`}
+                  </option>
+                );
+              })}
             </select>
+            {linePromo && (
+              <span className={`mt-1 block text-[11px] font-bold ${linePromoOff > 0 ? "text-ok" : "text-wait"}`}>
+                {isFreeNightsPromo(linePromo)
+                  ? `จอง ${linePromo.freeEvery} คืน แถมฟรี ${linePromo.freeNights} คืน · ห้องพัก`
+                  : `ลด ${linePromo.percent}% เฉพาะ ${
+                      LINE_PROMO_KINDS.filter((k) => linePromo.kinds.includes(k.id))
+                        .map((k) => k.label)
+                        .join(" · ") || "—"
+                    }`}
+                {linePromoOff > 0
+                  ? ` = -${linePromoOff.toLocaleString()} บาท`
+                  : !linePromoOk
+                    ? isFreeNightsPromo(linePromo)
+                      ? ` (ต้องพักครบ ${linePromo.freeEvery! + linePromo.freeNights!} คืน บิลนี้ยังไม่ถึง)`
+                      : ` (ต้องพักตั้งแต่ ${linePromo.minNights} คืน บิลนี้ยังไม่ถึง)`
+                    : " (บิลนี้ยังไม่มีรายการที่เข้าโปร)"}
+              </span>
+            )}
             {promoWarning && (
               <span className="mt-1 flex items-start gap-1 text-[11px] font-bold text-wait">
                 <Icon name="alert" size={13} className="mt-px shrink-0" />
@@ -3152,7 +3243,10 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
         {suggestedPromo && promoId !== suggestedPromo.id && !editingId && (
           <button
             type="button"
-            onClick={() => setPromoId(suggestedPromo.id)}
+            onClick={() => {
+              setPromoId(suggestedPromo.id);
+              setLineFromEdit(false);
+            }}
             className="flex w-full items-center gap-1.5 rounded-petflow-sm bg-sage/15 px-3 py-2 text-left text-[11px] font-bold text-ok"
           >
             <Icon name="sparkle" size={14} />

@@ -42,7 +42,32 @@ export type LinePromo = {
   name: string;
   percent: number;
   kinds: LinePromoKind[];
+  /** ใช้ได้เฉพาะบิลที่มีห้องพักตั้งแต่กี่คืนขึ้นไป (เช่น โปรรายเดือน 30 คืน) — เว้นว่าง = ทุกบิล */
+  minNights?: number;
+  /**
+   * แบบแถมคืนฟรี (แทนการลด %) — พักครบ freeEvery + freeNights คืน ไม่คิดเงิน freeNights คืน
+   * เช่น freeEvery 10 · freeNights 1 = "จอง 10 คืน แถม 1" พัก 11 คืน จ่าย 10 (พัก 22 คืน แถม 2)
+   */
+  freeEvery?: number;
+  freeNights?: number;
 };
+
+/** โปรนี้เป็นแบบแถมคืนฟรีไหม */
+export function isFreeNightsPromo(p?: LinePromo): boolean {
+  return !!p && (p.freeEvery || 0) > 0 && (p.freeNights || 0) > 0;
+}
+
+/** พักกี่คืนได้แถมกี่คืน — ครบรอบ (จ่าย + แถม) ถึงได้ */
+export function freeNightsFor(p: LinePromo, nights: number): number {
+  if (!isFreeNightsPromo(p)) return 0;
+  const round = p.freeEvery! + p.freeNights!;
+  return Math.floor(Math.max(0, nights) / round) * p.freeNights!;
+}
+
+/** ข้อความสั้นของโปร เช่น "ลด 30%" / "จอง 10 คืน แถม 1" */
+export function linePromoShortLabel(p: LinePromo): string {
+  return isFreeNightsPromo(p) ? `จอง ${p.freeEvery} คืน แถม ${p.freeNights}` : `${p.percent}%`;
+}
 
 /** ป้ายส่วนลดท้ายชื่อรายการ — รองรับแบบเก่า "(ลด 50฿)" / "(ลด 10%)" ด้วย */
 const DISCOUNT_TAG_RE = /\s*\((?:ส่วนลด|ลด) [^()]*\)\s*$/;
@@ -111,4 +136,43 @@ export function splitDiscountTag(label: string): { label: string; tag: string } 
   const m = (label || "").match(DISCOUNT_TAG_RE);
   if (!m) return { label: label || "", tag: "" };
   return { label: stripDiscountTag(label), tag: m[0].trim().replace(/^\(|\)$/g, "") };
+}
+
+/**
+ * เงื่อนไขโปรที่ลดตอนออกบิลแบบเฉพาะรายการ — เก็บในตารางโปร (promos.bill_rule)
+ * ไม่มี = โปรลดทั้งบิลแบบเดิม · kinds = ลด % เฉพาะประเภทนั้น · freeEvery/freeNights = แถมคืนฟรี
+ */
+export type PromoBillRule = {
+  kinds?: LinePromoKind[];
+  minNights?: number;
+  freeEvery?: number;
+  freeNights?: number;
+};
+
+/** โปรในตารางโปร → โปรลดเฉพาะรายการ (คืน undefined = โปรลดทั้งบิล) */
+export function promoAsLinePromo(
+  p?: { id: string; title: { th: string }; discountPercent?: number; billRule?: PromoBillRule | null } | null
+): LinePromo | undefined {
+  const r = p?.billRule;
+  if (!p || !r) return undefined;
+  const lp: LinePromo = {
+    id: p.id,
+    name: p.title.th.replace(/[()]/g, "").trim(),
+    percent: Math.max(0, Number(p.discountPercent) || 0),
+    kinds: r.kinds || [],
+    minNights: r.minNights || undefined,
+    freeEvery: r.freeEvery || undefined,
+    freeNights: r.freeNights || undefined,
+  };
+  if (isFreeNightsPromo(lp)) return { ...lp, percent: 0, kinds: ["stay"] };
+  return lp.percent > 0 && lp.kinds.length > 0 ? lp : undefined;
+}
+
+/** ข้อความรางวัลของโปรเฉพาะรายการ เช่น "จอง 10 คืน แถม 1" / "ลด 30% ห้องพัก · 30 คืน+" */
+export function billRuleLabel(lp: LinePromo): string {
+  if (isFreeNightsPromo(lp)) return `จอง ${lp.freeEvery} คืน แถม ${lp.freeNights}`;
+  const kinds = LINE_PROMO_KINDS.filter((k) => lp.kinds.includes(k.id))
+    .map((k) => k.label)
+    .join(" + ");
+  return `ลด ${lp.percent}% ${kinds}${lp.minNights ? ` · ${lp.minNights} คืน+` : ""}`;
 }

@@ -82,7 +82,7 @@ export default function BillCheckPage() {
             {issues.map((it) => {
               const meta = KIND_META[it.kind];
               return (
-                <li key={it.key} className="rounded-catcha bg-card p-4 shadow-petflow-sm">
+                <li key={it.key} className="rounded-petflow bg-card p-4 shadow-petflow-sm">
                   <div className="flex items-center gap-2">
                     <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-extrabold ${meta.tone}`}>
                       {meta.label}

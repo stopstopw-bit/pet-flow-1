@@ -64,6 +64,8 @@ const SCHEMA_CHECKS: { table: string; column: string; feature: string }[] = [
   { table: "pos_sales", column: "method", feature: "POS บิลขายหน้าร้าน" },
   { table: "pos_closings", column: "counted_cash", feature: "POS ปิดยอดรายวัน" },
   { table: "customer_packages", column: "groom_program", feature: "คอร์สอาบน้ำแยกตามโปรแกรม" },
+  { table: "package_offers", column: "room_type", feature: "คอร์สวันพักในแอปแยกตามประเภทห้อง" },
+  { table: "package_offers", column: "items", feature: "คอร์สชุดรวม / แถมฟรี" },
   { table: "bookings", column: "transport", feature: "บริการรับ-ส่งในนัด" },
   { table: "bookings", column: "deposit_status", feature: "มัดจำ + สลิปตอนลูกค้าจองเอง" },
   { table: "booking_ops", column: "care_checks", feature: "บอร์ดคิวอาบน้ำ + เช็คลิสต์ดูแลรายวัน" },
@@ -74,6 +76,7 @@ const SCHEMA_CHECKS: { table: string; column: string; feature: string }[] = [
   { table: "member_topups", column: "source_invoice_id", feature: "ยกเลิกนัด เก็บยอดเป็นเครดิต" },
   { table: "cats", column: "neutered", feature: "ทำหมันแล้ว/ยังไม่ทำ" },
   { table: "cats", column: "seizure_history", feature: "ประวัติการชัก/ช็อค และการแพ้" },
+  { table: "promos", column: "bill_rule", feature: "โปรลดเฉพาะรายการ / แถมคืนฟรี ในรายการโปร" },
 ];
 
 export type SchemaCheckRow = {
@@ -531,6 +534,24 @@ where staff_note like '%🎁%';`,
     `,
   },
   {
+    // คอร์สวันพักที่ขายในแอปผูกประเภทห้อง (ห้องแต่ละแบบราคาไม่เท่ากัน) — ว่าง = ใช้ได้ทุกห้องแบบเดิม
+    // ออร์เดอร์ก๊อปห้องไว้ ณ ตอนสั่ง แล้วคอร์สที่สร้างตอนยืนยันได้ room_type ของ customer_packages
+    name: "packages.offer_room_type",
+    sql: `
+      alter table package_offers add column if not exists room_type text;
+      alter table package_orders add column if not exists room_type text;
+    `,
+  },
+  {
+    // คอร์สชุดรวม (พัก 5 คืน + อาบน้ำ 6 ครั้ง) และของแถม (อาบน้ำ 10 แถม 4) — ว่าง = คอร์สเดี่ยวแบบเดิม
+    // [{unit, paid, free, roomType, groomProgram}] ตอนยืนยันแตกเป็นคอร์สของลูกค้ารายการละใบ
+    name: "packages.offer_items",
+    sql: `
+      alter table package_offers add column if not exists items jsonb;
+      alter table package_orders add column if not exists items jsonb;
+    `,
+  },
+  {
     // บริการรับ-ส่งของนัด {pickup, dropoff, mapUrl, address} — ว่าง = ลูกค้ามาเอง
     name: "bookings.transport",
     sql: "alter table bookings add column if not exists transport jsonb;",
@@ -691,6 +712,12 @@ where staff_note like '%🎁%';`,
     // เพิ่มคอลัมน์อย่างเดียว ไม่แก้ข้อมูลเดิม (แถวเก่าได้ค่าเริ่มต้น false / null)
     name: "member_topups.cancel_credit",
     sql: "alter table member_topups add column if not exists is_cancel_credit boolean not null default false, add column if not exists source_invoice_id text;",
+  },
+  {
+    // โปรลดเฉพาะรายการ / แถมคืนฟรี อยู่ในตารางโปรเดียวกับโปรอื่น {kinds, minNights, freeEvery, freeNights}
+    // ว่าง = โปรลดทั้งบิลแบบเดิม · เพิ่มคอลัมน์อย่างเดียว
+    name: "promos.bill_rule",
+    sql: "alter table promos add column if not exists bill_rule jsonb;",
   },
 ];
 
