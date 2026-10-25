@@ -13,6 +13,9 @@ import {
   attachOrderSlip,
   confirmPackageOrder,
   cancelPackageOrder,
+  normalizeOfferItems,
+  copyNightsOfferToRooms,
+  toOfferKind,
 } from "@/lib/package-shop-store";
 import { findCustomerByLine, getCustomer } from "@/lib/customers-store";
 import { getPaymentConfig } from "@/lib/payment-config";
@@ -177,13 +180,16 @@ async function handlePost(req: NextRequest, isAdminSession: boolean) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
     const offer = await createPackageOffer({
-      kind: body.kind === "credit" ? "credit" : "package",
+      // "nights"/"bundle" เคยถูกแปลงเป็น "package" ตรงนี้ — คอร์สวันพักเลยกลายเป็นนับครั้ง
+      kind: toOfferKind(body.kind),
       name: String(body.name || ""),
       totalUses: Number(body.totalUses) || 0,
       price: Number(body.price) || 0,
       creditAmount: body.creditAmount !== undefined ? Number(body.creditAmount) : undefined,
       description: body.description ? String(body.description) : undefined,
       groomProgram: body.groomProgram ? String(body.groomProgram) : undefined,
+      roomType: body.roomType ? String(body.roomType) : undefined,
+      items: Array.isArray(body.items) ? normalizeOfferItems(body.items) : undefined,
       image: body.image ? String(body.image) : undefined,
     });
     if (!offer) {
@@ -285,11 +291,14 @@ async function handlePatch(req: NextRequest) {
   if (action === "update_offer") {
     const res = await updatePackageOffer(String(body.offerId || ""), {
       name: body.name !== undefined ? String(body.name) : undefined,
+      kind: body.kind !== undefined ? toOfferKind(body.kind) : undefined,
       totalUses: body.totalUses !== undefined ? Number(body.totalUses) : undefined,
       price: body.price !== undefined ? Number(body.price) : undefined,
       creditAmount: body.creditAmount !== undefined ? Number(body.creditAmount) : undefined,
       description: body.description !== undefined ? String(body.description) : undefined,
       groomProgram: body.groomProgram !== undefined ? String(body.groomProgram) : undefined,
+      roomType: body.roomType !== undefined ? String(body.roomType) : undefined,
+      items: Array.isArray(body.items) ? normalizeOfferItems(body.items) : undefined,
     });
     if (!res.ok) {
       return NextResponse.json({ error: res.error }, { status: 400 });
@@ -311,6 +320,11 @@ async function handlePatch(req: NextRequest) {
       return NextResponse.json({ error: res.error }, { status: 400 });
     }
     return NextResponse.json({ ok: true });
+  }
+
+  if (action === "copy_to_rooms") {
+    const res = await copyNightsOfferToRooms(String(body.offerId || ""));
+    return NextResponse.json(res, { status: res.ok ? 200 : 400 });
   }
 
   if (action === "delete_offer") {

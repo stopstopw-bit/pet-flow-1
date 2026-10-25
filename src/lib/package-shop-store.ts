@@ -17,8 +17,57 @@ import { requireTenantId } from "./tenant-context";
  * package = คอร์สนับครั้ง — 1 ครั้งคลุมทั้งบิล
  * credit  = เติมเครดิต Member
  * nights  = ซื้อวันเข้าพักล่วงหน้า — totalUses คือจำนวนคืน หักตามคืนที่พักจริง
+ * bundle  = ชุดรวมหลายรายการ เช่น พัก 5 คืน + อาบน้ำ 6 ครั้ง — รายการอยู่ใน items
  */
-export type PackageOfferKind = "package" | "credit" | "nights";
+export type PackageOfferKind = "package" | "credit" | "nights" | "bundle";
+
+/**
+ * รายการในคอร์ส — ตอนร้านยืนยันออร์เดอร์ แต่ละรายการกลายเป็นคอร์สของลูกค้า 1 ใบ
+ * (คอร์สคืนผูกห้อง / คอร์สอาบน้ำผูกโปรแกรม) แล้วตัดตอนออกบิลตามระบบเดิม
+ * คอร์สนับครั้ง/วันพักแบบเดี่ยวที่มีของแถมก็เก็บเป็น items 1 รายการ
+ */
+export type OfferItem = {
+  unit: "night" | "use";
+  /** จำนวนที่จ่าย */
+  paid: number;
+  /** แถมฟรี */
+  free?: number;
+  roomType?: string;
+  groomProgram?: string;
+};
+
+const KINDS: PackageOfferKind[] = ["package", "credit", "nights", "bundle"];
+export function toOfferKind(k: unknown): PackageOfferKind {
+  // "uses" = ชื่อเดียวกันของ Catcha — รับไว้ด้วยกันฟอร์มที่ส่งมาแบบนั้น
+  if (k === "uses") return "package";
+  return KINDS.includes(k as PackageOfferKind) ? (k as PackageOfferKind) : "package";
+}
+
+/** ทำความสะอาดรายการจากฟอร์ม — ตัดแถวที่ไม่มีจำนวน */
+export function normalizeOfferItems(raw: unknown): OfferItem[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((r) => {
+      const it = (r || {}) as Record<string, unknown>;
+      const unit: OfferItem["unit"] = it.unit === "night" ? "night" : "use";
+      const paid = Math.max(0, Math.round(Number(it.paid) || 0));
+      const free = Math.max(0, Math.round(Number(it.free) || 0));
+      return {
+        unit,
+        paid,
+        ...(free ? { free } : {}),
+        ...(unit === "night" && it.roomType ? { roomType: String(it.roomType) } : {}),
+        ...(unit === "use" && it.groomProgram ? { groomProgram: String(it.groomProgram) } : {}),
+      };
+    })
+    .filter((it) => it.paid + (it.free || 0) > 0)
+    .slice(0, 10);
+}
+
+/** จำนวนรวมทุกรายการ (จ่าย + แถม) */
+export function offerItemsTotal(items: OfferItem[]): number {
+  return items.reduce((n, it) => n + it.paid + (it.free || 0), 0);
+}
 
 export type PackageOffer = {
   id: string;
@@ -34,6 +83,14 @@ export type PackageOffer = {
   imageUrl?: string;
   /** เฉพาะ kind==="package" — ผูกโปรแกรมอาบน้ำ (id ในตั้งค่า) ไม่ระบุ = ใช้ได้ทุกโปรแกรม */
   groomProgram?: string;
+  /** เฉพาะ kind==="nights" — ผูกประเภทห้อง (id ในตั้งค่า) ไม่ระบุ = ใช้ได้ทุกห้อง */
+  roomType?: string;
+  /** ชื่อห้องตามตั้งค่าปัจจุบัน (เติมให้ตอนอ่าน ไม่ได้เก็บ) */
+  roomLabel?: string;
+  /** ชุดรวม / มีของแถม — ว่าง = คอร์สเดี่ยวแบบเดิม */
+  items?: OfferItem[];
+  /** คำอธิบายแต่ละรายการ เช่น "ห้อง Mid Cozy 5 คืน + แถม 1" (เติมให้ตอนอ่าน ไม่ได้เก็บ) */
+  itemLabels?: string[];
   active: boolean;
   createdAt: string;
 };
@@ -55,6 +112,8 @@ export type PackageOrder = {
   creditAmount?: number;
   /** ก๊อปจากคอร์สที่ขาย ณ ตอนสั่ง */
   groomProgram?: string;
+  roomType?: string;
+  items?: OfferItem[];
   status: PackageOrderStatus;
   slipUrl?: string;
   /** id ของคอร์สที่สร้างให้ตอนยืนยัน — กันยืนยันซ้ำแล้วได้คอร์สสองใบ (เฉพาะ kind = "package") */
@@ -74,6 +133,8 @@ type OfferRow = {
   kind?: string | null;
   credit_amount?: number | null;
   groom_program?: string | null;
+  room_type?: string | null;
+  items?: unknown;
   active: boolean;
   created_at: string;
 };
@@ -90,6 +151,8 @@ type OrderRow = {
   kind?: string | null;
   credit_amount?: number | null;
   groom_program?: string | null;
+  room_type?: string | null;
+  items?: unknown;
   status: string;
   slip_url: string | null;
   package_id: string | null;
@@ -103,7 +166,7 @@ const memOrders: PackageOrder[] = [];
 function rowToOffer(r: OfferRow): PackageOffer {
   return {
     id: r.id,
-    kind: r.kind === "credit" || r.kind === "nights" ? r.kind : "package",
+    kind: toOfferKind(r.kind),
     name: r.name || "",
     totalUses: Number(r.total_uses) || 0,
     price: Number(r.price) || 0,
@@ -111,6 +174,8 @@ function rowToOffer(r: OfferRow): PackageOffer {
     description: r.description || undefined,
     imageUrl: r.image_url || undefined,
     groomProgram: r.groom_program || undefined,
+    roomType: r.room_type || undefined,
+    items: normalizeOfferItems(r.items).length ? normalizeOfferItems(r.items) : undefined,
     active: r.active !== false,
     createdAt: r.created_at,
   };
@@ -123,12 +188,14 @@ function rowToOrder(r: OrderRow): PackageOrder {
     customerName: r.customer_name || "",
     lineUserId: r.line_user_id || undefined,
     offerId: r.offer_id || undefined,
-    kind: r.kind === "credit" || r.kind === "nights" ? r.kind : "package",
+    kind: toOfferKind(r.kind),
     name: r.name || "",
     totalUses: Number(r.total_uses) || 0,
     price: Number(r.price) || 0,
     creditAmount: r.credit_amount != null ? Number(r.credit_amount) : undefined,
     groomProgram: r.groom_program || undefined,
+    roomType: r.room_type || undefined,
+    items: normalizeOfferItems(r.items).length ? normalizeOfferItems(r.items) : undefined,
     status: (r.status as PackageOrderStatus) || "pending",
     slipUrl: r.slip_url || undefined,
     packageId: r.package_id || undefined,
@@ -161,6 +228,69 @@ async function writeGroomProgram(
   }
 }
 
+/** เขียนห้องที่ผูกกับคอร์สวันพัก — คอลัมน์เพิ่มมาทีหลัง เขียนแยกเหมือนโปรแกรมอาบน้ำ */
+async function writeRoomType(
+  table: "package_offers" | "package_orders",
+  id: string,
+  roomType: string | null
+) {
+  const sb = getSupabase();
+  if (!sb) return;
+  try {
+    const { error } = await sb.from(table).update({ room_type: roomType }).eq("tenant_id", requireTenantId()).eq("id", id);
+    if (error) {
+      const { ensureMigration } = await import("./migrations");
+      if (await ensureMigration("packages.offer_room_type")) {
+        await sb.from(table).update({ room_type: roomType }).eq("tenant_id", requireTenantId()).eq("id", id);
+      }
+    }
+  } catch {
+    /* ยังไม่มีคอลัมน์ — คอร์สยังขายได้ แค่กลายเป็นใช้ได้ทุกห้อง */
+  }
+}
+
+/** เขียนรายการในคอร์ส (ชุดรวม/ของแถม) — คอลัมน์เพิ่มมาทีหลัง เขียนแยกจากแถวหลัก */
+async function writeItems(
+  table: "package_offers" | "package_orders",
+  id: string,
+  items: OfferItem[] | null
+) {
+  const sb = getSupabase();
+  if (!sb) return;
+  try {
+    const { error } = await sb.from(table).update({ items }).eq("tenant_id", requireTenantId()).eq("id", id);
+    if (error) {
+      const { ensureMigration } = await import("./migrations");
+      if (await ensureMigration("packages.offer_items")) {
+        await sb.from(table).update({ items }).eq("tenant_id", requireTenantId()).eq("id", id);
+      }
+    }
+  } catch {
+    /* ยังไม่มีคอลัมน์ — ขายได้แค่คอร์สเดี่ยวแบบเดิม */
+  }
+}
+
+/** "อาบน้ำ Premium" — ชื่อโปรแกรมที่มีคำว่าอาบน้ำอยู่แล้วไม่เติมซ้ำ */
+function bathName(program?: string | false): string {
+  if (!program) return "อาบน้ำ";
+  return program.includes("อาบน้ำ") ? program : `อาบน้ำ ${program}`;
+}
+
+/** ชื่อโปรแกรมอาบน้ำตามตั้งค่า */
+async function groomProgramNames(): Promise<Map<string, string>> {
+  const { getSiteConfig } = await import("./config-store");
+  const { resolveGroomPrograms } = await import("./grooming-prices");
+  const cfg = await getSiteConfig();
+  return new Map(resolveGroomPrograms(cfg.groomPricePrograms).map((p) => [p.id, p.name]));
+}
+
+/** ชื่อห้องตามตั้งค่า แบบเดียวกับบรรทัดค่าห้องในบิล ("ห้อง Mid Cozy") — ตอนออกบิลจับคู่ด้วยชื่อนี้ */
+async function roomLabels(): Promise<Map<string, string>> {
+  const { getSiteConfig } = await import("./config-store");
+  const cfg = await getSiteConfig();
+  return new Map((cfg.rooms || []).map((r) => [r.id, `ห้อง ${r.name}`]));
+}
+
 /* ───────── แพ็กเกจที่เปิดขาย ───────── */
 
 export async function listPackageOffers(activeOnly = false): Promise<PackageOffer[]> {
@@ -181,7 +311,80 @@ export async function listPackageOffers(activeOnly = false): Promise<PackageOffe
   } else {
     list = [...memOffers];
   }
+  if (list.some((o) => o.roomType || o.items?.length)) {
+    const [labels, programs] = await Promise.all([
+      roomLabels().catch(() => new Map<string, string>()),
+      groomProgramNames().catch(() => new Map<string, string>()),
+    ]);
+    list = list.map((o) => ({
+      ...o,
+      roomLabel: o.roomType ? labels.get(o.roomType) : undefined,
+      itemLabels: o.items?.map((it) => {
+        const what =
+          it.unit === "night"
+            ? `${(it.roomType && labels.get(it.roomType)) || "ห้องพัก"} ${it.paid} คืน`
+            : `${bathName(it.groomProgram && programs.get(it.groomProgram))} ${it.paid} ครั้ง`;
+        return it.free ? `${what} + แถม ${it.free}` : what;
+      }),
+    }));
+  }
   return activeOnly ? list.filter((o) => o.active) : list;
+}
+
+/**
+ * ก๊อปคอร์สวันพักที่ผูกห้องไว้ ไปเป็นคอร์สของห้องอื่นทุกห้อง — ลด % เท่ากับคอร์สต้นแบบ
+ * (คิดจากราคาเต็มของห้องต้นแบบ) ชื่อที่มีชื่อห้องอยู่จะเปลี่ยนเป็นห้องใหม่ให้
+ * ห้องที่มีคอร์สจำนวนคืนเท่ากันอยู่แล้วจะข้าม กดซ้ำได้ไม่เกิดคอร์สซ้ำ
+ */
+export async function copyNightsOfferToRooms(offerId: string) {
+  const { getSiteConfig } = await import("./config-store");
+  const rooms = ((await getSiteConfig()).rooms || []).map((r) => ({
+    id: r.id,
+    name: r.name,
+    price: Number(r.price) || 0,
+  }));
+  const offers = await listPackageOffers();
+  const src = offers.find((o) => o.id === offerId);
+  const single = src?.items?.length === 1 ? src.items[0] : undefined;
+  const srcRoomId = src?.roomType || (single?.unit === "night" ? single.roomType : undefined);
+  const srcRoom = rooms.find((r) => r.id === srcRoomId);
+  if (!src || src.kind !== "nights" || !srcRoom) return { ok: false as const, error: "not_room_course" };
+  const paid = single ? single.paid : src.totalUses;
+  const full = srcRoom.price * paid;
+  if (full <= 0) return { ok: false as const, error: "no_room_price" };
+  const ratio = src.price / full;
+  const sameNights = (o: PackageOffer) =>
+    o.kind === "nights" && (o.items?.length === 1 ? o.items[0].paid : o.totalUses) === paid;
+  const taken = new Set(
+    offers
+      .filter(sameNights)
+      .map((o) => o.roomType || (o.items?.length === 1 ? o.items[0].roomType : undefined))
+      .filter(Boolean) as string[]
+  );
+  const esc = srcRoom.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const nameRe = new RegExp(esc, "i");
+  const made: PackageOffer[] = [];
+  const skipped: string[] = [];
+  for (const room of rooms) {
+    if (room.id === srcRoom.id) continue;
+    if (taken.has(room.id) || room.price <= 0) {
+      skipped.push(room.name);
+      continue;
+    }
+    const name = nameRe.test(src.name) ? src.name.replace(nameRe, room.name) : `${src.name} (${room.name})`;
+    const offer = await createPackageOffer({
+      name,
+      kind: "nights",
+      totalUses: paid,
+      price: Math.round(room.price * paid * ratio),
+      description: src.description?.replace(new RegExp(esc, "gi"), room.name),
+      roomType: room.id,
+      items: single ? [{ ...single, roomType: room.id }] : undefined,
+      imageUrl: src.imageUrl,
+    });
+    if (offer) made.push(offer);
+  }
+  return { ok: true as const, made, skipped, percentOff: Math.round((1 - ratio) * 100) };
 }
 
 export async function createPackageOffer(data: {
@@ -194,15 +397,28 @@ export async function createPackageOffer(data: {
   description?: string;
   /** เฉพาะ kind==="package" */
   groomProgram?: string;
+  /** เฉพาะ kind==="nights" */
+  roomType?: string;
+  /** ชุดรวม / ของแถม */
+  items?: OfferItem[];
   /** data URL จากช่องอัปโหลด — จะถูกเก็บขึ้น Storage ให้ ไม่ยัด base64 ลง DB */
   image?: string;
+  /** ใช้รูปที่อัปไว้แล้ว (ตอนก๊อปคอร์ส) */
+  imageUrl?: string;
 }): Promise<PackageOffer | null> {
-  const kind: PackageOfferKind =
-    data.kind === "credit" || data.kind === "nights" ? data.kind : "package";
+  const kind = toOfferKind(data.kind);
+  const items = kind === "credit" ? [] : normalizeOfferItems(data.items);
+  if (kind === "bundle" && items.length === 0) return null;
   const name = data.name.trim();
   const price = Math.max(0, Math.round(data.price) || 0);
   // เติมเครดิตไม่มีแนวคิด "จำนวนครั้ง" — เก็บ 0 ไว้เฉยๆ กันโค้ดเก่าที่อ่าน total_uses พัง
-  const totalUses = kind === "credit" ? 0 : Math.max(1, Math.round(data.totalUses) || 0);
+  // ชุดรวม/ของแถม: totalUses = รวมทุกรายการ (ไว้โชว์) ของจริงอยู่ใน items
+  const totalUses =
+    kind === "credit"
+      ? 0
+      : items.length
+        ? offerItemsTotal(items)
+        : Math.max(1, Math.round(data.totalUses) || 0);
   const creditAmount =
     kind === "credit" ? Math.max(0, Math.round(data.creditAmount ?? price) || 0) : undefined;
   if (!name) return null;
@@ -212,7 +428,7 @@ export async function createPackageOffer(data: {
   const id = `POF${Date.now()}${Math.floor(Math.random() * 1000)}`;
 
   // อัปรูปก่อน แต่ถ้าอัปไม่ขึ้นก็ยังต้องสร้างคอร์สให้ได้ — รูปเป็นของแถม ไม่ใช่เงื่อนไข
-  let imageUrl: string | undefined;
+  let imageUrl: string | undefined = data.imageUrl || undefined;
   if (data.image) {
     try {
       imageUrl = await uploadDataUrlToStorage(`package-offers/${id}.jpg`, data.image);
@@ -231,6 +447,8 @@ export async function createPackageOffer(data: {
     description: data.description?.trim() || undefined,
     imageUrl,
     groomProgram: kind === "package" ? data.groomProgram || undefined : undefined,
+    roomType: kind === "nights" ? data.roomType || undefined : undefined,
+    items: items.length ? items : undefined,
     active: true,
     createdAt: new Date().toISOString(),
   };
@@ -257,6 +475,8 @@ export async function createPackageOffer(data: {
     }
     // เขียนแยกเพราะร้านที่ยังไม่ได้รันคอลัมน์นี้จะ insert ไม่ผ่านทั้งแถว
     if (offer.groomProgram) await writeGroomProgram("package_offers", offer.id, offer.groomProgram);
+    if (offer.roomType) await writeRoomType("package_offers", offer.id, offer.roomType);
+    if (offer.items) await writeItems("package_offers", offer.id, offer.items);
     if (offer.imageUrl) {
       try {
         const { error } = await sb
@@ -333,12 +553,17 @@ export async function updatePackageOffer(
   id: string,
   data: {
     name?: string;
+    kind?: PackageOfferKind;
     totalUses?: number;
     price?: number;
     creditAmount?: number;
     description?: string;
     /** "" = ใช้ได้ทุกโปรแกรม */
     groomProgram?: string;
+    /** "" = ใช้ได้ทุกห้อง */
+    roomType?: string;
+    /** [] = ไม่มีของแถม/รายการ (คอร์สเดี่ยวแบบเดิม) */
+    items?: OfferItem[];
   }
 ) {
   const patch: Record<string, unknown> = {};
@@ -347,7 +572,11 @@ export async function updatePackageOffer(
     if (!name) return { ok: false as const, error: "name_required" };
     patch.name = name;
   }
-  if (data.totalUses !== undefined) patch.total_uses = Math.max(0, Math.round(data.totalUses) || 0);
+  if (data.kind !== undefined) patch.kind = toOfferKind(data.kind);
+  const items = data.items !== undefined ? normalizeOfferItems(data.items) : undefined;
+  if (items?.length) patch.total_uses = offerItemsTotal(items);
+  else if (data.totalUses !== undefined)
+    patch.total_uses = Math.max(0, Math.round(data.totalUses) || 0);
   if (data.price !== undefined) patch.price = Math.max(0, Math.round(data.price) || 0);
   if (data.creditAmount !== undefined) {
     patch.credit_amount = Math.max(0, Math.round(data.creditAmount) || 0);
@@ -355,19 +584,28 @@ export async function updatePackageOffer(
   if (data.description !== undefined) patch.description = data.description.trim() || null;
   const groomProgram =
     data.groomProgram !== undefined ? data.groomProgram.trim() || null : undefined;
-  if (Object.keys(patch).length === 0 && groomProgram === undefined) return { ok: true as const };
+  const roomType = data.roomType !== undefined ? data.roomType.trim() || null : undefined;
+  if (
+    Object.keys(patch).length === 0 &&
+    groomProgram === undefined &&
+    roomType === undefined &&
+    items === undefined
+  )
+    return { ok: true as const };
 
   const sb = getSupabase();
   if (sb) {
     if (groomProgram !== undefined) await writeGroomProgram("package_offers", id, groomProgram);
+    if (roomType !== undefined) await writeRoomType("package_offers", id, roomType);
+    if (items !== undefined) await writeItems("package_offers", id, items.length ? items : null);
     const { error } = await sb
       .from("package_offers")
       .update(patch)
       .eq("id", id)
       .eq("tenant_id", requireTenantId());
-    if (error && "credit_amount" in patch) {
-      // ร้านยังไม่อัปเดตฐานข้อมูล — ไม่มีคอลัมน์ credit_amount, บันทึกที่เหลือไปก่อน
-      const { credit_amount: _drop, ...rest } = patch;
+    if (error && ("credit_amount" in patch || "kind" in patch)) {
+      // ร้านยังไม่อัปเดตฐานข้อมูล — ไม่มีคอลัมน์ credit_amount/kind, บันทึกที่เหลือไปก่อน
+      const { credit_amount: _drop, kind: _kind, ...rest } = patch;
       if (Object.keys(rest).length) {
         await sb
           .from("package_offers")
@@ -380,11 +618,14 @@ export async function updatePackageOffer(
     const o = memOffers.find((x) => x.id === id);
     if (o) {
       if (patch.name !== undefined) o.name = patch.name as string;
+      if (patch.kind !== undefined) o.kind = patch.kind as PackageOfferKind;
       if (patch.total_uses !== undefined) o.totalUses = patch.total_uses as number;
       if (patch.price !== undefined) o.price = patch.price as number;
       if (patch.credit_amount !== undefined) o.creditAmount = patch.credit_amount as number;
       if (patch.description !== undefined) o.description = (patch.description as string) || undefined;
       if (groomProgram !== undefined) o.groomProgram = groomProgram || undefined;
+      if (roomType !== undefined) o.roomType = roomType || undefined;
+      if (items !== undefined) o.items = items.length ? items : undefined;
     }
   }
   return { ok: true as const };
@@ -493,6 +734,8 @@ export async function createPackageOrder(data: {
     price: data.offer.price,
     creditAmount: data.offer.creditAmount,
     groomProgram: data.offer.kind === "package" ? data.offer.groomProgram : undefined,
+    roomType: data.offer.kind === "nights" ? data.offer.roomType : undefined,
+    items: data.offer.kind !== "credit" && data.offer.items?.length ? data.offer.items : undefined,
     status: "pending",
     createdAt: new Date().toISOString(),
   };
@@ -520,6 +763,8 @@ export async function createPackageOrder(data: {
       await sb.from("package_orders").insert(baseRow);
     }
     if (order.groomProgram) await writeGroomProgram("package_orders", order.id, order.groomProgram);
+    if (order.roomType) await writeRoomType("package_orders", order.id, order.roomType);
+    if (order.items) await writeItems("package_orders", order.id, order.items);
   } else {
     memOrders.unshift(order);
   }
@@ -606,18 +851,27 @@ export async function confirmPackageOrder(
     };
   }
 
-  const { sellPackage } = await import("./packages-store");
-  const pkg = await sellPackage({
+  // แต่ละรายการ = คอร์สของลูกค้า 1 ใบ — คอร์สเดี่ยวแบบเดิมก็คือรายการเดียว
+  const parts: OfferItem[] = order.items?.length
+    ? order.items
+    : [
+        {
+          unit: order.kind === "nights" ? "night" : "use",
+          paid: order.totalUses,
+          roomType: order.kind === "nights" ? order.roomType : undefined,
+          groomProgram: order.kind === "package" ? order.groomProgram : undefined,
+        },
+      ];
+  const made = await sellOfferItems({
     customerId: order.customerId,
     customerName: order.customerName,
     name: order.name,
-    totalUses: order.totalUses,
     price: order.price,
-    // ซื้อวันเข้าพัก = หน่วยเป็นคืน หักตามจำนวนคืนที่พักจริงตอนคิดเงิน
-    unit: order.kind === "nights" ? "night" : "use",
-    groomProgram: order.kind === "package" ? order.groomProgram : undefined,
+    items: parts,
     isLegacy: opts?.isLegacy,
   });
+  const pkg = made[0];
+  if (!pkg) return { ok: false as const, error: "no_items" };
 
   if (sb) {
     await sb
@@ -677,4 +931,67 @@ export async function deletePackageOrder(id: string) {
     if (i >= 0) memOrders.splice(i, 1);
   }
   return { ok: true as const };
+}
+
+/**
+ * ขายคอร์สตามรายการ (พัก N คืน / อาบน้ำ N ครั้ง + แถม) — รายการละ 1 คอร์สของลูกค้า
+ * ใช้ทั้งตอนยืนยันออร์เดอร์จากแอป ตอนร้านขายเองที่หน้าลูกค้า และตอนจ่ายบิลขายคอร์ส
+ * ราคาแบ่งตามจำนวนที่จ่ายของแต่ละรายการ (ของแถมไม่มีราคา) รวมแล้วเท่าราคาคอร์สพอดี
+ */
+export async function sellOfferItems(data: {
+  customerId: string;
+  customerName?: string;
+  name: string;
+  price: number;
+  items: OfferItem[];
+  isLegacy?: boolean;
+  /** ผูกแผนแบ่งจ่าย — คอร์สล็อกจนจ่ายครบ รายรับลงตามงวด */
+  planId?: string;
+  noIncome?: boolean;
+}) {
+  const { sellPackage } = await import("./packages-store");
+  const labels = await roomLabels().catch(() => new Map<string, string>());
+  const parts = data.items.filter((it) => it.paid + (it.free || 0) > 0);
+  const multi = parts.length > 1;
+  const programNames = multi ? await groomProgramNames().catch(() => new Map<string, string>()) : new Map();
+  const paidTotal = parts.reduce((n, it) => n + it.paid, 0);
+  let priceLeft = data.price;
+  const made: Awaited<ReturnType<typeof sellPackage>>[] = [];
+  for (const [i, it] of parts.entries()) {
+    const share =
+      i === parts.length - 1
+        ? priceLeft
+        : paidTotal > 0
+          ? Math.round((data.price * it.paid) / paidTotal)
+          : 0;
+    priceLeft -= share;
+    // ห้องที่ลบไปแล้ว = ใช้ได้ทุกห้อง
+    const roomLabel = it.unit === "night" && it.roomType ? labels.get(it.roomType) : undefined;
+    const partName = !multi
+      ? data.name
+      : `${data.name} · ${
+          it.unit === "night"
+            ? roomLabel || "ห้องพัก"
+            : bathName(it.groomProgram && programNames.get(it.groomProgram))
+        }`;
+    made.push(
+      await sellPackage({
+        customerId: data.customerId,
+        customerName: data.customerName,
+        // ชื่อที่บอกของแถมอยู่แล้ว (เช่น "พัก 10 แถม 1") ไม่ต่อท้ายซ้ำ
+        name: it.free && !partName.includes("แถม") ? `${partName} (แถม ${it.free})` : partName,
+        totalUses: it.paid + (it.free || 0),
+        price: share,
+        // ซื้อวันเข้าพัก = หน่วยเป็นคืน หักตามจำนวนคืนที่พักจริงตอนคิดเงิน
+        unit: it.unit,
+        groomProgram: it.unit === "use" ? it.groomProgram : undefined,
+        roomType: roomLabel ? it.roomType : undefined,
+        roomLabel,
+        isLegacy: data.isLegacy,
+        planId: data.planId,
+        noIncome: data.noIncome,
+      })
+    );
+  }
+  return made;
 }

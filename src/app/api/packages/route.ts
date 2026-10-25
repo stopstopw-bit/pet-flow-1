@@ -10,6 +10,7 @@ import {
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { pushLineMessage, buildPackageFlex, buildRoomPlanFlex } from "@/lib/line";
 import { getSiteConfig } from "@/lib/config-store";
+import { normalizeOfferItems, sellOfferItems } from "@/lib/package-shop-store";
 import { roomPlanOutstanding, createPackagePlan, viewRoomPlan } from "@/lib/room-plans-store";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { withResolvedTenant, withTenant } from "@/lib/tenant-context";
@@ -96,7 +97,12 @@ async function handlePost(req: NextRequest) {
   const groomProgram = String(body.groomProgram || "").trim() || undefined;
   const notify = body.notify === true;
   const preview = body.preview === true;
-  if (!customerId || !name || totalUses <= 0) {
+  // คอร์สห้องพัก / ชุดรวม / แถมฟรี — รายการละ 1 คอร์ส (ไม่ส่ง = คอร์สนับครั้งแบบเดิม)
+  const items = normalizeOfferItems(body.items);
+  const amountText = items.length
+    ? items.map((it) => `${it.paid}${it.free ? ` + แถม ${it.free}` : ""} ${it.unit === "night" ? "คืน" : "ครั้ง"}`).join(" · ")
+    : `${totalUses} ครั้ง`;
+  if (!customerId || !name || (totalUses <= 0 && !items.length)) {
     return NextResponse.json({ error: "customerId + name + totalUses required" }, { status: 400 });
   }
   const cust = await getCustomer(customerId);
@@ -157,6 +163,7 @@ async function handlePost(req: NextRequest) {
       totalUses,
       price,
       groomProgram,
+      items: items.length ? items : undefined,
       installments,
       firstPayment: Number(body.firstPayment) || 0,
       paymentMethod: body.paymentMethod === "cash" ? "cash" : "transfer",
@@ -174,7 +181,7 @@ async function handlePost(req: NextRequest) {
       formatBookingTelegram("🎫 ขายคอร์สแบบแบ่งจ่าย", {
         ลูกค้า: cust.name,
         คอร์ส: name,
-        จำนวน: `${totalUses} ครั้ง`,
+        จำนวน: amountText,
         ราคา: `${price} บาท`,
         แบ่งจ่าย: `${installments} งวด`,
         ...(res.payment?.ok ? { รับงวดแรก: `${res.payment.amount} บาท` } : {}),
@@ -208,20 +215,23 @@ async function handlePost(req: NextRequest) {
     return NextResponse.json({ ok: true, package: res.pkg, plan: view, notifyError });
   }
 
-  const pkg = await sellPackage({
-    customerId,
-    customerName: cust.name,
-    name,
-    totalUses,
-    price,
-    isLegacy,
-    groomProgram,
-  });
+  const pkg = items.length
+    ? (await sellOfferItems({ customerId, customerName: cust.name, name, price, items, isLegacy }))[0]
+    : await sellPackage({
+        customerId,
+        customerName: cust.name,
+        name,
+        totalUses,
+        price,
+        isLegacy,
+        groomProgram,
+      });
+  if (!pkg) return NextResponse.json({ error: "ใส่จำนวนในคอร์สก่อน" }, { status: 400 });
   await sendTelegram(
     formatBookingTelegram(isLegacy ? "🕰️ ยกคอร์สมาจากระบบเก่า" : "🎫 ขายคอร์สให้ลูกค้า", {
       ลูกค้า: cust.name,
       คอร์ส: name,
-      จำนวน: `${totalUses} ครั้ง`,
+      จำนวน: amountText,
       ราคา: `${price} บาท`,
       ...(isLegacy ? { หมายเหตุ: "ยอดยกมา — ไม่นับเป็นรายรับเดือนนี้" } : {}),
     })

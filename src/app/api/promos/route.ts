@@ -13,6 +13,7 @@ import {
   getBestPromoForCustomer,
   isNewCustomerForBill,
   promoBlockReasons,
+  importConfigLinePromos,
   type PromoKind,
   claimCustomerPromo,
   getPromo,
@@ -94,6 +95,8 @@ async function handlePublicGet(req: NextRequest, admin: boolean) {
 
   // ทั้งหมด (รวมโปรที่ปิดแล้ว/รหัสคูปองลับ) — หลังบ้านเท่านั้น คนนอกเห็นแค่ที่เปิดใช้อยู่
   if (!admin) return NextResponse.json({ promos: await getActivePromos(new Date()) });
+  // หลังบ้านเปิดรายการโปร → ย้ายโปรตอนออกบิลแบบเก่า (ตั้งค่า) เข้ารายการโปรให้ครั้งเดียว
+  await importConfigLinePromos().catch(() => 0);
   return NextResponse.json({ promos: await listPromos() });
 }
 
@@ -203,7 +206,9 @@ async function handlePost(req: NextRequest) {
     rewardType: body.rewardType || "discount",
     pointsBonus: body.pointsBonus ? Number(body.pointsBonus) : undefined,
     pointsMultiplier: body.pointsMultiplier ? Number(body.pointsMultiplier) : undefined,
+    billRule: body.billRule || undefined,
   });
+  if (!promo) return NextResponse.json({ error: "บันทึกโปรไม่สำเร็จ" }, { status: 500 });
   return NextResponse.json({ ok: true, promo });
 }
 
@@ -216,7 +221,7 @@ export async function PATCH(req: NextRequest) {
 async function handlePatch(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const promo = await updatePromo(body.id, body.patch || body);
-  if (!promo) return NextResponse.json({ error: "not found" }, { status: 404 });
+  if (!promo) return NextResponse.json({ error: "บันทึกโปรไม่สำเร็จ" }, { status: 404 });
   return NextResponse.json({ ok: true, promo });
 }
 

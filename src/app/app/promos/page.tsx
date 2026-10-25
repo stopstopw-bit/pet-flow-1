@@ -8,6 +8,7 @@ import { EmptyState, SectionLabel } from "@/components/ui";
 import { Icon } from "@/components/Icon";
 import { CustomerExclusivePromos } from "@/components/CustomerExclusivePromos";
 import { PackageShopSection } from "@/components/PackageShopSection";
+import { ExpandableText } from "@/components/ExpandableText";
 
 type Promo = {
   id: string;
@@ -22,7 +23,6 @@ export default function PromosPage() {
   const { locale } = useLocale();
   const m = t(locale).promos;
   const [promos, setPromos] = useState<Promo[]>([]);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     // kind=display เท่านั้น — โปรแบบ "customer" (โปรเด่นเฉพาะคุณ) โชว์ผ่าน
@@ -52,7 +52,6 @@ export default function PromosPage() {
       ) : (
         <ul className="space-y-3">
           {promos.map((promo) => {
-            const open = expandedId === promo.id;
             return (
               <li
                 key={promo.id}
@@ -66,38 +65,24 @@ export default function PromosPage() {
                     className="h-auto max-h-64 w-full bg-honey/10 object-contain"
                   />
                 )}
-                <button
-                  type="button"
-                  aria-expanded={open}
-                  onClick={() => setExpandedId((cur) => (cur === promo.id ? null : promo.id))}
-                  className="block w-full p-4 text-left"
-                >
-                  <span className="flex items-start gap-2">
-                    <span className="min-w-0 flex-1">
-                      <span className="line-clamp-1 block text-sm font-extrabold text-petflow-chocolate">
-                        {promo.title[locale]}
-                      </span>
-                      <span
-                        className={`mt-1 block text-xs leading-relaxed text-brown-soft ${
-                          open ? "" : "line-clamp-2"
-                        }`}
-                      >
-                        {promo.body[locale]}
-                      </span>
-                    </span>
-                    <Icon
-                      name="chevron"
-                      size={18}
-                      className={`mt-0.5 text-brown-faint transition ${open ? "-rotate-90" : "rotate-90"}`}
+                <div className="p-4">
+                  <p className="line-clamp-2 text-sm font-extrabold text-petflow-chocolate">
+                    {promo.title[locale]}
+                  </p>
+                  <div className="mt-1">
+                    <ExpandableText
+                      text={promo.body[locale]}
+                      locale={locale}
+                      className="text-xs leading-relaxed text-brown-soft"
                     />
-                  </span>
+                  </div>
                   {promo.until ? (
-                    <span className="mt-3 flex items-center gap-1 text-[11px] font-bold text-brown-faint">
+                    <span className="mt-2 flex items-center gap-1 text-[11px] font-bold text-brown-faint">
                       <Icon name="clock" size={13} />
                       {m.until} {promo.until}
                     </span>
                   ) : null}
-                </button>
+                </div>
               </li>
             );
           })}

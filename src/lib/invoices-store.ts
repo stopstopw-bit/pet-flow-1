@@ -38,6 +38,10 @@ export type InvoiceItem = {
   kind?: "grooming" | "room" | "service" | "custom" | "freebie" | "package" | "product";
   /** สินค้าหน้าร้าน (kind==="product") — ใช้ตัด/คืนสต็อกตอนออก/แก้/ลบบิล */
   productId?: string;
+  /** คอร์สที่ขาย (kind==="package") — จ่ายบิลแล้วเพิ่มคอร์สให้ลูกค้าเอง */
+  offerId?: string;
+  /** คอร์สลูกค้าที่สร้างจากบรรทัดนี้แล้ว — ยกเลิกการชำระแล้วรับเงินใหม่ จะไม่เพิ่มซ้ำ */
+  packageIds?: string[];
   /** id โปรแกรมอาบน้ำ (kind==="grooming") — ใช้เช็คคอร์สที่ผูกโปรแกรม */
   program?: string;
   /** ขน/พันธุ์ และไซส์ที่เลือก (kind==="grooming") — ไว้เลือกให้เองครั้งหน้าของน้องตัวเดิม */
@@ -1014,6 +1018,8 @@ async function markInvoicePaidInner(
     bookingId: inv.bookingId,
   });
 
+  await grantSoldCourses(inv);
+
   const updatedCustomer = await getCustomer(inv.customerId);
   return {
     ok: true as const,
@@ -1022,6 +1028,126 @@ async function markInvoicePaidInner(
     settleAmount,
     alreadyReceived,
   };
+}
+
+/**
+ * บรรทัด "ขายคอร์ส" ที่เลือกคอร์สจากรายการ → จ่ายบิลแล้วเพิ่มคอร์สให้ลูกค้าเลย
+ * (เหมือนกดยืนยันออร์เดอร์ในขายคอร์ส) ไม่ลงรายรับซ้ำ เพราะบิลลงรายรับไปแล้ว
+ * จำ id คอร์สที่สร้างไว้ในบรรทัด — ยกเลิกการชำระแล้วรับเงินใหม่จะไม่ได้คอร์สเพิ่มอีกชุด
+ */
+async function grantSoldCourses(inv: InvoiceRecord) {
+  const lines = (inv.items || []).filter(
+    (it) => it.kind === "package" && it.offerId && !it.packageIds?.length
+  );
+  if (!lines.length || !inv.customerId) return;
+  const allGranted: { id: string; unit?: string; roomType?: string; totalUses: number }[] = [];
+  try {
+    const { listPackageOffers, sellOfferItems } = await import("./package-shop-store");
+    const offers = await listPackageOffers();
+    for (const it of lines) {
+      const o = offers.find((x) => x.id === it.offerId);
+      if (!o || o.kind === "credit") continue;
+      const items = o.items?.length
+        ? o.items
+        : [
+            {
+              unit: o.kind === "nights" ? ("night" as const) : ("use" as const),
+              paid: o.totalUses,
+              roomType: o.roomType,
+              groomProgram: o.groomProgram,
+            },
+          ];
+      const qty = Math.max(1, it.qty || 1);
+      const ids: string[] = [];
+      const granted: { id: string; unit?: string; roomType?: string; totalUses: number }[] = [];
+      for (let n = 0; n < qty; n++) {
+        const made = await sellOfferItems({
+          customerId: inv.customerId,
+          customerName: inv.customerName,
+          name: o.name,
+          price: Math.round((it.amount || 0) / qty),
+          items,
+          noIncome: true,
+        });
+        ids.push(...made.map((p) => p.id));
+        granted.push(...made);
+      }
+      it.packageIds = ids;
+      allGranted.push(...granted);
+    }
+    const sb = getSupabase();
+    if (sb) await sb.from("invoices").update({ items: inv.items }).eq("id", inv.id);
+  } catch (e) {
+    console.error("grantSoldCourses", e);
+  }
+  if (inv.bookingId && allGranted.length) {
+    try {
+      await deductCourseForBookedStay(inv, allGranted);
+    } catch (e) {
+      console.error("deductCourseForBookedStay", e);
+    }
+  }
+}
+
+/**
+ * บิลซื้อคอร์สที่ผูกกับนัดเข้าพัก — จ่ายครบแล้วหักคืนของนัดนั้นจากคอร์สที่เพิ่งได้ให้เลย
+ * ออกเป็นบิลค่าห้องอีกใบ (หักคอร์ส ยอด 0) เหมือนพนักงานออกบิลค่าห้องแล้วเลือกคอร์สเอง
+ * ระบบต่อคืน/เลื่อนวันจะได้เห็นว่านัดนี้คิดค่าห้องไปแล้วกี่คืน
+ * นัดที่มีบิลค่าห้องอยู่แล้วไม่ทำซ้ำ · คืนเกินคอร์ส/ค่าแมวตัวที่เกิน = บิลค้างไว้เก็บเพิ่ม
+ */
+async function deductCourseForBookedStay(
+  inv: InvoiceRecord,
+  granted: { id: string; unit?: string; roomType?: string; totalUses: number }[]
+) {
+  const { getBooking } = await import("./bookings-store");
+  const bk = await getBooking(inv.bookingId!);
+  if (!bk || bk.status === "cancelled" || !bk.checkin || !bk.checkout || !bk.room) return;
+  const { nightsBetween, findGroupSiblings } = await import("./stay-sync");
+  const nights = nightsBetween(bk.checkin, bk.checkout);
+  if (nights <= 0) return;
+  const pkg = granted.find((p) => p.unit === "night" && (!p.roomType || p.roomType === bk.room));
+  if (!pkg) return;
+  const { isRoomLine, roomLineLabel } = await import("./stay-line");
+  const siblings = await findGroupSiblings(bk).catch(() => []);
+  const ids = [bk.id, ...siblings.map((s) => s.id)];
+  const billed = (await listInvoicesForBookings(ids)).some((i) => (i.items || []).some(isRoomLine));
+  if (billed) return;
+
+  const cfg = await getSiteConfig();
+  const room = (cfg.rooms || []).find((r) => r.id === bk.room);
+  if (!room) return;
+  const { roomPricing, roomNightPrice } = await import("./room-board");
+  // น้องทุกตัวในบ้านที่อยู่ห้องเดียวกัน (ห้องเดียว) — เกินจำนวนที่รวมในราคา คิดค่าแมวเพิ่ม
+  const sameRoom = [bk, ...siblings].filter(
+    (b) => b.room === bk.room && (b.roomUnit ?? null) === (bk.roomUnit ?? null)
+  );
+  const unit = roomNightPrice(Number(room.price) || 0, roomPricing(room), sameRoom.length);
+  const { consumePackage } = await import("./packages-store");
+  const use = Math.min(nights, pkg.totalUses);
+  const used = await consumePackage(pkg.id, use);
+  if (!used.ok) return;
+  const cats = sameRoom.map((b) => b.catName).filter(Boolean);
+  const stay = await createInvoice({
+    customerId: inv.customerId,
+    lineUserId: inv.lineUserId,
+    customerName: inv.customerName,
+    catName: cats.join(", ") || inv.catName,
+    items: [
+      {
+        kind: "room",
+        label: roomLineLabel(`ห้อง ${room.name}`, nights),
+        qty: nights,
+        unitAmount: unit,
+        amount: unit * nights,
+      },
+    ],
+    // คืนที่หักคอร์ส = จ่ายไปแล้วตอนซื้อคอร์ส
+    extraDiscount: unit * use,
+    bookingId: bk.id,
+    packageId: pkg.id,
+    packageUnits: use,
+  });
+  if (stay.total <= 0) await markInvoicePaid(stay.id, "cash");
 }
 
 /**

@@ -41,6 +41,8 @@ import { Icon } from "@/components/Icon";
 import { useConfig, usePetWords } from "@/components/ConfigProvider";
 import { isFeatureOn } from "@/lib/features";
 import { GroomProgramPicker, useGroomPrograms } from "@/components/GroomProgramPicker";
+import { RoomTypePicker, useRoomOptions } from "@/components/RoomTypePicker";
+import { OfferItemsEditor, emptyItem, itemsToPayload, type OfferItemDraft } from "@/components/OfferItemsEditor";
 import { groomProgramName } from "@/lib/grooming-prices";
 import { tidyServiceText } from "@/lib/stay-line";
 import { Avatar, EmptyState, MoreMenu, SearchField, Segmented, SectionLabel } from "@/components/ui";
@@ -1623,6 +1625,13 @@ function CustomerSummaryCard({
   /** "" = ใช้ได้ทุกโปรแกรม */
   const [pkgProgram, setPkgProgram] = useState("");
   const groomPrograms = useGroomPrograms();
+  /** อาบน้ำ (นับครั้ง) / ห้องพัก (นับคืน แยกห้อง) / ชุดรวม (หลายรายการ) */
+  const [pkgMode, setPkgMode] = useState<"use" | "night" | "bundle">("use");
+  const rooms = useRoomOptions();
+  /** "" = ใช้ได้ทุกห้อง */
+  const [pkgRoom, setPkgRoom] = useState("");
+  const [pkgFree, setPkgFree] = useState("");
+  const [pkgItems, setPkgItems] = useState<OfferItemDraft[]>([]);
   const [pkgUses, setPkgUses] = useState("");
   const [pkgPrice, setPkgPrice] = useState("");
   const [pkgBusy, setPkgBusy] = useState(false);
@@ -1654,13 +1663,27 @@ function CustomerSummaryCard({
     loadPackages();
   }, [loadPackages]);
 
+  /** รายการในคอร์ส — คอร์สอาบน้ำไม่มีแถม = แบบเดิม (ไม่ส่งรายการ) */
+  const pkgItemsPayload = () => {
+    const paid = Math.max(0, Math.round(Number(pkgUses) || 0));
+    const free = Math.max(0, Math.round(Number(pkgFree) || 0));
+    if (pkgMode === "bundle") return itemsToPayload(pkgItems);
+    if (pkgMode === "night")
+      return paid + free > 0 ? [{ unit: "night" as const, paid, free, roomType: pkgRoom || undefined }] : [];
+    return free > 0 ? [{ unit: "use" as const, paid, free, groomProgram: pkgProgram || undefined }] : undefined;
+  };
+  const pkgTotal = () => {
+    const items = pkgItemsPayload();
+    return items ? items.reduce((n, it) => n + it.paid + it.free, 0) : Math.round(Number(pkgUses) || 0);
+  };
+
   const packagePayload = () => {
-    const uses = Math.round(Number(pkgUses) || 0);
     const price = Math.round(Number(pkgPrice) || 0);
     return {
       customerId: customer.id,
       name: pkgName.trim(),
-      totalUses: uses,
+      totalUses: pkgTotal(),
+      items: pkgItemsPayload(),
       price,
       isLegacy: pkgLegacy,
       notify: pkgNotify,
@@ -1672,8 +1695,7 @@ function CustomerSummaryCard({
   };
 
   const sellPackage = async () => {
-    const uses = Math.round(Number(pkgUses) || 0);
-    if (!pkgName.trim() || uses <= 0) return;
+    if (!pkgName.trim() || pkgTotal() <= 0) return;
     setPkgBusy(true);
     try {
       const res = await fetch("/api/packages", {
@@ -1704,6 +1726,9 @@ function CustomerSummaryCard({
         );
         setPkgName("");
         setPkgProgram("");
+        setPkgRoom("");
+        setPkgFree("");
+        setPkgItems([]);
         setPkgUses("");
         setPkgPrice("");
         setPkgLegacy(false);
@@ -1718,8 +1743,7 @@ function CustomerSummaryCard({
   };
 
   const previewPackage = async () => {
-    const uses = Math.round(Number(pkgUses) || 0);
-    if (!pkgName.trim() || uses <= 0) return;
+    if (!pkgName.trim() || pkgTotal() <= 0) return;
     setPkgBusy(true);
     try {
       const res = await fetch("/api/packages", {
@@ -2294,30 +2318,87 @@ function CustomerSummaryCard({
                   })}
               </ul>
             )}
+            <Segmented
+              value={pkgMode}
+              onChange={(m) => {
+                setPkgMode(m);
+                if (m === "bundle" && !pkgItems.length)
+                  setPkgItems([emptyItem("night", rooms, groomPrograms), emptyItem("use", rooms, groomPrograms)]);
+              }}
+              className="mb-2"
+              options={[
+                { id: "use", label: "อาบน้ำ" },
+                { id: "night", label: "ห้องพัก" },
+                { id: "bundle", label: "ชุดรวม" },
+              ]}
+            />
             <input
               value={pkgName}
               onChange={(e) => setPkgName(e.target.value)}
-              placeholder="ชื่อคอร์ส เช่น อาบน้ำ 10 ครั้ง"
+              placeholder={
+                pkgMode === "night"
+                  ? "ชื่อคอร์ส เช่น พัก Mid Cozy 10 คืน"
+                  : pkgMode === "bundle"
+                    ? "ชื่อคอร์ส เช่น พัก 5 คืน + อาบน้ำ 6 ครั้ง"
+                    : "ชื่อคอร์ส เช่น อาบน้ำ 10 ครั้ง"
+              }
               className={inputCls}
             />
-            <div className="mt-2">
-              <GroomProgramPicker value={pkgProgram} onChange={setPkgProgram} programs={groomPrograms} />
-            </div>
+            {pkgMode === "bundle" ? (
+              <div className="mt-2">
+                <OfferItemsEditor items={pkgItems} onChange={setPkgItems} rooms={rooms} programs={groomPrograms} />
+              </div>
+            ) : (
+              <div className="mt-2">
+                {pkgMode === "night" ? (
+                  <RoomTypePicker
+                    value={pkgRoom}
+                    onChange={setPkgRoom}
+                    rooms={rooms}
+                    nights={Number(pkgUses) || undefined}
+                    price={Number(pkgPrice) || undefined}
+                    onPrice={(v) => setPkgPrice(String(v))}
+                  />
+                ) : (
+                  <GroomProgramPicker value={pkgProgram} onChange={setPkgProgram} programs={groomPrograms} />
+                )}
+              </div>
+            )}
             <div className="mt-2 flex gap-2">
-              <input
-                type="number"
-                value={pkgUses}
-                onChange={(e) => setPkgUses(e.target.value)}
-                placeholder="กี่ครั้ง"
-                className={`!w-24 shrink-0 ${inputCls}`}
-              />
-              <input
-                type="number"
-                value={pkgPrice}
-                onChange={(e) => setPkgPrice(e.target.value)}
-                placeholder="ราคา (บาท)"
-                className={`min-w-0 flex-1 ${inputCls}`}
-              />
+              {pkgMode !== "bundle" && (
+                <>
+                  <label className="block w-20 shrink-0 text-[10px] font-bold text-brown-soft">
+                    {pkgMode === "night" ? "กี่คืน" : "กี่ครั้ง"}
+                    <input
+                      type="number"
+                      value={pkgUses}
+                      onChange={(e) => setPkgUses(e.target.value)}
+                      placeholder={pkgMode === "night" ? "กี่คืน" : "กี่ครั้ง"}
+                      className={`mt-0.5 ${inputCls}`}
+                    />
+                  </label>
+                  <label className="block w-20 shrink-0 text-[10px] font-bold text-brown-soft">
+                    แถมฟรี
+                    <input
+                      type="number"
+                      value={pkgFree}
+                      onChange={(e) => setPkgFree(e.target.value)}
+                      placeholder="0"
+                      className={`mt-0.5 ${inputCls}`}
+                    />
+                  </label>
+                </>
+              )}
+              <label className="block min-w-0 flex-1 text-[10px] font-bold text-brown-soft">
+                {pkgMode === "bundle" ? "ราคาทั้งชุด (บาท)" : "ราคา (บาท)"}
+                <input
+                  type="number"
+                  value={pkgPrice}
+                  onChange={(e) => setPkgPrice(e.target.value)}
+                  placeholder={pkgMode === "bundle" ? "ราคาทั้งชุด (บาท)" : "ราคา (บาท)"}
+                  className={`mt-0.5 ${inputCls}`}
+                />
+              </label>
             </div>
 
             {!pkgLegacy && (
@@ -2396,7 +2477,7 @@ function CustomerSummaryCard({
 
             <button
               type="button"
-              disabled={pkgBusy || !pkgName.trim() || !pkgUses}
+              disabled={pkgBusy || !pkgName.trim() || pkgTotal() <= 0}
               onClick={pkgNotify ? previewPackage : sellPackage}
               className="mt-2 flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-petflow-sm bg-sage px-3 py-2.5 text-sm font-extrabold text-card disabled:opacity-40"
             >
