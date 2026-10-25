@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useConfig } from "@/components/ConfigProvider";
 import Link from "next/link";
 import { LoadingScreen } from "@/components/LoadingScreen";
-import { BTN_SECONDARY, PageHeader } from "@/components/PageHeader";
+import { PageHeader } from "@/components/PageHeader";
 import { SectionLabel } from "@/components/ui";
 import { Icon } from "@/components/Icon";
 import { stripDiscountTag } from "@/lib/line-discount";
@@ -142,19 +142,9 @@ export default function PayPage() {
         </div>
       ) : null}
 
-      <a
-        href={config.business.reviewUrl || config.business.maps}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={`mt-5 ${BTN_SECONDARY}`}
-      >
-        {!config.business.reviewButtonText && <Icon name="star" size={16} />}
-        {config.business.reviewButtonText || `รีวิว ${config.business.name}`}
-      </a>
-
       <Link
         href="/app"
-        className="mt-2 flex min-h-[44px] items-center justify-center text-xs font-bold text-latte-deep"
+        className="mt-5 flex min-h-[44px] items-center justify-center text-xs font-bold text-latte-deep"
       >
         กลับหน้าหลัก
       </Link>
