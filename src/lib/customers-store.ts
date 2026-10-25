@@ -17,6 +17,7 @@ import { normalizeSpecies, type PetSpecies } from "./pet-kind";
 import { taxInvoiceFromRow, type CustomerTaxInvoice } from "./tax-invoice";
 import { MAX_VACCINE_PHOTOS, joinVaccinePhotos, splitVaccinePhotos } from "./vaccine-photos";
 import { stayInfoDone } from "./intake-rules";
+import { cleanPetName } from "./pet-name";
 
 export type { CustomerTier } from "./customer-tier";
 
@@ -1314,6 +1315,7 @@ export async function updateCat(
 
   const { weightKg, neutered, ...rest } = patch;
   Object.assign(cat, rest);
+  if (typeof rest.name === "string") cat.name = cleanPetName(rest.name);
   // null = ล้างคำตอบ (ไม่ระบุ), ไม่ส่งมา = คงค่าเดิม
   const neuteredChanged = "neutered" in patch;
   if (neuteredChanged) cat.neutered = typeof neutered === "boolean" ? neutered : undefined;
@@ -1525,7 +1527,7 @@ export async function addCat(
     staffNote?: string;
   }
 ) {
-  const name = data.name.trim();
+  const name = cleanPetName(data.name);
   if (!name) return null;
 
   const c = await getCustomer(customerId);
@@ -2701,7 +2703,7 @@ export async function registerCustomerFromLine(data: {
 
   for (const cat of cats) {
     const exists = customer.cats.some(
-      (x) => x.name.toLowerCase() === cat.name.toLowerCase()
+      (x) => cleanPetName(x.name).toLowerCase() === cleanPetName(cat.name).toLowerCase()
     );
     if (exists) continue;
     await addCat(customer.id, cat);
