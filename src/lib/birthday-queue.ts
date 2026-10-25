@@ -153,3 +153,37 @@ export async function markBirthdayStatus(
   row.status = status;
   row.sentAt = status === "sent" ? now : undefined;
 }
+
+/** เปลี่ยนชื่อน้องในคิวอวยพรวันเกิดของลูกค้า (ดู cat-rename.ts) */
+export async function renameCatInBirthdayQueue(
+  customerId: string,
+  oldName: string,
+  newName: string
+): Promise<void> {
+  const { replaceCatInList } = await import("./cat-name-replace");
+  const sb = getSupabase();
+  const tenantId = sb ? requireTenantId() : "";
+  const rows: BirthdayGreetingRow[] = sb
+    ? (
+        ((
+          await sb
+            .from("birthday_greetings")
+            .select("*")
+            .eq("customer_id", customerId)
+            .eq("tenant_id", tenantId)
+        ).data as Row[] | null) || []
+      ).map(fromRow)
+    : mem.filter((r) => r.customerId === customerId);
+  for (const r of rows) {
+    if (!r.catName) continue;
+    const catName = replaceCatInList(r.catName, oldName, newName);
+    if (catName === r.catName) continue;
+    if (sb)
+      await sb
+        .from("birthday_greetings")
+        .update({ cat_name: catName })
+        .eq("id", r.id)
+        .eq("tenant_id", tenantId);
+    else r.catName = catName;
+  }
+}

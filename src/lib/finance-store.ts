@@ -297,6 +297,38 @@ export async function updateFinanceEntry(
   return { ok: true as const };
 }
 
+/** เปลี่ยนชื่อน้องในคำอธิบายรายการการเงินของลูกค้า (ดู cat-rename.ts) — คืนจำนวนที่แก้ */
+export async function renameCatInFinance(customerId: string, oldName: string, newName: string) {
+  const { replaceCatInDescription } = await import("./cat-name-replace");
+  const sb = getSupabase();
+  const tenantId = sb ? requireTenantId() : "";
+  const rows: FinanceRecord[] = sb
+    ? (
+        ((
+          await sb
+            .from("finance_records")
+            .select("*")
+            .eq("customer_id", customerId)
+            .eq("tenant_id", tenantId)
+        ).data as FinanceRow[] | null) || []
+      ).map(rowToFinance)
+    : mem.filter((r) => r.customerId === customerId);
+  let n = 0;
+  for (const r of rows) {
+    const description = replaceCatInDescription(r.description || "", oldName, newName);
+    if (description === r.description) continue;
+    if (sb)
+      await sb
+        .from("finance_records")
+        .update({ description })
+        .eq("id", r.id)
+        .eq("tenant_id", tenantId);
+    else r.description = description;
+    n++;
+  }
+  return n;
+}
+
 /** ลบรายการการเงินทีละอัน (เอารายการทดสอบออก ก่อนใช้จริง) */
 export async function deleteFinanceEntry(id: string) {
   const sb = getSupabase();

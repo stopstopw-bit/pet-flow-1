@@ -570,6 +570,27 @@ export async function updateInvoice(
  * หรือพิมพ์บิลเองไม่ได้ดึงจากนัด) ทำให้ปุ่มส่งการ์ดที่ต้องอิงนัด (แจ้งเตือนนัด/ส่งชุดการ์ด)
  * กลับมาใช้ได้ ไม่แตะยอดเงิน จึงทำได้แม้บิลจะปิดจ่ายแล้วก็ตาม
  */
+/**
+ * เปลี่ยนชื่อน้องในบิล (หัวบิล + รายการ) — ใช้ตอนแก้ชื่อน้องที่หน้าลูกค้า (ดู cat-rename.ts)
+ * แก้แค่ชื่อ ไม่แตะยอดเงิน/สถานะ บิลที่จ่ายแล้วก็แก้ได้ (เอกสารทางการไม่พิมพ์ชื่อน้อง)
+ */
+export async function setInvoiceCatNames(id: string, catName: string, items: InvoiceItem[]) {
+  const sb = getSupabase();
+  if (sb) {
+    await sb
+      .from("invoices")
+      .update({ cat_name: catName, items })
+      .eq("id", id)
+      .eq("tenant_id", requireTenantId());
+    return;
+  }
+  const inv = mem.find((i) => i.id === id);
+  if (inv) {
+    inv.catName = catName;
+    inv.items = items;
+  }
+}
+
 export async function linkInvoiceToBooking(id: string, bookingId: string) {
   const inv = await getInvoice(id);
   if (!inv) return { ok: false as const, error: "not_found" };
