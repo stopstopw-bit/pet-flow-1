@@ -4,11 +4,13 @@ import {
   registerCustomerFromLine,
   findCustomerByReferralCode,
   setReferredBy,
+  recalculateCustomerTier,
 } from "@/lib/customers-store";
 import { parseCatInput } from "@/lib/cat-input";
-import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
+import { sendTelegramLater, formatBookingTelegram } from "@/lib/telegram";
 import { parseTaxInvoiceBody } from "@/lib/tax-invoice";
 import { withResolvedTenant } from "@/lib/tenant-context";
+import { withServerTiming } from "@/lib/server-timing";
 import { requireCustomerSession } from "@/lib/customer-session";
 import { getSiteConfig } from "@/lib/config-store";
 import { isFeatureOn } from "@/lib/features";
@@ -18,6 +20,7 @@ import { pushLineMessage } from "@/lib/line";
 import { setCatStayInfo } from "@/lib/customers-store";
 import { REGISTER_HISTORY_SOURCE, registerHistoryFields, sanitizeIntakeInfo, stayInfoDone } from "@/lib/intake-rules";
 import { petKindOf } from "@/lib/pet-kind";
+import { runAfterResponse } from "@/lib/after-response";
 
 /** คูปองชวนเพื่อน — ออกให้ทั้งคู่ทันทีที่สมัครด้วยโค้ด (เจ้าของร้านเลือกแบบนี้ 2026-10-23)
  * มูลค่า/อายุคูปองตั้งได้ในตั้งค่า › เปิด/ปิดฟีเจอร์ (ดู referralReward) */
@@ -25,7 +28,8 @@ const REFERRAL_TAG = "เพื่อนแนะนำ";
 
 /** ลูกค้ากรอกฟอร์มลงทะเบียน (ผู้ปกครอง + น้องแมว + ยินยอมรับข่าวสาร) */
 export async function POST(req: NextRequest) {
-  return withResolvedTenant(req, () => handlePost(req));
+  const startedAt = performance.now();
+  return withServerTiming(await withResolvedTenant(req, () => handlePost(req)), startedAt, "register");
 }
 
 async function handlePost(req: NextRequest) {
@@ -108,6 +112,7 @@ async function handlePost(req: NextRequest) {
   // (ฟอร์มก่อนเข้าพัก/ทำประวัติดึงคำตอบนี้มาให้ ลูกค้าไม่ต้องกรอกซ้ำ) จับคู่น้องด้วยชื่อ ตัวล่าสุดก่อน
   const rawCats: Record<string, unknown>[] = Array.isArray(body.cats) ? body.cats : [];
   const usedCats = new Set<string>();
+  const historySaves: Promise<unknown>[] = [];
   for (const raw of rawCats) {
     const history = raw?.history;
     const catName = cleanPetName(String(raw?.name || ""));
@@ -126,10 +131,18 @@ async function handlePost(req: NextRequest) {
     const answers = sanitizeIntakeInfo([...h.owner, ...h.pet], history);
     // ยังไม่เคยกรอกฟอร์มก่อนเข้าพัก = ติดป้ายไว้ ระบบจะยังส่งฟอร์มไปถามหมวดการดูแล (คำตอบนี้เติมให้แล้ว)
     const source = stayInfoDone(match.stayInfo) ? {} : { source: REGISTER_HISTORY_SOURCE };
-    await setCatStayInfo(customer.id, match.id, JSON.stringify({ ...prev, ...answers, ...source })).catch((e) =>
-      console.error("register history save failed:", e)
+    // น้องแต่ละตัวเขียนแถวของตัวเอง — บันทึกพร้อมกันได้ ไม่ต้องรอทีละตัว
+    historySaves.push(
+      setCatStayInfo(customer.id, match.id, JSON.stringify({ ...prev, ...answers, ...source })).catch((e) =>
+        console.error("register history save failed:", e)
+      )
     );
   }
+  await Promise.all(historySaves);
+
+  // ระดับลูกค้า (นับครั้งที่มา/ยอดสะสมจากทั้งร้าน) — ไม่ต้องให้ลูกค้ารอ คิดหลังตอบกลับ
+  const customerId = customer.id;
+  runAfterResponse("register tier recalc", () => recalculateCustomerTier(customerId));
 
   // ── แจ้งเตือนลูกค้าสมัครใหม่ ──
   try {
@@ -138,7 +151,7 @@ async function handlePost(req: NextRequest) {
         .filter((c) => c.name)
         .map((c) => (c.species ? `${c.name} (${c.species === "dog" ? "หมา" : "แมว"})` : c.name))
         .join(", ") || "-";
-    await sendTelegram(
+    sendTelegramLater(
       formatBookingTelegram("🆕 ลูกค้าสมัครสมาชิกใหม่", {
         ชื่อ: customer.name,
         เบอร์: customer.phone || "-",
@@ -171,16 +184,19 @@ async function handlePost(req: NextRequest) {
           reason: `🎉 ${REFERRAL_TAG}: ${customer.name} สมัครด้วยโค้ดของคุณ`,
           expiresInDays: reward.expiresInDays,
         });
-        if (referrer.lineUserId) {
-          await pushLineMessage(referrer.lineUserId, [
-            {
-              type: "text",
-              text: `🎉 เพื่อนสมัครด้วยโค้ดของคุณแล้ว!\nคุณได้รับคูปองส่วนลด ${reward.amount}฿ เก็บไว้ในกระเป๋าคูปองแล้วนะคะ 🧡 (ใช้ได้ ${reward.expiresInDays} วัน)`,
-            },
-          ]).catch((e) => console.error("referral push failed:", e));
+        const referrerLine = referrer.lineUserId;
+        if (referrerLine) {
+          runAfterResponse("referral push", () =>
+            pushLineMessage(referrerLine, [
+              {
+                type: "text",
+                text: `🎉 เพื่อนสมัครด้วยโค้ดของคุณแล้ว!\nคุณได้รับคูปองส่วนลด ${reward.amount}฿ เก็บไว้ในกระเป๋าคูปองแล้วนะคะ 🧡 (ใช้ได้ ${reward.expiresInDays} วัน)`,
+              },
+            ])
+          );
         }
       }
-      await sendTelegram(
+      sendTelegramLater(
         formatBookingTelegram(`🎁 สมัครด้วยโค้ดเพื่อนแนะนำ (คูปอง ${reward.amount}฿ x2)`, {
           คนชวน: referrer.name,
           คนถูกชวน: customer.name,

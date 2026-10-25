@@ -8,6 +8,7 @@ import { applyBrandCardDefaults, stripBrandCardDefaults } from "./card-brand";
 import { latestShopIntakeAnswers } from "./shop-intake-store";
 import { petKindFromIntake, speciesOfBreed, type PetKind } from "./pet-kind";
 import { withDogShopDefaults } from "./defaults/pet-format";
+import { forgetInRequest, memoInRequest } from "./request-memo";
 
 /**
  * ร้านที่ยังไม่ได้ตั้ง business.petKind แต่เคยตอบแบบสอบถามเปิดร้านว่าเป็นร้านหมา (เช่น ร้านที่ตอบก่อนมีค่านี้)
@@ -178,7 +179,16 @@ function withShopNameInTexts(config: SiteConfig): SiteConfig {
 
 /** การ์ด LINE ที่ยังไม่ได้ตั้งสีเอง ใช้สีร้าน — ทุกที่ที่อ่าน config (ส่งการ์ด/หน้าหลังบ้าน) เห็นเหมือนกัน */
 export async function getSiteConfig(): Promise<SiteConfig> {
-  return applyBrandCardDefaults(await getRawSiteConfig());
+  // อ่าน DB ครั้งเดียวต่อ request (เดิม route เดียวอ่านซ้ำ 5-8 รอบ) — ส่งสำเนาให้ผู้เรียกแต่ละคน
+  // กันใครแก้ object ที่ได้ไปแล้วไปเปลี่ยนค่าของคนอื่นใน request เดียวกัน
+  const cfg = await memoInRequest(siteConfigMemoKey, async () =>
+    applyBrandCardDefaults(await getRawSiteConfig())
+  );
+  return structuredClone(cfg);
+}
+
+function siteConfigMemoKey() {
+  return `site_config:${requireTenantId()}`;
 }
 
 /** config ตามที่บันทึกจริง (ยังไม่เติมสีการ์ดจากสีร้าน) — ใช้ตอนแก้แล้วบันทึกกลับ */
@@ -229,6 +239,7 @@ async function getRawSiteConfig(): Promise<SiteConfig> {
 }
 
 export async function replaceSiteConfig(config: SiteConfig) {
+  forgetInRequest(siteConfigMemoKey);
   const next = {
     ...(await offloadDataUrls(stripBrandCardDefaults(config), `config/${requireTenantId()}`)),
     updatedAt: new Date().toISOString(),
@@ -245,10 +256,12 @@ export async function replaceSiteConfig(config: SiteConfig) {
   } else {
     memConfig = next;
   }
+  forgetInRequest(siteConfigMemoKey);
   return applyBrandCardDefaults(next);
 }
 
 export async function updateSiteConfig(patch: Partial<SiteConfig>) {
+  forgetInRequest(siteConfigMemoKey);
   const current = await getRawSiteConfig();
   const next = stripBrandCardDefaults(
     mergeConfig(current, await offloadDataUrls(patch, `config/${requireTenantId()}`))
@@ -268,6 +281,7 @@ export async function updateSiteConfig(patch: Partial<SiteConfig>) {
     memConfig = next;
   }
 
+  forgetInRequest(siteConfigMemoKey);
   return applyBrandCardDefaults(next);
 }
 

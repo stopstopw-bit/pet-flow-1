@@ -8,7 +8,7 @@ import {
 } from "@/lib/bookings-store";
 import { bookingGroupKey } from "@/lib/booking-group";
 import { MAX_VACCINE_PHOTOS, splitVaccinePhotos } from "@/lib/vaccine-photos";
-import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
+import { sendTelegramLater, formatBookingTelegram } from "@/lib/telegram";
 import { copyBookingDocsToCustomer } from "@/lib/customers-store";
 import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 
@@ -98,7 +98,7 @@ async function postHandler(req: NextRequest) {
     }
     if (b) {
       const groom = b.service === "groom";
-      await sendTelegram(
+      sendTelegramLater(
         formatBookingTelegram(groom ? "✅ ลูกค้ายอมรับข้อตกลงก่อนอาบน้ำแล้ว" : "✅ ลูกค้ายอมรับข้อตกลงก่อนเข้าพักแล้ว", {
           น้อง: b.catName,
           ลูกค้า: b.customerName,

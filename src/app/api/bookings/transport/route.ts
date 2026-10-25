@@ -4,7 +4,7 @@ import { requireCustomerSession } from "@/lib/customer-session";
 import { getBooking, listBookings, setBookingTransportLocation } from "@/lib/bookings-store";
 import { bookingGroupKey, groupCatNames } from "@/lib/booking-group";
 import { findCustomerForBooking, updateCustomer } from "@/lib/customers-store";
-import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
+import { sendTelegramLater, formatBookingTelegram } from "@/lib/telegram";
 import { cleanMapUrl, hasTransport, transportLabel } from "@/lib/transport";
 import { withResolvedTenant } from "@/lib/tenant-context";
 
@@ -90,7 +90,7 @@ async function handlePost(req: NextRequest) {
   }
 
   const b = res.booking;
-  await sendTelegram(
+  sendTelegramLater(
     formatBookingTelegram("📍 ลูกค้าส่งจุดรับ-ส่ง", {
       ลูกค้า: b.customerName,
       น้อง: b.catName,

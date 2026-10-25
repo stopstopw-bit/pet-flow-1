@@ -3,7 +3,7 @@ import { featureOff } from "@/lib/features-server";
 import { withResolvedTenant } from "@/lib/tenant-context";
 import { findCustomerByLine } from "@/lib/customers-store";
 import { getOffer, claimOffer } from "@/lib/coupons-store";
-import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
+import { sendTelegramLater, formatBookingTelegram } from "@/lib/telegram";
 import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 
 /** ข้อมูลแคมเปญคูปอง (สำหรับหน้ากดรับ) */
@@ -49,7 +49,7 @@ async function postHandler(req: NextRequest) {
     );
   }
   const offer = await getOffer(offerId);
-  await sendTelegram(
+  sendTelegramLater(
     formatBookingTelegram("🎟️ ลูกค้ากดรับคูปองแล้ว", {
       ลูกค้า: cust.name,
       แคมเปญ: offer?.title || offerId,

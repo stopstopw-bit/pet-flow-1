@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { featureOff } from "@/lib/features-server";
 import { withResolvedTenant } from "@/lib/tenant-context";
+import { withServerTiming } from "@/lib/server-timing";
 import { addBooking, listBookings, type StoredBooking } from "@/lib/bookings-store";
 import { findCustomerByLine } from "@/lib/customers-store";
 import { assignGroomSlots, getGroomAvailability, getRoomAvailability } from "@/lib/availability";
-import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
+import { sendTelegramLater, formatBookingTelegram } from "@/lib/telegram";
 import {
   allServicePrograms,
   groomProgram,
@@ -25,7 +26,8 @@ export const dynamic = "force-dynamic";
  * เช็คความว่างซ้ำที่นี่ก่อนบันทึกจริง กันเคสสองคนจองพร้อมกันแล้วเห็นเลขว่างเก่า
  */
 export async function POST(req: NextRequest) {
-  return withResolvedTenant(req, () => handlePost(req));
+  const startedAt = performance.now();
+  return withServerTiming(await withResolvedTenant(req, () => handlePost(req)), startedAt, "bookings/self");
 }
 
 async function handlePost(req: NextRequest) {
@@ -54,10 +56,15 @@ async function handlePost(req: NextRequest) {
   if (!catNames.length || !service) {
     return NextResponse.json({ error: "missing fields" }, { status: 400 });
   }
-  const serviceOff = await featureOff(service === "room" ? "hotel" : massage ? "massage" : "grooming");
+  // อ่านที่ไม่ขึ้นต่อกันพร้อมกันรอบเดียว (เดิมรอทีละอย่าง) — ตั้งค่าร้านอ่านครั้งเดียวต่อ request อยู่แล้ว
+  const [serviceOff, customer, siteCfg, allMine] = await Promise.all([
+    featureOff(service === "room" ? "hotel" : massage ? "massage" : "grooming"),
+    findCustomerByLine(lineUserId),
+    getSiteConfig(),
+    listBookings(lineUserId),
+  ]);
   if (serviceOff) return serviceOff;
 
-  const customer = await findCustomerByLine(lineUserId);
   if (!customer) return NextResponse.json({ error: "customer_not_found" }, { status: 404 });
   if (!catNames.every((n) => customer.cats.some((c) => c.name === n))) {
     return NextResponse.json({ error: "cat_not_found" }, { status: 404 });
@@ -65,7 +72,7 @@ async function handlePost(req: NextRequest) {
 
   // มัดจำ — ยอดคิดจากตั้งค่าร้านฝั่งเซิร์ฟเวอร์เสมอ (ไม่เชื่อยอดที่ client ส่งมา)
   // แนบสลิปมา = รอตรวจ, ไม่แนบ ("โอนทีหลัง") = ยังไม่โอน — การจองไม่ถูกบล็อกทั้งสองแบบ
-  const depositAmount = depositAmountFor((await getSiteConfig()).bookingDeposit, service);
+  const depositAmount = depositAmountFor(siteCfg.bookingDeposit, service);
   const slipRaw = typeof body.depositSlip === "string" ? body.depositSlip : "";
   const depositInfo = async (): Promise<{
     depositAmount?: number;
@@ -84,7 +91,7 @@ async function handlePost(req: NextRequest) {
   // วันนี้ตามเวลาไทย — server รันเป็น UTC ใช้ตรงๆ จะคลาดวันช่วงหลังเที่ยงคืนไทย
   const todayBkk = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
   // นัดเดิมของลูกค้าคนนี้ — ใช้กันจองซ้ำ (กดหลายรอบ/ลืมว่าจองแล้ว = กินคิวว่างฟรี)
-  const myBookings = (await listBookings(lineUserId)).filter((x) => x.status !== "cancelled");
+  const myBookings = allMine.filter((x) => x.status !== "cancelled");
 
   if (service === "groom") {
     const date = String(body.date || "").trim();
@@ -96,7 +103,7 @@ async function handlePost(req: NextRequest) {
       return NextResponse.json({ error: "past_date" }, { status: 400 });
     }
     // อาบน้ำกับนวดวันเดียวกันได้ — ซ้ำ = บริการเดียวกัน วันเดียวกัน ตัวเดียวกัน
-    const cfgPrograms = resolveGroomPrograms((await getSiteConfig()).groomPricePrograms);
+    const cfgPrograms = resolveGroomPrograms(siteCfg.groomPricePrograms);
     if (
       myBookings.some(
         (x) =>
@@ -126,7 +133,7 @@ async function handlePost(req: NextRequest) {
     // โปรแกรมรายตัว (จองหลายตัว อาบคนละโปรแกรมได้) — รับเฉพาะ id ที่ร้านมีจริง
     // ไม่ส่งรายตัวมา (แอปเวอร์ชันเก่า) = ทุกตัวใช้โปรแกรมเดียวกันแบบเดิม
     // นวดต้องเป็นโปรแกรมนวด อาบน้ำต้องไม่ใช่โปรแกรมนวด (กันนัดไปลงผิดคิว)
-    const programs = allServicePrograms((await getSiteConfig()).groomPricePrograms);
+    const programs = allServicePrograms(siteCfg.groomPricePrograms);
     const validProgram = (v: unknown) => {
       const pid = String(v || "").trim();
       const p = pid ? groomProgram(pid, programs) : undefined;
@@ -139,12 +146,12 @@ async function handlePost(req: NextRequest) {
     const programOf = (name: string) =>
       (name in perPet ? validProgram(perPet[name]) : programId) || fallbackMassage;
     const deposit = await depositInfo();
-    const bookings: StoredBooking[] = [];
-    for (let i = 0; i < catNames.length; i++) {
-      bookings.push(
-        await addBooking({
+    // ทุกตัวบันทึกพร้อมกัน (id สุ่มไม่ชนกัน) — เดิมรอทีละตัว ตัวละ 2-3 รอบ DB
+    const bookings: StoredBooking[] = await Promise.all(
+      catNames.map((catName, i) =>
+        addBooking({
           customerName: customer.name,
-          catName: catNames[i],
+          catName,
           service: "groom",
           date,
           time: assignedTimes[i],
@@ -154,8 +161,8 @@ async function handlePost(req: NextRequest) {
           // ทั้งบ้านที่จองพร้อมกันได้ยอด/สลิป/สถานะเดียวกันทุกแถว (ยอดของทั้งกลุ่ม ไม่ใช่ต่อตัว)
           ...deposit,
         })
-      );
-    }
+      )
+    );
     const programName = (pid?: string) => (pid ? groomProgram(pid, programs)?.name || pid : "");
     const scheduleText = catNames
       .map((name, i) => {
@@ -163,7 +170,7 @@ async function handlePost(req: NextRequest) {
         return `${name} ${assignedTimes[i]}${prog ? ` (${prog})` : ""}`;
       })
       .join(", ");
-    await sendTelegram(
+    sendTelegramLater(
       formatBookingTelegram(massage ? "💆 ลูกค้าจองคิวนวดเอง (รอยืนยัน)" : "🐾 ลูกค้าจองคิวอาบน้ำเอง (รอยืนยัน)", {
         ลูกค้า: customer.name,
         น้อง: scheduleText,
@@ -207,16 +214,15 @@ async function handlePost(req: NextRequest) {
     return NextResponse.json({ error: "shop_closed" }, { status: 409 });
   }
   // บ้านเดียวกันอยู่ห้องเดียวกัน — เกินจุห้องต้องใช้ห้องเพิ่ม
-  const roomCfg = (await getSiteConfig()).rooms.find((r) => r.id === room);
+  const roomCfg = siteCfg.rooms.find((r) => r.id === room);
   const roomsNeeded = Math.ceil(catNames.length / Math.max(1, roomCfg?.maxCats || 1));
   if (avail.remaining < roomsNeeded) {
     return NextResponse.json({ error: "room_full" }, { status: 409 });
   }
   const deposit = await depositInfo();
-  const bookings: StoredBooking[] = [];
-  for (const name of catNames) {
-    bookings.push(
-      await addBooking({
+  const bookings: StoredBooking[] = await Promise.all(
+    catNames.map((name) =>
+      addBooking({
         customerName: customer.name,
         catName: name,
         service: "room",
@@ -228,9 +234,9 @@ async function handlePost(req: NextRequest) {
         selfBooked: true,
         ...deposit,
       })
-    );
-  }
-  await sendTelegram(
+    )
+  );
+  sendTelegramLater(
     formatBookingTelegram("🏠 ลูกค้าจองห้องพักเอง (รอยืนยัน)", {
       ลูกค้า: customer.name,
       น้อง: catNames.join(", "),

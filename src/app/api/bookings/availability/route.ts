@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withResolvedTenant } from "@/lib/tenant-context";
+import { withServerTiming } from "@/lib/server-timing";
 import { getGroomAvailability, getRoomAvailability } from "@/lib/availability";
 
 export const dynamic = "force-dynamic";
 
 /** ลูกค้าเช็คความว่างก่อนจองเอง — เปิดสาธารณะ (ใต้ /api/bookings จึงผ่านด่าน SHARED_API อยู่แล้ว) */
 export async function GET(req: NextRequest) {
-  return withResolvedTenant(req, () => handleGet(req));
+  const startedAt = performance.now();
+  return withServerTiming(await withResolvedTenant(req, () => handleGet(req)), startedAt, "availability");
 }
 
 async function handleGet(req: NextRequest) {

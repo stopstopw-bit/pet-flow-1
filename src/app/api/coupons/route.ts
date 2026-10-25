@@ -13,7 +13,7 @@ import { getLineCredentials } from "@/lib/line-config";
 import { buildLiffUrl } from "@/lib/liff-urls";
 import { getSiteConfig } from "@/lib/config-store";
 import { isFeatureOn } from "@/lib/features";
-import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
+import { sendTelegramLater, formatBookingTelegram } from "@/lib/telegram";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { withResolvedTenant, withTenant } from "@/lib/tenant-context";
 import { requireCustomerSession } from "@/lib/customer-session";
@@ -90,7 +90,7 @@ async function handlePost(req: NextRequest) {
   if (!cust) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
   const coupon = await issueCoupon({ customerId, amount, reason, expiresInDays });
-  await sendTelegram(
+  sendTelegramLater(
     formatBookingTelegram("🎁 ออกคูปองให้ลูกค้า (มือ)", {
       ลูกค้า: cust.name,
       มูลค่า: `${amount} บาท`,

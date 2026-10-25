@@ -10,6 +10,7 @@ import {
   syncTelegramBotCommands,
 } from "./telegram-config";
 import { requireTenantId } from "./tenant-context";
+import { runAfterResponse } from "./after-response";
 import { getSiteConfig } from "./config-store";
 
 const TELEGRAM_API = "https://api.telegram.org";
@@ -217,7 +218,15 @@ export async function sendTelegram(text: string) {
   }
 
   if (creds.appUrl) {
-    await ensureTelegramWebhook(creds.botToken, creds.appUrl, requireTenantId()).catch(() => {});
+    // เช็ค/ซ่อม webhook = 2 รอบไป-กลับ Telegram — ทำครั้งเดียวต่อ 10 นาทีต่อเครื่อง ไม่ใช่ทุกข้อความ
+    const key = `${requireTenantId()}|${creds.botToken}|${creds.appUrl}`;
+    const last = webhookCheckedAt.get(key) || 0;
+    if (Date.now() - last > WEBHOOK_RECHECK_MS) {
+      webhookCheckedAt.set(key, Date.now());
+      await ensureTelegramWebhook(creds.botToken, creds.appUrl, requireTenantId()).catch(() => {
+        webhookCheckedAt.delete(key);
+      });
+    }
   }
 
   const results = await Promise.all(
@@ -227,6 +236,17 @@ export async function sendTelegram(text: string) {
   );
 
   return { ok: results.every((r) => r.ok) };
+}
+
+const WEBHOOK_RECHECK_MS = 10 * 60 * 1000;
+const webhookCheckedAt = new Map<string, number>();
+
+/**
+ * แจ้งเจ้าของร้านหลังตอบลูกค้าแล้ว — ใช้ใน route ฝั่งลูกค้าแทน await sendTelegram()
+ * ลูกค้าไม่ต้องรอ Telegram (ช้า/ล่มก็ไม่ขวางการสมัคร/จอง) ข้อความยังส่งครบเหมือนเดิม
+ */
+export function sendTelegramLater(text: string) {
+  runAfterResponse("telegram notify", () => sendTelegram(text));
 }
 
 /** ส่งรูป + คำบรรยายให้เจ้าของทุกคน (เช่น รูปโปรไฟล์คนที่แอด LINE) */

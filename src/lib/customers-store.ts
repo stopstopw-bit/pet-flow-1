@@ -7,7 +7,7 @@ import {
 } from "./customer-tier";
 import { listBookings, type StoredBooking } from "./bookings-store";
 import { getAccount, getPointsHistory } from "./points-store";
-import { getSupabase } from "./supabase/server";
+import { getSupabase, selectAllRows } from "./supabase/server";
 import { seedEnabled } from "./demo-seed";
 import { uploadPrivateDataUrl } from "./supabase/storage";
 import { getSiteConfig } from "./config-store";
@@ -362,6 +362,32 @@ function mapCustomer(row: CustomerRow): CustomerRecord {
   };
 }
 
+/**
+ * แค่ id/ชื่อ/เบอร์ของลูกค้าทุกคน (ยังไม่ถูกลบ) — ใช้กันสมัครซ้ำด้วยเบอร์
+ * ไม่ดึงข้อมูลน้อง/รูปทั้งร้านมาเหมือน fetchAllCustomers (ร้านลูกค้าเยอะแล้วสมัครช้าลงเรื่อย ๆ)
+ * เทียบเบอร์ฝั่งโค้ด (normPhone) เพราะเบอร์ที่เก็บไว้มีหลายรูปแบบ (ขีด/เว้นวรรค/+66)
+ */
+async function listCustomerPhones(): Promise<Pick<CustomerRecord, "id" | "name" | "phone">[]> {
+  const sb = getSupabase();
+  if (!sb) {
+    return (await fetchAllCustomers()).map((c) => ({ id: c.id, name: c.name, phone: c.phone }));
+  }
+  // select("*") ไม่ระบุ deleted_at ตรง ๆ — ร้านที่ยังไม่ migrate คอลัมน์นี้จะได้ไม่ error แล้วได้รายชื่อว่าง
+  const rows = await selectAllRows<{ id: string; name: string; phone: string | null; deleted_at?: string | null }>(
+    (from, to) =>
+      sb
+        .from("customers")
+        .select("*")
+        .eq("tenant_id", requireTenantId())
+        .not("phone", "is", null)
+        .order("id")
+        .range(from, to)
+  );
+  return rows
+    .filter((r) => !r.deleted_at)
+    .map((r) => ({ id: r.id, name: r.name, phone: r.phone || undefined }));
+}
+
 async function fetchAllCustomers(
   includeDeleted = false
 ): Promise<CustomerRecord[]> {
@@ -615,6 +641,19 @@ export async function upsertCustomerFromLine(data: {
     existing.updatedAt = now;
     existing.deletedAt = undefined;
     if (sb) {
+      // ปกติเขียนรวดเดียว (1 รอบ DB) — ถ้าพัง (ฐานยังไม่มีคอลัมน์ line_user_ids/deleted_at) ค่อยเขียนแยกทีละส่วนแบบเดิม
+      const { error: oneShotError } = await sb
+        .from("customers")
+        .update({
+          line_user_id: lineUserId,
+          line_display_name: displayName,
+          updated_at: now,
+          line_user_ids: existing.lineUserIds,
+          deleted_at: null,
+        })
+        .eq("id", existing.id)
+        .eq("tenant_id", requireTenantId());
+      if (oneShotError) {
       await sb
         .from("customers")
         .update({
@@ -643,6 +682,7 @@ export async function upsertCustomerFromLine(data: {
           .eq("tenant_id", requireTenantId());
       } catch {
         /* ไม่มีคอลัมน์ deleted_at — ข้าม */
+      }
       }
     } else {
       memCustomers.set(existing.id, existing);
@@ -890,9 +930,10 @@ export async function getCustomerLinkPreview(customerId: string) {
 /** ผูกนัดเก่าที่ชื่อตรงแต่ยังไม่มี LINE ID */
 async function linkBookingsToLineCustomer(customer: CustomerRecord) {
   if (!customer.lineUserId) return;
-  const { listBookings, updateBooking } = await import("./bookings-store");
+  const { listBookingsWithoutLine, updateBooking } = await import("./bookings-store");
   const { bookingMatchesCustomer } = await import("./booking-customer-match");
-  const bookings = await listBookings();
+  // เฉพาะนัดที่ยังไม่ผูก LINE — เดิมดึงนัดทั้งร้านทุกครั้งที่ลูกค้าเปิดแอป/สมัคร
+  const bookings = await listBookingsWithoutLine();
   for (const b of bookings) {
     if (b.lineUserId) continue;
     if (bookingMatchesCustomer(b, customer)) {
@@ -2691,7 +2732,7 @@ export async function registerCustomerFromLine(data: {
   // (เคสจริง: ลูกค้าเคยมีนัด/เคยสมัครไว้ แล้วมาสมัครใหม่จากอีกเครื่อง LINE ให้ ID คนละตัว)
   const phoneKey = normPhone(phone);
   if (phoneKey) {
-    const samePhone = (await fetchAllCustomers()).filter(
+    const samePhone = (await listCustomerPhones()).filter(
       (c) => c.id !== customer.id && normPhone(c.phone) === phoneKey
     );
     for (const dupe of samePhone) {
@@ -2704,8 +2745,8 @@ export async function registerCustomerFromLine(data: {
       } else {
         // เบอร์ซ้ำแต่ชื่อไม่ตรง — ไม่รวมเอง แจ้งร้านให้ตรวจและกดรวมเองถ้าเป็นคนเดียวกัน
         try {
-          const { sendTelegram, formatBookingTelegram } = await import("./telegram");
-          await sendTelegram(
+          const { sendTelegramLater, formatBookingTelegram } = await import("./telegram");
+          sendTelegramLater(
             formatBookingTelegram("⚠️ สมัครใหม่เบอร์ซ้ำกับลูกค้าเดิม (ยังไม่รวมให้)", {
               สมัครใหม่: name,
               ลูกค้าเดิม: dupe.name,
@@ -2742,10 +2783,8 @@ export async function registerCustomerFromLine(data: {
     await addCat(customer.id, cat);
   }
 
-  const refreshed = await getCustomer(customer.id);
-  if (!refreshed) return null;
-  await recalculateCustomerTier(refreshed.id);
-  return getCustomer(refreshed.id);
+  // ระดับลูกค้า (recalculateCustomerTier) คิดหลังตอบลูกค้าแล้วใน route สมัคร — ต้องดึงนัด/บิลทั้งร้าน ช้า
+  return (await getCustomer(customer.id)) ?? null;
 }
 
 /**

@@ -5,7 +5,7 @@ import { addBookingVaccinePhotos, getBooking } from "@/lib/bookings-store";
 import { copyBookingDocsToCustomer, findCustomerByLine } from "@/lib/customers-store";
 import { bookingMatchesCustomer } from "@/lib/booking-customer-match";
 import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
-import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
+import { sendTelegramLater, formatBookingTelegram } from "@/lib/telegram";
 
 /**
  * ลูกค้าแนบรูปสมุดวัคซีนจากลิงก์ "ขอสมุดวัคซีน" ที่ร้านส่งให้ทาง LINE
@@ -44,7 +44,7 @@ async function postHandler(req: NextRequest) {
   }
   // เก็บที่ตัวน้องด้วย — หน้าข้อมูลลูกค้าจะได้ขึ้น "ได้รับแล้ว"
   await copyBookingDocsToCustomer(b, { newPhotos: res.addedUrls });
-  await sendTelegram(
+  sendTelegramLater(
     formatBookingTelegram("💉 ลูกค้าแนบสมุดวัคซีนแล้ว", {
       น้อง: b.catName,
       ลูกค้า: b.customerName,

@@ -3,7 +3,7 @@ import { withResolvedTenant } from "@/lib/tenant-context";
 import { featureOff } from "@/lib/features-server";
 import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 import { findCustomerByLine, setCustomerConsent } from "@/lib/customers-store";
-import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
+import { sendTelegramLater, formatBookingTelegram } from "@/lib/telegram";
 
 /**
  * ลูกค้ากดยอมรับข้อตกลงของร้านจากลิงก์ที่ส่งจากหน้าข้อมูลลูกค้า (ยังไม่มีนัด)
@@ -24,7 +24,7 @@ async function postHandler(req: NextRequest) {
   if (!me) return NextResponse.json({ error: "not found" }, { status: 404 });
   const res = await setCustomerConsent(me.id, { signature, careNote, fleaTick });
   if (res.ok) {
-    await sendTelegram(
+    sendTelegramLater(
       formatBookingTelegram("✅ ลูกค้ายอมรับข้อตกลงของร้านแล้ว (ก่อนลงนัด)", {
         ลูกค้า: me.name,
         น้อง: me.cats.map((c) => c.name).join(", ") || "-",

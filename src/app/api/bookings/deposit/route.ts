@@ -8,7 +8,7 @@ import { saveDepositSlip, depositTelegramLine } from "@/lib/booking-deposit-serv
 import { getBooking, listBookingsByCustomerName, setBookingsDeposit } from "@/lib/bookings-store";
 import { bookingGroupKey } from "@/lib/booking-group";
 import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
-import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
+import { sendTelegramLater, formatBookingTelegram } from "@/lib/telegram";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -74,7 +74,7 @@ async function handlePost(req: NextRequest) {
   if (!res.ok) return NextResponse.json({ error: res.error }, { status: 503 });
 
   const first = own[0];
-  await sendTelegram(
+  sendTelegramLater(
     formatBookingTelegram("📎 ลูกค้าแนบสลิปมัดจำ (รอตรวจ)", {
       ลูกค้า: first.customerName,
       น้อง: own.map((b) => b.catName).join(", "),

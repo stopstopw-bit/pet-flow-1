@@ -308,6 +308,7 @@ export default function RegisterPage() {
       // ลูกค้าเพิ่มรูปทีหลังได้ที่หน้าโปรไฟล์)
       const savedCats: { id: string; name: string }[] = data.customer?.cats || [];
       const used = new Set<string>();
+      const uploads: Promise<unknown>[] = [];
       for (const c of cats) {
         if (!c.photo) continue;
         const match = [...savedCats]
@@ -315,15 +316,19 @@ export default function RegisterPage() {
           .find((sc) => !used.has(sc.id) && sc.name.trim() === c.name.trim());
         if (!match) continue;
         used.add(match.id);
-        await customerFetch("/api/customers/cat-photo", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ catId: match.id, photoDataUrl: c.photo }),
-        }).catch(() => null);
+        // อัปรูปทุกตัวพร้อมกัน — เดิมรอทีละตัว น้องหลายตัว = รอนานขึ้นเรื่อย ๆ
+        uploads.push(
+          customerFetch("/api/customers/cat-photo", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ catId: match.id, photoDataUrl: c.photo }),
+          }).catch(() => null)
+        );
       }
 
-      await refreshCustomer();
-      await refreshAccount();
+      await Promise.all(uploads);
+      // ข้อมูลลูกค้ากับแต้มไม่ขึ้นต่อกัน — โหลดพร้อมกัน (หลังอัปรูปเสร็จ หน้าแรกจะได้เห็นรูปน้อง)
+      await Promise.all([refreshCustomer(), refreshAccount()]);
       const petNames = cats.map((c) => c.name.trim()).filter(Boolean);
       savedPopup(
         "สมัครสมาชิกสำเร็จ 🎉",

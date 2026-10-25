@@ -7,7 +7,7 @@ import {
   activeCustomerPackages,
   cancelPackage,
 } from "@/lib/packages-store";
-import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
+import { sendTelegramLater, formatBookingTelegram } from "@/lib/telegram";
 import { pushLineMessage, buildPackageFlex, buildRoomPlanFlex } from "@/lib/line";
 import { getSiteConfig } from "@/lib/config-store";
 import { normalizeOfferItems, sellOfferItems } from "@/lib/package-shop-store";
@@ -177,7 +177,7 @@ async function handlePost(req: NextRequest) {
     }
     const view =
       res.payment?.ok ? res.payment.view : viewRoomPlan(res.plan, await listCustomerPackages(customerId));
-    await sendTelegram(
+    sendTelegramLater(
       formatBookingTelegram("🎫 ขายคอร์สแบบแบ่งจ่าย", {
         ลูกค้า: cust.name,
         คอร์ส: name,
@@ -227,7 +227,7 @@ async function handlePost(req: NextRequest) {
         groomProgram,
       });
   if (!pkg) return NextResponse.json({ error: "ใส่จำนวนในคอร์สก่อน" }, { status: 400 });
-  await sendTelegram(
+  sendTelegramLater(
     formatBookingTelegram(isLegacy ? "🕰️ ยกคอร์สมาจากระบบเก่า" : "🎫 ขายคอร์สให้ลูกค้า", {
       ลูกค้า: cust.name,
       คอร์ส: name,

@@ -180,6 +180,56 @@ export async function listBookings(lineUserId?: string) {
   return mem.filter((b) => b.lineUserId === lineUserId);
 }
 
+/** นัดที่ยังไม่ผูก LINE ลูกค้า — ใช้ตอนผูกนัดเก่าเข้าบัญชี LINE (ไม่ต้องดึงนัดทั้งร้าน) */
+export async function listBookingsWithoutLine() {
+  const sb = getSupabase();
+  if (sb) {
+    const tenantId = requireTenantId();
+    const data = await selectAllRows<BookingRow>((from, to) =>
+      sb.from("bookings").select("*").eq("tenant_id", tenantId).is("line_user_id", null).order("id").range(from, to)
+    );
+    return data.map(rowToStored);
+  }
+  return mem.filter((b) => !b.lineUserId);
+}
+
+/** นัดอาบน้ำของวันนี้ (ทุกสถานะ) — ใช้นับคิวว่าง แทนการดึงนัดทั้งร้านมากรองทีหลัง */
+export async function listGroomBookingsOn(date: string) {
+  const sb = getSupabase();
+  if (sb) {
+    const tenantId = requireTenantId();
+    const data = await selectAllRows<BookingRow>((from, to) =>
+      sb.from("bookings").select("*").eq("tenant_id", tenantId).eq("service", "groom").eq("date", date).order("id").range(from, to)
+    );
+    return data.map(rowToStored);
+  }
+  return mem.filter((b) => b.service === "groom" && b.date === date);
+}
+
+/** การเข้าพักห้องแบบนี้ที่ช่วงวันทับกับ [checkin, checkout) — ใช้นับห้องว่าง */
+export async function listRoomBookingsOverlapping(room: string, checkin: string, checkout: string) {
+  const sb = getSupabase();
+  if (sb) {
+    const tenantId = requireTenantId();
+    const data = await selectAllRows<BookingRow>((from, to) =>
+      sb
+        .from("bookings")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .eq("service", "room")
+        .eq("room", room)
+        .lt("checkin", checkout)
+        .gt("checkout", checkin)
+        .order("id")
+        .range(from, to)
+    );
+    return data.map(rowToStored);
+  }
+  return mem.filter(
+    (b) => b.service === "room" && b.room === room && !!b.checkin && !!b.checkout && b.checkin < checkout && b.checkout > checkin
+  );
+}
+
 /** นัดทั้งหมดของลูกค้าชื่อนี้ — ใช้หาน้องตัวอื่นในบ้านที่มานัดเดียวกัน (ไม่ต้องดึงนัดทั้งร้าน) */
 export async function listBookingsByCustomerName(customerName: string) {
   const sb = getSupabase();
@@ -527,21 +577,30 @@ export async function addBooking(
     if (booking.roomUnit != null) extra.room_unit = booking.roomUnit;
     if (booking.arrivalTime) extra.arrival_time = booking.arrivalTime;
     if (booking.pickupTime) extra.pickup_time = booking.pickupTime;
+    // แต่ละชุดเขียนคนละคอลัมน์ของแถวเดียวกัน — ส่งพร้อมกันได้ ไม่ต้องรอทีละรอบ
+    const writes: Promise<unknown>[] = [];
     if (Object.keys(extra).length) {
-      await sb
-        .from("bookings")
-        .update(extra)
-        .eq("id", booking.id)
-        .eq("tenant_id", requireTenantId());
+      writes.push(
+        Promise.resolve(
+          sb
+            .from("bookings")
+            .update(extra)
+            .eq("id", booking.id)
+            .eq("tenant_id", requireTenantId())
+        )
+      );
     }
-    if (booking.transport) await writeTransport(booking.id, booking.transport);
+    if (booking.transport) writes.push(writeTransport(booking.id, booking.transport));
     if (booking.depositAmount) {
-      await writeDeposit(booking.id, {
-        depositAmount: booking.depositAmount,
-        depositSlipUrl: booking.depositSlipUrl,
-        depositStatus: booking.depositStatus || "none",
-      });
+      writes.push(
+        writeDeposit(booking.id, {
+          depositAmount: booking.depositAmount,
+          depositSlipUrl: booking.depositSlipUrl,
+          depositStatus: booking.depositStatus || "none",
+        })
+      );
     }
+    await Promise.all(writes);
     return booking;
   }
 

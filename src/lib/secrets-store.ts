@@ -1,5 +1,6 @@
 import { getSupabase } from "./supabase/server";
 import { requireTenantId } from "./tenant-context";
+import { forgetInRequest, memoInRequest } from "./request-memo";
 
 export type GoogleSecrets = {
   serviceAccountEmail: string;
@@ -38,6 +39,7 @@ function secretsId() {
 let memSecrets: SecretsPayload = {};
 
 async function persistSecrets(next: SecretsPayload) {
+  forgetInRequest(secretsId);
   const sb = getSupabase();
   if (sb) {
     const { error } = await sb.from("site_config").upsert({
@@ -51,9 +53,15 @@ async function persistSecrets(next: SecretsPayload) {
   } else {
     memSecrets = next;
   }
+  forgetInRequest(secretsId);
 }
 
 export async function getSecrets(): Promise<SecretsPayload> {
+  // Telegram/LINE อ่านซ้ำหลายรอบใน request เดียว — อ่าน DB ครั้งเดียว (ดู request-memo.ts)
+  return structuredClone(await memoInRequest(secretsId, readSecrets));
+}
+
+async function readSecrets(): Promise<SecretsPayload> {
   const sb = getSupabase();
   if (sb) {
     const { data } = await sb

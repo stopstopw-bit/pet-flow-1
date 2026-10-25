@@ -6,7 +6,7 @@ import {
   addCat,
   normalizeSpecies, normalizeWeightKg,
 } from "@/lib/customers-store";
-import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
+import { sendTelegramLater, formatBookingTelegram } from "@/lib/telegram";
 import { parseTaxInvoiceBody, type CustomerTaxInvoice } from "@/lib/tax-invoice";
 import { withResolvedTenant } from "@/lib/tenant-context";
 import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
@@ -157,7 +157,7 @@ async function handlePost(req: NextRequest) {
     }
   }
 
-  await sendTelegram(
+  sendTelegramLater(
     formatBookingTelegram("✏️ ลูกค้าแก้ไขข้อมูลตัวเอง", {
       ลูกค้า: patch.name || c.name,
       เบอร์: patch.phone ?? c.phone ?? "-",

@@ -4,6 +4,7 @@ import { getBootstrapTenantId } from "./auth";
 import { mainShopTenantId, resolveTenantId } from "./tenant-resolve";
 import { isTenantOpen, tenantGateById } from "./tenant-billing";
 import { setCurrentTenantReader } from "./supabase/server";
+import { runWithRequestMemo } from "./request-memo";
 
 /**
  * ตัวร้านที่กำลังประมวลผลอยู่ตอนนี้ — เซ็ตครั้งเดียวตอนเข้า API route
@@ -64,12 +65,12 @@ export async function withTenant<T>(tenantId: string, fn: () => Promise<T>): Pro
   if (gate && !isTenantOpen(gate)) {
     throw new Error("ร้านนี้ถูกระงับการใช้งาน (เลยวันครบกำหนดชำระ หรือถูกปิดโดยผู้ดูแลระบบ)");
   }
-  return storage.run(tenantId, fn);
+  return storage.run(tenantId, () => runWithRequestMemo(fn));
 }
 
 /** เหมือน withTenant แต่ไม่ตรวจว่าร้านเปิดอยู่ — ใช้กับหน้า "ค่าบริการ" ที่ร้านค้างจ่ายต้องเข้าได้ */
 export function withTenantEvenIfClosed<T>(tenantId: string, fn: () => Promise<T>): Promise<T> {
-  return storage.run(tenantId, fn);
+  return storage.run(tenantId, () => runWithRequestMemo(fn));
 }
 
 /**
@@ -83,7 +84,7 @@ export async function withBootstrapTenant<T>(fn: () => Promise<T>): Promise<T> {
   if (!tenantId) {
     throw new Error("ยังไม่ได้ตั้งค่า TENANT_ID — ดูขั้นตอนใน SETUP_NEW_SHOP.md");
   }
-  return storage.run(tenantId, fn);
+  return storage.run(tenantId, () => runWithRequestMemo(fn));
 }
 
 /**
@@ -98,5 +99,5 @@ export async function withResolvedTenant<T>(
   fn: () => Promise<T>
 ): Promise<T> {
   const tenantId = await resolveTenantId(req);
-  return storage.run(tenantId, fn);
+  return storage.run(tenantId, () => runWithRequestMemo(fn));
 }
