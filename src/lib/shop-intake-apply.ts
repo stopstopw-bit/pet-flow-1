@@ -610,6 +610,22 @@ function buildDrafts(ans: IntakeAnswers, cfg: SiteConfig): Draft[] {
   feature("payroll", yesNo("payroll", "ไม่ใช้"));
   const courses = r.many("courses");
   if (courses?.length) feature("packages", courses.some((c) => c !== "ยังไม่มี"));
+  const booking = r.raw("booking");
+  if (booking) feature("selfBooking", booking === "ลูกค้าจองเองในแอปได้");
+  const pick = (id: string, map: Record<string, FeatureKey>) => {
+    const got = r.many(id);
+    if (!got?.length) return;
+    for (const [opt, key] of Object.entries(map)) feature(key, got.includes(opt));
+  };
+  pick("custDocs", {
+    "ฟอร์มข้อมูลน้องก่อนเข้าพัก": "stayInfo",
+    "ฟอร์มประวัติน้องก่อนอาบน้ำ": "groomInfo",
+    "รูปสมุดวัคซีน": "vaccine",
+    "รูปบัตรประชาชนผู้ปกครอง": "idCard",
+    "กดยอมรับกฎ + เซ็นชื่อ": "consent",
+    "การ์ดแจ้งของที่ต้องเตรียมก่อนเข้าพัก": "prestay",
+  });
+  pick("money", { "บันทึกรายรับ-รายจ่าย": "finance", "สรุปเอกสารรายได้ / ภาษี": "tax" });
 
   // ── พนักงาน ──
   const care = r.many("care");
@@ -669,6 +685,11 @@ export function manualItems(ans: IntakeAnswers): string[] {
   if (answered("courses") && r.raw("courses") !== "ยังไม่มี") items.push("คอร์ส / เติมเงินสมาชิก");
   if (r.raw("products") === "ขาย") items.push("สินค้าหน้าร้าน");
   if (r.raw("moveData") === "อยาก") items.push("ย้ายข้อมูลลูกค้าเก่า");
+  if (answered("sheetLink")) items.push(`กรอกข้อมูลจากชีทของร้าน: ${r.raw("sheetLink")}`);
+  if (answered("picsLink")) items.push(`ใส่รูปจากโฟลเดอร์: ${r.raw("picsLink")}`);
+  if (r.raw("lineReady") === "ยังไม่มี") items.push("สร้าง LINE OA ให้ร้าน แล้วเชื่อม LINE");
+  else if (r.raw("lineAdmin") === "เพิ่มแล้ว") items.push("เชื่อม LINE ของร้าน (Token, LIFF, Webhook)");
+  else if (r.raw("lineReady")) items.push("เชื่อม LINE ของร้าน (ร้านยังไม่ได้เพิ่มทีมเป็นผู้ดูแล)");
   if (answered("rewards")) items.push("แต้มแลกรางวัล");
   if (answered("staffCount") && r.raw("staffCount") !== "0") items.push("รหัสพนักงาน");
   if (["vaccines", "flea", "notAccept", "food", "bring", "meds", "sick", "vetCost", "rulesExtra"].some(answered))
