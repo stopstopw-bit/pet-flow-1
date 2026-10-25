@@ -57,6 +57,11 @@ export function speciesWords(species: PetSpecies | undefined, cfg?: { business?:
   return species ? WORDS[species] : petWords(cfg);
 }
 
+/** ร้านนี้มีเรื่องทรายแมวไหม — ร้านหมาล้วนไม่มีทราย ซ่อนช่องตั้งค่าและไม่ใส่ข้อความเตรียมทรายในการ์ด */
+export function usesLitter(cfg?: { business?: { petKind?: string } } | null): boolean {
+  return petKindOf(cfg) !== "dog";
+}
+
 /** ร้านนี้ต้องให้เลือกว่าน้องแต่ละตัวเป็นหมาหรือแมวไหม (เฉพาะร้านที่รับทั้งสองแบบ) */
 export function asksSpecies(cfg?: { business?: { petKind?: string } } | null): boolean {
   return petKindOf(cfg) === "both";

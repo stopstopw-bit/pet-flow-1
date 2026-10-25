@@ -9,7 +9,7 @@ import type { InvoiceRecord } from "./invoices-store";
 import type { SiteConfig } from "./config-types";
 import { autoMuted } from "./auto-messages";
 import { isFeatureOn } from "./features";
-import { petWords } from "./pet-kind";
+import { petWords, usesLitter } from "./pet-kind";
 
 /**
  * ตัวสร้างข้อความเตือนลูกค้า — ใช้ร่วมกันทั้ง "cron อัตโนมัติ" และ "ปุ่มกดส่งเอง"
@@ -286,6 +286,7 @@ export function litterNoteFor(
   b: { checkin?: string; checkout?: string; date?: string; room?: string },
   cfg: SiteConfig
 ): string {
+  if (!usesLitter(cfg)) return "";
   if (!b.room || !ROOMS_WITH_LITTER_MIN_NIGHTS.includes(b.room)) return "";
   const min = cfg.automation?.freeLitterMinNights ?? 3;
   const nights =
