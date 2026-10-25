@@ -77,6 +77,8 @@ export default function ProfilePage() {
   // รูปน้องแยกโหลด/อัปทีละตัว (ไม่ผูกกับปุ่มบันทึก) — อัปแล้วขึ้นทันที
   const [photos, setPhotos] = useState<Record<string, string | null>>({});
   const [uploadingId, setUploadingId] = useState<string | null>(null);
+  // รูปของน้องที่ยังไม่ได้บันทึก (key = id "new-…") — โชว์ไว้ก่อน แล้วอัปให้อัตโนมัติตอนกดบันทึก
+  const [pendingPhotos, setPendingPhotos] = useState<Record<string, string>>({});
   const [photoError, setPhotoError] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -140,18 +142,32 @@ export default function ProfilePage() {
     if (profile?.lineUserId) loadPhotos(profile.lineUserId);
   }, [profile?.lineUserId, reloadKey]);
 
+  const postPhoto = async (lineUserId: string, catId: string, photoDataUrl: string) => {
+    const res = await customerFetch("/api/customers/cat-photo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lineUserId, catId, photoDataUrl }),
+    });
+    if (!res.ok) throw new Error("อัปโหลดรูปไม่สำเร็จ ลองใหม่อีกครั้งนะคะ");
+  };
+
+  const pickPendingPhoto = async (tempId: string, file: File) => {
+    setPhotoError("");
+    try {
+      const url = await toJpegDataUrl(file);
+      setPendingPhotos((m) => ({ ...m, [tempId]: url }));
+    } catch {
+      setPhotoError("เปิดรูปนี้ไม่ได้ ลองเลือกรูปอื่นนะคะ");
+    }
+  };
+
   const uploadPhoto = async (catId: string, file: File) => {
     if (!profile?.lineUserId) return;
     setPhotoError("");
     setUploadingId(catId);
     try {
       const photoDataUrl = await toJpegDataUrl(file);
-      const res = await customerFetch("/api/customers/cat-photo", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lineUserId: profile.lineUserId, catId, photoDataUrl }),
-      });
-      if (!res.ok) throw new Error("อัปโหลดรูปไม่สำเร็จ ลองใหม่อีกครั้งนะคะ");
+      await postPhoto(profile.lineUserId, catId, photoDataUrl);
       await loadPhotos(profile.lineUserId);
     } catch (e) {
       setPhotoError(e instanceof Error ? e.message : "อัปโหลดรูปไม่สำเร็จ");
@@ -186,8 +202,11 @@ export default function ProfilePage() {
       },
     ]);
 
-  const removeCat = (idx: number) =>
+  const removeCat = (idx: number) => {
+    const id = cats[idx]?.id;
+    if (id) setPendingPhotos((m) => Object.fromEntries(Object.entries(m).filter(([k]) => k !== id)));
     setCats((prev) => prev.filter((_, i) => i !== idx));
+  };
 
   const save = async () => {
     if (!profile?.lineUserId || !name.trim()) return;
@@ -240,6 +259,19 @@ export default function ProfilePage() {
         setSaveError(d.error || "บันทึกไม่สำเร็จ ลองใหม่อีกครั้งนะคะ");
       }
       if (res.ok) {
+        // อัปรูปที่เลือกไว้ให้น้องที่เพิ่งได้ id จริง
+        const d = await res.json().catch(() => ({}));
+        const failed: string[] = [];
+        for (const { tempId, id } of (d.created || []) as { tempId: string; id: string }[]) {
+          const url = pendingPhotos[tempId];
+          if (!url) continue;
+          await postPhoto(profile.lineUserId, id, url).catch(() =>
+            failed.push(cats.find((c) => c.id === tempId)?.name || "น้อง")
+          );
+        }
+        setPendingPhotos({});
+        if (failed.length)
+          setPhotoError(`บันทึกข้อมูลแล้ว แต่อัปรูป ${failed.join(", ")} ไม่สำเร็จ ลองเพิ่มรูปใหม่อีกครั้งนะคะ`);
         setSaved(true);
         setTimeout(() => setSaved(false), 2500);
         // โหลดใหม่ให้น้องที่เพิ่งเพิ่ม (id "new-…") ได้ id จริง — ไม่งั้นกดบันทึกซ้ำจะสร้างซ้ำ และอัปรูปได้ทันที
@@ -356,10 +388,12 @@ export default function ProfilePage() {
                     uploading={uploadingId === cat.id}
                   />
                 ) : (
-                  <p className="flex items-center gap-2 rounded-petflow-sm bg-paper px-3 py-2.5 text-[11px] font-bold text-brown-soft">
-                    <Icon name="image" size={16} />
-                    กดบันทึกก่อน แล้วจะเพิ่มรูปน้องตัวนี้ได้
-                  </p>
+                  <CatPhoto
+                    src={pendingPhotos[cat.id]}
+                    name={cat.name || `น้อง${speciesWords(cat.species || undefined, config).th}`}
+                    size={0}
+                    onPick={(f) => pickPendingPhoto(cat.id, f)}
+                  />
                 )}
                 <SpeciesPicker
                   value={cat.species}

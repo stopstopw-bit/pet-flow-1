@@ -5,7 +5,10 @@ import { DateRangePicker } from "@/components/DateRangePicker";
 import { Icon } from "@/components/Icon";
 import { resolveRange, inRange, type RangeId } from "@/lib/date-range";
 import { SalesActions } from "@/components/SalesActions";
+import Link from "next/link";
 import { MonthlyPetCounts } from "@/components/MonthlyPetCounts";
+import { summarizeInvoiceItems } from "@/lib/invoice-item-label";
+import { formatThaiDateShort } from "@/lib/format-thai-date";
 import type { InsightBooking } from "@/lib/sales-insights";
 
 type Cat = { name?: string; breed?: string; birthday?: string };
@@ -22,6 +25,7 @@ type Customer = {
   referralSource?: string;
 };
 type Invoice = {
+  id?: string;
   customerId?: string;
   customerName: string;
   status: string;
@@ -81,6 +85,7 @@ function Card({ title, icon, children }: { title: string; icon?: string; childre
 }
 
 export default function InsightsPage() {
+  const [historyAll, setHistoryAll] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [packages, setPackages] = useState<Pkg[]>([]);
@@ -213,6 +218,11 @@ export default function InsightsPage() {
       topSpenders,
       revenuePaid,
       paidCount: paid.length,
+      // ประวัติการใช้บริการ — บิลที่จ่ายแล้วในช่วงนี้ (1 บิล = 1 บ้าน) เรียงล่าสุดก่อน
+      history: [...paid].sort((a, b) =>
+        (b.paidAt || b.createdAt || "").localeCompare(a.paidAt || a.createdAt || "")
+      ),
+      households: new Set(paid.map((i) => i.customerId || i.customerName)).size,
     };
   }, [customers, invoices, packages, promoStats, range.from, range.to]);
 
@@ -268,6 +278,63 @@ export default function InsightsPage() {
           </p>
         </div>
       </div>
+
+      <Card icon="receipt" title={`ประวัติการใช้บริการ · ${stats.households} บ้าน`}>
+        {stats.history.length ? (
+          <>
+            <ul className="divide-y divide-petflow-line rounded-petflow-sm border border-petflow-line text-xs">
+              {(historyAll ? stats.history : stats.history.slice(0, 10)).map((inv, i) => {
+                const body = (
+                  <>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-bold text-brown">{inv.customerName}</span>
+                      <span className="block truncate text-[11px] text-brown-soft">
+                        {summarizeInvoiceItems(inv.items || [])}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-right">
+                      <span className="block font-extrabold text-latte-deep">
+                        {inv.total.toLocaleString()} ฿
+                      </span>
+                      <span className="block text-[10px] text-brown-faint">
+                        {formatThaiDateShort((inv.paidAt || inv.createdAt || "").slice(0, 10))}
+                      </span>
+                    </span>
+                  </>
+                );
+                return (
+                  <li key={inv.id || i}>
+                    {inv.customerId ? (
+                      <Link
+                        href={`/admin/customers?id=${inv.customerId}`}
+                        className="flex min-h-[48px] items-center gap-2 px-3 py-1.5"
+                      >
+                        {body}
+                      </Link>
+                    ) : (
+                      <div className="flex min-h-[48px] items-center gap-2 px-3 py-1.5">{body}</div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+            {!historyAll && stats.history.length > 10 && (
+              <button
+                type="button"
+                onClick={() => setHistoryAll(true)}
+                className="mt-2 min-h-[40px] w-full rounded-petflow-sm bg-paper py-2 text-xs font-extrabold text-latte-deep"
+              >
+                ดูทั้งหมดอีก {stats.history.length - 10} รายการ
+              </button>
+            )}
+            <p className="mt-2 text-[10px] text-brown-faint">
+              1 แถว = 1 บิลที่ชำระแล้ว (รวมทั้งบ้าน) · แตะเพื่อเปิดหน้าลูกค้า
+            </p>
+          </>
+        ) : (
+          <p className="text-xs text-brown-faint">ช่วงนี้ยังไม่มีการใช้บริการที่ชำระแล้ว</p>
+        )}
+      </Card>
 
       <Card icon="paw" title="สายพันธุ์ยอดฮิต (ใช้ตัดสินใจทำสินค้า)">
         {stats.breeds.length ? (

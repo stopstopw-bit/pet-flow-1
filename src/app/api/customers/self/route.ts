@@ -109,6 +109,8 @@ async function handlePost(req: NextRequest) {
     patch.marketingConsent = body.marketingConsent;
   await updateCustomer(c.id, patch);
 
+  // น้องที่เพิ่งสร้าง: id ชั่วคราว "new-…" → id จริง — หน้าโปรไฟล์ใช้อัปรูปที่เลือกไว้ก่อนกดบันทึก
+  const created: { tempId: string; id: string }[] = [];
   if (Array.isArray(body.cats)) {
     for (const cat of body.cats) {
       if (typeof cat?.name !== "string" || !cat.name.trim()) continue;
@@ -137,7 +139,9 @@ async function handlePost(req: NextRequest) {
         ...("allergy" in cat ? { allergy: String(cat.allergy || "") } : {}),
       };
       if (!cat?.id || String(cat.id).startsWith("new-")) {
-        await addCat(c.id, { ...shared, ...history, weightKg, neutered });
+        const after = await addCat(c.id, { ...shared, ...history, weightKg, neutered });
+        const id = after?.cats[after.cats.length - 1]?.id;
+        if (id && cat?.id) created.push({ tempId: String(cat.id), id });
       } else {
         // หน้าเก่าที่ยังไม่มีช่องน้ำหนักจะไม่ส่ง weightKg มา — อย่าไปลบค่าที่ร้านกรอกไว้
         await updateCat(c.id, String(cat.id), {
@@ -157,5 +161,5 @@ async function handlePost(req: NextRequest) {
     })
   );
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, created });
 }
