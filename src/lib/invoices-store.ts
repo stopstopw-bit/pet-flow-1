@@ -2,6 +2,7 @@ import { getSiteConfig } from "./config-store";
 import {
   deductMemberCredit,
   restoreMemberCredit,
+  findCancelCreditTopup,
   addServiceRecord,
   deleteServiceRecordByInvoice,
   getCustomer,
@@ -445,9 +446,13 @@ export async function createInvoice(data: {
  * รับ "มัดจำ" ของบิลนี้ → บันทึกเป็นรายรับก้อนแรก (ไม่ปิดบิล).
  * ใช้ยอดรายรับที่ลงบัญชีแล้วของบิลเป็นตัวกันบันทึกซ้ำ (ledger-based).
  */
+/** บิลที่ยกเลิกนัดแล้วโยกยอดที่รับมาเป็นเครดิตไปแล้ว — ห้ามรับเงินเพิ่มจากนัดที่ยกเลิกไปแล้ว */
+const CONVERTED_MSG = "บิลนี้ยกเลิกนัดแล้วเก็บยอดเป็นเครดิตไปแล้ว — รับเงินเพิ่มไม่ได้";
+
 export async function receiveInvoiceDeposit(id: string) {
   const inv = await getInvoice(id);
   if (!inv || inv.status === "paid") return { ok: false as const, error: "invalid" };
+  if (await findCancelCreditTopup(id)) return { ok: false as const, error: CONVERTED_MSG };
   const deposit = inv.deposit || 0;
   if (deposit <= 0) return { ok: false as const, error: "no_deposit" };
 
@@ -581,6 +586,10 @@ export async function linkInvoiceToBooking(id: string, bookingId: string) {
 export async function deleteInvoice(id: string) {
   const inv = await getInvoice(id);
   if (!inv) return { ok: false as const, error: "not_found" };
+  // บิลที่ยกเลิกนัดแล้วโอนยอดเป็นเครดิตไปแล้ว — ลบบิลจะถอนรายรับ/แต้ม แต่เครดิตยังอยู่ (ได้ฟรี)
+  if (await findCancelCreditTopup(id)) {
+    return { ok: false as const, error: "converted_to_credit" };
+  }
 
   // ต้องอ่านยอดที่หักเครดิต Member ไปก่อน "ลบรายรับ" ข้างล่าง ไม่งั้นรายการที่ใช้คำนวณ
   // ยอดคืนจะหายไปก่อนอ่านทัน แล้วจะคำนวณได้ 0 เสมอ (คืนเครดิตให้ลูกค้าไม่ได้เลย)
@@ -812,6 +821,7 @@ export async function receiveInvoicePayment(
 ) {
   const inv = await getInvoice(id);
   if (!inv || inv.status === "paid") return { ok: false as const, error: "invalid" };
+  if (await findCancelCreditTopup(id)) return { ok: false as const, error: CONVERTED_MSG };
   if (payingNow.has(id)) return { ok: false as const, error: "busy" };
   payingNow.add(id);
   try {
@@ -874,6 +884,7 @@ export async function markInvoicePaid(
   paymentMethod: "transfer" | "member_credit" | "cash" = "transfer"
 ) {
   if (payingNow.has(id)) return { ok: false as const, error: "already_paid" };
+  if (await findCancelCreditTopup(id)) return { ok: false as const, error: CONVERTED_MSG };
   payingNow.add(id);
   try {
     return await markInvoicePaidInner(id, paymentMethod);
@@ -1021,6 +1032,11 @@ export async function revertInvoicePaid(id: string) {
   const inv = await getInvoice(id);
   if (!inv || inv.status !== "paid") {
     return { ok: false as const, error: "not_paid" };
+  }
+  // ยอดบิลนี้ถูกโอนเป็นเครดิต (🔁 ยกเลิกนัด) ไปแล้ว — ต้องยกเลิกรายการเครดิตนั้นก่อน
+  // ไม่งั้นรายรับ/แต้มถูกถอน แต่ลูกค้ายังถือเครดิตเท่ายอดบิลอยู่
+  if (await findCancelCreditTopup(id)) {
+    return { ok: false as const, error: "converted_to_credit" };
   }
 
   // คืนเครดิต Member ที่หักไป
