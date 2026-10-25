@@ -439,10 +439,11 @@ export default function HomePage() {
               </p>
               <ul className="mt-4 space-y-2 text-left text-sm text-brown">
                 <li>✓ ไม่เกิน 1 กิโล — รับ-ส่ง<b className="text-latte-deep">ฟรี</b></li>
-                <li>✓ ไม่เกิน 5 กิโล — เหมา 100 บาท</li>
-                <li>✓ ไม่เกิน 10 กิโล — เหมา 150 บาท</li>
-                <li>✓ เกิน 10 กิโล — 150 บาท + กิโลละ 10 บาท</li>
+                <li>✓ ไม่เกิน 5 กิโล — เที่ยวละ 100 บาท</li>
+                <li>✓ ไม่เกิน 10 กิโล — เที่ยวละ 150 บาท</li>
+                <li>✓ เกิน 10 กิโล — เที่ยวละ 150 บาท + กิโลละ 10 บาท</li>
               </ul>
+              <p className="mt-2 text-xs text-brown-soft">รับมาร้าน 1 เที่ยว · ไป-กลับ (รับ + ส่งกลับบ้าน) คิด 2 เที่ยว</p>
             </div>
             <div className="mx-auto w-full max-w-sm">
               <InfoCard

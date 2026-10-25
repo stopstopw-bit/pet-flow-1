@@ -81,7 +81,9 @@ function FlexButton({ node }: { node: FlexNode }) {
   return <div style={style}>{label}</div>;
 }
 
-function FlexBox({ node }: { node: FlexNode }) {
+/** blockPadding = ระยะขอบของ header/body/footer — LINE จริงเว้นให้เองเมื่อการ์ดไม่ได้ตั้ง paddingAll
+ *  (เมื่อก่อนไม่ได้เว้น ตัวหนังสือในตัวอย่างเลยชิดขอบการ์ด) */
+function FlexBox({ node, blockPadding }: { node: FlexNode; blockPadding?: string }) {
   const layout = (node.layout as string) || "vertical";
   const contents = (node.contents as FlexNode[]) || [];
   const spacingMap: Record<string, string> = {
@@ -106,7 +108,7 @@ function FlexBox({ node }: { node: FlexNode }) {
               ? "flex-end"
               : "flex-start",
         gap: spacingMap[(node.spacing as string) || ""] || "0",
-        padding: node.paddingAll ? px(node.paddingAll, "0") : undefined,
+        padding: node.paddingAll ? px(node.paddingAll, "0") : blockPadding,
         backgroundColor: (node.backgroundColor as string) || undefined,
         borderRadius: node.cornerRadius ? px(node.cornerRadius, "0") : undefined,
         marginTop:
@@ -183,10 +185,10 @@ function FlexBubble({ contents }: { contents: FlexNode }) {
           '"Noto Sans Thai", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       }}
     >
-      {header && <FlexBox node={header} />}
+      {header && <FlexBox node={header} blockPadding="16px 20px" />}
       {hero?.type === "image" && <FlexAny node={hero} />}
-      {body && <FlexBox node={body} />}
-      {footer && <FlexBox node={footer} />}
+      {body && <FlexBox node={body} blockPadding="16px 20px" />}
+      {footer && <FlexBox node={footer} blockPadding="10px 16px 16px" />}
     </div>
   );
 }

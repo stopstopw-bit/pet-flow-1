@@ -9,7 +9,7 @@ import {
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { parseTaxInvoiceBody, type CustomerTaxInvoice } from "@/lib/tax-invoice";
 import { withResolvedTenant } from "@/lib/tenant-context";
-import { requireCustomerSession } from "@/lib/customer-session";
+import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 import { stayInfoDone } from "@/lib/intake-rules";
 
 /** ลูกค้าดึงข้อมูลตัวเอง (สำหรับหน้าแก้ไขโปรไฟล์ใน LINE) — ครบทุกฟิลด์ที่กรอกตอนสมัคร */
@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
 async function handleGet(req: NextRequest) {
   const session = await requireCustomerSession(req);
   if (!session) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return noCustomerSessionResponse();
   }
   const c = await findCustomerByLine(session.lineUserId);
   if (!c) return NextResponse.json({ found: false });
@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
 async function handlePost(req: NextRequest) {
   const session = await requireCustomerSession(req);
   if (!session) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return noCustomerSessionResponse();
   }
   const body = await req.json().catch(() => ({}));
   const c = await findCustomerByLine(session.lineUserId);

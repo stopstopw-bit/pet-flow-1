@@ -288,15 +288,15 @@ export const ROOM_AMENITIES = {
 export const TRANSPORT = {
   th: [
     "≤ 1 กม. ฟรีรับ-ส่ง",
-    "≤ 5 กม. 100 บาท",
-    "≤ 10 กม. 150 บาท",
-    "> 10 กม. 150 บาท + 10 บาท/กม.",
+    "≤ 5 กม. เที่ยวละ 100 บาท",
+    "≤ 10 กม. เที่ยวละ 150 บาท",
+    "> 10 กม. เที่ยวละ 150 บาท + 10 บาท/กม.",
   ],
   en: [
     "≤ 1 km free",
-    "≤ 5 km 100 THB",
-    "≤ 10 km 150 THB",
-    "> 10 km 150 THB + 10 THB/km",
+    "≤ 5 km 100 THB per trip",
+    "≤ 10 km 150 THB per trip",
+    "> 10 km 150 THB per trip + 10 THB/km",
   ],
 } as const;
 

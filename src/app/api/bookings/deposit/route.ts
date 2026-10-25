@@ -7,7 +7,7 @@ import { depositAmountFor, cleanDepositStatus } from "@/lib/booking-deposit";
 import { saveDepositSlip, depositTelegramLine } from "@/lib/booking-deposit-server";
 import { getBooking, listBookingsByCustomerName, setBookingsDeposit } from "@/lib/bookings-store";
 import { bookingGroupKey } from "@/lib/booking-group";
-import { requireCustomerSession } from "@/lib/customer-session";
+import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
 
 async function handlePost(req: NextRequest) {
   const session = await requireCustomerSession(req);
-  if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!session) return noCustomerSessionResponse();
   const body = await req.json().catch(() => ({}));
   const ids = cleanIds(body.ids);
   if (!ids.length) return NextResponse.json({ error: "ids required" }, { status: 400 });

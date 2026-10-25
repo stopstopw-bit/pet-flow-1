@@ -2,10 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { useConfig } from "@/components/ConfigProvider";
 import Link from "next/link";
 import { LoadingScreen } from "@/components/LoadingScreen";
-import { BTN_SECONDARY, PageHeader } from "@/components/PageHeader";
+import { PageHeader } from "@/components/PageHeader";
 import { SectionLabel } from "@/components/ui";
 import { Icon } from "@/components/Icon";
 import { stripDiscountTag } from "@/lib/line-discount";
@@ -27,6 +26,9 @@ type Invoice = {
   discount: number;
   promoLabel?: string;
   total: number;
+  /** มัดจำ — นับเป็นเงินที่จ่ายแล้วเฉพาะเมื่อร้านกดรับแล้ว (depositReceivedAt) */
+  deposit?: number;
+  depositReceivedAt?: string;
   status: string;
 };
 
@@ -38,7 +40,6 @@ type Payment = {
 
 export default function PayPage() {
   const params = useParams();
-  const { config } = useConfig();
   const id = String(params.id);
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [payment, setPayment] = useState<Payment | null>(null);
@@ -55,6 +56,11 @@ export default function PayPage() {
   if (!invoice) {
     return <LoadingScreen message="กำลังโหลดข้อมูลบิล..." />;
   }
+
+  // รับมัดจำไปแล้ว → ลูกค้าต้องเห็นยอดที่เหลือจริง ไม่ใช่ยอดเต็ม (เดิมโชว์ยอดเต็ม เสี่ยงโอนเกิน)
+  const paidDeposit =
+    invoice.status !== "paid" && invoice.depositReceivedAt ? invoice.deposit || 0 : 0;
+  const due = Math.max(0, invoice.total - paidDeposit);
 
   return (
     <div className="px-4 pb-6 pt-5">
@@ -109,10 +115,24 @@ export default function PayPage() {
             </li>
           )}
         </ul>
+        {paidDeposit > 0 && (
+          <div className="space-y-1 border-t border-petflow-line px-4 py-3 text-sm">
+            <div className="flex justify-between gap-3 text-brown">
+              <span>ยอดรวม</span>
+              <span className="font-bold">{invoice.total.toLocaleString()} ฿</span>
+            </div>
+            <div className="flex justify-between gap-3 text-ok">
+              <span>มัดจำที่ชำระแล้ว</span>
+              <span className="font-bold">-{paidDeposit.toLocaleString()} ฿</span>
+            </div>
+          </div>
+        )}
         <div className="flex items-end justify-between gap-3 bg-honey/15 px-4 py-4">
-          <span className="text-xs font-bold text-brown-soft">ยอดรวม</span>
+          <span className="text-xs font-bold text-brown-soft">
+            {paidDeposit > 0 ? "ยอดคงเหลือที่ต้องชำระ" : "ยอดรวม"}
+          </span>
           <span className="text-2xl font-extrabold text-latte-deep">
-            {invoice.total.toLocaleString()} <span className="text-sm">บาท</span>
+            {due.toLocaleString()} <span className="text-sm">บาท</span>
           </span>
         </div>
       </div>
@@ -142,19 +162,9 @@ export default function PayPage() {
         </div>
       ) : null}
 
-      <a
-        href={config.business.reviewUrl || config.business.maps}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={`mt-5 ${BTN_SECONDARY}`}
-      >
-        {!config.business.reviewButtonText && <Icon name="star" size={16} />}
-        {config.business.reviewButtonText || `รีวิว ${config.business.name}`}
-      </a>
-
       <Link
         href="/app"
-        className="mt-2 flex min-h-[44px] items-center justify-center text-xs font-bold text-latte-deep"
+        className="mt-5 flex min-h-[44px] items-center justify-center text-xs font-bold text-latte-deep"
       >
         กลับหน้าหลัก
       </Link>

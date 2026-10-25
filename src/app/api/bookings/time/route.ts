@@ -4,7 +4,7 @@ import { featureOff } from "@/lib/features-server";
 import { getBooking, listBookings, setBookingTime } from "@/lib/bookings-store";
 import { bookingGroupKey, groupCatNames } from "@/lib/booking-group";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
-import { requireCustomerSession } from "@/lib/customer-session";
+import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 
 /** นัดของบ้านเดียวกันที่เข้าพักรอบเดียวกัน (รวมตัวที่กดลิงก์มาด้วย) */
 async function householdSiblings(b: Awaited<ReturnType<typeof getBooking>>) {
@@ -33,6 +33,9 @@ async function getHandler(req: NextRequest) {
       checkout: b.checkout,
       arrivalTime: b.arrivalTime,
       pickupTime: b.pickupTime,
+      // ร้านไปรับ/ไปส่งเอง → หน้าเลือกเวลาเปลี่ยนคำให้ตรง (ส่งแค่ว่ามีไหม ไม่ส่งที่อยู่)
+      shopPickup: !!b.transport?.pickup,
+      shopDropoff: !!b.transport?.dropoff,
     },
   });
 }
@@ -44,7 +47,7 @@ async function postHandler(req: NextRequest) {
   if (blocked) return blocked;
   const session = await requireCustomerSession(req);
   if (!session) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return noCustomerSessionResponse();
   }
   const body = await req.json().catch(() => ({}));
   const bookingId = String(body.bookingId || "").trim();

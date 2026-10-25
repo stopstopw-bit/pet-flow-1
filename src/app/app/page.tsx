@@ -22,6 +22,10 @@ import { HeaderBand, IconChip } from "@/components/HeaderBand";
 import { lineChatUrl } from "@/components/PageHeader";
 import { isFeatureOn, type FeatureKey } from "@/lib/features";
 import { referralReward } from "@/lib/referral";
+import { bookingGroupKey, groupCatNames, stayForGroom } from "@/lib/booking-group";
+import { bangkokToday } from "@/lib/bangkok-date";
+
+type HomeBooking = Booking & { checkin?: string; checkout?: string };
 
 export default function CustomerHome() {
   const { locale } = useLocale();
@@ -30,7 +34,7 @@ export default function CustomerHome() {
   const m = t(locale).home;
   // ส่วนของฟีเจอร์ที่ร้านปิดไว้ในตั้งค่า ไม่โชว์ในหน้าแรก
   const on = (key: FeatureKey) => isFeatureOn(config, key);
-  const [nextBooking, setNextBooking] = useState<Booking | null>(null);
+  const [nextBooking, setNextBooking] = useState<(HomeBooking & { cats: string }) | null>(null);
   const [hasPromos, setHasPromos] = useState(false);
   const [couponCount, setCouponCount] = useState(0);
   // เครดิต Member / คอร์ส — โชว์เฉพาะคนที่มีจริง
@@ -56,13 +60,28 @@ export default function CustomerHome() {
     fetch(`/api/bookings?${q}`)
       .then((r) => r.json())
       .then((data) => {
-        const list: Booking[] = data.bookings || [];
-        // นัดที่ผ่านไปแล้วแต่ยังค้าง "รอยืนยัน" ไม่ใช่นัดถัดไป — เอาเฉพาะวันนี้เป็นต้นไป ใกล้สุดก่อน
-        const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(new Date());
+        const list: HomeBooking[] = data.bookings || [];
+        // นัดที่รอยืนยันและยังไม่ผ่านไป — ใกล้สุดก่อน (เดิมหยิบตัวแรกที่เจอ เลยโชว์นัดเก่าเมื่อหลายเดือนก่อน)
+        // อาบน้ำก่อนกลับระหว่างเข้าพักนับเป็นนัดเดียวกับการเข้าพัก ไม่ขึ้นแยก
+        const today = bangkokToday();
         const pending = list
-          .filter((b) => b.status === "pending" && ((b.service === "room" && b.checkout) || b.date || "") >= today)
-          .sort((a, b) => `${a.date} ${a.time || ""}`.localeCompare(`${b.date} ${b.time || ""}`))[0];
-        setNextBooking(pending || null);
+          .filter(
+            (b) =>
+              b.status === "pending" &&
+              (b.checkout || b.date || b.checkin || "").slice(0, 10) >= today &&
+              !stayForGroom(b, list)
+          )
+          .sort((a, b) => (a.checkin || a.date || "").localeCompare(b.checkin || b.date || ""))[0];
+        setNextBooking(
+          pending
+            ? {
+                ...pending,
+                cats: groupCatNames(
+                  list.filter((x) => bookingGroupKey(x) === bookingGroupKey(pending))
+                ),
+              }
+            : null
+        );
       })
       .catch(() => setNextBooking(null));
   }, [profile?.lineUserId]);
@@ -225,10 +244,12 @@ export default function CustomerHome() {
             </span>
           </div>
           <p className="text-sm font-bold text-brown">
-            {nextBooking.catName} · {nextBooking.customerName}
+            {nextBooking.cats || nextBooking.catName} · {nextBooking.customerName}
           </p>
           <p className="text-xs text-brown-soft">
-            {nextBooking.date}
+            {nextBooking.service === "room" && nextBooking.checkin
+              ? `${nextBooking.checkin}${nextBooking.checkout ? ` → ${nextBooking.checkout}` : ""}`
+              : nextBooking.date}
             {nextBooking.time ? ` · ${nextBooking.time}` : ""}
           </p>
           <Link

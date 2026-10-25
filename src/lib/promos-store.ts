@@ -360,6 +360,26 @@ export async function getBestPromoForCustomer(
   return best;
 }
 
+/**
+ * ลูกค้าคนนี้ใช้โปรไหนไม่ได้บ้าง (เหตุผล) — หน้าออกบิลเตือนตอนพนักงานเลือกโปรเอง
+ * คืนเฉพาะโปรที่ใช้ไม่ได้: { [promoId]: เหตุผล }
+ */
+export async function promoBlockReasons(
+  customerId: string,
+  now = new Date()
+): Promise<Record<string, string>> {
+  const customer = await getCustomer(customerId);
+  if (!customer) return {};
+  const visits = (await customerSummary(customerId))?.visits ?? 0;
+  const out: Record<string, string> = {};
+  for (const promo of await listPromos()) {
+    const claim = await getClaimForCustomer(promo.id, customerId);
+    const { eligible, reason } = checkPromoEligibility(promo, customer, visits, Boolean(claim), now);
+    if (!eligible) out[promo.id] = (reason || "ลูกค้าคนนี้ใช้โปรนี้ไม่ได้").replace("ของคุณ", "ของลูกค้าคนนี้").replace("คุณใช้", "ลูกค้าคนนี้ใช้");
+  }
+  return out;
+}
+
 export async function listPromoClaims(promoId?: string) {
   const sb = getSupabase();
   if (sb) {

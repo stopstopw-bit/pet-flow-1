@@ -57,6 +57,7 @@ import { SpeciesPicker } from "@/components/SpeciesPicker";
 import { isFeatureOn } from "@/lib/features";
 import { referralReward } from "@/lib/referral";
 import { StaffNoteTagPicker } from "@/components/StaffNoteTagPicker";
+import { customerFetch } from "@/lib/customer-fetch";
 
 function emptyCat(): CatInput {
   return {
@@ -226,7 +227,7 @@ export default function RegisterPage() {
     setError("");
 
     try {
-      const res = await fetch("/api/customers/register", {
+      const res = await customerFetch("/api/customers/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -284,7 +285,7 @@ export default function RegisterPage() {
           .find((sc) => !used.has(sc.id) && sc.name.trim() === c.name.trim());
         if (!match) continue;
         used.add(match.id);
-        await fetch("/api/customers/cat-photo", {
+        await customerFetch("/api/customers/cat-photo", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ catId: match.id, photoDataUrl: c.photo }),
@@ -395,7 +396,8 @@ export default function RegisterPage() {
         )}
 
         {/* ร้านที่ถามประวัติตอนสมัคร (เช่น Back Home) ไม่ขออีเมล — ลิสต์ของร้านไม่มี */}
-        <div className={isCompany || ownerHistory.length ? "" : "grid grid-cols-2 gap-3"}>
+        {/* จอมือถือ: อีเมล/วันเกิดคนละแถว — วางคู่กันแล้วช่องวัน/เดือน/ปีแคบจนอ่านไม่ออก */}
+        <div className={isCompany || ownerHistory.length ? "" : "grid gap-3 sm:grid-cols-2"}>
           {!ownerHistory.length && (
             <label className="block">
               <span className="mb-1 block text-xs font-bold text-brown">อีเมล</span>

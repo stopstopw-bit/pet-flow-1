@@ -879,6 +879,8 @@ export function buildBillSummaryFlex(data: {
   bankName?: string;
   accountNumber?: string;
   accountName?: string;
+  /** ไม่แสดงรายการ — ใช้เมื่อส่งคู่กับการ์ด "สรุปการจอง" ในชุดเดียวกัน (ลูกค้าเห็นรายการแล้ว ไม่ต้องซ้ำ) */
+  hideItems?: boolean;
 }, style?: CardStyleConfig) {
   const st = style || {};
   const show = (k: string) => st.show?.[k] !== false;
@@ -937,6 +939,8 @@ export function buildBillSummaryFlex(data: {
           },
         ]
       : []),
+  ];
+  if (!data.hideItems && paidItems.length > 0) body.push(
     { type: "separator", margin: "lg" },
     {
       type: "box",
@@ -984,9 +988,9 @@ export function buildBillSummaryFlex(data: {
         ];
       }),
     },
-  ];
+  );
 
-  if (data.discount && data.discount > 0) {
+  if (data.discount && data.discount > 0 && !data.hideItems) {
     body.push({
       type: "box",
       layout: "horizontal",
@@ -1042,7 +1046,7 @@ export function buildBillSummaryFlex(data: {
   });
 
   // 🎁 ของแถมฟรี — โชว์ให้ลูกค้าเห็นว่าแถมอะไรบ้าง
-  if (freebieItems.length && show("freebies")) {
+  if (freebieItems.length && show("freebies") && !data.hideItems) {
     body.push({
       type: "box",
       layout: "vertical",
@@ -2903,7 +2907,7 @@ export function reviewMessageFor(
     title: t.titleGroom || `ขอบคุณที่ไว้วางใจ${shopName ? ` ${shopName}` : "เรา"} นะคะ 🧡`,
     body:
       t.bodyGroom ||
-      "หวังว่าน้องจะกลับบ้านไปตัวหอม นุ่มฟู และมีความสุขนะคะ 🐱✨\nถ้าประทับใจบริการของเรา ฝากรีวิวสั้น ๆ ให้ทีมงานหน่อยนะคะ\nรีวิวของคุณคือกำลังใจเล็ก ๆ\nที่ทำให้พวกเราตั้งใจดูแลน้องแมวทุกตัวให้ดีที่สุดเลยค่ะ 💕",
+      "หวังว่าน้องจะกลับบ้านไปตัวหอม นุ่มฟู และมีความสุขนะคะ 🐾✨\nถ้าประทับใจบริการของเรา ฝากรีวิวสั้น ๆ ให้ทีมงานหน่อยนะคะ\nรีวิวของคุณคือกำลังใจเล็ก ๆ\nที่ทำให้พวกเราตั้งใจดูแลน้อง ๆ ทุกตัวให้ดีที่สุดเลยค่ะ 💕",
   };
 }
 

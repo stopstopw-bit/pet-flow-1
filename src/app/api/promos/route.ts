@@ -11,6 +11,7 @@ import {
   deletePromo,
   listPromoClaims,
   getBestPromoForCustomer,
+  promoBlockReasons,
   type PromoKind,
   claimCustomerPromo,
   getPromo,
@@ -51,6 +52,12 @@ async function handlePublicGet(req: NextRequest, admin: boolean) {
       ? req.nextUrl.searchParams.get("lineUserId") || ""
       : (await requireCustomerSession(req))?.lineUserId || "";
     if (lineUserId) return NextResponse.json({ promos: await getCustomerPromos(lineUserId) });
+  }
+
+  const blockedFor = req.nextUrl.searchParams.get("blockedFor");
+  // ข้อมูลลูกค้า (ลูกค้าใหม่/ใช้โปรแล้ว) — เฉพาะหลังบ้าน
+  if (blockedFor && admin) {
+    return NextResponse.json({ blocked: await promoBlockReasons(blockedFor) });
   }
 
   const autoFor = req.nextUrl.searchParams.get("autoFor");

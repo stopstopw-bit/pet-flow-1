@@ -11,13 +11,14 @@ import { EmptyState } from "@/components/ui";
 import { Icon } from "@/components/Icon";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { groomProgram } from "@/lib/grooming-prices";
-import { groupBookings, groupCatNames } from "@/lib/booking-group";
+import { groupBookings, groupCatNames, stayForGroom } from "@/lib/booking-group";
+import { bangkokToday } from "@/lib/bangkok-date";
 import { TimeSlotPicker } from "@/components/TimeSlotPicker";
 import { useConfig } from "@/components/ConfigProvider";
 import { isFeatureOn } from "@/lib/features";
 
 /** API ส่ง checkin มาด้วยจริง (ใช้จัดกลุ่มบ้านเดียวกัน/นัดเดียวกัน) แต่ type Booking กลางไม่มีฟิลด์นี้ */
-type BookingRow = Booking & { checkin?: string; arrivalTime?: string };
+type BookingRow = Booking & { checkin?: string; checkout?: string; arrivalTime?: string };
 
 /** เวลามาส่งน้องที่บันทึกไว้ — ที่เดียวกับหน้าเลือกเวลาจากลิงก์ LINE และที่หลังบ้านเห็น */
 const savedArrival = (b: BookingRow) => b.arrivalTime || b.checkinTime || "";
@@ -107,6 +108,23 @@ function BookingsContent() {
     }
   };
 
+  // อาบน้ำก่อนกลับระหว่างเข้าพัก = นัดเดียวกับการเข้าพัก (เจ้าของร้านตกลงไว้ 2026-10-23)
+  // → ไม่โชว์เป็นการ์ดแยกที่ต้องกดยืนยันอีกรอบ แต่ติดไว้บนการ์ดเข้าพักแทน
+  const inStayBaths = bookings.filter((b) => stayForGroom(b, bookings));
+  const bathsOf = (group: BookingRow[]) =>
+    inStayBaths.filter((x) => group.some((s) => stayForGroom(x, [s])));
+  const today = bangkokToday();
+  const lastDay = (b: BookingRow) => (b.checkout || b.date || b.checkin || "").slice(0, 10);
+  // นัดที่ยังไม่ถึงขึ้นก่อน (ใกล้สุดก่อน) · นัดที่ผ่านไปแล้วไว้ท้ายสุด
+  const groups = groupBookings(bookings.filter((b) => !inStayBaths.includes(b))).sort((a, b) => {
+    const pa = lastDay(a[0]) < today;
+    const pb = lastDay(b[0]) < today;
+    if (pa !== pb) return pa ? 1 : -1;
+    const ka = (a[0].checkin || a[0].date || "").slice(0, 10);
+    const kb = (b[0].checkin || b[0].date || "").slice(0, 10);
+    return pa ? kb.localeCompare(ka) : ka.localeCompare(kb);
+  });
+
   return (
     <div className="px-4 pb-6 pt-5">
       <PageHeader eyebrow="Bookings" title={m.title} />
@@ -119,14 +137,19 @@ function BookingsContent() {
         </div>
       ) : (
         <ul className="space-y-3">
-          {groupBookings(bookings).map((group) => {
+          {groups.map((group) => {
             // บ้านเดียวกัน + นัดเดียวกัน หลายตัว → รวมเป็นการ์ดเดียว ยืนยันทีเดียวจบ
             // (สถานะต้องตรงกันทั้งกลุ่มถึงจะรวมโชว์ — ถ้าบางตัวยืนยันไปแล้วบางตัวยังไม่
             //  ให้แยกโชว์ทีละตัวแทน กันสับสน)
             const sameStatus = group.every((x) => x.status === group[0].status);
             const combine = group.length > 1 && sameStatus;
             const primary = group[0];
-            const ids = group.map((x) => x.id);
+            const baths = bathsOf(group);
+            const past = lastDay(primary) < today;
+            const ids = [
+              ...group.map((x) => x.id),
+              ...baths.filter((x) => x.status === "pending").map((x) => x.id),
+            ];
             const catLabel = combine ? groupCatNames(group) : primary.catName;
 
             return (
@@ -149,12 +172,22 @@ function BookingsContent() {
                       <span className="font-medium text-brown-soft">· {primary.customerName}</span>
                     </p>
                     <p className="mt-0.5 text-xs text-brown-soft">
-                      {primary.service === "groom" ? m.groom : m.room} · {primary.date}
+                      {primary.service === "groom" ? m.groom : m.room} ·{" "}
+                      {primary.service === "room" && primary.checkin
+                        ? `${primary.checkin}${primary.checkout ? ` → ${primary.checkout}` : ""}`
+                        : primary.date}
                       {primary.time ? ` · ${primary.time}` : ""}
                     </p>
                     {primary.groomProgram && (
                       <p className="mt-0.5 text-[11px] font-bold text-latte-deep">
                         🧴 {groomProgram(primary.groomProgram)?.name || primary.groomProgram}
+                      </p>
+                    )}
+                    {baths.length > 0 && (
+                      <p className="mt-0.5 flex items-center gap-1 text-xs text-brown-soft">
+                        <Icon name="bath" size={13} />
+                        {locale === "th" ? "อาบน้ำก่อนกลับ" : "Bath before going home"} {baths[0].date}
+                        {baths[0].time ? ` · ${baths[0].time}` : ""}
                       </p>
                     )}
                   </div>
@@ -171,7 +204,11 @@ function BookingsContent() {
                       ? m.confirmed
                       : primary.status === "cancelled"
                         ? m.cancelled
-                        : m.pending}
+                        : past
+                          ? locale === "th"
+                            ? "ผ่านไปแล้ว"
+                            : "Past"
+                          : m.pending}
                   </span>
                 </div>
 
@@ -187,7 +224,7 @@ function BookingsContent() {
                 )}
 
                 {/* นัดที่ลูกค้าจองเอง → รอร้านยืนยัน ลูกค้ายืนยันเองไม่ได้ (กัน "จองเอง ยืนยันเอง") */}
-                {primary.status === "pending" && primary.selfBooked && (
+                {primary.status === "pending" && primary.selfBooked && !past && (
                   <p className="mt-3 flex items-center justify-center gap-1.5 rounded-petflow-sm bg-honey/25 px-3 py-2.5 text-center text-xs font-bold text-wait">
                     <Icon name="clock" size={14} />
                     {locale === "th"
@@ -196,7 +233,7 @@ function BookingsContent() {
                   </p>
                 )}
                 {/* นัดที่ร้านสร้างให้ → ลูกค้ากดยืนยันเข้าร่วม (ตอบรับ) ได้ตามเดิม */}
-                {primary.status === "pending" && !primary.selfBooked && (
+                {primary.status === "pending" && !primary.selfBooked && !past && (
                   <div className="mt-3">
                     {asksTime(primary) && pickId === primary.id && (
                       <div className="mb-3 rounded-petflow-sm bg-paper p-3">
@@ -218,7 +255,17 @@ function BookingsContent() {
                           setPickId(primary.id);
                           setCheckin(savedArrival(primary));
                         } else {
-                          confirmGroup(combine ? ids : [primary.id], primary);
+                          confirmGroup(
+                            combine
+                              ? ids
+                              : [
+                                  primary.id,
+                                  ...baths
+                                    .filter((x) => x.status === "pending" && x.catName === primary.catName)
+                                    .map((x) => x.id),
+                                ],
+                            primary
+                          );
                         }
                       }}
                       className={BTN_PRIMARY}

@@ -1,5 +1,5 @@
 import type { Booking, BookingStatus } from "./business";
-import { getSupabase } from "./supabase/server";
+import { getSupabase, selectAllRows } from "./supabase/server";
 import { uploadPrivateDataUrl } from "./supabase/storage";
 import { seedEnabled } from "./demo-seed";
 import { requireTenantId } from "./tenant-context";
@@ -167,14 +167,14 @@ function storedToRow(b: Partial<StoredBooking>) {
 export async function listBookings(lineUserId?: string) {
   const sb = getSupabase();
   if (sb) {
-    let q = sb
-      .from("bookings")
-      .select("*")
-      .eq("tenant_id", requireTenantId())
-      .order("created_at", { ascending: false });
-    if (lineUserId) q = q.eq("line_user_id", lineUserId);
-    const { data } = await q;
-    return (data as BookingRow[] | null)?.map(rowToStored) || [];
+    const tenantId = requireTenantId();
+    const data = await selectAllRows<BookingRow>((from, to) => {
+      let q = sb.from("bookings").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false })
+        .order("id");
+      if (lineUserId) q = q.eq("line_user_id", lineUserId);
+      return q.range(from, to);
+    });
+    return data.map(rowToStored);
   }
   if (!lineUserId) return [...mem];
   return mem.filter((b) => b.lineUserId === lineUserId);

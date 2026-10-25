@@ -21,6 +21,8 @@ import { Icon } from "@/components/Icon";
 import { MAX_VACCINE_PHOTOS } from "@/lib/vaccine-photos";
 import { idCardPurpose, watermarkIdCard } from "@/lib/id-card-watermark";
 import { isFeatureOn } from "@/lib/features";
+import { customerFetch } from "@/lib/customer-fetch";
+import { bookingGroupKey, groupCatNames } from "@/lib/booking-group";
 
 type StayBooking = Booking & {
   checkin?: string;
@@ -135,6 +137,8 @@ function ConsentContent() {
   const { profile, ready } = useLiff();
   const { config } = useConfig();
   const [booking, setBooking] = useState<StayBooking | null>(null);
+  /** ชื่อน้องทุกตัวในนัดเดียวกัน — กดยอมรับครั้งเดียวได้ทั้งบ้าน */
+  const [catLabel, setCatLabel] = useState("");
   const [loading, setLoading] = useState(true);
   const [accepted, setAccepted] = useState(false);
   const [checked, setChecked] = useState(false);
@@ -142,8 +146,10 @@ function ConsentContent() {
   const [careNote, setCareNote] = useState("");
   const [signature, setSignature] = useState("");
   const [signError, setSignError] = useState(false);
-  const [vaccinePhotos, setVaccinePhotos] = useState<string[]>([]);
-  const [vaccineUploading, setVaccineUploading] = useState(false);
+  /** น้องทุกตัวในนัดเดียวกัน — สมุดวัคซีนแนบแยกทีละตัว (เมื่อก่อนชุดเดียวไปติดตัวแรก) */
+  const [groupCats, setGroupCats] = useState<{ id: string; catName: string }[]>([]);
+  const [vaccineByCat, setVaccineByCat] = useState<Record<string, string[]>>({});
+  const [vaccineUploading, setVaccineUploading] = useState("");
   const [fleaTickTreated, setFleaTickTreated] = useState(false);
   const [idCardUrl, setIdCardUrl] = useState("");
   // เคยแนบบัตรไว้แล้วจากรอบก่อน → ไม่ถามซ้ำ (ขอครั้งเดียวพอ)
@@ -174,6 +180,15 @@ function ConsentContent() {
               .filter((b) => b.service === "room" && b.status !== "cancelled")
               .sort((a, b) => (a.checkin || a.date).localeCompare(b.checkin || b.date))[0] || null;
         setBooking(stay);
+        if (stay) {
+          const key = bookingGroupKey(stay);
+          const group = list.filter((b) => bookingGroupKey(b) === key && b.status !== "cancelled");
+          setCatLabel(groupCatNames(group));
+          // ตัวที่ลิงก์ชี้มาก่อน แล้วตามด้วยตัวอื่นในบ้าน
+          setGroupCats(
+            [stay, ...group.filter((b) => b.id !== stay.id)].map((b) => ({ id: b.id, catName: b.catName }))
+          );
+        }
         if (stay?.consentAcceptedAt) setAccepted(true);
         if (stay?.careNote) setCareNote(stay.careNote);
       })
@@ -185,7 +200,7 @@ function ConsentContent() {
   useEffect(() => {
     if (!profile?.lineUserId) return;
     const q = new URLSearchParams({ lineUserId: profile.lineUserId });
-    fetch(`/api/customers/self?${q}`)
+    customerFetch(`/api/customers/self?${q}`)
       .then((r) => r.json())
       .then((d) => {
         const url = d?.customer?.idCardUrl || "";
@@ -205,7 +220,7 @@ function ConsentContent() {
     setIdCardBusy(true);
     try {
       const image = await watermarkIdCard(file, undefined, config.business.name);
-      const res = await fetch("/api/customers/id-card", {
+      const res = await customerFetch("/api/customers/id-card", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lineUserId: profile.lineUserId, image }),
@@ -246,7 +261,8 @@ function ConsentContent() {
           lineUserId: profile.lineUserId,
           careNote: careNote.trim(),
           signature,
-          vaccinePhotos,
+          vaccinePhotos: booking ? vaccineByCat[booking.id] || [] : [],
+          vaccinePhotosByBooking: vaccineByCat,
           fleaTickTreated,
         }),
       });
@@ -263,10 +279,10 @@ function ConsentContent() {
   };
 
   // สมุดวัคซีนมักมีหลายหน้า → เลือกได้ทีละหลายรูป และกดเพิ่มต่อได้จนครบ MAX_VACCINE_PHOTOS
-  const addVaccinePhotos = async (files: FileList) => {
-    setVaccineUploading(true);
+  const addVaccinePhotos = async (catId: string, files: FileList) => {
+    setVaccineUploading(catId);
     try {
-      const room = MAX_VACCINE_PHOTOS - vaccinePhotos.length;
+      const room = MAX_VACCINE_PHOTOS - (vaccineByCat[catId]?.length || 0);
       const picked = Array.from(files).slice(0, Math.max(0, room));
       const urls: string[] = [];
       for (const f of picked) {
@@ -276,9 +292,12 @@ function ConsentContent() {
           /* แปลงรูปไหนไม่สำเร็จก็ข้ามรูปนั้นไป */
         }
       }
-      setVaccinePhotos((prev) => [...prev, ...urls].slice(0, MAX_VACCINE_PHOTOS));
+      setVaccineByCat((prev) => ({
+        ...prev,
+        [catId]: [...(prev[catId] || []), ...urls].slice(0, MAX_VACCINE_PHOTOS),
+      }));
     } finally {
-      setVaccineUploading(false);
+      setVaccineUploading("");
     }
   };
 
@@ -309,7 +328,7 @@ function ConsentContent() {
                 <Icon name={isGroom ? "bath" : "bed"} size={20} />
               </span>
               <div className="min-w-0">
-                <p className="truncate text-sm font-extrabold text-petflow-chocolate">{booking.catName}</p>
+                <p className="truncate text-sm font-extrabold text-petflow-chocolate">{catLabel || booking.catName}</p>
                 <p className="text-xs text-brown-soft">
                   {isGroom ? (
                     <>
@@ -320,7 +339,9 @@ function ConsentContent() {
                     <>
                       เข้าพัก: {booking.checkin || booking.date}
                       {booking.checkout ? ` → ${booking.checkout}` : ""}
-                      {booking.room ? ` · ห้อง ${booking.room}` : ""}
+                      {booking.room
+                        ? ` · ห้อง ${config.rooms.find((r) => r.id === booking.room)?.name || booking.room}`
+                        : ""}
                     </>
                   )}
                 </p>
@@ -459,51 +480,73 @@ function ConsentContent() {
                     รวมถึงความเสี่ยงจากการที่ทางร้านไม่ได้ตรวจสอบประวัติวัคซีนของน้อง
                   </span>
                 </p>
-                {vaccinePhotos.length > 0 && (
-                  <div className="mb-2 grid grid-cols-3 gap-2">
-                    {vaccinePhotos.map((src, i) => (
-                      <div key={i} className="relative">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={src}
-                          alt={`สมุดวัคซีน ${i + 1}`}
-                          className="aspect-square w-full rounded-lg object-cover"
-                        />
-                        <button
-                          type="button"
-                          aria-label="ลบรูปนี้"
-                          onClick={() => setVaccinePhotos((prev) => prev.filter((_, j) => j !== i))}
-                          className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white"
-                        >
-                          <Icon name="x" size={14} />
-                        </button>
+                {(groupCats.length ? groupCats : booking ? [{ id: booking.id, catName: booking.catName }] : []).map(
+                  (cat) => {
+                    const photos = vaccineByCat[cat.id] || [];
+                    return (
+                      <div key={cat.id} className={groupCats.length > 1 ? "mt-3 first:mt-0" : ""}>
+                        {groupCats.length > 1 && (
+                          <p className="mb-1.5 flex items-center gap-1 text-xs font-extrabold text-petflow-chocolate">
+                            <Icon name="paw" size={13} className="text-brown-soft" />
+                            {cat.catName}
+                          </p>
+                        )}
+                        {photos.length > 0 && (
+                          <div className="mb-2 grid grid-cols-3 gap-2">
+                            {photos.map((src, i) => (
+                              <div key={i} className="relative">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={src}
+                                  alt={`สมุดวัคซีน ${cat.catName} ${i + 1}`}
+                                  className="aspect-square w-full rounded-lg object-cover"
+                                />
+                                <button
+                                  type="button"
+                                  aria-label="ลบรูปนี้"
+                                  onClick={() =>
+                                    setVaccineByCat((prev) => ({
+                                      ...prev,
+                                      [cat.id]: (prev[cat.id] || []).filter((_, j) => j !== i),
+                                    }))
+                                  }
+                                  className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white"
+                                >
+                                  <Icon name="x" size={14} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {photos.length < MAX_VACCINE_PHOTOS && (
+                          <label className="flex min-h-[56px] cursor-pointer items-center gap-3 rounded-petflow-sm border border-dashed border-petflow-line bg-paper px-3 py-3">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              className="hidden"
+                              onChange={(e) => {
+                                if (e.target.files?.length) addVaccinePhotos(cat.id, e.target.files);
+                                e.target.value = "";
+                              }}
+                            />
+                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-card text-brown-soft">
+                              <Icon name={photos.length ? "plus" : "image"} size={20} />
+                            </span>
+                            <span className="text-xs font-bold text-brown-soft">
+                              {vaccineUploading === cat.id
+                                ? "กำลังแนบรูป…"
+                                : photos.length
+                                  ? `เพิ่มรูปอีก (แนบได้สูงสุด ${MAX_VACCINE_PHOTOS} รูป)`
+                                  : groupCats.length > 1
+                                    ? `แตะเพื่อแนบสมุดวัคซีนของ${cat.catName}`
+                                    : "แตะเพื่อแนบภาพสมุดวัคซีน (เลือกได้หลายรูป)"}
+                            </span>
+                          </label>
+                        )}
                       </div>
-                    ))}
-                  </div>
-                )}
-                {vaccinePhotos.length < MAX_VACCINE_PHOTOS && (
-                  <label className="flex min-h-[56px] cursor-pointer items-center gap-3 rounded-petflow-sm border border-dashed border-petflow-line bg-paper px-3 py-3">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      className="hidden"
-                      onChange={(e) => {
-                        if (e.target.files?.length) addVaccinePhotos(e.target.files);
-                        e.target.value = "";
-                      }}
-                    />
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-card text-brown-soft">
-                      <Icon name={vaccinePhotos.length ? "plus" : "image"} size={20} />
-                    </span>
-                    <span className="text-xs font-bold text-brown-soft">
-                      {vaccineUploading
-                        ? "กำลังแนบรูป…"
-                        : vaccinePhotos.length
-                          ? `เพิ่มรูปอีก (แนบได้สูงสุด ${MAX_VACCINE_PHOTOS} รูป)`
-                          : "แตะเพื่อแนบภาพสมุดวัคซีน (เลือกได้หลายรูป)"}
-                    </span>
-                  </label>
+                    );
+                  }
                 )}
               </section>
               )}

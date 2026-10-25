@@ -1,6 +1,7 @@
 "use client";
 
 import { groomUsesCard } from "@/lib/intake-rules";
+import { isDayCareStay } from "@/lib/day-care";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -60,6 +61,7 @@ function formatThaiDateTime(iso: string) {
 
 function bookingWhen(b: CalendarDay) {
   if (b.service === "room" || b.checkin) {
+    if (isDayCareStay({ ...b, service: "room" })) return `Day Care ${b.checkin}`;
     return `${b.checkin || b.date}${b.checkout ? ` → ${b.checkout}` : ""}`;
   }
   return `${b.date} ${b.time || ""}`.trim();
@@ -74,9 +76,11 @@ function BillButton({
   /** แจ้งการ์ดแม่ว่าบิลของนัดนี้จ่ายจบแล้วหรือยัง — เอาไว้ติดป้าย "จบเคส" ทั้งใบ */
   onPaidState?: (paid: boolean) => void;
 }) {
-  const [inv, setInv] = useState<{ id: string; status: string; total: number } | null | undefined>(
-    undefined
-  );
+  const [inv, setInv] = useState<
+    | { id: string; status: string; total: number; deposit?: number; depositReceivedAt?: string }
+    | null
+    | undefined
+  >(undefined);
 
   useEffect(() => {
     let alive = true;
@@ -114,14 +118,16 @@ function BillButton({
     );
   }
   if (inv) {
+    // รับมัดจำแล้ว → ป้ายบอกยอดที่ยังค้างจริง (เดิมโชว์ยอดเต็มทั้งที่จ่ายมาแล้วบางส่วน)
+    const due = Math.max(0, inv.total - (inv.depositReceivedAt ? inv.deposit || 0 : 0));
     return (
       <Link
         href={`/admin/billing?bookingId=${bookingId}`}
-        title={`แก้ไขบิล (${inv.total.toLocaleString()}฿ · ค้างอยู่)`}
+        title={`แก้ไขบิล (${inv.total.toLocaleString()}฿ · ค้างอยู่ ${due.toLocaleString()}฿)`}
         className={`${chip} border border-honey-deep/50 bg-honey/20 text-petflow-chocolate`}
       >
         <Icon name="receipt" size={16} />
-        บิลค้าง {inv.total.toLocaleString()}฿
+        บิลค้าง {due.toLocaleString()}฿
       </Link>
     );
   }
@@ -693,7 +699,8 @@ export function BookingCalendar() {
     if (!moving) return;
     const h = moving.group[0];
     const isRoom = h.service === "room";
-    if (isRoom && moving.checkout && moving.checkout <= moving.checkin) {
+    // วันออก = วันเข้า ได้ (Day Care ไม่ค้างคืน) แต่ห้ามก่อนวันเข้า
+    if (isRoom && moving.checkout && moving.checkout < moving.checkin) {
       toast("วันออกต้องหลังวันเข้าพักนะ", "error");
       return;
     }
@@ -2033,7 +2040,16 @@ export function BookingCalendar() {
           ) : (
             shownGroups.map((group) => {
               const b = group[0];
-              const allConfirmed = group.every((x) => x.status === "confirmed");
+              // นับแบบเดียวกับป้ายสถานะ — ออกบิลแล้ว/เลยเวลานัดแล้ว ถือว่ายืนยันแล้ว
+              // (เมื่อก่อนป้ายขึ้น "ยืนยันแล้ว" แต่ปุ่มหลักยังเป็น "ยืนยันนัด")
+              // บิลเดียวคลุมทั้งบ้าน (รวมอาบน้ำก่อนกลับ) → ตัวไหนมีบิล ถือว่าทั้งการ์ดคิดเงินแล้ว
+              const groupBilled = group.some((x) => billedIds.has(x.id));
+              const allConfirmed = group.every(
+                (x) =>
+                  x.status === "confirmed" ||
+                  (x.status === "pending" && groupBilled) ||
+                  effectiveBookingStatus(x, today, billedIds) === "confirmed"
+              );
               const stage = effectiveBookingStatus(group[0], today, billedIds);
               const catNames = group.map((x) => x.catName).join(", ");
               const caseDone = paidCases[b.id] === true;
@@ -2045,7 +2061,9 @@ export function BookingCalendar() {
 
               // ปุ่มหลักของการ์ด — ขั้นถัดไปของงาน (ยืนยัน → พร้อมรับกลับ → ปิดงาน) มีได้ทีละปุ่มเดียว
               const primary =
-                !allConfirmed && stage !== "ready" && stage !== "done"
+                stage === "no_show" || stage === "cancelled"
+                  ? null
+                  : !allConfirmed && stage !== "ready" && stage !== "done"
                   ? { label: "ยืนยันนัด", icon: "check", run: () => confirmGroup(group) }
                   : allConfirmed && stage !== "ready" && stage !== "done"
                     ? { label: "พร้อมกลับบ้าน", icon: "send", run: () => setStageFor(group, "set_ready") }

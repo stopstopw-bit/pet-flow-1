@@ -18,6 +18,8 @@ type Bk = {
   checkout?: string;
   arrivalTime?: string;
   pickupTime?: string;
+  shopPickup?: boolean;
+  shopDropoff?: boolean;
 };
 
 function BookingTimeContent() {
@@ -81,6 +83,15 @@ function BookingTimeContent() {
   };
 
   const dateLabel = isCheckin ? bk?.checkin : bk?.checkout;
+  // นัดที่ใช้บริการรับ-ส่ง: ร้านเป็นฝ่ายเดินทาง ไม่ใช่ลูกค้า "มาส่ง/มารับ"
+  const shopGoes = isCheckin ? !!bk?.shopPickup : !!bk?.shopDropoff;
+  const title = shopGoes
+    ? isCheckin
+      ? "เลือกเวลาให้ร้านไปรับน้อง"
+      : "เลือกเวลาให้ร้านไปส่งน้องที่บ้าน"
+    : isCheckin
+      ? "เลือกเวลาที่จะมาส่งน้อง"
+      : "เลือกเวลาที่จะมารับน้อง";
 
   if (done) {
     return (
@@ -93,9 +104,13 @@ function BookingTimeContent() {
           บันทึกเวลาเรียบร้อยแล้ว!
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-brown-soft">
-          {isCheckin
-            ? `เราจะเตรียมห้องรอต้อนรับ${bk?.catName || "น้อง"}ตอน ${saved} นะคะ 🐾`
-            : `เราจะเตรียม${bk?.catName || "น้อง"}ให้พร้อมก่อนกลับบ้านตอน ${saved} นะคะ 🐾`}
+          {shopGoes
+            ? isCheckin
+              ? `ร้านจะไปรับ${bk?.catName || "น้อง"}ตามจุดรับ-ส่งตอน ${saved} นะคะ 🚗`
+              : `ร้านจะพา${bk?.catName || "น้อง"}ไปส่งที่บ้านตอน ${saved} นะคะ 🚗`
+            : isCheckin
+              ? `เราจะเตรียมห้องรอต้อนรับ${bk?.catName || "น้อง"}ตอน ${saved} นะคะ 🐾`
+              : `เราจะเตรียม${bk?.catName || "น้อง"}ให้พร้อมก่อนกลับบ้านตอน ${saved} นะคะ 🐾`}
           <br />
           กลับไปที่แชท LINE ได้เลยค่ะ
         </p>
@@ -107,8 +122,8 @@ function BookingTimeContent() {
   return (
     <div className="px-4 pb-6 pt-5">
       <PageHeader
-        eyebrow={isCheckin ? "Drop-off time" : "Pick-up time"}
-        title={isCheckin ? "เลือกเวลาที่จะมาส่งน้อง" : "เลือกเวลาที่จะมารับน้อง"}
+        eyebrow={shopGoes ? (isCheckin ? "Pick-up by shop" : "Delivery time") : isCheckin ? "Drop-off time" : "Pick-up time"}
+        title={title}
         back="/app"
         backLabel="กลับหน้าแรก"
         showLang={false}
