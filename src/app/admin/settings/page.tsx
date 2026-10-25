@@ -1,5 +1,6 @@
 "use client";
 
+import { savedPopup } from "@/components/Toast";
 import { roomPricing } from "@/lib/room-board";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
@@ -146,6 +147,7 @@ export default function SettingsPage() {
     if (res.ok) {
       setConfig(data.config);
       setMsg("บันทึกแล้ว — หน้าลูกค้าอัปเดตทันที");
+      savedPopup("บันทึกการตั้งค่าแล้ว", ["หน้าลูกค้าอัปเดตทันที"]);
       void refreshShared();
     } else {
       setMsg("บันทึกไม่สำเร็จ");

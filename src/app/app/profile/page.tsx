@@ -1,5 +1,6 @@
 "use client";
 
+import { savedPopup } from "@/components/Toast";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useLiff } from "@/components/LiffProvider";
@@ -279,6 +280,7 @@ export default function ProfilePage() {
           setPhotoError(`บันทึกข้อมูลแล้ว แต่อัปรูป ${failed.join(", ")} ไม่สำเร็จ ลองเพิ่มรูปใหม่อีกครั้งนะคะ`);
         setSaved(true);
         setTimeout(() => setSaved(false), 2500);
+        savedPopup("บันทึกข้อมูลสำเร็จ");
         // โหลดใหม่ให้น้องที่เพิ่งเพิ่ม (id "new-…") ได้ id จริง — ไม่งั้นกดบันทึกซ้ำจะสร้างซ้ำ และอัปรูปได้ทันที
         setReloadKey((k) => k + 1);
       }

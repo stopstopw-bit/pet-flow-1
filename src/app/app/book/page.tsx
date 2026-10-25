@@ -1,5 +1,6 @@
 "use client";
 
+import { savedPopup } from "@/components/Toast";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLiff } from "@/components/LiffProvider";
@@ -359,6 +360,9 @@ function BookPageInner() {
           slipSent: created[0]?.depositStatus === "pending_review",
         });
         setSlip("");
+        savedPopup(service === "groom" ? "จองคิวอาบน้ำสำเร็จ" : "จองห้องพักสำเร็จ", [
+          "ร้านจะยืนยันกลับทาง LINE นะคะ",
+        ]);
       } else if (d.error === "slot_full" || d.error === "room_full") {
         setSubmitErr(
           service === "groom"
@@ -441,6 +445,7 @@ function BookPageInner() {
                       if (res.ok) {
                         setDone({ ...done, slipSent: true });
                         setSlip("");
+                        savedPopup("ส่งสลิปสำเร็จ", ["ร้านจะตรวจสอบแล้วยืนยันให้นะคะ"]);
                       } else {
                         setSlipErr("ส่งสลิปไม่สำเร็จ — ลองใหม่อีกครั้ง หรือส่งสลิปในแชทร้านแทนนะคะ");
                       }

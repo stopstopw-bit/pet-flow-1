@@ -1,5 +1,6 @@
 "use client";
 
+import { savedPopup } from "@/components/Toast";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLiff } from "@/components/LiffProvider";
@@ -273,6 +274,7 @@ function ConsentContent() {
         );
       }
       setAccepted(true);
+      if (res.ok || data?.needSql) savedPopup("ยอมรับข้อตกลงสำเร็จ", ["ร้านได้รับข้อตกลงที่เซ็นแล้วค่ะ"]);
     } finally {
       setSaving(false);
     }

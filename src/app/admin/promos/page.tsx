@@ -1,5 +1,6 @@
 "use client";
 
+import { savedPopup } from "@/components/Toast";
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 import { breedOptionsFor } from "@/lib/pet-kind";
@@ -432,6 +433,7 @@ export default function PromosAdminPage() {
     }
     closeModal();
     load();
+    savedPopup(editing ? "แก้ไขโปรโมชั่นแล้ว" : "สร้างโปรโมชั่นแล้ว");
   };
 
   const toggle = async (id: string, active: boolean) => {

@@ -1,5 +1,6 @@
 "use client";
 
+import { savedPopup } from "@/components/Toast";
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLiff } from "@/components/LiffProvider";
@@ -103,6 +104,7 @@ function BookingTransportContent() {
       const d = await res.json().catch(() => ({}));
       if (res.ok) {
         setDone(true);
+        savedPopup("ส่งตำแหน่งสำเร็จ", ["ร้านได้รับที่อยู่รับ-ส่งแล้วค่ะ"]);
       } else {
         setError(
           d.error === "bad_url"

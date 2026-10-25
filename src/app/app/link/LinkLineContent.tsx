@@ -1,5 +1,6 @@
 "use client";
 
+import { savedPopup } from "@/components/Toast";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useLiff } from "@/components/LiffProvider";
@@ -67,6 +68,7 @@ export function LinkLineContent() {
 
     await refreshCustomer();
     setDone(true);
+    savedPopup("ผูก LINE สำเร็จ", [], { afterNav: true });
     setTimeout(() => router.replace("/app"), 1500);
   };
 

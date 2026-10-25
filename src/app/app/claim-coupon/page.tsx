@@ -1,5 +1,6 @@
 "use client";
 
+import { savedPopup } from "@/components/Toast";
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -44,7 +45,10 @@ function ClaimContent() {
         body: JSON.stringify({ offerId, lineUserId: profile.lineUserId }),
       });
       const d = await res.json().catch(() => ({}));
-      if (res.ok && d.ok) setResult("ok");
+      if (res.ok && d.ok) {
+        setResult("ok");
+        savedPopup("รับคูปองสำเร็จ 🎟️");
+      }
       else if (d.alreadyClaimed) setResult("already");
       else setResult("error");
     } finally {

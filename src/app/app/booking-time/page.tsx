@@ -1,5 +1,6 @@
 "use client";
 
+import { savedPopup } from "@/components/Toast";
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLiff } from "@/components/LiffProvider";
@@ -66,7 +67,10 @@ function BookingTimeContent() {
           lineUserId: profile?.lineUserId,
         }),
       });
-      if (res.ok) setSaved(time);
+      if (res.ok) {
+        setSaved(time);
+        savedPopup("บันทึกเวลาสำเร็จ", [`${isCheckin ? "เวลามาส่ง" : "เวลามารับ"} ${time} น.`]);
+      }
     } finally {
       setSaving(false);
     }

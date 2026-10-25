@@ -1,5 +1,6 @@
 "use client";
 
+import { savedPopup } from "@/components/Toast";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useLiff } from "@/components/LiffProvider";
@@ -323,6 +324,12 @@ export default function RegisterPage() {
 
       await refreshCustomer();
       await refreshAccount();
+      const petNames = cats.map((c) => c.name.trim()).filter(Boolean);
+      savedPopup(
+        "สมัครสมาชิกสำเร็จ 🎉",
+        [petNames.length ? `ลงทะเบียนน้อง ${petNames.join(", ")} เรียบร้อยแล้วค่ะ` : "", "จองคิวและดูข้อมูลน้องได้ที่หน้าแรกเลยค่ะ"],
+        { afterNav: true }
+      );
       router.replace("/app");
     } catch {
       setError(
