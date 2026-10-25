@@ -14,8 +14,10 @@ export type BoardRoomType = {
   name: string;
   /** จำนวนห้องจริง — ห้องเชื่อมเป็น 0 เพราะไม่ใช่ห้องของตัวเอง */
   count: number;
-  /** จุแมวได้กี่ตัวต่อห้อง (ไม่ระบุ = 1) */
+  /** จุแมวได้กี่ตัวต่อห้อง (ไม่ระบุ = 1) — รวมตัวที่จ่ายเพิ่มแล้ว เช่น "1–4 แมว · แมวที่ 5 +50" = 5 */
   maxCats?: number;
+  /** ราคาห้องรวมแมวกี่ตัว ตัวที่เกินนี้คือ "ตัวเพิ่ม" ที่คิดเงินเพิ่ม (ไม่ระบุ = เท่ากับ maxCats) */
+  baseCats?: number;
   /** ห้องเชื่อมประกอบจากห้องจริงอะไรบ้าง — ตั้งได้ต่อร้านในหน้าตั้งค่า */
   composedOf?: { typeId: string; units: number }[];
   /** ช่วงที่ปิดห้อง (ซ่อม/ใช้งานไม่ได้) — ไม่รับแมวเข้าห้องนั้นในช่วงนี้ */
@@ -95,6 +97,10 @@ export type UnitState = {
   turnover: boolean;
   /** ใส่แมวเกินความจุห้อง (ปักหมุดเอง) — เตือนไว้ ไม่บล็อก */
   overCapacity: boolean;
+  /** ราคาห้องรวมแมวกี่ตัว (ห้องเชื่อม = ของห้องเชื่อม ไม่ใช่ห้องย่อย) */
+  baseCats: number;
+  /** แมวที่เกินราคาห้องแต่ยังอยู่ในความจุ — ตัวเพิ่มที่คิดเงินเพิ่ม ไม่ใช่เกินความจุ */
+  extraCats: number;
   /** ห้องนี้ถูกใช้เป็นส่วนหนึ่งของห้องเชื่อม (เช่น Mini Duo) — ชื่อห้องเชื่อมที่ยึดอยู่ */
   partOf?: string;
   /** ห้องปิดอยู่วันนี้ (ซ่อม/ใช้งานไม่ได้) — ไม่นับเป็นห้องว่าง */
@@ -215,6 +221,8 @@ export type StayAssignment = {
   units: { typeId: string; unit: number }[];
   /** ชื่อห้องเชื่อม ถ้าเป็นห้องเชื่อม */
   partOf?: string;
+  /** id ห้องเชื่อม — ใช้ความจุของห้องเชื่อม (เช่น Cat Tower จุ 5) แทนห้องย่อยที่เป็นห้องหลัก */
+  compositeId?: string;
 };
 
 const assignCache = new WeakMap<
@@ -354,7 +362,7 @@ export function assignStays(rooms: BoardRoomType[], bookings: BoardBooking[]) {
       continue;
     }
     for (const c of claimed) add(c.typeId, c.unit, { range, hh, composite: true });
-    assign.set(b.id, { units: claimed, partOf: compType.name });
+    assign.set(b.id, { units: claimed, partOf: compType.name, compositeId: compType.id });
   }
 
   const result = { assign, overflow };
@@ -387,6 +395,7 @@ export function buildRoomBoard(
   for (const type of physical) {
     const count = Math.max(0, type.count || 0);
     const capacity = Math.max(1, type.maxCats || 1);
+    const baseCats = Math.min(capacity, Math.max(1, type.baseCats || capacity));
     const typeUnits: UnitState[] = Array.from({ length: count }, (_, i) => ({
       typeId: type.id,
       typeName: type.name,
@@ -397,6 +406,8 @@ export function buildRoomBoard(
       arriving: false,
       turnover: false,
       overCapacity: false,
+      baseCats,
+      extraCats: 0,
       closed: closureOn(type.closures, i + 1, date),
     }));
     unitsByType.set(type.id, typeUnits);
@@ -421,6 +432,12 @@ export function buildRoomBoard(
       // ห้องเชื่อม: ห้องที่เปิดทะลุถูกยึดไว้ด้วยตลอดการเข้าพัก
       if (a.partOf) {
         host.partOf = a.partOf;
+        // แมวทั้งบ้านนอนห้องเชื่อม (เช่น Cat Tower = S+M) — เทียบกับความจุห้องเชื่อม ไม่ใช่ห้อง S ห้องเดียว
+        const comp = rooms.find((r) => r.id === a.compositeId);
+        if (comp) {
+          host.capacity = Math.max(1, comp.maxCats || 1);
+          host.baseCats = Math.min(host.capacity, Math.max(1, comp.baseCats || host.capacity));
+        }
         for (const o of others) {
           const u = unitsByType.get(o.typeId)?.[o.unit - 1];
           if (u) u.partOf = a.partOf;
@@ -434,6 +451,7 @@ export function buildRoomBoard(
     for (const s of typeUnits) {
       s.turnover = s.leaving.length > 0 && s.staying.length > 0;
       s.overCapacity = s.staying.length > s.capacity || s.leaving.length > s.capacity;
+      s.extraCats = s.overCapacity ? 0 : Math.max(0, s.staying.length - s.baseCats);
     }
     // ห้องที่ถูกห้องเชื่อมยึดไว้ ถือว่าไม่ว่าง แม้แถวนั้นจะไม่มีชื่อแมว
     const occupied = typeUnits.filter((s) => s.staying.length > 0 || s.partOf).length;
