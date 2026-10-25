@@ -3082,6 +3082,13 @@ export default function CustomersPage() {
     if (id) open(id);
   }, [searchParams, open]);
 
+  // เปิดลูกค้าคนใหม่ (หรือกดกลับไปหน้ารายชื่อ) → เริ่มที่บนสุดเสมอ ไม่ค้างตำแหน่งเลื่อนเดิม
+  // (โหลดข้อมูลคนเดิมซ้ำหลังบันทึกไม่นับ — id ไม่เปลี่ยน จอเลยไม่เด้ง)
+  const selectedId = selected?.customer.id ?? null;
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [selectedId]);
+
   const saveCat = async (
     catId: string,
     patch: {

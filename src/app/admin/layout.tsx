@@ -93,6 +93,11 @@ function AdminShell({ children }: { children: React.ReactNode }) {
     if (featureBlocked) router.replace("/admin");
   }, [featureBlocked, router]);
 
+  // เปลี่ยนเมนู → เริ่มหน้าใหม่ที่บนสุด (เมื่อก่อนค้างตำแหน่งเลื่อนของหน้าเดิม)
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+
   useEffect(() => {
     if (pathname === "/admin/login") {
       setOk(true);
