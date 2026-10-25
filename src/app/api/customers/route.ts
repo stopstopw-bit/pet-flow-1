@@ -1,3 +1,4 @@
+import { cleanPetName } from "@/lib/pet-name";
 import { NextRequest, NextResponse } from "next/server";
 import { parseTaxInvoiceBody } from "@/lib/tax-invoice";
 import {
@@ -165,7 +166,7 @@ async function handlePost(req: NextRequest) {
   }
   // รายละเอียดน้อง — ตัวแรกถูกสร้างไว้แล้ว (หรือเป็นตัวเดิมของลูกค้าคนนี้) ก็เติมรายละเอียดให้ ตัวอื่นเพิ่มใหม่
   for (const cat of cats) {
-    const found = customer.cats.find((x) => x.name.trim() === cat.name);
+    const found = customer.cats.find((x) => cleanPetName(x.name) === cleanPetName(cat.name));
     // ช่องที่เว้นว่างไม่ส่งต่อ — ไม่งั้นจะไปลบรายละเอียดเดิมของน้องตัวที่มีอยู่แล้ว
     const filled = Object.fromEntries(
       Object.entries(cat).filter(([, v]) => v !== undefined)

@@ -9,7 +9,7 @@ import { formatThaiDateShort } from "@/lib/format-thai-date";
 import { GROOM_PROGRAMS, groomProgramName, resolveGroomPrograms, type GroomProgram } from "@/lib/grooming-prices";
 import { ROOMS, type RoomType } from "@/lib/business";
 import type { CountBooking } from "@/lib/monthly-pet-counts";
-import { petServiceHistory, type PetHistory, type HistoryBill, type HistoryEntry } from "@/lib/pet-service-history";
+import { petKey, petServiceHistory, type PetHistory, type HistoryBill, type HistoryEntry } from "@/lib/pet-service-history";
 
 const KIND_ICON: Record<HistoryEntry["kind"], string> = { bath: "bath", stay: "bed", dayCare: "clock" };
 const PAGE = 6;
@@ -205,7 +205,10 @@ export function PetServiceHistory({
   const current = list.find((h) => h.key === picked) || list[0];
 
   if (!list.length) return null;
-  const photoOf = (h: PetHistory) => cats.find((c) => c.id === h.catId)?.photoDataUrl;
+  // ชื่อซ้ำรวมเป็นรายการเดียวแล้ว — ตัวที่เลือกไม่มีรูป ก็ใช้รูปของตัวชื่อเดียวกัน
+  const photoOf = (h: PetHistory) =>
+    cats.find((c) => c.id === h.catId)?.photoDataUrl ||
+    cats.find((c) => c.photoDataUrl && petKey(c.name) === h.key)?.photoDataUrl;
 
   return (
     <section className="mb-4 rounded-petflow bg-card p-4 shadow-petflow-sm">

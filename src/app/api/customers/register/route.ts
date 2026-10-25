@@ -1,3 +1,4 @@
+import { cleanPetName } from "@/lib/pet-name";
 import { NextRequest, NextResponse } from "next/server";
 import {
   registerCustomerFromLine,
@@ -109,9 +110,9 @@ async function handlePost(req: NextRequest) {
   const usedCats = new Set<string>();
   for (const raw of rawCats) {
     const history = raw?.history;
-    const catName = String(raw?.name || "").trim();
+    const catName = cleanPetName(String(raw?.name || ""));
     if (!history || typeof history !== "object" || !catName) continue;
-    const match = [...customer.cats].reverse().find((c) => !usedCats.has(c.id) && c.name.trim() === catName);
+    const match = [...customer.cats].reverse().find((c) => !usedCats.has(c.id) && cleanPetName(c.name) === catName);
     if (!match) continue;
     usedCats.add(match.id);
     const h = registerHistoryFields(match.species || petKindOf(siteCfg), siteCfg);

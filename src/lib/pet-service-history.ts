@@ -6,6 +6,7 @@
  * ไม่นับนัดที่ยกเลิก/ไม่มา · ฟังก์ชันล้วน ใช้ได้ทั้งหน้าเว็บและทดสอบ
  */
 import type { Breakdown, CountBooking, CountLabels } from "./monthly-pet-counts";
+import { cleanPetName } from "./pet-name";
 
 export type HistoryKind = "bath" | "stay" | "dayCare";
 
@@ -73,9 +74,9 @@ const DAY = 86400000;
 const day = (s?: string) => (s || "").slice(0, 10);
 const toMs = (s: string) => new Date(`${s}T00:00:00Z`).getTime();
 
-/** "น้องส้ม " / "ส้ม" → "ส้ม" — พนักงานพิมพ์ชื่อในนัดไม่ตรงกับโปรไฟล์บ่อย */
+/** "น้องส้ม " / "ชื่อ ส้ม" / "ส้ม" → "ส้ม" — พนักงานพิมพ์ชื่อในนัดไม่ตรงกับโปรไฟล์บ่อย */
 export function petKey(name?: string) {
-  return (name || "").trim().toLowerCase().replace(/^น้อง\s*/, "").replace(/\s+/g, " ");
+  return cleanPetName(name).toLowerCase().replace(/^น้อง\s*/, "").replace(/\s+/g, " ");
 }
 
 type HistoryBooking = CountBooking & {
@@ -208,7 +209,12 @@ export function petServiceHistory(
   });
   for (const c of cats) {
     const k = petKey(c.name);
-    if (!byKey.has(k)) byKey.set(k, make(c.name, c.id));
+    const had = byKey.get(k);
+    // ชื่อซ้ำกันในโปรไฟล์ (เช่น "โชคดี" กับ "ชื่อ โชคดี") = น้องตัวเดียว โชว์รายการเดียว ใช้ตัวที่ชื่อสะอาด
+    if (!had) byKey.set(k, make(cleanPetName(c.name), c.id));
+    else if (c.name.trim() === cleanPetName(c.name) && had.h.catId && !cats.some((x) => x.id === had.h.catId && x.name.trim() === cleanPetName(x.name))) {
+      had.h.catId = c.id;
+    }
   }
 
   for (const b of bookings) {
