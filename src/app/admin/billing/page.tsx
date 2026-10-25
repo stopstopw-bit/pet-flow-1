@@ -31,6 +31,14 @@ import { priceSignature, findLastPrice } from "@/lib/special-price";
 import { groomPrefillForPet, itemIsForPet, lastGroomForPet, type PetCard } from "@/lib/pet-groom-memory";
 import { roomPricing, roomNightPrice } from "@/lib/room-board";
 import { isRoomLine, roomLineLabel, splitRoomLabel } from "@/lib/stay-line";
+import {
+  isTransportLabel,
+  lastTransportPrice,
+  stripTripLabel,
+  transportTrips,
+  tripLabel,
+  type BookingTransport,
+} from "@/lib/transport";
 import { dayCareLabel, dayCarePrice, isDayCareLabel, isDayCareStay } from "@/lib/day-care";
 import {
   LINE_PROMO_KINDS,
@@ -105,6 +113,7 @@ type Booking = {
   autoOff?: string[];
   /** โปรแกรมอาบน้ำที่เลือกไว้ตอนจอง (id ใน GROOM_PROGRAMS) — ถ้ามีจะเลือกไว้ให้อัตโนมัติตอนออกบิล */
   groomProgram?: string;
+  transport?: BookingTransport;
 };
 
 type ItemKind = "grooming" | "room" | "service" | "custom" | "freebie" | "package" | "product";
@@ -304,6 +313,17 @@ function computeLineBase(
     };
   }
   const unit = it.priceOverride ?? (it.amount || 0);
+  // ค่ารับ-ส่ง: qty = จำนวนเที่ยว ราคาในช่องคือราคาต่อเที่ยว → "รับ-ส่ง ไป-กลับ × 2"
+  if (it.kind === "service" && isTransportLabel(it.label)) {
+    const base = `${it.label} ${tripLabel(qty)}`;
+    return {
+      label: withCat(qty > 1 ? `${base} × ${qty}` : base),
+      amount: unit * qty,
+      catName: cat,
+      qty,
+      unitAmount: unit,
+    };
+  }
   if (it.roomLine) {
     return {
       label: withCat(roomLineLabel(it.label, qty, it.roomLine.note)),
@@ -1003,6 +1023,17 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
     setShowList(false);
     setPromoId("");
     setSuggestedPromo(null);
+    // ค่ารับ-ส่งที่ใส่ไว้ก่อนเลือกลูกค้า → เปลี่ยนเป็นราคาต่อเที่ยวที่ลูกค้าคนนี้จ่ายครั้งล่าสุด
+    const lastTrip = lastTransportPrice(invoices, c.id);
+    if (lastTrip) {
+      setItems((prev) =>
+        prev.map((it) =>
+          it.kind === "service" && isTransportLabel(it.label)
+            ? { ...it, amount: lastTrip.unitAmount }
+            : it
+        )
+      );
+    }
     try {
       const res = await fetch(`/api/promos?autoFor=${c.id}&subtotal=${subtotal}`);
       const { promo } = await res.json();
@@ -1118,6 +1149,23 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
     } else {
       setItems(groomLines(group));
     }
+    // นัดที่ใช้บริการรับ-ส่ง → ใส่ค่ารับ-ส่งให้เลย (รับ-ส่งทีเดียวทั้งบ้าน จึงเป็นบรรทัดเดียว)
+    const trips = Math.max(0, ...group.map((g) => transportTrips(g.transport)));
+    if (trips > 0) {
+      const preset =
+        servicePresets.find((p) => isTransportLabel(p.label)) || { label: "รับ-ส่ง", amount: 0 };
+      const last = lastTransportPrice(invoices, bk.customerId);
+      setItems((prev) => [
+        ...prev,
+        {
+          ...newGrooming(undefined, groomPrograms),
+          kind: "service" as const,
+          label: preset.label,
+          amount: last?.unitAmount ?? preset.amount,
+          qty: trips,
+        },
+      ]);
+    }
     if (many) {
       toast(`ดึงนัดบ้านนี้มาแล้ว ${new Set(group.map((g) => g.catName)).size} ตัว — ออกบิลใบเดียว 🧾`, "success");
     }
@@ -1182,6 +1230,15 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
   const updateItem = (idx: number, patch: Partial<Item>) =>
     setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
 
+  /** ราคาเริ่มต้นของบริการเสริม — ค่ารับ-ส่งใช้ราคาต่อเที่ยวที่ลูกค้าคนนี้จ่ายครั้งล่าสุด (ถ้ามี) */
+  const servicePriceFor = (p?: ServicePreset) => {
+    if (!p) return 0;
+    if (isTransportLabel(p.label)) {
+      return lastTransportPrice(invoices, customerId)?.unitAmount ?? p.amount;
+    }
+    return p.amount;
+  };
+
   const changeKind = (idx: number, kind: ItemKind) => {
     // เลือกจาก dropdown นี้ได้เฉพาะ kind ที่พิมพ์เอง (ไม่มี "product" เป็นตัวเลือก) —
     // ต้องล้าง productId เสมอ ไม่งั้นเปลี่ยนจากสินค้าไปเป็นรายการอื่นแล้วจะยังไปตัดสต็อกสินค้าเดิมตอนบันทึกบิล
@@ -1197,7 +1254,8 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
         nights: 1,
       };
     } else if (kind === "service") {
-      patch = { kind, label: servicePresets[0]?.label || "", amount: servicePresets[0]?.amount || 0 };
+      const p = servicePresets[0];
+      patch = { kind, label: p?.label || "", amount: servicePriceFor(p) };
     } else if (kind === "product") {
       const p = posProducts[0];
       patch = { kind, productId: p?.id, label: p?.name || "", amount: p?.price || 0 };
@@ -1392,6 +1450,17 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
             kind: "custom" as const,
             label: base,
             roomLine: { note: note || undefined },
+            catName: it.catName,
+            qty,
+            amount: it.unitAmount ?? Math.round(it.amount / qty),
+          };
+        }
+        if (it.amount > 0 && isTransportLabel(it.label)) {
+          // ค่ารับ-ส่ง → กลับมาเป็นบริการรับ-ส่ง เลือกเที่ยวเดียว/ไป-กลับได้เหมือนตอนออกบิล
+          return {
+            ...newGrooming(undefined, groomPrograms),
+            kind: "service" as const,
+            label: stripTripLabel(it.label.replace(/^🐱 .+? · /, "").replace(/ × \d+$/, "")),
             catName: it.catName,
             qty,
             amount: it.unitAmount ?? Math.round(it.amount / qty),
@@ -2083,6 +2152,9 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
               const isSpecial =
                 item.priceOverride !== undefined && item.priceOverride !== stdUnit;
               const sig = priceSignature(line.label);
+              /** ค่ารับ-ส่ง — เลือกเที่ยวเดียว/ไป-กลับแทนช่องจำนวน ราคาเป็นต่อเที่ยว */
+              const isTrip = item.kind === "service" && isTransportLabel(item.label);
+              const lastTrip = isTrip ? lastTransportPrice(invoices, customerId) : null;
               // น้องตัวไหน (ตัวเดียว) — ราคา/การอาบครั้งก่อนจะดูของตัวนี้ก่อน ไม่ใช่ของทั้งบ้าน
               const pickedPets = parseCatNames(item.catName);
               const onlyPet = (selected?.cats.length || 0) === 1;
@@ -2093,7 +2165,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
                 : undefined;
               // เตือนเฉพาะตอนที่ยังคิดราคาปกติอยู่ และราคาเก่าต่างจากราคาปกติจริงๆ
               const past =
-                item.kind === "freebie" || item.priceOverride !== undefined
+                item.kind === "freebie" || item.priceOverride !== undefined || isTrip
                   ? null
                   : findLastPrice(invoices, customerId, sig, isThisPet);
               const petLast =
@@ -2302,7 +2374,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
                         const p = servicePresets.find((x) => x.label === e.target.value);
                         updateItem(i, {
                           label: e.target.value,
-                          amount: p?.amount ?? item.amount,
+                          amount: p ? servicePriceFor(p) : item.amount,
                         });
                       }}
                       className={sub}
@@ -2379,7 +2451,28 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
 
                   {/* จำนวนชิ้น — ซื้อหลายอันไม่ต้องเพิ่มทีละบรรทัด
                       ห้องพักไม่มีช่องนี้ เพราะคิดเป็น "คืน" อยู่แล้ว */}
-                  {item.kind !== "room" && item.kind !== "freebie" && (
+                  {isTrip && (
+                    <div className="space-y-1">
+                      <Segmented
+                        value={(item.qty || 1) >= 2 ? "2" : "1"}
+                        onChange={(v) => updateItem(i, { qty: Number(v) })}
+                        options={[
+                          { id: "1", label: "เที่ยวเดียว" },
+                          { id: "2", label: "ไป-กลับ ×2" },
+                        ]}
+                      />
+                      <p className="text-[11px] text-brown-faint">
+                        {line.unitAmount.toLocaleString()} ฿/เที่ยว × {line.qty} = {line.amount.toLocaleString()} ฿
+                        {lastTrip
+                          ? ` · ครั้งก่อนจ่าย ${lastTrip.unitAmount.toLocaleString()} ฿/เที่ยว${
+                              lastTrip.when ? ` (${lastTrip.when.slice(0, 10)})` : ""
+                            }`
+                          : ""}
+                      </p>
+                    </div>
+                  )}
+
+                  {item.kind !== "room" && item.kind !== "freebie" && !isTrip && (
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] font-bold text-brown-soft">{item.roomLine ? "จำนวนคืน" : "จำนวน"}</span>
                       <button

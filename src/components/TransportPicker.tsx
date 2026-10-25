@@ -1,7 +1,7 @@
 "use client";
 
 import { Icon } from "@/components/Icon";
-import type { BookingTransport } from "@/lib/transport";
+import { transportTrips, tripLabel, type BookingTransport } from "@/lib/transport";
 
 /**
  * ติ๊กบริการรับ-ส่งของนัด — ใช้ทั้งหน้าลงนัดและหน้าแก้นัด
@@ -48,6 +48,11 @@ export function TransportPicker({
           ส่งน้องกลับบ้าน
         </button>
       </div>
+      {on && (
+        <p className="mt-1.5 text-[11px] font-bold text-brown-soft">
+          {tripLabel(transportTrips(value))} · ออกบิลแล้วคิดค่ารับ-ส่ง {transportTrips(value)} เที่ยวให้เอง
+        </p>
+      )}
       {on && (
         <div className="mt-2.5 space-y-2">
           <div className="grid grid-cols-2 gap-2">
