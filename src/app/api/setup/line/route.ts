@@ -145,7 +145,10 @@ async function handlePost(req: NextRequest) {
       const status = await getLineWebhookEndpoint(creds.channelToken);
       return NextResponse.json({
         ok: true,
-        message: `✅ ตั้ง Webhook อัตโนมัติแล้ว!\n${webhookUrl}\nแจ้งคนแอด + ลูกค้าตอบแชท จะเข้า Telegram แล้ว`,
+        message:
+          status?.active === false
+            ? `✅ ตั้ง Webhook URL แล้ว\n${webhookUrl}\n⚠️ แต่สวิตช์ “Use webhook” ใน LINE ยังปิดอยู่ — เข้า LINE Developers → แชนแนลของร้าน → แท็บ Messaging API → เปิด Use webhook (ระบบเปิดสวิตช์นี้ให้เองไม่ได้)`
+            : `✅ ตั้ง Webhook อัตโนมัติแล้ว!\n${webhookUrl}\nแจ้งคนแอด + ลูกค้าตอบแชท จะเข้า Telegram แล้ว`,
         webhookUrl,
         active: status?.active,
       });
