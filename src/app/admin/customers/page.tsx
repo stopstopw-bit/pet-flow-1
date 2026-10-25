@@ -20,6 +20,7 @@ import { toast } from "@/components/Toast";
 import { PreviewSendModal } from "@/components/PreviewSendModal";
 import { CustomerIntakeCards } from "@/components/CustomerIntakeCards";
 import { CustomerLinkSection } from "@/components/CustomerLinkSection";
+import { UnlinkedCatNames } from "@/components/UnlinkedCatNames";
 import type { PointsHistoryEntry } from "@/lib/points-store";
 import { parseGroomInfo, groomInfoSummary } from "@/lib/groom-info";
 import { summaryFields } from "@/lib/intake-rules";
@@ -3300,6 +3301,13 @@ export default function CustomersPage() {
           customerId={c.id}
           customerName={c.name}
           hasLine={Boolean(c.lineUserId)}
+        />
+
+        <UnlinkedCatNames
+          customerId={c.id}
+          cats={c.cats.map((x) => ({ id: x.id, name: x.name }))}
+          reloadKey={c.cats.map((x) => x.name).join("|")}
+          onLinked={() => open(c.id)}
         />
 
         <section className="mb-4">

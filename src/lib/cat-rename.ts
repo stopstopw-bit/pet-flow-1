@@ -9,6 +9,27 @@
  */
 
 import { catNameKey, replaceCatInLabel, replaceCatInList } from "./cat-name-replace";
+import { isUnknownCat } from "./unknown-cat";
+
+type CustomerRef = { id: string; name: string; lineUserId?: string; lineUserIds?: string[] };
+
+/** นัดทั้งหมดของบ้านนี้ — จาก LINE ทุกตัว + ชื่อลูกค้า (นัดที่ร้านลงให้ก่อนผูก LINE) */
+async function householdBookings(customer: CustomerRef) {
+  const { listBookings, listBookingsByCustomerName } = await import("./bookings-store");
+  const lineIds = new Set(
+    [customer.lineUserId, ...(customer.lineUserIds || [])].filter(Boolean) as string[]
+  );
+  const found = new Map<string, Awaited<ReturnType<typeof listBookings>>[number]>();
+  for (const lid of lineIds) {
+    for (const b of await listBookings(lid)) found.set(b.id, b);
+  }
+  for (const b of await listBookingsByCustomerName(customer.name)) {
+    // ชื่อลูกค้าซ้ำกันได้ — นัดที่ผูก LINE ของคนอื่นไว้ไม่ใช่ของบ้านนี้
+    if (b.lineUserId && lineIds.size && !lineIds.has(b.lineUserId)) continue;
+    found.set(b.id, b);
+  }
+  return [...found.values()];
+}
 
 export type CatRenameResult = {
   bookings: number;
@@ -22,7 +43,7 @@ export type CatRenameResult = {
  * (ตารางไหนพังก็ข้าม ส่วนอื่นยังแก้ต่อได้)
  */
 export async function renameCatEverywhere(
-  customer: { id: string; name: string; lineUserId?: string; lineUserIds?: string[] },
+  customer: CustomerRef,
   oldName: string,
   newName: string
 ): Promise<CatRenameResult> {
@@ -33,23 +54,9 @@ export async function renameCatEverywhere(
 
   // นัด — หาจาก LINE ทุกตัวของลูกค้า + ชื่อลูกค้า (นัดที่ร้านลงให้ก่อนผูก LINE)
   try {
-    const { listBookings, listBookingsByCustomerName, updateBooking } = await import(
-      "./bookings-store"
-    );
-    const lineIds = new Set(
-      [customer.lineUserId, ...(customer.lineUserIds || [])].filter(Boolean) as string[]
-    );
-    const found = new Map<string, Awaited<ReturnType<typeof listBookings>>[number]>();
-    for (const lid of lineIds) {
-      for (const b of await listBookings(lid)) found.set(b.id, b);
-    }
-    for (const b of await listBookingsByCustomerName(customer.name)) {
-      // ชื่อลูกค้าซ้ำกันได้ — นัดที่ผูก LINE ของคนอื่นไว้ไม่ใช่ของบ้านนี้
-      if (b.lineUserId && lineIds.size && !lineIds.has(b.lineUserId)) continue;
-      found.set(b.id, b);
-    }
+    const { updateBooking } = await import("./bookings-store");
     const { bookingCalendarPayload, updateCalendarEvent } = await import("./calendar");
-    for (const b of found.values()) {
+    for (const b of await householdBookings(customer)) {
       const catName = replaceCatInList(b.catName, from, to);
       if (catName === b.catName) continue;
       const updated = await updateBooking(b.id, { catName });
@@ -128,4 +135,86 @@ export async function renameCatAfterUpdate(
   const now = customer?.cats.find((x) => x.id === catId)?.name;
   if (!customer || !oldName || !now || catNameKey(now) === catNameKey(oldName)) return null;
   return renameCatEverywhere(customer, oldName, now);
+}
+
+export type UnlinkedCatName = { name: string; bookings: number; invoices: number };
+
+/**
+ * ชื่อน้องในนัด/บิลของบ้านนี้ที่ไม่ตรงกับน้องตัวไหนในบ้าน — ชื่อชั่วคราว "น้องไม่ระบุชื่อ (2)"
+ * (ลูกค้ากรอกน้องเข้ามาเป็นตัวใหม่ ไม่ได้เปลี่ยนชื่อตัวชั่วคราว) หรือชื่อเก่าที่แก้ไปก่อนมีระบบตามแก้
+ * ให้ร้านเลือกว่าเป็นน้องตัวไหน แล้ว relinkCatName ไล่แก้ทุกที่
+ */
+export async function findUnlinkedCatNames(
+  customer: CustomerRef & { cats: { name: string }[] }
+): Promise<UnlinkedCatName[]> {
+  // ชื่อชั่วคราวนับว่ายังไม่ผูกเสมอ แม้จะมีน้องชื่อนั้นในบ้าน (ตัวชั่วคราวที่สร้างตอนจอง)
+  const known = new Set(
+    customer.cats.filter((c) => !isUnknownCat(c.name.trim())).map((c) => catNameKey(c.name))
+  );
+  const hits = new Map<string, UnlinkedCatName>();
+  const add = (raw: string, kind: "bookings" | "invoices") => {
+    for (const part of raw.split(",")) {
+      const name = part.trim();
+      const key = catNameKey(name);
+      if (!key || known.has(key)) continue;
+      const row = hits.get(key) || { name, bookings: 0, invoices: 0 };
+      row[kind]++;
+      hits.set(key, row);
+    }
+  };
+  for (const b of await householdBookings(customer)) {
+    if (b.status !== "cancelled") add(b.catName || "", "bookings");
+  }
+  const { listInvoices } = await import("./invoices-store");
+  for (const inv of await listInvoices(customer.id)) {
+    const names = new Set<string>();
+    for (const it of inv.items || []) {
+      if (it.catName) names.add(it.catName);
+      const m = it.label.match(/^(?:🐱|🐶|🐾) (.+?) · /u);
+      if (m) names.add(m[1]);
+    }
+    if (!names.size && inv.catName) names.add(inv.catName);
+    // นับบิลละครั้งต่อชื่อ
+    const seen = new Set<string>();
+    for (const n of names) {
+      for (const part of n.split(",")) {
+        const k = catNameKey(part);
+        if (!k || seen.has(k)) continue;
+        seen.add(k);
+        add(part, "invoices");
+      }
+    }
+  }
+  return [...hits.values()];
+}
+
+/**
+ * ผูกชื่อในนัด/บิล (ชื่อชั่วคราวหรือชื่อเก่า) เข้ากับน้องตัวจริงในบ้าน — เปลี่ยนชื่อทุกที่ให้เป็นชื่อน้องตัวนั้น
+ * ถ้ามีโปรไฟล์น้องชื่อชั่วคราวที่ว่างเปล่า (สร้างอัตโนมัติตอนจอง ไม่มีรูป/ข้อมูล) ลบทิ้งให้ด้วย จะได้ไม่ค้างในบ้าน
+ */
+export async function relinkCatName(customerId: string, fromName: string, catId: string) {
+  const { getCustomer, deleteCat } = await import("./customers-store");
+  const c = await getCustomer(customerId);
+  const cat = c?.cats.find((x) => x.id === catId);
+  if (!c || !cat) return null;
+  const from = fromName.trim();
+  if (!from || catNameKey(from) === catNameKey(cat.name)) return null;
+  const result = await renameCatEverywhere(c, from, cat.name);
+  const stub = c.cats.find(
+    (x) =>
+      x.id !== catId &&
+      catNameKey(x.name) === catNameKey(from) &&
+      isUnknownCat(x.name.trim()) &&
+      !x.photoDataUrl &&
+      !x.vaccinePhotos &&
+      !x.staffNote &&
+      !x.staffPrivateNote &&
+      !x.groomHealthInfo &&
+      !x.stayInfo &&
+      !x.breed &&
+      !x.birthday &&
+      !(x.media && x.media.length)
+  );
+  if (stub) await deleteCat(customerId, stub.id).catch(() => null);
+  return { ...result, removedStub: Boolean(stub) };
 }
