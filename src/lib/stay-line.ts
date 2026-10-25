@@ -59,3 +59,15 @@ export function nightsBetweenIso(fromIso: string, toIso: string): number {
   if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
   return Math.max(0, Math.round((b - a) / 86_400_000));
 }
+
+/**
+ * ทำชื่อรายการในประวัติใช้บริการให้อ่านง่าย — ประวัติเก่าบันทึกชื่อบรรทัดบิลดิบๆ ไว้
+ * (จากบิลที่เคยเปิดแก้ก่อนแก้บั๊ก) เช่น "ห้อง X × 5 คืน (ต่อคืน) × 5" หรือ "ห้อง X × 7"
+ * → "ห้อง X × 5 คืน (พักต่อ)" / "ห้อง X × 7 คืน" ยอดเงินไม่เปลี่ยน แค่ชื่อที่แสดง
+ */
+export function tidyServiceText(text: string): string {
+  return (text || "")
+    .replace(/(×\s*\d+\s*คืน[^,×]*?)\s*×\s*\d+(?!\d)/g, "$1")
+    .replace(/\(ต่อคืน\)/g, "(พักต่อ)")
+    .replace(/(ห้อง[^×,]*×\s*\d+)(?!\d)(?!\s*คืน)/g, "$1 คืน");
+}

@@ -1,4 +1,4 @@
-import { getSupabase } from "./supabase/server";
+import { getSupabase, selectAllRows } from "./supabase/server";
 import { requireTenantId } from "./tenant-context";
 
 export type FinanceRecord = {
@@ -57,15 +57,15 @@ export async function listFinance(from?: string, to?: string) {
   const sb = getSupabase();
   let list: FinanceRecord[];
   if (sb) {
-    let q = sb
-      .from("finance_records")
-      .select("*")
-      .eq("tenant_id", requireTenantId())
-      .order("created_at", { ascending: false });
-    if (from) q = q.gte("date", from);
-    if (to) q = q.lte("date", to);
-    const { data } = await q;
-    list = ((data as FinanceRow[] | null) || []).map(rowToFinance);
+    const tenantId = requireTenantId();
+    const data = await selectAllRows<FinanceRow>((a, b) => {
+      let q = sb.from("finance_records").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false })
+        .order("id");
+      if (from) q = q.gte("date", from);
+      if (to) q = q.lte("date", to);
+      return q.range(a, b);
+    });
+    list = data.map(rowToFinance);
   } else {
     list = mem.filter((r) => {
       if (from && r.date < from) return false;

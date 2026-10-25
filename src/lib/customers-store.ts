@@ -16,6 +16,7 @@ import { ensureMigration } from "./migrations";
 import { normalizeSpecies, type PetSpecies } from "./pet-kind";
 import { taxInvoiceFromRow, type CustomerTaxInvoice } from "./tax-invoice";
 import { MAX_VACCINE_PHOTOS, joinVaccinePhotos, splitVaccinePhotos } from "./vaccine-photos";
+import { stayInfoDone } from "./intake-rules";
 
 export type { CustomerTier } from "./customer-tier";
 
@@ -35,8 +36,14 @@ export type CatRecord = {
   medical?: string;
   /** ขนสั้น/ขนยาว — ถามพร้อมสายพันธุ์ตอนสมัครสมาชิก */
   furLength?: "short" | "long";
-  /** สี/ลักษณะเด่น — ถามตอนสมัครสมาชิก */
+  /** สี/ลักษณะเด่น — ถามตอนสมัครสมาชิก (ไม่บังคับ) */
   color?: string;
+  /** ทำหมันแล้ว (true) / ยังไม่ทำ (false) / ไม่ได้ระบุ (undefined) */
+  neutered?: boolean;
+  /** ประวัติการชัก/ช็อค — ถามตอนสมัครสมาชิก (ไม่บังคับ) */
+  seizureHistory?: string;
+  /** ประวัติการแพ้ (อาหาร/ยา/แชมพู) — ถามตอนสมัครสมาชิก (ไม่บังคับ) */
+  allergy?: string;
   /** น้ำหนักตัว (กก.) — ถามตอนสมัครสมาชิก แก้ได้ทั้งลูกค้าและหลังบ้าน */
   weightKg?: number;
   /** หมาหรือแมว — ไม่ได้ระบุ = ชนิดที่ร้านรับ (ดู speciesOf ใน pet-kind.ts) */
@@ -143,6 +150,13 @@ export type MemberTopupRecord = {
   createdAt: string;
   /** ยอดยกมาจากระบบเก่า — เติมเครดิตให้ลูกค้าจริง แต่ไม่ใช่รายรับของร้านเดือนนี้ */
   isLegacy?: boolean;
+  /**
+   * 🔁 ยกเลิกนัดแล้วเก็บยอดบิลเป็นเครดิต — เงินเข้าร้านไปแล้วตอนจ่ายบิลเดิม
+   * (ลงรายรับ + ให้แต้มไปแล้วตอนนั้น) จึงไม่ลงรายรับและไม่ให้แต้มซ้ำอีกรอบ
+   */
+  isCancelCredit?: boolean;
+  /** เลขบิลเดิมที่แปลงมาเป็นเครดิต (เฉพาะ isCancelCredit) */
+  sourceInvoiceId?: string;
 };
 
 /** รายการใช้เครดิต Member จ่ายบิล */
@@ -169,6 +183,9 @@ type CatRow = {
   medical: string | null;
   fur_length?: string | null;
   color?: string | null;
+  neutered?: boolean | null;
+  seizure_history?: string | null;
+  allergy?: string | null;
   weight_kg?: number | string | null;
   species?: string | null;
   photo_data_url: string | null;
@@ -237,7 +254,25 @@ type MemberTopupRow = {
   note: string | null;
   created_at: string;
   is_legacy?: boolean | null;
+  is_cancel_credit?: boolean | null;
+  source_invoice_id?: string | null;
 };
+
+function rowToTopup(r: MemberTopupRow): MemberTopupRecord {
+  return {
+    id: r.id,
+    customerId: r.customer_id,
+    paidAmount: Number(r.paid_amount),
+    bonusAmount: Number(r.bonus_amount),
+    creditAdded: Number(r.credit_added),
+    balanceAfter: Number(r.balance_after),
+    note: r.note ?? undefined,
+    createdAt: r.created_at,
+    isLegacy: r.is_legacy ?? false,
+    isCancelCredit: r.is_cancel_credit ?? false,
+    sourceInvoiceId: r.source_invoice_id ?? undefined,
+  };
+}
 
 const memCustomers = new Map<string, CustomerRecord>();
 const memServices: ServiceRecord[] = [];
@@ -306,6 +341,9 @@ function mapCustomer(row: CustomerRow): CustomerRecord {
       medical: c.medical ?? undefined,
       furLength: (c.fur_length as "short" | "long" | undefined) ?? undefined,
       color: c.color ?? undefined,
+      neutered: c.neutered ?? undefined,
+      seizureHistory: c.seizure_history ?? undefined,
+      allergy: c.allergy ?? undefined,
       weightKg: c.weight_kg != null && c.weight_kg !== "" ? Number(c.weight_kg) : undefined,
       species: normalizeSpecies(c.species),
       photoDataUrl: c.photo_data_url ?? undefined,
@@ -1253,8 +1291,10 @@ export async function updateCat(
       | "furLength"
       | "color"
       | "species"
+      | "seizureHistory"
+      | "allergy"
     >
-  > & { weightKg?: number | null }
+  > & { weightKg?: number | null; neutered?: boolean | null }
 ) {
   const c = await getCustomer(customerId);
   if (!c) return null;
@@ -1272,8 +1312,14 @@ export async function updateCat(
     };
   }
 
-  const { weightKg, ...rest } = patch;
+  const { weightKg, neutered, ...rest } = patch;
   Object.assign(cat, rest);
+  // null = ล้างคำตอบ (ไม่ระบุ), ไม่ส่งมา = คงค่าเดิม
+  const neuteredChanged = "neutered" in patch;
+  if (neuteredChanged) cat.neutered = typeof neutered === "boolean" ? neutered : undefined;
+  const historyChanged = "seizureHistory" in patch || "allergy" in patch;
+  if ("seizureHistory" in patch) cat.seizureHistory = patch.seizureHistory?.trim() || undefined;
+  if ("allergy" in patch) cat.allergy = patch.allergy?.trim() || undefined;
   // null = ลบน้ำหนักออก, ไม่ส่งมา = คงค่าเดิม
   const weightChanged = "weightKg" in patch;
   if (weightChanged) cat.weightKg = normalizeWeightKg(weightKg);
@@ -1323,6 +1369,30 @@ export async function updateCat(
       await sb
         .from("cats")
         .update({ weight_kg: cat.weightKg ?? null })
+        .eq("id", catId)
+        .eq("tenant_id", requireTenantId())
+        .then(
+          () => {},
+          () => {}
+        );
+    }
+    if (neuteredChanged) {
+      // คอลัมน์ใหม่ (cats.neutered) — แยกเขียนเผื่อยังไม่ได้รัน migration
+      await sb
+        .from("cats")
+        .update({ neutered: cat.neutered ?? null })
+        .eq("id", catId)
+        .eq("tenant_id", requireTenantId())
+        .then(
+          () => {},
+          () => {}
+        );
+    }
+    if (historyChanged) {
+      // คอลัมน์ใหม่ (cats.seizure_history / cats.allergy) — แยกเขียนเผื่อยังไม่ได้รัน migration
+      await sb
+        .from("cats")
+        .update({ seizure_history: cat.seizureHistory ?? null, allergy: cat.allergy ?? null })
         .eq("id", catId)
         .eq("tenant_id", requireTenantId())
         .then(
@@ -1380,7 +1450,7 @@ export async function getIntakeStatus(lineUserId: string, catName?: string) {
   const key = catName ? catKey(catName) : "";
   const cat = c?.cats.find((x) => !key || catKey(x.name) === key);
   return {
-    stayInfo: Boolean(cat?.stayInfo),
+    stayInfo: stayInfoDone(cat?.stayInfo),
     groomInfo: Boolean(cat?.groomHealthInfo),
     vaccine: splitVaccinePhotos(cat?.vaccinePhotos).length > 0,
     idCard: Boolean(c?.idCardUrl),
@@ -1404,6 +1474,8 @@ export async function getCatStaffNotes(lineUserId: string, catName?: string) {
     staffNote: r.cat.staffNote?.trim() || undefined,
     privateNote: r.cat.staffPrivateNote?.trim() || undefined,
     medical: r.cat.medical?.trim() || undefined,
+    seizureHistory: r.cat.seizureHistory?.trim() || undefined,
+    allergy: r.cat.allergy?.trim() || undefined,
   };
 }
 
@@ -1445,6 +1517,9 @@ export async function addCat(
     medical?: string;
     furLength?: "short" | "long";
     color?: string;
+    neutered?: boolean;
+    seizureHistory?: string;
+    allergy?: string;
     weightKg?: number;
     species?: PetSpecies;
     staffNote?: string;
@@ -1473,6 +1548,9 @@ export async function addCat(
     medical: data.medical?.trim() || undefined,
     furLength: data.furLength,
     color: data.color?.trim() || undefined,
+    neutered: typeof data.neutered === "boolean" ? data.neutered : undefined,
+    seizureHistory: data.seizureHistory?.trim() || undefined,
+    allergy: data.allergy?.trim() || undefined,
     weightKg: normalizeWeightKg(data.weightKg),
     species: normalizeSpecies(data.species),
     staffNote: data.staffNote?.trim() || undefined,
@@ -1511,6 +1589,28 @@ export async function addCat(
         );
     }
     if (cat.species) await writeCatSpecies(catId, cat.species);
+    if (cat.neutered != null) {
+      await sb
+        .from("cats")
+        .update({ neutered: cat.neutered })
+        .eq("id", catId)
+        .eq("tenant_id", requireTenantId())
+        .then(
+          () => {},
+          () => {}
+        );
+    }
+    if (cat.seizureHistory || cat.allergy) {
+      await sb
+        .from("cats")
+        .update({ seizure_history: cat.seizureHistory ?? null, allergy: cat.allergy ?? null })
+        .eq("id", catId)
+        .eq("tenant_id", requireTenantId())
+        .then(
+          () => {},
+          () => {}
+        );
+    }
     if (cat.weightKg != null) {
       await sb
         .from("cats")
@@ -1887,20 +1987,7 @@ export async function cancelMemberTopup(topupId: string) {
       .eq("id", topupId)
       .eq("tenant_id", requireTenantId())
       .maybeSingle();
-    if (data) {
-      const r = data as MemberTopupRow;
-      topup = {
-        id: r.id,
-        customerId: r.customer_id,
-        paidAmount: Number(r.paid_amount),
-        bonusAmount: Number(r.bonus_amount),
-        creditAdded: Number(r.credit_added),
-        balanceAfter: Number(r.balance_after),
-        note: r.note ?? undefined,
-        createdAt: r.created_at,
-        isLegacy: r.is_legacy ?? false,
-      };
-    }
+    if (data) topup = rowToTopup(data as MemberTopupRow);
   } else {
     topup = memMemberTopups.find((t) => t.id === topupId);
   }
@@ -1920,8 +2007,9 @@ export async function cancelMemberTopup(topupId: string) {
   const nextCredit = c.memberCredit - topup.creditAdded;
   await updateCustomer(topup.customerId, { memberCredit: nextCredit });
 
-  // ลบรายรับที่ลงคู่กับการเติมครั้งนี้ — ยอดยกมาไม่เคยลงรายรับ จึงไม่ต้องหา
-  if (!topup.isLegacy && topup.paidAmount > 0) {
+  // ลบรายรับที่ลงคู่กับการเติมครั้งนี้ — ยอดยกมา / 🔁 เครดิตจากบิลยกเลิกนัด ไม่เคยลงรายรับ จึงไม่ต้องหา
+  // (ถ้าไปหา จะไปลบรายรับของการเติมจริงที่ยอดเท่ากันวันเดียวกันผิดตัว)
+  if (!topup.isLegacy && !topup.isCancelCredit && topup.paidAmount > 0) {
     const { listFinance, deleteFinanceEntry } = await import("./finance-store");
     const all = await listFinance();
     const match = all.find(
@@ -1952,10 +2040,20 @@ export async function cancelMemberTopup(topupId: string) {
 
 export async function topupMemberCredit(
   customerId: string,
-  data: { paidAmount: number; bonusAmount?: number; note?: string; isLegacy?: boolean }
+  data: {
+    paidAmount: number;
+    bonusAmount?: number;
+    note?: string;
+    isLegacy?: boolean;
+    /** 🔁 ยอดจากบิลที่ยกเลิกนัด — ไม่ลงรายรับ ไม่ให้แต้ม (ได้ไปแล้วตอนจ่ายบิลเดิม) */
+    isCancelCredit?: boolean;
+    sourceInvoiceId?: string;
+  }
 ) {
+  const isCancelCredit = Boolean(data.isCancelCredit);
   const paid = Math.max(0, Number(data.paidAmount) || 0);
-  const bonus = Math.max(0, Number(data.bonusAmount) || 0);
+  // เครดิตจากบิลยกเลิกนัด = ยอดบิลเดิมเป๊ะ ไม่มีแถม
+  const bonus = isCancelCredit ? 0 : Math.max(0, Number(data.bonusAmount) || 0);
   const creditAdded = paid + bonus;
   if (creditAdded <= 0) return null;
 
@@ -1973,7 +2071,8 @@ export async function topupMemberCredit(
   });
   if (!updated) return null;
 
-  const isLegacy = Boolean(data.isLegacy);
+  const isLegacy = !isCancelCredit && Boolean(data.isLegacy);
+  const sourceInvoiceId = isCancelCredit ? data.sourceInvoiceId?.trim() || undefined : undefined;
   const topup: MemberTopupRecord = {
     id: `MT${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
     customerId,
@@ -1984,6 +2083,8 @@ export async function topupMemberCredit(
     note: data.note?.trim() || undefined,
     createdAt: new Date().toISOString(),
     isLegacy,
+    isCancelCredit,
+    sourceInvoiceId,
   };
 
   const sb = getSupabase();
@@ -1999,11 +2100,35 @@ export async function topupMemberCredit(
       note: topup.note || null,
       created_at: topup.createdAt,
     };
-    // is_legacy เพิ่งเพิ่มมาทีหลัง — ลองใส่ก่อน ถ้าเครื่องยังไม่อัปเดตฐานข้อมูล
+    // is_legacy / is_cancel_credit เพิ่งเพิ่มมาทีหลัง — ลองใส่ก่อน ถ้าเครื่องยังไม่อัปเดตฐานข้อมูล
     // (คอลัมน์ไม่มี) ให้ตกไปเขียนแบบเดิม กันบันทึกไม่สำเร็จทั้งก้อน
-    const { error } = await sb
-      .from("member_topups")
-      .insert({ ...row, is_legacy: isLegacy });
+    let { error } = await sb.from("member_topups").insert(
+      isCancelCredit
+        ? { ...row, is_legacy: false, is_cancel_credit: true, source_invoice_id: sourceInvoiceId || null }
+        : { ...row, is_legacy: isLegacy }
+    );
+    if (error && isCancelCredit) {
+      // ยังไม่มีคอลัมน์ 🔁 → เพิ่มคอลัมน์ให้เองแล้วลองใหม่
+      const { ensureMigration } = await import("./migrations");
+      if (await ensureMigration("member_topups.cancel_credit")) {
+        ({ error } = await sb.from("member_topups").insert({
+          ...row,
+          is_legacy: false,
+          is_cancel_credit: true,
+          source_invoice_id: sourceInvoiceId || null,
+        }));
+      }
+      // ยังไม่ได้อีก → เก็บเป็น "ไม่นับรายรับ" (is_legacy) ไว้ก่อน + จดเลขบิลไว้ในโน้ต
+      // อย่างน้อยตอนกดยกเลิกรายการนี้จะไม่ไปลบรายรับของการเติมอื่นผิดตัว
+      if (error) {
+        const label = `🔁 ยกเลิกนัด${sourceInvoiceId ? ` · บิล ${sourceInvoiceId}` : ""}`;
+        ({ error } = await sb.from("member_topups").insert({
+          ...row,
+          note: row.note ? `${label} · ${row.note}` : label,
+          is_legacy: true,
+        }));
+      }
+    }
     if (error) {
       await sb.from("member_topups").insert(row);
     }
@@ -2013,7 +2138,8 @@ export async function topupMemberCredit(
 
   // ยอดยกมาจากระบบเก่า: เครดิตลูกค้าต้องได้เพิ่มจริง แต่ไม่ใช่เงินที่รับเข้าร้านเดือนนี้
   // ไม่บันทึกรายรับ กันยอดขายบวมจากเงินที่ไม่ได้รับจริงในเดือนนี้
-  if (paid > 0 && !isLegacy) {
+  // 🔁 เครดิตจากบิลยกเลิกนัดก็ไม่ลง — เงินก้อนนี้ลงรายรับไปแล้วตอนจ่ายบิลเดิม
+  if (paid > 0 && !isLegacy && !isCancelCredit) {
     const { addFinanceEntry } = await import("./finance-store");
     const bonusLabel =
       bonus > 0 ? ` (แถม ${bonus.toLocaleString()} บาท)` : "";
@@ -2030,8 +2156,9 @@ export async function topupMemberCredit(
   // ให้แต้มตอนเติมเครดิต — คิดจากยอดที่จ่ายจริงเท่านั้น ไม่รวมเครดิตแถม
   // (ยอดยกมาจากระบบเก่าไม่ให้ เพราะไม่ใช่การจ่ายเงินรอบนี้)
   // คู่กับ noPointsOnMemberCredit ที่ปิดแต้มตอนตัดใช้ → ได้แต้มรอบเดียว ไม่เบิ้ล
+  // 🔁 เครดิตจากบิลยกเลิกนัดไม่ให้ — แต้มของเงินก้อนนี้ได้ไปแล้วตอนจ่ายบิลเดิม
   let pointsEarned = 0;
-  if (paid > 0 && !isLegacy && updated.lineUserId) {
+  if (paid > 0 && !isLegacy && !isCancelCredit && updated.lineUserId) {
     const { getSiteConfig } = await import("./config-store");
     const biz = (await getSiteConfig()).business;
     if (biz.pointsOnMemberTopup !== false) {
@@ -2189,19 +2316,40 @@ export async function listAllMemberTopups(): Promise<MemberTopupRecord[]> {
       .select("*")
       .eq("tenant_id", requireTenantId())
       .order("created_at", { ascending: false });
-    return ((data as MemberTopupRow[] | null) || []).map((r) => ({
-      id: r.id,
-      customerId: r.customer_id,
-      paidAmount: Number(r.paid_amount),
-      bonusAmount: Number(r.bonus_amount),
-      creditAdded: Number(r.credit_added),
-      balanceAfter: Number(r.balance_after),
-      note: r.note ?? undefined,
-      createdAt: r.created_at,
-      isLegacy: r.is_legacy ?? false,
-    }));
+    return ((data as MemberTopupRow[] | null) || []).map(rowToTopup);
   }
   return [...memMemberTopups];
+}
+
+/**
+ * รายการ 🔁 ที่แปลงมาจากบิลนี้ (ถ้ามี) — กันกดแปลงบิลเดียวกันซ้ำ และกันยกเลิกการชำระ/ลบบิล
+ * ที่ยอดถูกโอนเป็นเครดิตไปแล้ว (ไม่งั้นลูกค้าได้เครดิตฟรีทั้งที่รายรับถูกถอนออก)
+ */
+export async function findCancelCreditTopup(
+  invoiceId: string
+): Promise<MemberTopupRecord | undefined> {
+  const sb = getSupabase();
+  if (sb) {
+    const { data, error } = await sb
+      .from("member_topups")
+      .select("*")
+      .eq("source_invoice_id", invoiceId)
+      .eq("tenant_id", requireTenantId())
+      .limit(1);
+    const hit = !error ? (data as MemberTopupRow[] | null)?.[0] : undefined;
+    if (hit) return rowToTopup(hit);
+    // ยังไม่มีคอลัมน์ source_invoice_id → หาเลขบิลจากโน้ตแทน (ทางสำรองตอนบันทึก)
+    // + เมนูเดิม "โยกเป็นเครดิต (ลูกค้าไม่มา)" จดไว้ในโน้ตว่า "โยกเป็นเครดิตจากบิล X (ไม่มาใช้บริการ)"
+    const { data: byNote } = await sb
+      .from("member_topups")
+      .select("*")
+      .eq("tenant_id", requireTenantId())
+      .like("note", error ? `%บิล ${invoiceId}%` : `%จากบิล ${invoiceId} (%`)
+      .limit(1);
+    const r = (byNote as MemberTopupRow[] | null)?.[0];
+    return r ? rowToTopup(r) : undefined;
+  }
+  return memMemberTopups.find((t) => t.sourceInvoiceId === invoiceId);
 }
 
 async function listMemberTopups(customerId: string): Promise<MemberTopupRecord[]> {
@@ -2213,17 +2361,7 @@ async function listMemberTopups(customerId: string): Promise<MemberTopupRecord[]
       .eq("customer_id", customerId)
       .eq("tenant_id", requireTenantId())
       .order("created_at", { ascending: false });
-    return ((data as MemberTopupRow[] | null) || []).map((r) => ({
-      id: r.id,
-      customerId: r.customer_id,
-      paidAmount: Number(r.paid_amount),
-      bonusAmount: Number(r.bonus_amount),
-      creditAdded: Number(r.credit_added),
-      balanceAfter: Number(r.balance_after),
-      note: r.note ?? undefined,
-      createdAt: r.created_at,
-      isLegacy: r.is_legacy ?? false,
-    }));
+    return ((data as MemberTopupRow[] | null) || []).map(rowToTopup);
   }
   return memMemberTopups.filter((t) => t.customerId === customerId);
 }
@@ -2457,6 +2595,9 @@ export async function registerCustomerFromLine(data: {
     medical?: string;
     furLength?: "short" | "long";
     color?: string;
+    neutered?: boolean;
+    seizureHistory?: string;
+    allergy?: string;
     weightKg?: number;
     species?: PetSpecies;
     staffNote?: string;
@@ -2476,6 +2617,9 @@ export async function registerCustomerFromLine(data: {
       medical: c.medical?.trim(),
       furLength: c.furLength,
       color: c.color?.trim(),
+      neutered: c.neutered,
+      seizureHistory: c.seizureHistory?.trim(),
+      allergy: c.allergy?.trim(),
       weightKg: c.weightKg,
       species: c.species,
       staffNote: c.staffNote?.trim(),

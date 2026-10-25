@@ -26,6 +26,7 @@ import { summaryFields } from "@/lib/intake-rules";
 import { BOOKING_STATUS_LABELS, type Booking } from "@/lib/business";
 import type { CustomerServiceLog } from "@/lib/customer-service-log";
 import { pastPriceList } from "@/lib/special-price";
+import { lastGroomForPet } from "@/lib/pet-groom-memory";
 import { PastPricesList } from "@/components/PastPrices";
 import { shortItemLabel, summarizeInvoiceItems } from "@/lib/invoice-item-label";
 import { bookingGroupKey, groupBookings } from "@/lib/booking-group";
@@ -41,6 +42,7 @@ import { useConfig, usePetWords } from "@/components/ConfigProvider";
 import { isFeatureOn } from "@/lib/features";
 import { GroomProgramPicker, useGroomPrograms } from "@/components/GroomProgramPicker";
 import { groomProgramName } from "@/lib/grooming-prices";
+import { tidyServiceText } from "@/lib/stay-line";
 import { Avatar, EmptyState, MoreMenu, SearchField, Segmented, SectionLabel } from "@/components/ui";
 
 type Summary = {
@@ -409,11 +411,15 @@ function MemberTopupSection({
   const [msg, setMsg] = useState("");
   // ยอดยกมาจากระบบเก่า — เติมเครดิตให้ลูกค้าจริง แต่ไม่ใช่เงินที่รับเข้าร้านเดือนนี้
   const [isLegacy, setIsLegacy] = useState(false);
+  // 🔁 ยกเลิกนัดแล้วเก็บยอดบิลเป็นเครดิต — เงินเข้าร้าน + แต้มได้ไปแล้วตอนจ่ายบิลเดิม
+  // จึงไม่ลงรายรับ/ไม่ให้แต้มซ้ำ (ถ้าเติมแบบปกติ รายรับกับแต้มจะเบิ้ลจากเงินก้อนเดียว)
+  const [isCancelCredit, setIsCancelCredit] = useState(false);
+  const [sourceInvoiceId, setSourceInvoiceId] = useState("");
   /** ค่าเริ่มต้น = ไม่แจ้ง — ยกยอดเก่าเข้าระบบทีละหลายคนไม่ควรไปกวนลูกค้า */
   const [notify, setNotify] = useState(false);
 
   const paidNum = Math.max(0, Number(paid) || 0);
-  const bonusNum = Math.max(0, Number(bonus) || 0);
+  const bonusNum = isCancelCredit ? 0 : Math.max(0, Number(bonus) || 0);
   const total = paidNum + bonusNum;
 
   const applyPromo = (p: number, b: number) => {
@@ -438,7 +444,9 @@ function MemberTopupSection({
         paidAmount: paidNum,
         bonusAmount: bonusNum,
         note: note.trim() || undefined,
-        isLegacy,
+        isLegacy: isLegacy && !isCancelCredit,
+        isCancelCredit,
+        sourceInvoiceId: isCancelCredit ? sourceInvoiceId.trim() || undefined : undefined,
         notify,
       }),
     });
@@ -449,10 +457,16 @@ function MemberTopupSection({
       setBonus("");
       setNote("");
       setIsLegacy(false);
+      setIsCancelCredit(false);
+      setSourceInvoiceId("");
       setNotify(false);
       setMsg(
         `✅ เติมสำเร็จ +${total.toLocaleString()} บาท (คงเหลือ ${data.customer.memberCredit.toLocaleString()} บาท)` +
-          (isLegacy ? " · ยอดยกมา ไม่นับรายรับเดือนนี้" : "") +
+          (isCancelCredit
+            ? " · 🔁 จากบิลยกเลิกนัด ไม่ลงรายรับ · ไม่ให้แต้มซ้ำ (ได้ไปแล้วตอนจ่ายบิล)"
+            : isLegacy
+              ? " · ยอดยกมา ไม่นับรายรับเดือนนี้"
+              : "") +
           // เงินลงเรียบร้อยเสมอ — ถ้าส่ง LINE ไม่ได้ต้องบอกตรงๆ ไม่ใช่บอกว่าแจ้งแล้ว
           (notify
             ? data.notifyError
@@ -462,7 +476,7 @@ function MemberTopupSection({
       );
       onDone();
     } else {
-      setMsg("❌ บันทึกไม่สำเร็จ");
+      setMsg(data.error && data.error !== "invalid_topup" ? `❌ ${data.error}` : "❌ บันทึกไม่สำเร็จ");
     }
   };
 
@@ -500,7 +514,7 @@ function MemberTopupSection({
 
       <div className="mb-3 grid grid-cols-2 gap-2">
         <label className="block text-[11px] font-bold text-brown-soft">
-          รับเงินจริง (บาท)
+          {isCancelCredit ? "ยอดบิลเดิม (บาท)" : "รับเงินจริง (บาท)"}
           <input
             type="number"
             min={0}
@@ -517,7 +531,8 @@ function MemberTopupSection({
             min={0}
             value={bonus}
             onChange={(e) => setBonus(e.target.value)}
-            placeholder="2000"
+            placeholder={isCancelCredit ? "—" : "2000"}
+            disabled={isCancelCredit}
             className={`mt-1 font-bold text-latte-deep ${inputCls}`}
           />
         </label>
@@ -544,7 +559,10 @@ function MemberTopupSection({
       <div className="mb-3 space-y-2">
         <CheckRow
           checked={isLegacy}
-          onChange={setIsLegacy}
+          onChange={(v) => {
+            setIsLegacy(v);
+            if (v) setIsCancelCredit(false);
+          }}
           icon="clock"
           title="ยอดยกมาจากระบบเก่า"
           sub={
@@ -553,6 +571,28 @@ function MemberTopupSection({
             </>
           }
         />
+        <CheckRow
+          checked={isCancelCredit}
+          onChange={(v) => {
+            setIsCancelCredit(v);
+            if (v) setIsLegacy(false);
+          }}
+          icon="back"
+          title="ยกเลิกนัด เก็บยอดบิลที่จ่ายแล้วเป็นเครดิต"
+          sub={
+            <>
+              <b>ไม่ลงรายรับ ไม่ให้แต้มซ้ำ</b> (ได้ไปแล้วตอนจ่ายบิล) · ทำได้ในคลิกเดียวจากปุ่มที่บิล
+            </>
+          }
+        />
+        {isCancelCredit && (
+          <input
+            value={sourceInvoiceId}
+            onChange={(e) => setSourceInvoiceId(e.target.value)}
+            placeholder="เลขบิลเดิม (ถ้ามี) — โชว์ในประวัติเครดิต"
+            className={inputCls}
+          />
+        )}
         <CheckRow
           checked={notify}
           onChange={setNotify}
@@ -571,9 +611,11 @@ function MemberTopupSection({
         {!saving && <Icon name="plus" size={18} />}
         {saving
           ? "กำลังบันทึก…"
-          : isLegacy
-            ? `บันทึกยอดยกมา +${total > 0 ? total.toLocaleString() : "—"} บาท (ไม่นับรายรับ)`
-            : `บันทึกเติม Member +${total > 0 ? total.toLocaleString() : "—"} บาท`}
+          : isCancelCredit
+            ? `เก็บเป็นเครดิต +${total > 0 ? total.toLocaleString() : "—"} บาท (ไม่นับรายรับ)`
+            : isLegacy
+              ? `บันทึกยอดยกมา +${total > 0 ? total.toLocaleString() : "—"} บาท (ไม่นับรายรับ)`
+              : `บันทึกเติม Member +${total > 0 ? total.toLocaleString() : "—"} บาท`}
       </button>
 
       {msg && (
@@ -1104,7 +1146,7 @@ function PastPricesSection({ log }: { log?: CustomerServiceLog }) {
       <CardHeader
         icon="money"
         title="ราคาที่ลูกค้าคนนี้เคยจ่าย"
-        sub="ราคาต่อครั้งล่าสุดของแต่ละบริการ · ตอนออกบิลระบบจะถามให้ใช้ราคาเดิม"
+        sub="ราคาล่าสุดของน้องแต่ละตัว แยกตามบริการ · ตอนออกบิลระบบจะถามให้ใช้ราคาเดิม"
       />
       <PastPricesList prices={prices} limit={showAll ? undefined : 6} />
       {prices.length > 6 && !showAll && (
@@ -1289,12 +1331,16 @@ function MemberCreditHistorySection({
    * ถ้าลูกค้าใช้เครดิตไปแล้วบางส่วน เซิร์ฟเวอร์จะบล็อกและบอกให้ไปยกเลิกบิลก่อน
    */
   const cancelTopup = async (t: MemberTopupRecord) => {
-    const label = t.isLegacy ? "ยอดยกมา" : "การเติมเครดิต";
+    const label = t.isCancelCredit
+      ? "เครดิตจากบิลยกเลิกนัด"
+      : t.isLegacy
+        ? "ยอดยกมา"
+        : "การเติมเครดิต";
     if (
       !confirm(
         `ยกเลิก${label} +${t.creditAdded.toLocaleString()} บาท?\n` +
           `เครดิตลูกค้าจะถูกหักออก ${t.creditAdded.toLocaleString()} บาท` +
-          (t.isLegacy ? "" : " และลบรายรับที่ลงไว้ด้วย") +
+          (t.isLegacy || t.isCancelCredit ? "" : " และลบรายรับที่ลงไว้ด้วย") +
           "\nกู้คืนไม่ได้"
       )
     )
@@ -1366,19 +1412,43 @@ function MemberCreditHistorySection({
               <li key={row.topup.id} className="py-2.5 pl-3 pr-1.5 text-xs">
                 <div className="flex items-start gap-2">
                   <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ok/15 text-ok">
-                    <Icon name={row.topup.isLegacy ? "clock" : "plus"} size={16} />
+                    <Icon
+                      name={row.topup.isCancelCredit ? "back" : row.topup.isLegacy ? "clock" : "plus"}
+                      size={16}
+                    />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className={`font-bold ${row.topup.isLegacy ? "text-brown" : "text-ok"}`}>
-                      {row.topup.isLegacy ? "ยอดยกมาจากระบบเก่า" : "เติมเครดิต"}
+                    <p
+                      className={`font-bold ${
+                        row.topup.isLegacy || row.topup.isCancelCredit ? "text-brown" : "text-ok"
+                      }`}
+                    >
+                      {row.topup.isCancelCredit
+                        ? "ยกเลิกนัด เก็บยอดเป็นเครดิต"
+                        : row.topup.isLegacy
+                          ? "ยอดยกมาจากระบบเก่า"
+                          : "เติมเครดิต"}
                     </p>
-                    <p className="text-brown-soft">
-                      {row.topup.createdAt.slice(0, 10)} · รับ {row.topup.paidAmount.toLocaleString()} บาท
-                      {row.topup.bonusAmount > 0 && (
-                        <> · แถม {row.topup.bonusAmount.toLocaleString()} บาท</>
-                      )}
-                      {row.topup.isLegacy && <> · ไม่นับรายรับ</>}
-                    </p>
+                    {row.topup.isCancelCredit ? (
+                      <p className="text-brown-soft">
+                        {row.topup.createdAt.slice(0, 10)}
+                        {row.topup.sourceInvoiceId && (
+                          <>
+                            {" · จากบิล "}
+                            <span className="font-bold text-latte-deep">{row.topup.sourceInvoiceId}</span>
+                          </>
+                        )}
+                        {" · ไม่นับรายรับ · ไม่ให้แต้มซ้ำ"}
+                      </p>
+                    ) : (
+                      <p className="text-brown-soft">
+                        {row.topup.createdAt.slice(0, 10)} · รับ {row.topup.paidAmount.toLocaleString()} บาท
+                        {row.topup.bonusAmount > 0 && (
+                          <> · แถม {row.topup.bonusAmount.toLocaleString()} บาท</>
+                        )}
+                        {row.topup.isLegacy && <> · ไม่นับรายรับ</>}
+                      </p>
+                    )}
                     {row.topup.note && (
                       <p className="text-[10px] text-brown-faint">{row.topup.note}</p>
                     )}
@@ -3021,6 +3091,7 @@ export default function CustomersPage() {
       gender?: "male" | "female";
       breed?: string;
       furLength?: "short" | "long";
+      neutered?: boolean;
       color?: string;
       ageValue?: number;
       ageUnit?: "year" | "month";
@@ -3028,6 +3099,8 @@ export default function CustomersPage() {
       birthday?: string;
       medical?: string;
       species?: PetSpecies;
+      seizureHistory?: string;
+      allergy?: string;
     }
   ) => {
     if (!selected) return;
@@ -3161,6 +3234,24 @@ export default function CustomersPage() {
                 />
               </div>
               <p className="-mt-1 px-4 pb-2 text-[10px] text-brown-faint">แตะรูปเพื่อดูเต็มจอ · ปุ่มกล้องเพื่อเปลี่ยนรูป (ลูกค้าเห็นในแอปด้วย)</p>
+              {(() => {
+                // อาบน้ำครั้งล่าสุดของตัวนี้ — ตอนออกบิลระบบจะเลือกแบบเดิมให้เอง
+                const last = lastGroomForPet(
+                  (selected.serviceLog?.bills || []).map((b) => ({ createdAt: b.date, items: b.items })),
+                  cat.name,
+                  c.cats.length === 1
+                );
+                return last ? (
+                  <p className="mx-4 mb-2 flex items-start gap-1.5 rounded-petflow-sm bg-honey/15 px-3 py-2 text-[11px] text-brown">
+                    <Icon name="bath" size={14} />
+                    <span>
+                      อาบครั้งก่อน {last.when ? `(${last.when.slice(0, 10)})` : ""}: {last.programName} · {last.breed}
+                      {last.sizeLabel ? ` · ${last.sizeLabel}` : ""} ·{" "}
+                      <b>฿{last.unitAmount.toLocaleString()}</b>
+                    </span>
+                  </p>
+                ) : null;
+              })()}
 
               <div className="space-y-3 border-t border-petflow-line p-4">
                 {asksSpecies(config) && (
@@ -3194,6 +3285,16 @@ export default function CustomersPage() {
                     options={[
                       { id: "short", label: "ขนสั้น" },
                       { id: "long", label: "ขนยาว" },
+                    ]}
+                  />
+                  <Segmented
+                    value={cat.neutered === true ? "yes" : cat.neutered === false ? "no" : ""}
+                    onChange={(v) => {
+                      if (v) saveCat(cat.id, { neutered: v === "yes" });
+                    }}
+                    options={[
+                      { id: "yes", label: "ทำหมันแล้ว" },
+                      { id: "no", label: "ยังไม่ทำ" },
                     ]}
                   />
                 </div>
@@ -3278,10 +3379,35 @@ export default function CustomersPage() {
                   />
                 </label>
                 <StaffNoteTagPicker
+                  label="โรคประจำตัว / เรื่องที่ช่างต้องรู้"
                   medicalValue={cat.medical || ""}
                   noteValue={cat.staffNote || ""}
                   onChange={(medical, staffNote) => saveCat(cat.id, { medical, staffNote })}
                 />
+                <label className="block text-[11px] font-bold text-brown-soft">
+                  <span className="mb-1 block">ประวัติการชัก/ช็อค</span>
+                  <input
+                    defaultValue={cat.seizureHistory}
+                    placeholder="เช่น ไม่เคย · หรือ เคยชักตอนตกใจ"
+                    className={inputCls}
+                    onBlur={(e) => {
+                      const v = e.target.value.trim();
+                      if (v !== (cat.seizureHistory || "")) saveCat(cat.id, { seizureHistory: v });
+                    }}
+                  />
+                </label>
+                <label className="block text-[11px] font-bold text-brown-soft">
+                  <span className="mb-1 block">ประวัติการแพ้</span>
+                  <input
+                    defaultValue={cat.allergy}
+                    placeholder="เช่น ไม่มี · หรือ แพ้ไก่ แพ้แชมพูบางยี่ห้อ"
+                    className={inputCls}
+                    onBlur={(e) => {
+                      const v = e.target.value.trim();
+                      if (v !== (cat.allergy || "")) saveCat(cat.id, { allergy: v });
+                    }}
+                  />
+                </label>
                 <label className="block rounded-petflow-sm border border-wait/40 bg-wait/5 px-3 py-2.5 text-[11px] font-bold text-wait">
                   <span className="mb-1 flex items-center gap-1.5">
                     <Icon name="eye" size={14} />

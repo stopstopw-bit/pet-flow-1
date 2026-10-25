@@ -28,12 +28,15 @@ type PetForm = {
   breed: string;
   breedOther: string;
   furLength: "" | "short" | "long";
+  neutered: "" | "yes" | "no";
   color: string;
   ageValue: string;
   ageUnit: "year" | "month";
   weightKg: string;
   birthday: string;
   medical: string;
+  seizureHistory: string;
+  allergy: string;
   note: string;
 };
 
@@ -47,12 +50,15 @@ function emptyPet(): PetForm {
     breed: "",
     breedOther: "",
     furLength: "",
+    neutered: "",
     color: "",
     ageValue: "",
     ageUnit: "year",
     weightKg: "",
     birthday: "",
     medical: "",
+    seizureHistory: "",
+    allergy: "",
     note: "",
   };
 }
@@ -176,12 +182,15 @@ export function AddCustomerModal({
           gender: p.gender || undefined,
           breed: (p.breed === OTHER_BREED ? p.breedOther.trim() : p.breed) || undefined,
           furLength: p.furLength || undefined,
+          neutered: p.neutered ? p.neutered === "yes" : undefined,
           color: p.color || undefined,
           ageValue: p.ageValue || undefined,
           ageUnit: p.ageValue ? p.ageUnit : undefined,
           weightKg: p.weightKg || undefined,
           birthday: p.birthday || undefined,
           medical: p.medical || undefined,
+          seizureHistory: p.seizureHistory.trim() || undefined,
+          allergy: p.allergy.trim() || undefined,
           staffNote: p.note || undefined,
         })),
       }),
@@ -385,6 +394,19 @@ export function AddCustomerModal({
                       />
                     </div>
                   </div>
+                  <div className={labelCls}>
+                    ทำหมัน
+                    <div className="mt-1">
+                      <Toggle
+                        value={pet.neutered}
+                        onChange={(neutered) => updatePet(idx, { neutered })}
+                        options={[
+                          ["yes", "ทำหมันแล้ว"],
+                          ["no", "ยังไม่ทำ"],
+                        ]}
+                      />
+                    </div>
+                  </div>
                   <label className={labelCls}>
                     สี/ลักษณะเด่น
                     <input
@@ -444,10 +466,29 @@ export function AddCustomerModal({
                     </div>
                   </div>
                   <StaffNoteTagPicker
+                    label="โรคประจำตัว / เรื่องที่ช่างต้องรู้"
                     medicalValue={pet.medical}
                     noteValue={pet.note}
                     onChange={(medical, note) => updatePet(idx, { medical, note })}
                   />
+                  <label className={labelCls}>
+                    ประวัติการชัก/ช็อค
+                    <input
+                      value={pet.seizureHistory}
+                      onChange={(e) => updatePet(idx, { seizureHistory: e.target.value })}
+                      placeholder="เช่น ไม่เคย · หรือ เคยชักตอนตกใจ"
+                      className={fieldCls}
+                    />
+                  </label>
+                  <label className={labelCls}>
+                    ประวัติการแพ้
+                    <input
+                      value={pet.allergy}
+                      onChange={(e) => updatePet(idx, { allergy: e.target.value })}
+                      placeholder="เช่น ไม่มี · หรือ แพ้ไก่ แพ้แชมพูบางยี่ห้อ"
+                      className={fieldCls}
+                    />
+                  </label>
                   {pets.length > 1 && (
                     <button
                       type="button"

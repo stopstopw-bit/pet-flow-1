@@ -25,7 +25,6 @@ type PendingSend = {
  * ปุ่มลัดบนการ์ดนัด — การ์ดรวมขอข้อมูล (ใบเดียว ปุ่มเฉพาะเรื่องที่ยังขาด) + เตรียมตัวเข้าพัก
  * แล้วตามด้วยปุ่มแจ้งยอดโอน · การ์ดเดี่ยวแต่ละเรื่องยังอยู่ครบในแผ่น "ทีละใบ"
  */
-const QUICK_STEP_KEYS = ["send_intake", "send_prestay"];
 
 /** หัวข้อขอข้อมูลในชุดการ์ด — เลือกหลายหัวข้อรวมเป็นการ์ดใบเดียวหลายปุ่ม (นับ 1 ใบ) */
 const INTAKE_PARTS = new Set(["stayInfo", "groomInfo", "vaccine", "idcard", "consent", "deposit"]);
@@ -101,7 +100,6 @@ export function CustomerSendButtons({
   open,
   onOpenChange,
   hideTrigger,
-  quickSteps,
 }: {
   lineUserId?: string;
   customerId?: string;
@@ -121,8 +119,6 @@ export function CustomerSendButtons({
   onOpenChange?: (open: boolean) => void;
   /** ซ่อนปุ่ม "ส่ง LINE" ของตัวเอง (ใช้คู่กับ open/onOpenChange) */
   hideTrigger?: boolean;
-  /** โชว์ปุ่มลัดตามขั้นตอนรับงาน (ข้อมูลน้อง/สมุดวัคซีน/บัตร/กฎ/ยอดโอน) บนการ์ดนัดเลย ไม่ต้องเปิดแผ่นล่าง */
-  quickSteps?: boolean;
 }) {
   const { config } = useConfig();
   // การ์ดที่ร้านปิดในตั้งค่า › เปิด/ปิดฟีเจอร์ ไม่มีปุ่มให้ส่ง
@@ -154,6 +150,8 @@ export function CustomerSendButtons({
   }, [invoiceId, bookingId]);
 
   const invId = invoiceId || foundInvoiceId;
+  // เรียกเก็บมัดจำได้จากหน้าบิลเท่านั้น (ต้องออกบิลก่อน) — หน้านัดไม่มีปุ่มมัดจำ
+  const canAskDeposit = !bookingId || !!invoiceId;
   // บิลที่มีทั้งอาบน้ำและเข้าพัก (service = "both") ต้องเห็นการ์ดฝั่งเข้าพักด้วย
   const hasRoomStay = service === "room" || service === "both";
   /**
@@ -258,7 +256,7 @@ export function CustomerSendButtons({
   const confirmIntake = () => {
     if (!intakePick) return;
     const { modes } = intakePick;
-    const withDeposit = modes.deposit !== "off";
+    const withDeposit = canAskDeposit && hasRoomStay && modes.deposit !== "off";
     const depositAmount = withDeposit ? Math.max(0, Math.round(Number(intakePick.deposit) || 0)) : 0;
     if (withDeposit && depositAmount <= 0) {
       toast("ใส่ยอดมัดจำ หรือเลือก \"ไม่ส่ง\" ที่มัดจำ", "error");
@@ -298,7 +296,7 @@ export function CustomerSendButtons({
         { key: "consent" as const, label: hasRoomStay ? INTAKE_LABEL.consent : "ข้อตกลงอาบน้ำ + กดยินยอม" },
       ]
     ).filter((o) => hasRoomStay || groomUsesCard(config, o.key)),
-    ...(hasRoomStay
+    ...(hasRoomStay && canAskDeposit
       ? [{ key: "deposit" as const, label: depForBill > 0 ? `มัดจำ (ขอแล้ว ${depForBill.toLocaleString()}฿)` : "มัดจำ" }]
       : []),
     ...(invId && !billPaid
@@ -450,6 +448,8 @@ export function CustomerSendButtons({
         id: bookingId,
         action: "send_bundle",
         parts: bundleParts,
+        // เปิดจากหน้าบิล — ให้เซิร์ฟเวอร์ใช้บิลนี้ตรงๆ (บิลที่ไม่ได้ผูก bookingId หาจากนัดไม่เจอ)
+        invoiceId: invId || undefined,
         depositAmount: depositAmount || undefined,
         lineUserId,
         // บ้านเดียวกัน จองพร้อมกันหลายตัว — ให้การ์ด "แจ้งเตือนนัด" ในชุดรวมชื่อทุกตัวด้วย
@@ -476,7 +476,7 @@ export function CustomerSendButtons({
     { key: "reminder", label: "แจ้งเตือนนัด", when: !!bookingId },
     { key: "checkin", label: "เลือกเวลาเช็คอิน", when: !!bookingId && stayOn("checkin") },
     { key: "checkout", label: "เลือกเวลาเช็คเอาท์", when: !!bookingId && stayOn("checkout") },
-    { key: "deposit", label: "เรียกเก็บมัดจำ", when: true },
+    { key: "deposit", label: "เรียกเก็บมัดจำ", when: canAskDeposit },
     {
       key: "depositThanks",
       label: "ยืนยันรับมัดจำแล้ว",
@@ -527,8 +527,8 @@ export function CustomerSendButtons({
     {
       // ใบเดียวหลายปุ่ม — ระบบดูให้ว่ายังขาดอะไร ครบแล้วไม่ขอซ้ำ
       k: "send_intake",
-      label: "การ์ดขอข้อมูล (เลือกเรื่องได้)",
-      icon: "send",
+      label: "ขอข้อมูลลูกค้า (เลือกรวม/แยกการ์ด)",
+      icon: "inbox",
       when: !!bookingId,
       onClick: sendIntake,
     },
@@ -600,7 +600,7 @@ export function CustomerSendButtons({
       label:
         depForBill > 0 ? `ขอมัดจำแล้ว (${depForBill.toLocaleString()}฿) · ส่งซ้ำ` : "เรียกเก็บมัดจำ",
       icon: "money",
-      when: !!customerId,
+      when: !!customerId && canAskDeposit,
       onClick: depositRequest,
     },
     {
@@ -613,6 +613,7 @@ export function CustomerSendButtons({
     },
     { k: "inv:review", label: "ขอรีวิว", icon: "star", when: !!invId, onClick: sendReview },
   ];
+  const intakeAction = singleActions.find((a) => a.k === "send_intake" && a.when);
 
   // แผ่นล่างเปิด/ปิด — ควบคุมจากข้างนอกได้ (หน้าบิลเปิดจากเมนู ⋯) หรือใช้ปุ่มของตัวเอง
   const [ownOpen, setOwnOpen] = useState(false);
@@ -748,32 +749,6 @@ export function CustomerSendButtons({
         </button>
       )}
 
-      {/* ปุ่มลัดตามขั้นตอน — กดแล้วขึ้นตัวอย่างการ์ดก่อนส่งเหมือนปุ่มอื่น */}
-      {quickSteps && bookingId && (
-        <div className="mt-2 flex flex-wrap gap-2">
-          {[
-            ...QUICK_STEP_KEYS,
-            // นัดอาบน้ำอย่างเดียวไม่มีมัดจำ / เตรียมตัวเข้าพัก — ปุ่มลัดเหลือแค่เรื่องของอาบน้ำ
-            invId && !billPaid ? (hasRemaining ? "inv:remaining" : "inv:full") : stayOk ? "dep" : "",
-          ].map((k) => {
-            const a = singleActions.find((x) => x.k === k && x.when);
-            if (!a) return null;
-            return (
-              <button
-                key={k}
-                type="button"
-                disabled={noLine || busy !== ""}
-                onClick={a.onClick}
-                className="flex min-h-[40px] items-center gap-1.5 rounded-full border border-petflow-line bg-card px-3 py-2 text-xs font-bold text-petflow-chocolate active:bg-paper disabled:opacity-40"
-              >
-                <Icon name={a.icon} size={15} />
-                {busy === k ? "กำลังโหลด…" : a.label}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
       {sheetOpen && (
         <div
           className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 sm:items-center sm:p-3"
@@ -809,6 +784,28 @@ export function CustomerSendButtons({
               </p>
             )}
 
+            {/* ขอข้อมูลลูกค้า — เลือกทีละเรื่องว่า ไม่ส่ง / รวมการ์ด / แยกการ์ด แล้วส่งใน LINE ข้อความเดียว */}
+            {intakeAction && (
+              <button
+                type="button"
+                disabled={noLine || busy !== ""}
+                onClick={() => {
+                  setSheetOpen(false);
+                  intakeAction.onClick();
+                }}
+                className="mb-3 flex min-h-[56px] w-full items-center gap-3 rounded-petflow-sm bg-latte-deep px-3 py-2.5 text-left text-white active:opacity-90 disabled:opacity-40"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/20">
+                  <Icon name={intakeAction.icon} size={18} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-extrabold">ขอข้อมูลลูกค้า</span>
+                  <span className="block text-[11px] font-bold text-white/80">เลือกเรื่อง · รวมการ์ด / แยกการ์ด</span>
+                </span>
+                <Icon name="chevron" size={16} />
+              </button>
+            )}
+
             {tabs.length > 0 && (
               <Segmented value={activeTab} onChange={setTab} options={tabs} className="mb-3" />
             )}
@@ -816,7 +813,7 @@ export function CustomerSendButtons({
             {activeTab === "single" && (
               <ul className="divide-y divide-petflow-line overflow-hidden rounded-petflow-sm border border-petflow-line bg-card">
                 {singleActions
-                  .filter((a) => a.when)
+                  .filter((a) => a.when && a.k !== "send_intake")
                   .map((a) => (
                     <li key={a.k}>
                       <button

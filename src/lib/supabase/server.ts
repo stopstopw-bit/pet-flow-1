@@ -155,3 +155,22 @@ export function getSupabase() {
   }
   return getDirectoryDb();
 }
+
+/**
+ * ดึงทุกแถว ไม่ติดเพดาน 1,000 แถวต่อครั้งของ Supabase — ร้านที่เปิดมานาน นัด/บิล/รายรับเกินพันแถว
+ * แล้วรายการเก่าหายเงียบๆ (หน้าตรวจบิลทั้งร้านต้องเห็นครบ)
+ * page(from, to) = สร้าง query ใหม่ทุกครั้งแล้วต่อ .range(from, to)
+ */
+export async function selectAllRows<T>(
+  page: (from: number, to: number) => PromiseLike<{ data: T[] | null }>,
+  pageSize = 1000
+): Promise<T[]> {
+  const all: T[] = [];
+  for (let from = 0; from < 200_000; from += pageSize) {
+    const { data } = await page(from, from + pageSize - 1);
+    const rows = data || [];
+    all.push(...rows);
+    if (rows.length < pageSize) break;
+  }
+  return all;
+}

@@ -28,3 +28,16 @@ export const INTAKE_CARD_DEFAULTS = {
   depositLabel: "💰 มัดจำที่ต้องโอน",
   copyButton: "📋 คัดลอกเลขบัญชี",
 };
+
+/**
+ * การ์ดแจ้งยอดคงเหลือก่อนเข้าพัก (cards.depositReminder) — แทนข้อความตัวหนังสือแบบเดิม
+ * body ใช้ได้: {shop} {cat} {days} {checkin} {deposit} {remaining}
+ */
+export const DEPOSIT_REMINDER_DEFAULTS = {
+  header: "💳 แจ้งยอดก่อนเข้าพัก",
+  body: "อีก {days} วันถึงวันเข้าพักของ{cat}แล้วนะคะ 🐾\nรบกวนโอนยอดคงเหลือก่อนวันเข้าพัก โอนแล้วแจ้งสลิปในแชทได้เลยค่ะ 🧡",
+  amountLabel: "ยอดคงเหลือที่ต้องโอน",
+  depositPaidLabel: "มัดจำที่ชำระแล้ว",
+  accountNameLabel: "ชื่อบัญชี:",
+  copyButton: "📋 คัดลอกเลขบัญชี",
+};

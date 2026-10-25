@@ -3,6 +3,7 @@ import type { RoomType } from "./business";
 import type { GroomFormConfig } from "./groom-form";
 import type { GroomProgram } from "./grooming-prices";
 import type { RoomClosure } from "./room-board";
+import type { LinePromo } from "./line-discount";
 
 /** บล็อกเนื้อหาหน้ากฎระเบียบการฝาก — ใส่ได้ทั้งรูปและ/หรือข้อความ เรียงตามลำดับที่ตั้งไว้ */
 export type BookingDepositConfig = {
@@ -261,6 +262,8 @@ export type SiteConfig = {
    * ยอดเป็นบาทต่อ 1 การจอง (ทั้งบ้านที่จองพร้อมกัน = 1 ยอด ไม่คูณจำนวนตัว)
    */
   bookingDeposit?: BookingDepositConfig;
+  /** โปรลดเฉพาะรายการ (เช่น ลด 5% เฉพาะห้องพัก/อาบน้ำ ไม่ลดค่ารับ-ส่ง) — เลือกตอนออกบิล */
+  linePromos?: LinePromo[];
   /** ข้อความหัวเรื่อง/ปิดท้าย ของสรุปที่ก๊อป/ส่งให้ลูกค้า (แก้ได้ในตั้งค่า) */
   billing: {
     summaryBookingTitle: string;

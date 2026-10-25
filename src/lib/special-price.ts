@@ -19,6 +19,7 @@ export type PastInvoice = {
     qty?: number;
     unitAmount?: number;
     amount: number;
+    catName?: string;
   }[];
 };
 
@@ -35,6 +36,7 @@ export function priceSignature(label: string): string {
 export function priceLabel(label: string): string {
   return label
     .replace(/^🐱[^·]*·\s*/u, "")
+    .replace(DISCOUNT_TAG, "")
     .replace(/\s*×\s*\d+(\s*คืน)?\s*$/u, "")
     .normalize("NFC")
     .replace(/[\u200B-\u200D\uFEFF]/g, "")
@@ -42,8 +44,15 @@ export function priceLabel(label: string): string {
     .trim();
 }
 
-/** ราคาต่อหน่วยที่คิดจริงของรายการในบิล — บิลเก่าบางใบยังไม่มี unitAmount */
-function unitOf(it: NonNullable<PastInvoice["items"]>[number]): number {
+/** ป้ายส่วนลดรายบรรทัดท้ายชื่อ เช่น "(ลด 50฿)" / "(ลด 10%)" — ไม่ใช่ส่วนของชื่อบริการ */
+const DISCOUNT_TAG = /\s*\(ลด [^)]*\)\s*$/u;
+
+/**
+ * ราคาต่อหน่วยที่ลูกค้าจ่ายจริงของรายการในบิล — บิลเก่าบางใบยังไม่มี unitAmount
+ * บรรทัดที่มีส่วนลด unitAmount คือราคาก่อนลด จึงหารจากยอดหลังลดแทน
+ */
+export function unitOf(it: NonNullable<PastInvoice["items"]>[number]): number {
+  if (DISCOUNT_TAG.test(it.label)) return Math.round(it.amount / Math.max(1, it.qty || 1));
   return typeof it.unitAmount === "number"
     ? it.unitAmount
     : it.qty && it.qty > 0
@@ -64,7 +73,9 @@ export type SpecialPriceHit = {
 export function findLastPrice(
   invoices: PastInvoice[],
   customerId: string,
-  signature: string
+  signature: string,
+  /** น้องตัวนี้ — ถ้าส่งมา จะหาราคาที่ตัวนี้เคยจ่ายก่อน ไม่เจอค่อยใช้ราคาของทั้งบ้าน */
+  preferItem?: (item: NonNullable<PastInvoice["items"]>[number]) => boolean
 ): SpecialPriceHit | null {
   if (!customerId || !signature) return null;
 
@@ -72,16 +83,20 @@ export function findLastPrice(
     .filter((i) => i.customerId === customerId)
     .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
 
-  for (const inv of mine) {
-    for (const it of inv.items || []) {
-      if (it.kind === "freebie") continue;
-      if (priceSignature(it.label) !== signature) continue;
-      const unit = unitOf(it);
-      if (!unit || unit <= 0) continue;
-      return { unitAmount: unit, when: inv.createdAt };
+  const scan = (only?: typeof preferItem): SpecialPriceHit | null => {
+    for (const inv of mine) {
+      for (const it of inv.items || []) {
+        if (it.kind === "freebie") continue;
+        if (only && !only(it)) continue;
+        if (priceSignature(it.label) !== signature) continue;
+        const unit = unitOf(it);
+        if (!unit || unit <= 0) continue;
+        return { unitAmount: unit, when: inv.createdAt };
+      }
     }
-  }
-  return null;
+    return null;
+  };
+  return (preferItem && scan(preferItem)) || scan();
 }
 
 export type PastPrice = {
@@ -97,7 +112,7 @@ export type PastPrice = {
 };
 
 /**
- * สรุป "ราคาที่ลูกค้าคนนี้เคยจ่าย" แยกตามบริการ — ใช้โชว์ในหน้าลูกค้าและตอนจองคิว
+ * สรุป "ราคาที่ลูกค้าคนนี้เคยจ่าย" แยกตามน้องแต่ละตัว + บริการ — ใช้โชว์ในหน้าลูกค้าและตอนจองคิว
  * ไม่นับของแถม/ราคา 0 และไม่นับสินค้าหน้าร้าน (ราคาสินค้าตายตัว ไม่ใช่ราคาที่ตกลงกัน)
  * เรียงบริการที่ใช้ล่าสุดขึ้นก่อน
  */
@@ -114,13 +129,16 @@ export function pastPriceList(invoices: PastInvoice[], customerId?: string): Pas
       if (it.kind === "freebie" || it.kind === "product") continue;
       const unit = unitOf(it);
       if (!unit || unit <= 0) continue;
-      const signature = priceSignature(it.label);
-      if (!signature) continue;
+      const sig = priceSignature(it.label);
+      if (!sig) continue;
+      // แยกรายตัว — น้องสองตัวในบ้านเดียวกันอาจได้ราคาไม่เท่ากัน
+      const pet = (it.catName || it.label.match(/^🐱([^·]*)·/u)?.[1] || "").trim();
+      const signature = pet ? `${pet.toLowerCase()}|${sig}` : sig;
       const hit = bySig.get(signature);
       if (!hit) {
         bySig.set(signature, {
           signature,
-          label: priceLabel(it.label),
+          label: pet ? `🐱 ${pet} · ${priceLabel(it.label)}` : priceLabel(it.label),
           unitAmount: unit,
           when: inv.createdAt,
           times: 1,

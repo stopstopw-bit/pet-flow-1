@@ -18,6 +18,7 @@ type Row = {
 const ACTION_LABEL: Record<string, string> = {
   mark_paid: "รับเงิน / ปิดบิล",
   delete_invoice: "ลบบิล",
+  cancel_to_credit: "ยกเลิกนัด เก็บเป็นเครดิต",
   add_points: "เพิ่มแต้ม",
   reduce_points: "ลดแต้ม",
   delete_points_history: "ลบประวัติแต้ม",
@@ -30,6 +31,7 @@ const ACTION_LABEL: Record<string, string> = {
 const ACTION_ICON: Record<string, string> = {
   mark_paid: "money",
   delete_invoice: "trash",
+  cancel_to_credit: "wallet",
   add_points: "star",
   reduce_points: "star",
   delete_points_history: "trash",

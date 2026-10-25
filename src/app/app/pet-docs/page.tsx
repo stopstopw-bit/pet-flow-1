@@ -14,6 +14,7 @@ import { MAX_VACCINE_PHOTOS, splitVaccinePhotos } from "@/lib/vaccine-photos";
 import { idCardPurpose, watermarkIdCard } from "@/lib/id-card-watermark";
 import { IntakeFlowBar } from "@/components/IntakeFlowBar";
 import { flowProgress } from "@/lib/intake-flow";
+import { customerFetch } from "@/lib/customer-fetch";
 
 type StayBooking = Booking & { checkin?: string; room?: string; vaccinePhotoUrl?: string };
 
@@ -76,7 +77,7 @@ function PetDocsContent() {
               setBookings(list.filter((b) => wanted.includes(b.id)));
             })
         : Promise.resolve(),
-      fetch(`/api/customers/self?${q}`)
+      customerFetch(`/api/customers/self?${q}`)
         .then((r) => r.json())
         .then((d) => setCats(d?.customer?.cats || [])),
     ])
@@ -311,7 +312,7 @@ function IdCardSection({ stay }: { stay?: StayBooking }) {
   useEffect(() => {
     if (!profile?.lineUserId) return;
     const q = new URLSearchParams({ lineUserId: profile.lineUserId });
-    fetch(`/api/customers/self?${q}`)
+    customerFetch(`/api/customers/self?${q}`)
       .then((r) => r.json())
       .then((d) => setIdCardUrl(d?.customer?.idCardUrl || ""))
       .catch(() => {});
@@ -326,7 +327,7 @@ function IdCardSection({ stay }: { stay?: StayBooking }) {
     setBusy(true);
     try {
       const image = await watermarkIdCard(file, undefined, config.business.name);
-      const res = await fetch("/api/customers/id-card", {
+      const res = await customerFetch("/api/customers/id-card", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lineUserId: profile.lineUserId, image }),
