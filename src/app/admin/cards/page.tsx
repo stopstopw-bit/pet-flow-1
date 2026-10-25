@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { CardStyleConfig } from "@/lib/config-types";
 import {
-  GROOM_FORM_DEFAULTS,
+  groomFormDefaults,
   resolveGroomForm,
   type GroomFormConfig,
 } from "@/lib/groom-form";
@@ -1582,6 +1582,8 @@ export default function CardsStudioPage() {
   const [cards, setCards] = useState<Record<string, CardStyleConfig>>({});
   const [texts, setTexts] = useState<Record<string, string>>({});
   const [groomForm, setGroomForm] = useState<GroomFormConfig>({});
+  // ร้านหมาเห็นตัวเลือกหน้าคน/คำถามของหมา เหมือนที่ลูกค้าเห็นจริง
+  const [petKind, setPetKind] = useState<string | undefined>();
   const [branding, setBranding] = useState(BRAND_FALLBACK);
   const [hasBrand, setHasBrand] = useState(false);
   const [activeKey, setActiveKey] = useState(CARDS[0].key);
@@ -1601,6 +1603,7 @@ export default function CardsStudioPage() {
         const cfg = d.config || {};
         setCards(cfg.cards || {});
         setGroomForm(cfg.groomForm || {});
+        setPetKind(cfg.business?.petKind);
         setBranding({ ...BRAND_FALLBACK, ...cfg.branding });
         setHasBrand(Boolean(cfg.branding?.primary));
         setTexts({
@@ -1816,7 +1819,7 @@ export default function CardsStudioPage() {
           {/* ── ตัวแก้คำถามฟอร์มประวัติน้อง ── */}
           {activeKey === "groomFormFields" && (
             <div className="space-y-3">
-              {GROOM_FORM_DEFAULTS.map((def) => {
+              {groomFormDefaults(petKind).map((def) => {
                 const c = groomForm[def.key] || {};
                 const enabled = c.enabled ?? def.enabled;
                 const required = c.required ?? def.required;
@@ -2228,7 +2231,7 @@ export default function CardsStudioPage() {
               <div className="rounded-petflow bg-[#fdfaf4] p-3">
                 <p className="text-sm font-extrabold text-[#4a3a12]">🩺 ประวัติน้องก่อนอาบน้ำ</p>
                 <p className="mt-0.5 text-[10px] text-[#8a7a5c]">🐾 Soju</p>
-                {resolveGroomForm(groomForm).map((fd) => (
+                {resolveGroomForm(groomForm, petKind).map((fd) => (
                   <div key={fd.key} className="mt-2.5">
                     <p className="mb-1 text-[10px] font-bold text-[#6b5c40]">
                       {fd.label}
