@@ -291,6 +291,8 @@ export async function setPackageOfferImage(id: string, image: string) {
   if (image) {
     try {
       imageUrl = await uploadDataUrlToStorage(`package-offers/${id}.jpg`, image);
+      // ไฟล์ชื่อเดิมถูกเขียนทับ — ต่อ ?v= ให้แอปลูกค้าไม่ค้างรูปเก่าจากแคช
+      if (/^https?:/.test(imageUrl)) imageUrl = `${imageUrl.split("?")[0]}?v=${Date.now()}`;
     } catch {
       return { ok: false as const, error: "upload_failed" };
     }

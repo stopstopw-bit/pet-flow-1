@@ -241,7 +241,7 @@ export function PackageShopSection() {
                     )}
                   </p>
                   {o.description && (
-                    <p className="mt-1 text-[10px] leading-relaxed text-brown-faint">
+                    <p className="mt-1 whitespace-pre-line text-[10px] leading-relaxed text-brown-faint">
                       {o.description}
                     </p>
                   )}
