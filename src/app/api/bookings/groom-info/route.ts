@@ -14,7 +14,7 @@ import { parseGroomInfo, groomInfoSummary } from "@/lib/groom-info";
 import { getSiteConfig } from "@/lib/config-store";
 import { isFeatureOn } from "@/lib/features";
 import { intakeFields, sanitizeIntakeInfo } from "@/lib/intake-rules";
-import { requireCustomerSession } from "@/lib/customer-session";
+import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 import { petKindOf, speciesOf } from "@/lib/pet-kind";
 import { BATH_SHARED_WITH_STAY } from "@/lib/stay-form";
 
@@ -64,7 +64,7 @@ async function needsBathPart(
 async function getHandler(req: NextRequest) {
   const session = await requireCustomerSession(req);
   if (!session) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return noCustomerSessionResponse();
   }
   const sp = req.nextUrl.searchParams;
   const id = sp.get("id")?.trim() || "";
@@ -100,7 +100,7 @@ async function getHandler(req: NextRequest) {
 async function postHandler(req: NextRequest) {
   const session = await requireCustomerSession(req);
   if (!session) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return noCustomerSessionResponse();
   }
   const body = await req.json().catch(() => ({}));
   const bookingId = String(body.bookingId || "").trim();

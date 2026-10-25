@@ -6,7 +6,7 @@ import { pushLineMessage, buildPointsAwardFlex } from "@/lib/line";
 import { getSiteConfig } from "@/lib/config-store";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { withResolvedTenant, withTenant } from "@/lib/tenant-context";
-import { requireCustomerSession } from "@/lib/customer-session";
+import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 import { logAudit } from "@/lib/audit-log";
 import { requireTenantId } from "@/lib/tenant-context";
 
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
 async function handleCustomerGet(req: NextRequest) {
   const customerSession = await requireCustomerSession(req);
   if (!customerSession) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return noCustomerSessionResponse();
   }
   return handleGet(req, customerSession.lineUserId);
 }
@@ -182,7 +182,7 @@ async function handlePost(req: NextRequest, isAdmin: boolean) {
   if (!isAdmin) {
     const customerSession = await requireCustomerSession(req);
     if (!customerSession) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      return noCustomerSessionResponse();
     }
     lineUserId = customerSession.lineUserId;
   }

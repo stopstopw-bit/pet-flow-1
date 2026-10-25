@@ -57,6 +57,7 @@ import { SpeciesPicker } from "@/components/SpeciesPicker";
 import { isFeatureOn } from "@/lib/features";
 import { referralReward } from "@/lib/referral";
 import { StaffNoteTagPicker } from "@/components/StaffNoteTagPicker";
+import { customerFetch } from "@/lib/customer-fetch";
 
 function emptyCat(): CatInput {
   return {
@@ -226,7 +227,7 @@ export default function RegisterPage() {
     setError("");
 
     try {
-      const res = await fetch("/api/customers/register", {
+      const res = await customerFetch("/api/customers/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -284,7 +285,7 @@ export default function RegisterPage() {
           .find((sc) => !used.has(sc.id) && sc.name.trim() === c.name.trim());
         if (!match) continue;
         used.add(match.id);
-        await fetch("/api/customers/cat-photo", {
+        await customerFetch("/api/customers/cat-photo", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ catId: match.id, photoDataUrl: c.photo }),

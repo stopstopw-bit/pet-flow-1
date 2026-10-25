@@ -21,6 +21,7 @@ import { Icon } from "@/components/Icon";
 import { MAX_VACCINE_PHOTOS } from "@/lib/vaccine-photos";
 import { idCardPurpose, watermarkIdCard } from "@/lib/id-card-watermark";
 import { isFeatureOn } from "@/lib/features";
+import { customerFetch } from "@/lib/customer-fetch";
 
 type StayBooking = Booking & {
   checkin?: string;
@@ -185,7 +186,7 @@ function ConsentContent() {
   useEffect(() => {
     if (!profile?.lineUserId) return;
     const q = new URLSearchParams({ lineUserId: profile.lineUserId });
-    fetch(`/api/customers/self?${q}`)
+    customerFetch(`/api/customers/self?${q}`)
       .then((r) => r.json())
       .then((d) => {
         const url = d?.customer?.idCardUrl || "";
@@ -205,7 +206,7 @@ function ConsentContent() {
     setIdCardBusy(true);
     try {
       const image = await watermarkIdCard(file, undefined, config.business.name);
-      const res = await fetch("/api/customers/id-card", {
+      const res = await customerFetch("/api/customers/id-card", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lineUserId: profile.lineUserId, image }),
