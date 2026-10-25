@@ -80,7 +80,7 @@ export function buildCheckinBodyText(
       shop: cfg.business.name,
       cat: politeCat(b.catName),
       checkin,
-      room: b.room ? `🏠 ห้อง: ${b.room}` : "",
+      room: b.room ? `🏠 ห้อง: ${roomName(b.room, cfg)}` : "",
       litterNote: "",
     }),
     checkin
@@ -278,6 +278,11 @@ export function buildConsentInviteText(
   return `${invite}\n\n${DEEMED_CONSENT_NOTICE}`;
 }
 
+/** ชื่อห้องที่ลูกค้าเห็น (เช่น "ห้องหมาเล็ก (Small)") — ในนัดเก็บเป็นรหัสห้อง เช่น mini-meow */
+export function roomName(id: string, cfg: Pick<SiteConfig, "rooms">): string {
+  return cfg.rooms?.find((r) => r.id === id)?.name || id;
+}
+
 /** ห้องที่ทรายแมวฟรีมีเงื่อนไขจำนวนคืนขั้นต่ำ — ห้องอื่นๆ แถมทรายให้ตลอดการเข้าพักไม่ว่าจะกี่คืน */
 const ROOMS_WITH_LITTER_MIN_NIGHTS = ["mini-meow", "mid-cozy"];
 
@@ -317,7 +322,7 @@ export function buildPrestayBodyText(
     cat: politeCat(b.catName),
     checkin: b.checkin || b.date || "",
     checkout: b.checkout ? `→ ${b.checkout}` : "",
-    room: b.room ? `🏠 ห้อง: ${b.room}` : "",
+    room: b.room ? `🏠 ห้อง: ${roomName(b.room, cfg)}` : "",
     litterNote: litterNoteFor(b, cfg),
     consentUrl: "",
   });
@@ -340,7 +345,7 @@ export function buildPrestayFlexData(
     catName: b.catName,
     petEmoji: petWords(cfg).emoji,
     dateText,
-    room: b.room,
+    room: b.room ? roomName(b.room, cfg) : undefined,
     intro: renderTemplate(msg.prestayIntro ?? DEFAULT_MESSAGES.prestayIntro, {
       shop: cfg.business.name,
       cat: politeCat(b.catName),
@@ -367,7 +372,7 @@ export function buildPrestayReminderText(
     cat: politeCat(b.catName),
     checkin: b.checkin || b.date || "",
     checkout: b.checkout ? `→ ${b.checkout}` : "",
-    room: b.room ? `🏠 ห้อง: ${b.room}` : "",
+    room: b.room ? `🏠 ห้อง: ${roomName(b.room, cfg)}` : "",
     consentUrl,
   });
   const invite = buildConsentInviteText(b, cfg, consentUrl);
