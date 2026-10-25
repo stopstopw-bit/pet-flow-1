@@ -27,6 +27,7 @@ type CatInput = {
   breed: string;
   breedOther: string;
   furLength: "" | "short" | "long";
+  neutered: "" | "yes" | "no";
   color: string;
   ageValue: string;
   ageUnit: "year" | "month";
@@ -34,16 +35,24 @@ type CatInput = {
   weightKg: string;
   /** ลูกค้าติ๊ก "ไม่ทราบน้ำหนัก" — ไม่ต้องกรอกช่องน้ำหนัก */
   weightUnknown: boolean;
+  /** ลูกค้าติ๊ก "ไม่ทราบอายุ/วันเกิด" — ไม่ต้องกรอกอายุ */
+  ageUnknown: boolean;
   birthday: string;
   medical: string;
+  seizureHistory: string;
+  allergy: string;
   note: string;
   /** รูปน้อง (JPEG data URL) — อัปขึ้นหลังสมัครเสร็จ เพราะต้องรู้ id แมวก่อน */
   photo?: string;
+  /** คำตอบประวัติน้อง (ร้านเปิดให้หน้าสมัครถามประวัติ) */
+  history: IntakeAnswers;
 };
 
 import { OTHER_BREED } from "@/lib/cat-breeds";
 import { REFERRAL_OPTIONS } from "@/lib/referral-options";
-import { asksSpecies, breedOptionsForSpecies, petWords, speciesWords, type PetSpecies } from "@/lib/pet-kind";
+import { asksSpecies, breedOptionsForSpecies, petKindOf, petWords, speciesWords, type PetSpecies } from "@/lib/pet-kind";
+import { registerHistoryFields, type IntakeAnswers } from "@/lib/intake-rules";
+import { IntakeFieldsInput, intakeAnswerEmpty } from "@/components/IntakeFieldsInput";
 import { SpeciesPicker } from "@/components/SpeciesPicker";
 import { isFeatureOn } from "@/lib/features";
 import { referralReward } from "@/lib/referral";
@@ -56,14 +65,19 @@ function emptyCat(): CatInput {
     breed: "",
     breedOther: "",
     furLength: "",
+    neutered: "",
     color: "",
     ageValue: "",
     ageUnit: "year",
     weightKg: "",
     weightUnknown: false,
+    ageUnknown: false,
     birthday: "",
     medical: "",
+    seizureHistory: "",
+    allergy: "",
     note: "",
+    history: {},
   };
 }
 
@@ -95,6 +109,11 @@ export default function RegisterPage() {
   const [sameContact, setSameContact] = useState(true);
   const useCompanyContact = isCompany && sameContact;
   const [cats, setCats] = useState<CatInput[]>([emptyCat()]);
+  /** ประวัติที่ร้านให้ถามตอนสมัคร — ตามชนิดของน้องแต่ละตัว (ร้านแมวไม่มีฟอร์มนี้ = ไม่ถาม) */
+  const historyFor = (c: CatInput) => registerHistoryFields(c.species || petKindOf(config), config);
+  const ownerHistory = cats.map(historyFor).find((h) => h && h.owner.length > 0)?.owner || [];
+  const [ownerAnswers, setOwnerAnswers] = useState<IntakeAnswers>({});
+  const [attempted, setAttempted] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [referralCode, setReferralCode] = useState("");
@@ -141,8 +160,9 @@ export default function RegisterPage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profile?.lineUserId) return;
+    setAttempted(true);
 
-    // บังคับกรอกให้ครบทุกช่อง (ยกเว้นรูป/วันเกิดน้อง/โรคประจำตัว) — ไม่อยากได้ตัวไหนให้กดลบออก
+    // บังคับกรอกให้ครบทุกช่อง (ยกเว้นรูป/สี/อายุ/วันเกิดน้อง/โรคประจำตัว) — ไม่อยากได้ตัวไหนให้กดลบออก
     const catProblem = (c: CatInput, n: string): string => {
       if (askSpecies && !c.species) return `เลือกว่าน้อง${n}เป็นหมาหรือแมวด้วยนะคะ`;
       const pw = speciesWords(c.species || undefined, config);
@@ -151,12 +171,21 @@ export default function RegisterPage() {
       if (!c.breed || (c.breed === OTHER_BREED && !c.breedOther.trim()))
         return `เลือกสายพันธุ์น้อง${pw.th}${n}ด้วยนะคะ`;
       if (!c.furLength) return `เลือกลักษณะขนน้อง${pw.th}${n}ด้วยนะคะ`;
-      if (!c.color.trim()) return `กรอกสี/ลักษณะเด่นน้อง${pw.th}${n}ด้วยนะคะ`;
-      if (!c.ageValue) return `กรอกอายุน้อง${pw.th}${n}ด้วยนะคะ`;
+      if (!c.neutered) return `เลือกว่าน้อง${pw.th}${n}ทำหมันแล้วหรือยังด้วยนะคะ`;
       if (!c.weightUnknown && !(Number(c.weightKg) > 0))
         return `กรอกน้ำหนักน้อง${pw.th}${n} หรือติ๊ก "ไม่ทราบ" ด้วยนะคะ`;
+      const h = historyFor(c);
+      if (h) {
+        const miss = h.pet.find((f) => f.required && intakeAnswerEmpty(c.history[f.key]));
+        if (miss) return `ตอบ "${miss.label.split(" — ")[0]}" ของน้อง${pw.th}${n}ด้วยนะคะ`;
+      }
       return "";
     };
+    const ownerMiss = ownerHistory.find((f) => f.required && intakeAnswerEmpty(ownerAnswers[f.key]));
+    if (ownerMiss) {
+      setError(`กรอก "${ownerMiss.label.split(" — ")[0]}" ด้วยนะคะ`);
+      return;
+    }
     for (let i = 0; i < cats.length; i++) {
       const problem = catProblem(cats[i], cats.length > 1 ? ` ตัวที่ ${i + 1}` : "");
       if (problem) {
@@ -205,7 +234,7 @@ export default function RegisterPage() {
           name: contact.name,
           phone: contact.phone,
           address: contact.address,
-          email,
+          email: ownerHistory.length ? undefined : email,
           birthday: isCompany ? undefined : birthday,
           referralSource: referral,
           referralCode: (referralOn && hasReferralCode && referralCode.trim()) || undefined,
@@ -221,14 +250,18 @@ export default function RegisterPage() {
               breed:
                 (c.breed === OTHER_BREED ? c.breedOther.trim() : c.breed) ||
                 undefined,
-              ageValue: c.ageValue ? Number(c.ageValue) : undefined,
-              ageUnit: c.ageUnit,
+              ageValue: !c.ageUnknown && c.ageValue ? Number(c.ageValue) : undefined,
+              ageUnit: !c.ageUnknown && c.ageValue ? c.ageUnit : undefined,
               weightKg: !c.weightUnknown && c.weightKg ? Number(c.weightKg) : undefined,
-              birthday: c.birthday || undefined,
+              birthday: (!c.ageUnknown && c.birthday) || undefined,
               medical: c.medical || undefined,
+              seizureHistory: c.seizureHistory.trim() || undefined,
+              allergy: c.allergy.trim() || undefined,
               furLength: c.furLength || undefined,
+              neutered: c.neutered ? c.neutered === "yes" : undefined,
               color: c.color || undefined,
               staffNote: c.note || undefined,
+              history: historyFor(c) ? { ...ownerAnswers, ...c.history } : undefined,
             })),
         }),
       });
@@ -317,23 +350,25 @@ export default function RegisterPage() {
           <>
             <label className="block">
               <span className="mb-1 block text-xs font-bold text-brown">
-                {isCompany ? "ชื่อผู้ติดต่อ" : "ชื่อผู้ปกครอง"}{" "}
-                <span className="font-normal text-brown-faint">
-                  (ชื่อเล่นหรือชื่อจริงก็ได้นะคะ)
-                </span>
+                {isCompany ? "ชื่อผู้ติดต่อ" : ownerHistory.length ? "ชื่อจริง-นามสกุล" : "ชื่อผู้ปกครอง"}{" "}
+                {!ownerHistory.length && (
+                  <span className="font-normal text-brown-faint">
+                    (ชื่อเล่นหรือชื่อจริงก็ได้นะคะ)
+                  </span>
+                )}
               </span>
               <input
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="เช่น คุณมาย"
+                placeholder={ownerHistory.length ? "เช่น สมใจ ใจดี" : "เช่น คุณมาย"}
                 className={fieldClass}
               />
             </label>
 
             <label className="block">
               <span className="mb-1 block text-xs font-bold text-brown">
-                {isCompany ? "เบอร์ผู้ติดต่อ" : "เบอร์โทร"}
+                {isCompany ? "เบอร์ผู้ติดต่อ" : ownerHistory.length ? "เบอร์หลัก" : "เบอร์โทร"}
               </span>
               <input
                 required
@@ -347,18 +382,33 @@ export default function RegisterPage() {
           </>
         )}
 
-        <div className={isCompany ? "" : "grid grid-cols-2 gap-3"}>
-          <label className="block">
-            <span className="mb-1 block text-xs font-bold text-brown">อีเมล</span>
-            <input
-              required
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@email.com"
-              className={fieldClass}
+        {ownerHistory.length > 0 && (
+          <div className="space-y-3">
+            <IntakeFieldsInput
+              fields={ownerHistory}
+              answers={ownerAnswers}
+              onChange={(k, v) => setOwnerAnswers((a) => ({ ...a, [k]: v }))}
+              showMissing={attempted}
+              inputClass={fieldClass}
             />
-          </label>
+          </div>
+        )}
+
+        {/* ร้านที่ถามประวัติตอนสมัคร (เช่น Back Home) ไม่ขออีเมล — ลิสต์ของร้านไม่มี */}
+        <div className={isCompany || ownerHistory.length ? "" : "grid grid-cols-2 gap-3"}>
+          {!ownerHistory.length && (
+            <label className="block">
+              <span className="mb-1 block text-xs font-bold text-brown">อีเมล</span>
+              <input
+                required
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@email.com"
+                className={fieldClass}
+              />
+            </label>
+          )}
           {!isCompany && (
             <label className="block">
               <span className="mb-1 block text-xs font-bold text-brown">
@@ -549,37 +599,98 @@ export default function RegisterPage() {
                     ))}
                   </div>
                 </div>
+                <div>
+                  <span className="mb-1 block text-[11px] font-bold text-brown-soft">
+                    ทำหมัน
+                  </span>
+                  <div className="flex gap-1 rounded-full bg-paper p-1">
+                    {(
+                      [
+                        ["yes", "ทำหมันแล้ว"],
+                        ["no", "ยังไม่ทำ"],
+                      ] as const
+                    ).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => updateCat(idx, { neutered: value })}
+                        aria-pressed={cat.neutered === value}
+                        className={`min-h-[40px] flex-1 rounded-full text-sm font-bold transition ${
+                          cat.neutered === value
+                            ? "bg-card text-petflow-chocolate shadow-petflow-sm"
+                            : "text-brown-soft"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <input
-                  required
                   value={cat.color}
                   onChange={(e) => updateCat(idx, { color: e.target.value })}
-                  placeholder="สี/ลักษณะเด่น เช่น สีขาวสลับดำ มีจุดที่หู"
+                  placeholder="สี/ลักษณะเด่น (ไม่บังคับ) เช่น สีขาวสลับดำ"
                   className={subFieldClass}
                 />
-                <div className="flex gap-2">
-                  <input
-                    required
-                    type="number"
-                    min="0"
-                    inputMode="numeric"
-                    value={cat.ageValue}
-                    onChange={(e) => updateCat(idx, { ageValue: e.target.value })}
-                    placeholder="อายุ"
-                    className="min-h-[44px] min-w-0 flex-1 rounded-xl border border-petflow-line bg-paper px-3 py-2 text-sm"
-                  />
-                  <select
-                    value={cat.ageUnit}
-                    onChange={(e) =>
-                      updateCat(idx, {
-                        ageUnit: e.target.value as "year" | "month",
-                      })
-                    }
-                    className="min-h-[44px] w-24 shrink-0 rounded-xl border border-petflow-line bg-paper px-3 py-2 text-sm"
-                  >
-                    <option value="year">ปี</option>
-                    <option value="month">เดือน</option>
-                  </select>
+                <div className="text-[11px] font-bold text-brown-soft">
+                  อายุ <span className="font-normal text-brown-faint">(ไม่บังคับ)</span>
+                  <div className="mt-0.5 flex items-center gap-2">
+                    <input
+                      disabled={cat.ageUnknown}
+                      type="number"
+                      min="0"
+                      inputMode="numeric"
+                      value={cat.ageUnknown ? "" : cat.ageValue}
+                      onChange={(e) => updateCat(idx, { ageValue: e.target.value })}
+                      placeholder={cat.ageUnknown ? "ไม่ทราบอายุ" : "อายุ"}
+                      className={`${subFieldClass} min-w-0 flex-1 disabled:opacity-50`}
+                    />
+                    {!cat.ageUnknown && (
+                      <select
+                        value={cat.ageUnit}
+                        onChange={(e) =>
+                          updateCat(idx, {
+                            ageUnit: e.target.value as "year" | "month",
+                          })
+                        }
+                        className="min-h-[44px] w-20 shrink-0 rounded-xl border border-petflow-line bg-paper px-3 py-2 text-sm font-normal text-brown"
+                      >
+                        <option value="year">ปี</option>
+                        <option value="month">เดือน</option>
+                      </select>
+                    )}
+                    <label className="flex min-h-[44px] shrink-0 cursor-pointer items-center gap-1.5 text-xs font-bold text-brown">
+                      <input
+                        type="checkbox"
+                        checked={cat.ageUnknown}
+                        onChange={(e) =>
+                          updateCat(idx, {
+                            ageUnknown: e.target.checked,
+                            ageValue: "",
+                            birthday: "",
+                          })
+                        }
+                        className="h-5 w-5 accent-latte-deep"
+                      />
+                      ไม่ทราบ
+                    </label>
+                  </div>
                 </div>
+                {!cat.ageUnknown && (
+                  <div className="text-[11px] font-bold text-brown-soft">
+                    วันเกิดน้อง{pw.th}{" "}
+                    <span className="font-normal text-brown-faint">
+                      (ถ้าทราบ · ไม่บังคับ)
+                    </span>
+                    <div className="mt-0.5">
+                      <BirthdayPicker
+                        value={cat.birthday}
+                        onChange={(iso) => updateCat(idx, { birthday: iso })}
+                        yearsBack={25}
+                      />
+                    </div>
+                  </div>
+                )}
                 <div className="text-[11px] font-bold text-brown-soft">
                   น้ำหนัก <span className="font-normal text-brown-faint">(กก.)</span>
                   <div className="mt-0.5 flex items-center gap-2">
@@ -608,25 +719,50 @@ export default function RegisterPage() {
                     </label>
                   </div>
                 </div>
-                <div className="text-[11px] font-bold text-brown-soft">
-                  วันเกิดน้อง{pw.th}{" "}
-                  <span className="font-normal text-brown-faint">
-                    (ถ้าทราบ · ไม่บังคับ)
-                  </span>
-                  <div className="mt-0.5">
-                    <BirthdayPicker
-                      value={cat.birthday}
-                      onChange={(iso) => updateCat(idx, { birthday: iso })}
-                      yearsBack={25}
-                    />
-                  </div>
-                </div>
 
                 <StaffNoteTagPicker
+                  label="โรคประจำตัว / เรื่องที่ช่างต้องรู้"
                   medicalValue={cat.medical}
                   noteValue={cat.note}
                   onChange={(medical, note) => updateCat(idx, { medical, note })}
                 />
+                <label className="block text-[11px] font-bold text-brown-soft">
+                  ประวัติการชัก/ช็อค <span className="font-normal text-brown-faint">(ไม่มีเว้นว่างได้)</span>
+                  <input
+                    value={cat.seizureHistory}
+                    onChange={(e) => updateCat(idx, { seizureHistory: e.target.value })}
+                    placeholder="เช่น ไม่เคย · หรือ เคยชักตอนตกใจ"
+                    className={`${subFieldClass} mt-0.5 font-normal text-brown`}
+                  />
+                </label>
+                <label className="block text-[11px] font-bold text-brown-soft">
+                  ประวัติการแพ้ <span className="font-normal text-brown-faint">(อาหาร / ยา / แชมพู · ไม่มีเว้นว่างได้)</span>
+                  <input
+                    value={cat.allergy}
+                    onChange={(e) => updateCat(idx, { allergy: e.target.value })}
+                    placeholder="เช่น ไม่มี · หรือ แพ้ไก่ แพ้แชมพูบางยี่ห้อ"
+                    className={`${subFieldClass} mt-0.5 font-normal text-brown`}
+                  />
+                </label>
+
+                {(() => {
+                  const h = historyFor(cat);
+                  if (!h || h.pet.length === 0) return null;
+                  return (
+                    <div className="space-y-3 border-t border-petflow-line pt-3">
+                      <p className="text-sm font-extrabold text-petflow-chocolate">
+                        ประวัติน้อง{speciesWords(cat.species || undefined, config).th}
+                      </p>
+                      <IntakeFieldsInput
+                        fields={h.pet}
+                        answers={cat.history}
+                        onChange={(k, v) => updateCat(idx, { history: { ...cat.history, [k]: v } })}
+                        showMissing={attempted}
+                        inputClass={subFieldClass}
+                      />
+                    </div>
+                  );
+                })()}
 
                 {cats.length > 1 && (
                   <button

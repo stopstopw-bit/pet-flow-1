@@ -10,6 +10,7 @@ import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
 import { parseTaxInvoiceBody, type CustomerTaxInvoice } from "@/lib/tax-invoice";
 import { withResolvedTenant } from "@/lib/tenant-context";
 import { requireCustomerSession } from "@/lib/customer-session";
+import { stayInfoDone } from "@/lib/intake-rules";
 
 /** ลูกค้าดึงข้อมูลตัวเอง (สำหรับหน้าแก้ไขโปรไฟล์ใน LINE) — ครบทุกฟิลด์ที่กรอกตอนสมัคร */
 export async function GET(req: NextRequest) {
@@ -48,13 +49,16 @@ async function handleGet(req: NextRequest) {
         ageValue: x.ageValue ?? "",
         ageUnit: x.ageUnit || "year",
         weightKg: x.weightKg ?? "",
+        neutered: x.neutered ?? null,
+        seizureHistory: x.seizureHistory ?? "",
+        allergy: x.allergy ?? "",
         birthday: x.birthday || "",
         medical: x.medical || "",
         note: x.staffNote || "",
         // หน้าแนบสมุดวัคซีน/ฟอร์มประวัติใช้บอกลูกค้าว่าส่งอะไรไปแล้วบ้าง (ไม่ส่งตัวรูปออกไป)
         vaccineCount: x.vaccinePhotos ? x.vaccinePhotos.split("\n").filter(Boolean).length : 0,
         hasPetInfo: Boolean(x.groomHealthInfo),
-        hasStayInfo: Boolean(x.stayInfo),
+        hasStayInfo: stayInfoDone(x.stayInfo),
       })),
     },
   });
@@ -126,13 +130,21 @@ async function handlePost(req: NextRequest) {
       };
       // id ที่ขึ้นต้นด้วย "new-" มาจากการกด "เพิ่มน้องแมว" ในหน้านี้ — ยังไม่มีตัวจริงในระบบ
       const weightKg = normalizeWeightKg(cat.weightKg);
+      const neutered = typeof cat.neutered === "boolean" ? cat.neutered : undefined;
+      // หน้าเก่าที่ยังไม่มีช่องประวัติชัก/แพ้ จะไม่ส่งมา — คงค่าเดิมไว้
+      const history = {
+        ...("seizureHistory" in cat ? { seizureHistory: String(cat.seizureHistory || "") } : {}),
+        ...("allergy" in cat ? { allergy: String(cat.allergy || "") } : {}),
+      };
       if (!cat?.id || String(cat.id).startsWith("new-")) {
-        await addCat(c.id, { ...shared, weightKg });
+        await addCat(c.id, { ...shared, ...history, weightKg, neutered });
       } else {
         // หน้าเก่าที่ยังไม่มีช่องน้ำหนักจะไม่ส่ง weightKg มา — อย่าไปลบค่าที่ร้านกรอกไว้
         await updateCat(c.id, String(cat.id), {
           ...shared,
           ...("weightKg" in cat ? { weightKg: weightKg ?? null } : {}),
+          ...("neutered" in cat ? { neutered: neutered ?? null } : {}),
+          ...history,
         });
       }
     }

@@ -26,6 +26,7 @@ import { summaryFields } from "@/lib/intake-rules";
 import { BOOKING_STATUS_LABELS, type Booking } from "@/lib/business";
 import type { CustomerServiceLog } from "@/lib/customer-service-log";
 import { pastPriceList } from "@/lib/special-price";
+import { lastGroomForPet } from "@/lib/pet-groom-memory";
 import { PastPricesList } from "@/components/PastPrices";
 import { shortItemLabel, summarizeInvoiceItems } from "@/lib/invoice-item-label";
 import { bookingGroupKey, groupBookings } from "@/lib/booking-group";
@@ -1105,7 +1106,7 @@ function PastPricesSection({ log }: { log?: CustomerServiceLog }) {
       <CardHeader
         icon="money"
         title="ราคาที่ลูกค้าคนนี้เคยจ่าย"
-        sub="ราคาต่อครั้งล่าสุดของแต่ละบริการ · ตอนออกบิลระบบจะถามให้ใช้ราคาเดิม"
+        sub="ราคาล่าสุดของน้องแต่ละตัว แยกตามบริการ · ตอนออกบิลระบบจะถามให้ใช้ราคาเดิม"
       />
       <PastPricesList prices={prices} limit={showAll ? undefined : 6} />
       {prices.length > 6 && !showAll && (
@@ -3022,6 +3023,7 @@ export default function CustomersPage() {
       gender?: "male" | "female";
       breed?: string;
       furLength?: "short" | "long";
+      neutered?: boolean;
       color?: string;
       ageValue?: number;
       ageUnit?: "year" | "month";
@@ -3029,6 +3031,8 @@ export default function CustomersPage() {
       birthday?: string;
       medical?: string;
       species?: PetSpecies;
+      seizureHistory?: string;
+      allergy?: string;
     }
   ) => {
     if (!selected) return;
@@ -3162,6 +3166,24 @@ export default function CustomersPage() {
                 />
               </div>
               <p className="-mt-1 px-4 pb-2 text-[10px] text-brown-faint">แตะรูปเพื่อดูเต็มจอ · ปุ่มกล้องเพื่อเปลี่ยนรูป (ลูกค้าเห็นในแอปด้วย)</p>
+              {(() => {
+                // อาบน้ำครั้งล่าสุดของตัวนี้ — ตอนออกบิลระบบจะเลือกแบบเดิมให้เอง
+                const last = lastGroomForPet(
+                  (selected.serviceLog?.bills || []).map((b) => ({ createdAt: b.date, items: b.items })),
+                  cat.name,
+                  c.cats.length === 1
+                );
+                return last ? (
+                  <p className="mx-4 mb-2 flex items-start gap-1.5 rounded-petflow-sm bg-honey/15 px-3 py-2 text-[11px] text-brown">
+                    <Icon name="bath" size={14} />
+                    <span>
+                      อาบครั้งก่อน {last.when ? `(${last.when.slice(0, 10)})` : ""}: {last.programName} · {last.breed}
+                      {last.sizeLabel ? ` · ${last.sizeLabel}` : ""} ·{" "}
+                      <b>฿{last.unitAmount.toLocaleString()}</b>
+                    </span>
+                  </p>
+                ) : null;
+              })()}
 
               <div className="space-y-3 border-t border-petflow-line p-4">
                 {asksSpecies(config) && (
@@ -3195,6 +3217,16 @@ export default function CustomersPage() {
                     options={[
                       { id: "short", label: "ขนสั้น" },
                       { id: "long", label: "ขนยาว" },
+                    ]}
+                  />
+                  <Segmented
+                    value={cat.neutered === true ? "yes" : cat.neutered === false ? "no" : ""}
+                    onChange={(v) => {
+                      if (v) saveCat(cat.id, { neutered: v === "yes" });
+                    }}
+                    options={[
+                      { id: "yes", label: "ทำหมันแล้ว" },
+                      { id: "no", label: "ยังไม่ทำ" },
                     ]}
                   />
                 </div>
@@ -3279,10 +3311,35 @@ export default function CustomersPage() {
                   />
                 </label>
                 <StaffNoteTagPicker
+                  label="โรคประจำตัว / เรื่องที่ช่างต้องรู้"
                   medicalValue={cat.medical || ""}
                   noteValue={cat.staffNote || ""}
                   onChange={(medical, staffNote) => saveCat(cat.id, { medical, staffNote })}
                 />
+                <label className="block text-[11px] font-bold text-brown-soft">
+                  <span className="mb-1 block">ประวัติการชัก/ช็อค</span>
+                  <input
+                    defaultValue={cat.seizureHistory}
+                    placeholder="เช่น ไม่เคย · หรือ เคยชักตอนตกใจ"
+                    className={inputCls}
+                    onBlur={(e) => {
+                      const v = e.target.value.trim();
+                      if (v !== (cat.seizureHistory || "")) saveCat(cat.id, { seizureHistory: v });
+                    }}
+                  />
+                </label>
+                <label className="block text-[11px] font-bold text-brown-soft">
+                  <span className="mb-1 block">ประวัติการแพ้</span>
+                  <input
+                    defaultValue={cat.allergy}
+                    placeholder="เช่น ไม่มี · หรือ แพ้ไก่ แพ้แชมพูบางยี่ห้อ"
+                    className={inputCls}
+                    onBlur={(e) => {
+                      const v = e.target.value.trim();
+                      if (v !== (cat.allergy || "")) saveCat(cat.id, { allergy: v });
+                    }}
+                  />
+                </label>
                 <label className="block rounded-petflow-sm border border-wait/40 bg-wait/5 px-3 py-2.5 text-[11px] font-bold text-wait">
                   <span className="mb-1 flex items-center gap-1.5">
                     <Icon name="eye" size={14} />

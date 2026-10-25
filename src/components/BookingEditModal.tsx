@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Booking } from "@/lib/business";
 import { relevantAutoMessageTopics } from "@/lib/auto-messages";
-import { toast } from "@/components/Toast";
+import { savedPopup, toast } from "@/components/Toast";
 import { Icon } from "@/components/Icon";
 import { GroomClashNote, confirmClashes, useGroomClashes } from "@/components/GroomClashNote";
 import { Segmented } from "@/components/ui";
@@ -451,16 +451,18 @@ export function BookingEditModal({
       | { kind: "updated" | "created_extra"; nights: number; total: number }
       | { kind: "warn"; message: string }
       | undefined;
-    if (count > 1) toast(`เลื่อนให้ทั้งบ้านแล้ว (${count} ตัว)`, "success");
+    // ปุ่มบันทึกอยู่ท้ายฟอร์มยาว — แจ้งผลเป็นป๊อปอัปกลางจอ รวมรายละเอียดไว้ในใบเดียว
+    const lines: string[] = [];
+    if (count > 1) lines.push(`เลื่อนให้ทั้งบ้านแล้ว (${count} ตัว)`);
     if (inv?.kind === "updated") {
-      toast(`แก้บิลเดิมเป็น ${inv.nights} คืน · ${inv.total.toLocaleString()} บาท`, "success");
+      lines.push(`แก้บิลเดิมเป็น ${inv.nights} คืน · ${inv.total.toLocaleString()} บาท`);
     } else if (inv?.kind === "created_extra") {
-      toast(
-        `บิลเดิมปิดไปแล้ว — ออกบิลพักต่อ ${inv.nights} คืน · ${inv.total.toLocaleString()} บาท ไว้ในหน้าบิล`,
-        "info"
-      );
-    } else if (inv?.kind === "warn") {
+      lines.push(`บิลเดิมปิดไปแล้ว — ออกบิลพักต่อ ${inv.nights} คืน · ${inv.total.toLocaleString()} บาท ไว้ในหน้าบิล`);
+    }
+    if (inv?.kind === "warn") {
       alert(`⚠️ ${inv.message}`);
+    } else {
+      savedPopup("บันทึกการแก้ไขแล้ว", lines);
     }
 
     setSaving(false);
