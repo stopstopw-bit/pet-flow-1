@@ -3368,16 +3368,21 @@ export default function CustomersPage() {
                     }}
                   />
                 </label>
-                <label className="block text-[11px] font-bold text-brown-soft">
+                <div className="text-[11px] font-bold text-brown-soft">
                   วันเกิดน้อง <span className="font-normal text-brown-faint">(ถ้าทราบ)</span>
-                  <BirthdayPicker
-                    value={cat.birthday || ""}
-                    onChange={(iso) => {
-                      if (iso && iso !== cat.birthday) saveCat(cat.id, { birthday: iso });
-                    }}
-                    yearsBack={25}
-                  />
-                </label>
+                  <div className="mt-1">
+                    <BirthdayPicker
+                      value={cat.birthday || ""}
+                      onChange={(iso, info) => {
+                        if (iso && iso !== cat.birthday) saveCat(cat.id, { birthday: iso });
+                        // ติ๊ก "ไม่ทราบวันเกิด" → ล้างวันเกิดเดิมออก
+                        else if (!iso && info?.unknown && cat.birthday) saveCat(cat.id, { birthday: "" });
+                      }}
+                      yearsBack={25}
+                      allowUnknown
+                    />
+                  </div>
+                </div>
                 <StaffNoteTagPicker
                   label="โรคประจำตัว / เรื่องที่ช่างต้องรู้"
                   medicalValue={cat.medical || ""}

@@ -81,7 +81,7 @@ export function StaffNoteTagPicker({
 
   const summary = useMemo(() => {
     const parts = [...parseTags(medicalValue), ...parseTags(noteValue)];
-    return parts.length ? parts.join(", ") : "ไม่มี / เลือกจากรายการ";
+    return parts.length ? parts.join(", ") : "แตะเพื่อเลือก · ไม่มีก็ข้ามได้";
   }, [medicalValue, noteValue]);
 
   const hasValue = parseTags(medicalValue).length > 0 || parseTags(noteValue).length > 0;
@@ -91,7 +91,7 @@ export function StaffNoteTagPicker({
       <button
         type="button"
         onClick={openPicker}
-        className="flex min-h-[48px] w-full items-center gap-3 rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-left text-sm"
+        className="flex min-h-[52px] w-full items-center gap-3 rounded-petflow-sm border-2 border-latte/70 bg-card px-3 py-2 text-left text-sm shadow-petflow-sm"
       >
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-honey/25 text-petflow-chocolate">
           <Icon name="alert" size={16} />
@@ -101,12 +101,16 @@ export function StaffNoteTagPicker({
             {label}
           </span>
           <span
-            className={`block truncate ${hasValue ? "text-brown" : "text-brown-faint"}`}
+            className={`block truncate ${hasValue ? "text-brown" : "font-bold text-latte-deep"}`}
           >
             {summary}
           </span>
         </span>
-        <Icon name="chevron" size={16} className="text-brown-faint" />
+        {/* ป้าย "เลือก" ชัดๆ — ลูกค้าเคยไม่รู้ว่าแถวนี้แตะเลือกได้ */}
+        <span className="flex shrink-0 items-center gap-0.5 rounded-full bg-honey/40 py-1.5 pl-3 pr-2 text-xs font-bold text-petflow-chocolate">
+          {hasValue ? "แก้ไข" : "เลือก"}
+          <Icon name="chevron" size={14} />
+        </span>
       </button>
 
       {open && (
