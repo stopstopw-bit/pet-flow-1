@@ -1,4 +1,5 @@
 import { cleanPetName } from "@/lib/pet-name";
+import { renameCatAfterUpdate } from "@/lib/cat-rename";
 import { NextRequest, NextResponse } from "next/server";
 import { parseTaxInvoiceBody } from "@/lib/tax-invoice";
 import {
@@ -234,8 +235,11 @@ async function handlePatch(req: NextRequest) {
         );
       }
     }
+    const oldName = (await getCustomer(id))?.cats.find((x) => x.id === body.catId)?.name;
     const c = await updateCat(id, body.catId, catPatch);
     if (!c) return NextResponse.json({ error: "not found" }, { status: 404 });
+    // เปลี่ยนชื่อน้อง → นัด/บิล/ประวัติที่ผูกด้วยชื่อเดิม เปลี่ยนตามให้ครบ
+    await renameCatAfterUpdate(c, body.catId, oldName);
     return NextResponse.json({ ok: true, customer: c });
   }
 

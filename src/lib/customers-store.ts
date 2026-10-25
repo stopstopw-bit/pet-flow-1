@@ -1306,9 +1306,9 @@ export async function updateCat(
   const cat = c.cats.find((x) => x.id === catId);
   if (!cat) return null;
 
-  // เปลี่ยนชื่อน้อง — นัด/บิล/ประวัติผูกกับชื่อ ต้องตามไปแก้ทุกที่ (ทำหลังบันทึกด้านล่าง)
+  // เปลี่ยนชื่อน้อง — นัด/บิล/ประวัติผูกกับชื่อ ต้องตามไปแก้ทุกที่
+  // (route เรียก renameCatAfterUpdate ต่อเอง — ไฟล์นี้ถูก import ฝั่ง client ด้วย ดึง calendar มาไม่ได้)
   // ชื่อซ้ำกับน้องอีกตัวในบ้าน → ไม่เปลี่ยนชื่อ ไม่งั้นประวัติสองตัวจะปนกันแยกไม่ออก
-  const oldName = cat.name;
   if (patch.name !== undefined) {
     const nextName = cleanPetName(patch.name);
     const clash = c.cats.some((x) => x.id !== catId && catKey(x.name) === catKey(nextName));
@@ -1435,10 +1435,6 @@ export async function updateCat(
     }
   } else {
     memCustomers.set(customerId, c);
-  }
-  if (catKey(cat.name) !== catKey(oldName)) {
-    const { renameCatEverywhere } = await import("./cat-rename");
-    await renameCatEverywhere(c, oldName, cat.name);
   }
   return c;
 }
@@ -2314,7 +2310,7 @@ export async function renameCatInServiceRecords(
   oldName: string,
   newName: string
 ) {
-  const { replaceCatInList } = await import("./cat-rename");
+  const { replaceCatInList } = await import("./cat-name-replace");
   const sb = getSupabase();
   const tenantId = sb ? requireTenantId() : "";
   const rows: { id: string; catName: string }[] = sb

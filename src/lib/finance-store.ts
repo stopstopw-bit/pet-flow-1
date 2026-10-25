@@ -299,7 +299,7 @@ export async function updateFinanceEntry(
 
 /** เปลี่ยนชื่อน้องในคำอธิบายรายการการเงินของลูกค้า (ดู cat-rename.ts) — คืนจำนวนที่แก้ */
 export async function renameCatInFinance(customerId: string, oldName: string, newName: string) {
-  const { replaceCatInDescription } = await import("./cat-rename");
+  const { replaceCatInDescription } = await import("./cat-name-replace");
   const sb = getSupabase();
   const tenantId = sb ? requireTenantId() : "";
   const rows: FinanceRecord[] = sb

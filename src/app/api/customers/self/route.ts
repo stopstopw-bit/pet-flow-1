@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { renameCatAfterUpdate } from "@/lib/cat-rename";
 import {
   findCustomerByLine,
   updateCustomer,
@@ -146,13 +147,16 @@ async function handlePost(req: NextRequest) {
         if (id && cat?.id) created.push({ tempId: String(cat.id), id });
       } else {
         // หน้าเก่าที่ยังไม่มีช่องน้ำหนักจะไม่ส่ง weightKg มา — อย่าไปลบค่าที่ร้านกรอกไว้
-        await updateCat(c.id, String(cat.id), {
+        const oldName = c.cats.find((x) => x.id === String(cat.id))?.name;
+        const after = await updateCat(c.id, String(cat.id), {
           ...shared,
           ...("weightKg" in cat ? { weightKg: weightKg ?? null } : {}),
           ...("neutered" in cat ? { neutered: neutered ?? null } : {}),
           ...("vaccinated" in cat ? { vaccinated: vaccinated ?? null } : {}),
           ...history,
         });
+        // ลูกค้าเปลี่ยนชื่อน้องเอง → นัด/บิล/ประวัติเปลี่ยนตาม
+        await renameCatAfterUpdate(after, String(cat.id), oldName);
       }
     }
   }
