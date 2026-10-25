@@ -31,6 +31,7 @@ import { priceSignature, findLastPrice } from "@/lib/special-price";
 import { groomPrefillForPet, itemIsForPet, lastGroomForPet, type PetCard } from "@/lib/pet-groom-memory";
 import { roomPricing, roomNightPrice } from "@/lib/room-board";
 import { isRoomLine, roomLineLabel, splitRoomLabel } from "@/lib/stay-line";
+import { dayCareLabel, dayCarePrice, isDayCareLabel, isDayCareStay } from "@/lib/day-care";
 import {
   LINE_PROMO_KINDS,
   normalizeLineDiscount,
@@ -285,7 +286,8 @@ function computeLineBase(
     const n = Math.max(1, it.nights || 1);
     const unit = it.priceOverride ?? (it.roomPrice || 0);
     return {
-      label: withCat(`${it.roomLabel || "ห้องพัก"} × ${n} คืน`),
+      // Day Care นับเป็น "วัน" ไม่ใช่ "คืน" — ระบบต่อคืน/ตรวจบิล/คอร์สคืนจะไม่นับรวม
+      label: withCat(`${it.roomLabel || "ห้องพัก"} × ${n} ${isDayCareLabel(it.roomLabel) ? "วัน" : "คืน"}`),
       amount: unit * n,
       catName: cat,
       qty: n,
@@ -339,6 +341,10 @@ function scheduleLabelFor(bk?: {
 }): string {
   if (!bk) return "";
   const isRoom = bk.service === "room" || !!bk.checkin;
+  if (isRoom && isDayCareStay({ ...bk, service: "room" })) {
+    const d = formatThaiDateShort(bk.checkin || "");
+    return d ? `☀️ Day Care ${d}` : "";
+  }
   if (isRoom) {
     const inD = formatThaiDateShort(bk.checkin || bk.date || "");
     const outD = bk.checkout ? formatThaiDateShort(bk.checkout) : "";
@@ -429,7 +435,9 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [promos, setPromos] = useState<Promo[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [rooms, setRooms] = useState<(ServicePreset & { id: string; pricing: ReturnType<typeof roomPricing> })[]>([]);
+  const [rooms, setRooms] = useState<
+    (ServicePreset & { id: string; pricing: ReturnType<typeof roomPricing>; dayCare?: boolean })[]
+  >([]);
   const [servicePresets, setServicePresets] = useState<ServicePreset[]>(SERVICE_PRESETS);
   /** สินค้าหน้าร้าน — เลือกใส่บิลได้ (ลูกค้ามาใช้บริการแล้วซื้อของติดมือด้วย) */
   const [posProducts, setPosProducts] = useState<PosProduct[]>([]);
@@ -549,14 +557,23 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
     setCustomers(cj.customers || []);
     setPromos(pj.promos || []);
     setInvoices(ij.invoices || []);
-    setRooms(
-      (config?.rooms || []).map((r: { id: string; name: string; price: number } & Parameters<typeof roomPricing>[0]) => ({
+    const nightly = (config?.rooms || []).map(
+      (r: { id: string; name: string; price: number } & Parameters<typeof roomPricing>[0]) => ({
         id: r.id,
         label: `ห้อง ${r.name}`,
         amount: r.price,
         pricing: roomPricing(r),
-      }))
+      })
     );
+    // Day Care ของทุกห้อง — ครึ่งราคาห้อง (ค่าน้องตัวที่เกินก็ครึ่งหนึ่งด้วย) ต่อท้ายรายการห้องพัก
+    const daily = nightly.map((r: (typeof nightly)[number]) => ({
+      id: r.id,
+      label: dayCareLabel(r.label),
+      amount: dayCarePrice(r.amount),
+      pricing: { ...r.pricing, extraPrice: dayCarePrice(r.pricing.extraPrice) },
+      dayCare: true,
+    }));
+    setRooms([...nightly, ...daily]);
     setGroomPrograms(resolveGroomPrograms(config?.groomPricePrograms));
     setGroomSizeLabels(config?.groomSizeLabels || {});
     if (config?.payment) setPay(config.payment);
@@ -754,6 +771,8 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
     pk?: { roomType?: string; roomLabel?: string }
   ) => {
     if (!it || it.kind !== "room") return false;
+    // คอร์สคืนไม่หัก Day Care (ไม่ได้ค้างคืน)
+    if (isDayCareLabel(it.roomLabel)) return false;
     if (!pk?.roomType) return true;
     const rid = rooms.find((r) => r.label === it.roomLabel)?.id;
     return rid === pk.roomType || (!!pk.roomLabel && it.roomLabel === pk.roomLabel);
@@ -761,7 +780,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
   const roomLines = lines
     .map((l, i) => ({ ...l, kind: items[i]?.kind, match: lineMatchesRoom(items[i], pickedPackage) }))
     .filter((l) => l.kind === "room" && l.match);
-  const billHasRoom = items.some((it) => it.kind === "room");
+  const billHasRoom = items.some((it) => it.kind === "room" && !isDayCareLabel(it.roomLabel));
   const nightsOnBill = roomLines.reduce((n, l) => n + Math.max(1, l.qty || 1), 0);
   const nightsToUse =
     pickedPackage?.unit === "night" ? Math.min(packageLeft, nightsOnBill) : 0;
@@ -1075,17 +1094,20 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
       setItems([
         ...lines.map((cats): Item => {
           const g = cats[0];
+          // เข้า-ออกวันเดียวกัน = Day Care → ใช้ราคา Day Care ของห้องนั้น
+          const day = isDayCareStay(g);
+          const pool = rooms.filter((r) => !!r.dayCare === day);
           // นัดเก็บ room เป็น id → จับคู่กับ id ก่อน แล้วค่อย fallback เป็นชื่อ
           const matched =
-            rooms.find((r) => g.room && r.id === g.room) ||
-            rooms.find((r) => g.room && r.label.includes(g.room));
-          const price = matched?.amount ?? rooms[0]?.amount ?? 0;
+            pool.find((r) => g.room && r.id === g.room) ||
+            pool.find((r) => g.room && r.label.includes(g.room));
+          const price = matched?.amount ?? pool[0]?.amount ?? 0;
           const n = cats.length;
           return {
             ...newGrooming(undefined, groomPrograms),
             kind: "room" as const,
             // ต้องตรงกับตัวเลือกห้องในบิล (ไม่ต่อท้ายอะไร) — ตัวไหนอยู่ห้องนี้ดูจากชิปชื่อน้อง
-            roomLabel: matched?.label || rooms[0]?.label || (g.room ? `ห้อง ${g.room}` : "ห้องพัก"),
+            roomLabel: matched?.label || pool[0]?.label || (g.room ? `ห้อง ${g.room}` : "ห้องพัก"),
             roomPrice: matched ? roomNightPrice(price, matched.pricing, n) : price,
             nights: nightsBetween(g.checkin, g.checkout),
             catName: many ? cats.map((c) => c.catName).join(", ") : undefined,
@@ -1262,7 +1284,11 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
     const payloadItems = items
       .map((it, i) => ({
         ...lines[i],
-        kind: it.roomLine ? ("room" as const) : it.kind,
+        kind: it.roomLine
+          ? ("room" as const)
+          : it.kind === "room" && isDayCareLabel(it.roomLabel)
+            ? ("service" as const)
+            : it.kind,
         ...(it.kind === "grooming" ? { program: it.program, breed: it.breed, size: it.size } : {}),
         ...(it.kind === "product" && it.productId ? { productId: it.productId } : {}),
       }))
@@ -1904,7 +1930,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
                           </span>
                           <span className="block truncate text-[11px] text-brown-soft">
                             {bk.service === "room"
-                              ? `${bk.checkin || "?"} → ${bk.checkout || "?"}${bk.room ? ` · ${bk.room}` : ""}`
+                              ? `${isDayCareStay(bk) ? `Day Care ${bk.checkin}` : `${bk.checkin || "?"} → ${bk.checkout || "?"}`}${bk.room ? ` · ${bk.room}` : ""}`
                               : bk.date || ""}
                             {withBath ? " · + อาบน้ำก่อนกลับ" : ""}
                             {group.length > 1 ? " · บิลใบเดียว" : ""}
@@ -2236,11 +2262,24 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
                         }}
                         className={`${sub} min-w-0 flex-1`}
                       >
-                        {rooms.map((r) => (
-                          <option key={r.label} value={r.label}>
-                            {r.label} ({r.amount}฿/คืน)
-                          </option>
-                        ))}
+                        <optgroup label="ค้างคืน">
+                          {rooms
+                            .filter((r) => !r.dayCare)
+                            .map((r) => (
+                              <option key={r.label} value={r.label}>
+                                {r.label} ({r.amount}฿/คืน)
+                              </option>
+                            ))}
+                        </optgroup>
+                        <optgroup label="Day Care (ครึ่งราคา ไม่ค้างคืน)">
+                          {rooms
+                            .filter((r) => r.dayCare)
+                            .map((r) => (
+                              <option key={r.label} value={r.label}>
+                                {r.label} ({r.amount}฿/วัน)
+                              </option>
+                            ))}
+                        </optgroup>
                       </select>
                       <div className="flex shrink-0 items-center gap-1">
                         <NumField
@@ -2249,7 +2288,9 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
                           onCommit={(n) => updateItem(i, { nights: n })}
                           className="w-16 rounded-lg border border-petflow-line bg-paper px-2 py-2 text-center text-sm"
                         />
-                        <span className="text-xs font-bold text-brown-soft">คืน</span>
+                        <span className="text-xs font-bold text-brown-soft">
+                          {isDayCareLabel(item.roomLabel) ? "วัน" : "คืน"}
+                        </span>
                       </div>
                     </div>
                   )}
