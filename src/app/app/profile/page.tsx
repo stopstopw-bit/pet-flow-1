@@ -45,6 +45,7 @@ type CatForm = {
   ageUnit: "year" | "month";
   weightKg: string;
   neutered: "" | "yes" | "no";
+  vaccinated: "" | "yes" | "no";
   birthday: string;
   medical: string;
   seizureHistory: string;
@@ -118,6 +119,7 @@ export default function ProfilePage() {
               ageUnit: (x.ageUnit as "year" | "month") || "year",
               weightKg: x.weightKg != null ? String(x.weightKg) : "",
               neutered: x.neutered === true ? "yes" : x.neutered === false ? "no" : "",
+              vaccinated: x.vaccinated === true ? "yes" : x.vaccinated === false ? "no" : "",
               birthday: String(x.birthday || ""),
               medical: String(x.medical || ""),
               seizureHistory: String(x.seizureHistory || ""),
@@ -195,6 +197,7 @@ export default function ProfilePage() {
         ageUnit: "year",
         weightKg: "",
         neutered: "",
+        vaccinated: "",
         birthday: "",
         medical: "",
         seizureHistory: "",
@@ -247,6 +250,7 @@ export default function ProfilePage() {
             ageUnit: c.ageUnit,
             weightKg: c.weightKg,
             neutered: c.neutered ? c.neutered === "yes" : null,
+            vaccinated: c.vaccinated ? c.vaccinated === "yes" : null,
             birthday: c.birthday || undefined,
             medical: c.medical || undefined,
             seizureHistory: c.seizureHistory.trim(),
@@ -448,6 +452,19 @@ export default function ProfilePage() {
                       aria-pressed={cat.neutered === v}
                       onClick={() => updateCat(idx, { neutered: cat.neutered === v ? "" : v })}
                       className={`min-h-[40px] flex-1 rounded-full text-sm font-bold transition ${cat.neutered === v ? "bg-card text-petflow-chocolate shadow-petflow-sm" : "text-brown-soft"}`}
+                    >
+                      {l}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-1 rounded-full bg-paper p-1">
+                  {([["yes", "วัคซีนครบแล้ว"], ["no", "วัคซีนยังไม่ครบ"]] as const).map(([v, l]) => (
+                    <button
+                      key={v}
+                      type="button"
+                      aria-pressed={cat.vaccinated === v}
+                      onClick={() => updateCat(idx, { vaccinated: cat.vaccinated === v ? "" : v })}
+                      className={`min-h-[40px] flex-1 rounded-full text-sm font-bold transition ${cat.vaccinated === v ? "bg-card text-petflow-chocolate shadow-petflow-sm" : "text-brown-soft"}`}
                     >
                       {l}
                     </button>

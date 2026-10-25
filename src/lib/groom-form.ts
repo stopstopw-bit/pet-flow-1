@@ -33,7 +33,10 @@ export type GroomField = {
   section?: "owner" | "pet" | "care";
 };
 
-/** ค่าเริ่มต้นของระบบ — key ห้ามเปลี่ยน (ข้อมูลเก่าอ้างอิงอยู่) */
+/**
+ * ค่าเริ่มต้นของระบบ — key ห้ามเปลี่ยน (ข้อมูลเก่าอ้างอิงอยู่)
+ * วัคซีน น้ำหนัก การแพ้ ถามตอนสมัครสมาชิกแล้ว ไม่ถามซ้ำ · ไถขนก้น/อุ้งเท้า เอาออก (เจ้าของระบบ 2026-10-25)
+ */
 export const GROOM_FORM_DEFAULTS: GroomField[] = [
   {
     key: "bathedBefore",
@@ -93,27 +96,6 @@ export const GROOM_FORM_DEFAULTS: GroomField[] = [
     ],
   },
   {
-    key: "vaccinated",
-    type: "single",
-    label: "ได้รับวัคซีนครบหรือยังคะ",
-    required: true,
-    enabled: true,
-    options: [
-      { key: "yes", label: "✅ ครบแล้ว" },
-      { key: "no", label: "❌ ยังไม่ครบ" },
-    ],
-  },
-  {
-    key: "weight",
-    type: "text",
-    label: "น้ำหนักตัวน้อง (กก.) — บอกคร่าวๆ ได้",
-    placeholder: "เช่น 4.5",
-    required: false,
-    enabled: true,
-    options: [],
-    hasUnknownToggle: true,
-  },
-  {
     key: "dryMethod",
     type: "multi",
     label: "เคยใช้วิธีเป่าขนแบบไหนคะ (เลือกได้หลายข้อ)",
@@ -123,37 +105,6 @@ export const GROOM_FORM_DEFAULTS: GroomField[] = [
       { key: "dryer", label: "💨 ไดร์เป่าขน" },
       { key: "cabinet", label: "📦 ตู้เป่าขน" },
     ],
-  },
-  {
-    key: "shaveButt",
-    type: "single",
-    label: "ให้ไถขนก้นไหมคะ",
-    required: true,
-    enabled: true,
-    options: [
-      { key: "yes", label: "✅ ไถให้" },
-      { key: "no", label: "❌ ไม่ไถ" },
-    ],
-  },
-  {
-    key: "shavePaws",
-    type: "single",
-    label: "ให้ไถขนอุ้งเท้าไหมคะ",
-    required: true,
-    enabled: true,
-    options: [
-      { key: "yes", label: "✅ ไถให้" },
-      { key: "no", label: "❌ ไม่ไถ" },
-    ],
-  },
-  {
-    key: "allergy",
-    type: "text",
-    label: "แพ้อะไรไหมคะ (แชมพู/ยา) — ถ้าไม่มีเว้นว่างได้",
-    placeholder: "เช่น แพ้แชมพูบางชนิด",
-    required: false,
-    enabled: true,
-    options: [],
   },
   {
     key: "note",

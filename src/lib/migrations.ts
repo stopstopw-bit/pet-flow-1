@@ -75,6 +75,7 @@ const SCHEMA_CHECKS: { table: string; column: string; feature: string }[] = [
   { table: "cats", column: "species", feature: "น้องแต่ละตัวเป็นหมาหรือแมว" },
   { table: "member_topups", column: "source_invoice_id", feature: "ยกเลิกนัด เก็บยอดเป็นเครดิต" },
   { table: "cats", column: "neutered", feature: "ทำหมันแล้ว/ยังไม่ทำ" },
+  { table: "cats", column: "vaccinated", feature: "วัคซีนครบ/ยังไม่ครบ (ถามตอนสมัครสมาชิก)" },
   { table: "cats", column: "seizure_history", feature: "ประวัติการชัก/ช็อค และการแพ้" },
   { table: "promos", column: "bill_rule", feature: "โปรลดเฉพาะรายการ / แถมคืนฟรี ในรายการโปร" },
 ];
@@ -700,6 +701,11 @@ where staff_note like '%🎁%';`,
     // เพิ่มคอลัมน์อย่างเดียว แถวเดิมได้ null ไม่แก้ข้อมูลเก่า
     name: "cats.neutered",
     sql: "alter table cats add column if not exists neutered boolean;",
+  },
+  {
+    // วัคซีนครบแล้ว/ยังไม่ครบ — ถามตอนสมัครสมาชิก · เพิ่มคอลัมน์อย่างเดียว แถวเดิมได้ null
+    name: "cats.vaccinated",
+    sql: "alter table cats add column if not exists vaccinated boolean;",
   },
   {
     // ประวัติการชัก/ช็อค + ประวัติการแพ้ — ถามตอนสมัครสมาชิก (ไม่บังคับ) · เพิ่มคอลัมน์อย่างเดียว

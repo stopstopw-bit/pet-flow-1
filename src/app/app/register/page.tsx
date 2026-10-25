@@ -28,6 +28,7 @@ type CatInput = {
   breedOther: string;
   furLength: "" | "short" | "long";
   neutered: "" | "yes" | "no";
+  vaccinated: "" | "yes" | "no";
   color: string;
   ageValue: string;
   ageUnit: "year" | "month";
@@ -67,6 +68,7 @@ function emptyCat(): CatInput {
     breedOther: "",
     furLength: "",
     neutered: "",
+    vaccinated: "",
     color: "",
     ageValue: "",
     ageUnit: "year",
@@ -173,6 +175,7 @@ export default function RegisterPage() {
         return `เลือกสายพันธุ์น้อง${pw.th}${n}ด้วยนะคะ`;
       if (!c.furLength) return `เลือกลักษณะขนน้อง${pw.th}${n}ด้วยนะคะ`;
       if (!c.neutered) return `เลือกว่าน้อง${pw.th}${n}ทำหมันแล้วหรือยังด้วยนะคะ`;
+      if (!c.vaccinated) return `เลือกว่าน้อง${pw.th}${n}ได้รับวัคซีนครบหรือยังด้วยนะคะ`;
       if (!c.weightUnknown && !(Number(c.weightKg) > 0))
         return `กรอกน้ำหนักน้อง${pw.th}${n} หรือติ๊ก "ไม่ทราบ" ด้วยนะคะ`;
       const h = historyFor(c);
@@ -260,6 +263,7 @@ export default function RegisterPage() {
               allergy: c.allergy.trim() || undefined,
               furLength: c.furLength || undefined,
               neutered: c.neutered ? c.neutered === "yes" : undefined,
+              vaccinated: c.vaccinated ? c.vaccinated === "yes" : undefined,
               color: c.color || undefined,
               staffNote: c.note || undefined,
               history: historyFor(c) ? { ...ownerAnswers, ...c.history } : undefined,
@@ -619,6 +623,33 @@ export default function RegisterPage() {
                         aria-pressed={cat.neutered === value}
                         className={`min-h-[40px] flex-1 rounded-full text-sm font-bold transition ${
                           cat.neutered === value
+                            ? "bg-card text-petflow-chocolate shadow-petflow-sm"
+                            : "text-brown-soft"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <span className="mb-1 block text-[11px] font-bold text-brown-soft">
+                    วัคซีน
+                  </span>
+                  <div className="flex gap-1 rounded-full bg-paper p-1">
+                    {(
+                      [
+                        ["yes", "ครบแล้ว"],
+                        ["no", "ยังไม่ครบ"],
+                      ] as const
+                    ).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => updateCat(idx, { vaccinated: value })}
+                        aria-pressed={cat.vaccinated === value}
+                        className={`min-h-[40px] flex-1 rounded-full text-sm font-bold transition ${
+                          cat.vaccinated === value
                             ? "bg-card text-petflow-chocolate shadow-petflow-sm"
                             : "text-brown-soft"
                         }`}

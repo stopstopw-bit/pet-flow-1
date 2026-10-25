@@ -12,6 +12,7 @@ export type CatInput = {
   furLength?: "short" | "long";
   color?: string;
   neutered?: boolean;
+  vaccinated?: boolean;
   seizureHistory?: string;
   allergy?: string;
   weightKg?: number;
@@ -33,6 +34,7 @@ export function parseCatInput(c: Record<string, unknown> | null | undefined): Ca
     furLength: c?.furLength === "short" || c?.furLength === "long" ? c.furLength : undefined,
     color: str(c?.color),
     neutered: typeof c?.neutered === "boolean" ? c.neutered : undefined,
+    vaccinated: typeof c?.vaccinated === "boolean" ? c.vaccinated : undefined,
     seizureHistory: str(c?.seizureHistory),
     allergy: str(c?.allergy),
     weightKg: normalizeWeightKg(c?.weightKg),
