@@ -31,8 +31,6 @@ export type GroomField = {
   hasUnknownToggle?: boolean;
   /** หมวดในฟอร์มทำประวัติ (เจ้าของ / น้อง / การดูแล) — นัดอาบน้ำถามแค่เจ้าของ + น้องได้ ดู intake-rules.ts */
   section?: "owner" | "pet" | "care";
-  /** ถามเฉพาะร้าน/น้องชนิดนี้ (ไม่ตั้ง = ถามทุกร้าน) */
-  kinds?: ("cat" | "dog" | "both")[];
 };
 
 /** ค่าเริ่มต้นของระบบ — key ห้ามเปลี่ยน (ข้อมูลเก่าอ้างอิงอยู่) */
@@ -149,16 +147,6 @@ export const GROOM_FORM_DEFAULTS: GroomField[] = [
     ],
   },
   {
-    key: "style",
-    type: "text",
-    label: "อยากได้ทรงขนแบบไหนคะ — ถ้าแค่อาบน้ำเว้นว่างได้",
-    placeholder: "เช่น ตัดสั้นทั้งตัว เหลือขนหัวกลม",
-    required: false,
-    enabled: true,
-    options: [],
-    kinds: ["dog", "both"],
-  },
-  {
     key: "allergy",
     type: "text",
     label: "แพ้อะไรไหมคะ (แชมพู/ยา) — ถ้าไม่มีเว้นว่างได้",
@@ -189,9 +177,7 @@ function forKind(def: GroomField, kind?: string): GroomField {
 
 /** คำถามเริ่มต้นของร้าน/น้องชนิดนี้ — ใช้ทั้งหน้าลูกค้าและหน้าแก้ฟอร์มในหลังบ้าน ให้เห็นตรงกัน */
 export function groomFormDefaults(kind?: string): GroomField[] {
-  return GROOM_FORM_DEFAULTS.filter((d) => !d.kinds || (kind && d.kinds.includes(kind as "cat" | "dog" | "both"))).map((d) =>
-    forKind(d, kind)
-  );
+  return GROOM_FORM_DEFAULTS.map((d) => forKind(d, kind));
 }
 
 /**
