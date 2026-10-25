@@ -1,6 +1,7 @@
 import type { IntakeRules } from "./intake-rules";
 import type { RoomType } from "./business";
 import type { GroomFormConfig } from "./groom-form";
+import type { RegisterFormConfig } from "./register-form";
 import type { GroomProgram } from "./grooming-prices";
 import type { RoomClosure } from "./room-board";
 import type { LinePromo } from "./line-discount";
@@ -328,6 +329,10 @@ export type SiteConfig = {
   cards?: Record<string, CardStyleConfig>;
   /** คำถาม/ตัวเลือกในฟอร์มประวัติน้องก่อนอาบน้ำ — แก้เองได้ในหลังบ้าน */
   groomForm?: GroomFormConfig;
+  /** คำถามในฟอร์มข้อมูลน้องก่อนเข้าพัก (รวมฟอร์มประวัติ) — แก้เองได้ในหลังบ้าน */
+  stayForm?: GroomFormConfig;
+  /** ช่องในฟอร์มสมัครสมาชิก — เปิด/ปิด บังคับ แก้ชื่อช่องได้ในหลังบ้าน */
+  registerForm?: RegisterFormConfig;
   /** ขอข้อมูลอะไรบ้างตามบริการ (การ์ดในนัดอาบน้ำ, ฟอร์มที่ใช้, บังคับตอบ) — ดู src/lib/intake-rules.ts */
   intakeRules?: IntakeRules;
   /** สีประจำร้าน — แต่ละร้านปรับเองได้ ไม่ตั้ง = ใช้โทนสีเริ่มต้นของ PetFlow */

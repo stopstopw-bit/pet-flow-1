@@ -73,6 +73,7 @@ function GroomInfoContent() {
   // เลือกชุดตามชนิดของน้องแต่ละตัว (หมา/แมว) · ไม่รู้ชนิด = ชนิดที่ร้านรับ
   const petKind = petKindOf(config);
   const groomForm = config.groomForm;
+  const stayForm = config.stayForm;
   const rules = config.intakeRules;
 
   const [forms, setForms] = useState<CatForm[]>([]);
@@ -118,11 +119,11 @@ function GroomInfoContent() {
           const info = d.info || null;
           const species = normalizeSpecies(d.species);
           const kind = species ?? petKind;
-          const own = intakeFields(stay ? "stay" : "groom", kind, { groomForm, intakeRules: rules });
+          const own = intakeFields(stay ? "stay" : "groom", kind, { groomForm, stayForm, intakeRules: rules });
           // เข้าพัก + อาบก่อนกลับ — ถามเรื่องอาบน้ำต่อท้าย ข้อที่ซ้ำกับฟอร์มเข้าพักถามครั้งเดียว
           const bath = stay && !!d.withBath;
           const bathFs = bath
-            ? intakeFields("groom", kind, { groomForm, intakeRules: rules })
+            ? intakeFields("groom", kind, { groomForm, stayForm, intakeRules: rules })
                 .filter((fd) => !(fd.key in BATH_SHARED_WITH_STAY) && !own.some((o) => o.key === fd.key))
                 .map((fd) => ({ ...fd, key: BATH_PREFIX + fd.key }))
             : [];
@@ -142,7 +143,7 @@ function GroomInfoContent() {
       })
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.toString(), groomForm, rules, petKind, profile?.lineUserId]);
+  }, [params.toString(), groomForm, stayForm, rules, petKind, profile?.lineUserId]);
 
   const setAnswer = (idx: number, key: string, value: string | string[]) =>
     setForms((prev) =>

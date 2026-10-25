@@ -57,7 +57,8 @@ export const STAY_FORM_DEFAULTS: GroomField[] = [
     type: "single",
     label: "อยู่กับน้องตัวอื่นได้ไหมคะ",
     required: true,
-    enabled: true,
+    // ปิดไว้เป็นค่าเริ่มต้น (เจ้าของระบบ 2026-10-25) — ร้านเปิดกลับได้ในหลังบ้าน › การ์ด › ฟอร์มก่อนเข้าพัก
+    enabled: false,
     options: [
       { key: "ok", label: "🤝 เข้ากับตัวอื่นได้" },
       { key: "alone", label: "🏠 ชอบอยู่ตัวเดียว" },
@@ -70,7 +71,7 @@ export const STAY_FORM_DEFAULTS: GroomField[] = [
     label: "ทรายที่ใช้ / การขับถ่ายที่ควรรู้",
     placeholder: "เช่น ทรายเต้าหู้ ขับถ่ายปกติ",
     required: false,
-    enabled: true,
+    enabled: false,
     options: [],
   },
   {
@@ -141,7 +142,8 @@ const DOG_FORM: GroomField[] = [
   // การดูแล
   text("food", "อาหาร ให้เวลาไหน อย่างไรบ้าง — รบกวนเตรียมอาหารมาเองนะคะ", "เช่น เม็ด Royal Canin เช้า 8 โมง เย็น 6 โมง มื้อละ 1 ถ้วย", true),
   text("medicine", "การทานยา (หากมี)", "เช่น ยาโรคหัวใจ 1/2 เม็ด หลังอาหารเช้า"),
-  { ...WITH_OTHERS, label: "เข้าสังคมกับน้องตัวอื่นได้ไหมคะ" },
+  // ฟอร์มหมายังถามเรื่องเข้าสังคม (ข้อของแมวปิดไว้เป็นค่าเริ่มต้น)
+  { ...WITH_OTHERS, label: "เข้าสังคมกับน้องตัวอื่นได้ไหมคะ", enabled: true },
   {
     key: "grass",
     type: "single",
@@ -181,7 +183,11 @@ const DOG_SECTIONS: Record<string, GroomField["section"]> = {
 };
 for (const f of DOG_FORM) f.section = DOG_SECTIONS[f.key] ?? "care";
 
-/** คำถามตามชนิดของน้อง — หมาใช้ฟอร์มของตัวเอง · ไม่รู้ชนิดถามข้อขับถ่ายรวม */
+/** คำถามตามชนิดของน้อง — หมาใช้ฟอร์มของตัวเอง · ไม่รู้ชนิดถามข้อขับถ่ายรวม (หลังบ้านใช้เป็นค่าเริ่มต้นของตัวแก้ฟอร์ม) */
+export function stayFormDefaults(kind?: PetKind): GroomField[] {
+  return fieldsFor(kind);
+}
+
 function fieldsFor(kind?: PetKind): GroomField[] {
   if (kind === "dog") return DOG_FORM;
   if (kind === "both") return STAY_FORM_DEFAULTS.map((d) => (d.key === "litter" ? { ...d, ...LITTER_BOTH } : d));
@@ -200,13 +206,17 @@ function requireAnswer(f: GroomField): GroomField {
  * ฟอร์มประวัติ (หมวดเจ้าของ + น้อง) ของชนิดนี้ — ใช้กับนัดอาบน้ำ/นวดเมื่อร้านตั้งไว้
  * ชนิดที่ฟอร์มไม่ได้แบ่งหมวด (แมว) คืน null = ใช้ฟอร์มก่อนอาบน้ำตามเดิม
  */
-export function resolveHistoryForm(kind?: PetKind, opts?: { allRequired?: boolean }): GroomField[] | null {
-  const fs = resolveStayForm(undefined, kind, opts).filter((f) => f.section === "owner" || f.section === "pet");
+export function resolveHistoryForm(
+  kind?: PetKind,
+  opts?: { allRequired?: boolean },
+  config?: GroomFormConfig
+): GroomField[] | null {
+  const fs = resolveStayForm(config, kind, opts).filter((f) => f.section === "owner" || f.section === "pet");
   return fs.length ? fs : null;
 }
 
 /**
- * รวมค่าเริ่มต้นกับที่ร้านแก้เอง (ถ้ามีในอนาคต) — คืนรายการคำถามที่ใช้แสดงจริง
+ * รวมค่าเริ่มต้นกับที่ร้านแก้เอง (หลังบ้าน › การ์ด › ฟอร์มก่อนเข้าพัก) — คืนรายการคำถามที่ใช้แสดงจริง
  * kind: ชนิดของน้องตัวนั้น (speciesOf) · ไม่รู้ชนิด = ชนิดที่ร้านรับ (petKindOf) · ไม่ส่ง = แมว
  */
 export function resolveStayForm(
