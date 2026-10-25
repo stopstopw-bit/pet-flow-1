@@ -21,7 +21,7 @@ const LEGACY_POSTERS = new Set([
 
 export default function GroomingPage() {
   const { locale } = useLocale();
-  const { config } = useConfig();
+  const { config, loading: configLoading } = useConfig();
   const m = t(locale).grooming;
 
   const menus = config.grooming.menus as {
@@ -99,7 +99,7 @@ export default function GroomingPage() {
       <ContentBlocks blocks={config.groomingPageBlocks} />
 
       {/* ร้านปิด "จองคิวเอง" ไว้ → ไม่โชว์ปุ่ม (เดิมกดแล้วไปเจอหน้าปิดใช้งาน) */}
-      {isFeatureOn(config, "selfBooking") && (
+      {!configLoading && isFeatureOn(config, "selfBooking") && (
         <Link
           href="/app/book?service=groom"
           className="mt-5 block rounded-petflow-sm bg-latte-deep py-3.5 text-center text-sm font-extrabold text-white shadow-petflow-sm"
