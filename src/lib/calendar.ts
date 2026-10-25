@@ -5,6 +5,8 @@
 import type { calendar_v3 } from "googleapis";
 import { getGoogleCredentials, isGoogleConfigured } from "./google-config";
 import { getSiteConfig } from "./config-store";
+import type { StoredBooking } from "./bookings-store";
+import { hasTransport, transportLabel, type BookingTransport } from "./transport";
 
 /** อีเมล "เจ้าของปฏิทิน" ของร้านปัจจุบัน — ตั้งค่าได้ต่อร้านในหน้าตั้งค่า ร้านอื่นไม่เห็นค่านี้ */
 async function ownerEmails(): Promise<string[]> {
@@ -419,4 +421,30 @@ export async function deleteCalendarEvent(googleEventId: string) {
   } catch (e) {
     return { ok: false, reason: e instanceof Error ? e.message : String(e) };
   }
+}
+
+/** บรรทัดรับ-ส่งในปฏิทิน — ให้คนขับเปิดแผนที่จากปฏิทินได้เลย */
+export function transportCalendarText(t?: BookingTransport) {
+  if (!hasTransport(t)) return "";
+  return [
+    `\n🚗 ${transportLabel(t)}`,
+    t.address ? `จุดรับ-ส่ง: ${t.address}` : "",
+    t.mapUrl ? `แผนที่: ${t.mapUrl}` : "ยังไม่ได้ส่งแผนที่",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** ข้อมูลนัดสำหรับสร้าง/แก้ event ใน Google Calendar */
+export function bookingCalendarPayload(b: StoredBooking) {
+  return {
+    summary: `${b.service === "room" ? "🏠" : "🛁"}${hasTransport(b.transport) ? "🚗" : ""} ${b.catName} (${b.customerName})`,
+    description: `${b.service === "room" ? "ห้องพัก" : "อาบน้ำ"} · ${b.notes || ""}${transportCalendarText(b.transport)}`,
+    start: b.date || b.checkin || "",
+    end: b.checkout || b.date || b.checkin || "",
+    time: b.time,
+    allDay: b.service === "room" && !b.time,
+    service: b.service === "room" ? ("room" as const) : ("groom" as const),
+    eventId: b.id,
+  };
 }

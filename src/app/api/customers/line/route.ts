@@ -6,12 +6,13 @@ import {
 import { isProfileComplete } from "@/lib/customer-tier";
 import type { CatRecord } from "@/lib/customers-store";
 import { requireTenantId, withResolvedTenant } from "@/lib/tenant-context";
-import { verifyLiffIdToken } from "@/lib/liff-auth";
+import { verifyLiffAccessTokenDetailed, verifyLiffIdTokenDetailed } from "@/lib/liff-auth";
 import {
   CUSTOMER_SESSION_COOKIE,
   customerSessionCookieOptions,
   requireCustomerSession,
   signCustomerSession,
+  noCustomerSessionResponse,
 } from "@/lib/customer-session";
 
 /** ตัด staffPrivateNote (โน้ตลับร้าน) ออกก่อนส่งให้ฝั่งลูกค้าเสมอ */
@@ -38,22 +39,32 @@ export async function POST(req: NextRequest) {
 async function handlePost(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const idToken = typeof body.idToken === "string" ? body.idToken : "";
+  const accessToken = typeof body.accessToken === "string" ? body.accessToken.trim() : "";
   const devUserId = typeof body.devUserId === "string" ? body.devUserId.trim() : "";
   const displayName = String(body.displayName || "").trim();
 
   let lineUserId = "";
   let verifiedName = "";
-  if (idToken) {
-    const verified = await verifyLiffIdToken(idToken);
-    if (!verified) {
-      return NextResponse.json({ error: "invalid_id_token" }, { status: 401 });
+  if (idToken || accessToken) {
+    // ID token ก่อน · ไม่มี/ไม่ผ่าน (เช่น LIFF ไม่ได้ติ๊ก scope openid) ใช้ access token แทน
+    let verified = idToken
+      ? await verifyLiffIdTokenDetailed(idToken)
+      : ({ ok: false, reason: "no_id_token" } as const);
+    if (!verified.ok && accessToken) {
+      const viaAccess = await verifyLiffAccessTokenDetailed(accessToken);
+      verified = viaAccess.ok ? viaAccess : { ok: false, reason: `${verified.reason}+${viaAccess.reason}` };
     }
-    lineUserId = verified.lineUserId;
-    verifiedName = verified.displayName;
+    if (!verified.ok) {
+      // reason ไปโชว์เป็นรหัสบนจอลูกค้า (customer-fetch.ts) — ร้านดูแล้วรู้ว่าติดตรงไหน
+      return NextResponse.json({ error: "invalid_id_token", reason: verified.reason }, { status: 401 });
+    }
+    lineUserId = verified.identity.lineUserId;
+    verifiedName = verified.identity.displayName;
   } else if (devUserId && process.env.NODE_ENV !== "production") {
     lineUserId = devUserId;
   } else {
-    return NextResponse.json({ error: "idToken required" }, { status: 400 });
+    console.warn("[liff-auth] แอปไม่ได้ส่ง token มาเลย");
+    return NextResponse.json({ error: "idToken required", reason: "no_token" }, { status: 400 });
   }
 
   let customer;
@@ -101,7 +112,7 @@ export async function GET(req: NextRequest) {
 async function handleGet(req: NextRequest) {
   const session = await requireCustomerSession(req);
   if (!session) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return noCustomerSessionResponse();
   }
 
   const customer = await findCustomerByLine(session.lineUserId);

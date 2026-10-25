@@ -14,6 +14,7 @@ import { toJpegDataUrl } from "@/lib/image-convert";
 import { PetPickList, type PetPickItem } from "@/components/PetPickList";
 import { PetProgramSelect } from "@/components/GroomProgramPicker";
 import { petWords } from "@/lib/pet-kind";
+import { customerFetch } from "@/lib/customer-fetch";
 
 type Service = "groom" | "room";
 
@@ -113,7 +114,7 @@ function BookPageInner() {
   useEffect(() => {
     if (!customerId) return;
     let cancelled = false;
-    fetch("/api/customers/cat-photo", { cache: "no-store" })
+    customerFetch("/api/customers/cat-photo", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : { cats: [] }))
       .then((d) => {
         if (!cancelled) setCatDetails(d.cats || []);

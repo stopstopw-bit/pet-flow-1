@@ -4,7 +4,7 @@ import { withResolvedTenant } from "@/lib/tenant-context";
 import { findCustomerByLine } from "@/lib/customers-store";
 import { getOffer, claimOffer } from "@/lib/coupons-store";
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
-import { requireCustomerSession } from "@/lib/customer-session";
+import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 
 /** ข้อมูลแคมเปญคูปอง (สำหรับหน้ากดรับ) */
 async function getHandler(req: NextRequest) {
@@ -29,7 +29,7 @@ async function getHandler(req: NextRequest) {
 async function postHandler(req: NextRequest) {
   const session = await requireCustomerSession(req);
   if (!session) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return noCustomerSessionResponse();
   }
   const blocked = await featureOff("coupons");
   if (blocked) return blocked;

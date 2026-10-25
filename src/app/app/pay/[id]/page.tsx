@@ -2,18 +2,26 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { useConfig } from "@/components/ConfigProvider";
 import Link from "next/link";
 import { LoadingScreen } from "@/components/LoadingScreen";
-import { BTN_SECONDARY, PageHeader } from "@/components/PageHeader";
+import { PageHeader } from "@/components/PageHeader";
 import { SectionLabel } from "@/components/ui";
 import { Icon } from "@/components/Icon";
+import { stripDiscountTag } from "@/lib/line-discount";
 
 type Invoice = {
   id: string;
   customerName: string;
   catName: string;
-  items: { label: string; amount: number }[];
+  items: {
+    label: string;
+    amount: number;
+    kind?: string;
+    qty?: number;
+    unitAmount?: number;
+    discountPercent?: number;
+    discountName?: string;
+  }[];
   subtotal: number;
   discount: number;
   promoLabel?: string;
@@ -29,7 +37,6 @@ type Payment = {
 
 export default function PayPage() {
   const params = useParams();
-  const { config } = useConfig();
   const id = String(params.id);
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [payment, setPayment] = useState<Payment | null>(null);
@@ -61,12 +68,38 @@ export default function PayPage() {
       <SectionLabel>Bill · รายการ</SectionLabel>
       <div className="overflow-hidden rounded-petflow border border-petflow-line bg-card shadow-petflow-sm">
         <ul className="divide-y divide-petflow-line text-sm text-brown">
-          {invoice.items.map((item, i) => (
-            <li key={i} className="flex justify-between gap-3 px-4 py-3">
-              <span className="min-w-0">{item.label}</span>
-              <span className="shrink-0 font-bold">{item.amount.toLocaleString()} ฿</span>
-            </li>
-          ))}
+          {invoice.items.map((item, i) => {
+            // ส่วนลดเฉพาะรายการ — ราคาเต็มขีดฆ่า + บอกว่าลดเท่าไหร่
+            const gross =
+              item.unitAmount !== undefined
+                ? item.unitAmount * Math.max(1, item.qty || 1)
+                : item.amount;
+            const off = item.kind === "freebie" ? 0 : gross - item.amount;
+            return (
+              <li key={i} className="px-4 py-3">
+                <div className="flex justify-between gap-3">
+                  <span className="min-w-0">{off > 0 ? stripDiscountTag(item.label) : item.label}</span>
+                  <span className="shrink-0 text-right font-bold">
+                    {off > 0 && (
+                      <s className="mr-1 text-xs font-normal text-brown-faint">
+                        {gross.toLocaleString()}
+                      </s>
+                    )}
+                    {item.amount.toLocaleString()} ฿
+                  </span>
+                </div>
+                {off > 0 && (
+                  <div className="mt-0.5 flex justify-between gap-3 text-xs font-bold text-ok">
+                    <span>
+                      ส่วนลด{item.discountName ? ` ${item.discountName}` : ""}
+                      {item.discountPercent ? ` ${item.discountPercent}%` : ""}
+                    </span>
+                    <span>-{off.toLocaleString()} ฿</span>
+                  </div>
+                )}
+              </li>
+            );
+          })}
           {invoice.discount > 0 && (
             <li className="flex justify-between gap-3 px-4 py-3 text-ok">
               <span className="min-w-0">ส่วนลด{invoice.promoLabel ? ` (${invoice.promoLabel})` : ""}</span>
@@ -107,19 +140,9 @@ export default function PayPage() {
         </div>
       ) : null}
 
-      <a
-        href={config.business.reviewUrl || config.business.maps}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={`mt-5 ${BTN_SECONDARY}`}
-      >
-        {!config.business.reviewButtonText && <Icon name="star" size={16} />}
-        {config.business.reviewButtonText || `รีวิว ${config.business.name}`}
-      </a>
-
       <Link
         href="/app"
-        className="mt-2 flex min-h-[44px] items-center justify-center text-xs font-bold text-latte-deep"
+        className="mt-5 flex min-h-[44px] items-center justify-center text-xs font-bold text-latte-deep"
       >
         กลับหน้าหลัก
       </Link>

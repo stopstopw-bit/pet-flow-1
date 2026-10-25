@@ -14,7 +14,11 @@ export type IntakeRules = {
   groomUsesHistory?: boolean;
   /** ฟอร์มทำประวัติ / ก่อนเข้าพัก บังคับตอบทุกข้อ */
   allRequired?: boolean;
+  /** หน้าสมัครสมาชิกถามประวัติเจ้าของ + น้อง (ของฟอร์มทำประวัติ) ไปเลย ไม่บังคับ — เก็บเป็นข้อมูลก่อนเข้าพักของน้อง */
+  registerAsksHistory?: boolean;
 };
+
+export type IntakeAnswers = Record<string, string | string[]>;
 
 /** การ์ดของการเข้าพักที่ร้านเลือกให้ขอในนัดอาบน้ำได้ */
 export const GROOM_EXTRA_CARDS = [
@@ -60,4 +64,58 @@ export function summaryFields(
 ): GroomField[] | undefined {
   const fs = intakeFields(form, kind, cfg);
   return fs.some((f) => f.key in info) ? fs : undefined;
+}
+
+/**
+ * คำถามประวัติที่หน้าสมัครสมาชิกถามเพิ่ม (ร้านเปิด registerAsksHistory) — หมวดเจ้าของ + น้อง
+ * ไม่บังคับ ไม่กรอกก็สมัครได้ (เจ้าของระบบ 2026-10-23) — ข้อที่เว้นไว้ ฟอร์มก่อนเข้าพักจะถามอีกที
+ * ไม่มีฟอร์มประวัติสำหรับชนิดนี้ (แมว) = null
+ */
+export function registerHistoryFields(
+  kind: PetKind | undefined,
+  cfg: WithRules
+): { owner: GroomField[]; pet: GroomField[] } | null {
+  if (!cfg?.intakeRules?.registerAsksHistory) return null;
+  const fs = resolveHistoryForm(kind)?.map((f) => ({
+    ...f,
+    required: false,
+    label: f.label.replace(/\s*\((ถ้าไม่มีเว้นว่างได้|หากมี|ถ้ามี)\)/, ""),
+  }));
+  if (!fs) return null;
+  return {
+    owner: fs.filter((f) => f.section === "owner"),
+    pet: fs.filter((f) => f.section === "pet"),
+  };
+}
+
+/** ประวัติที่ได้จากหน้าสมัคร — ยังไม่นับว่ากรอกฟอร์มก่อนเข้าพักแล้ว (หมวดการดูแลยังไม่ได้ถาม) */
+export const REGISTER_HISTORY_SOURCE = "register";
+
+/** ลูกค้ากรอกฟอร์มก่อนเข้าพักแล้วหรือยัง — คำตอบที่มาจากหน้าสมัครอย่างเดียวยังไม่นับ */
+export function stayInfoDone(json?: string | null): boolean {
+  if (!json) return false;
+  try {
+    return (JSON.parse(json) as { source?: string }).source !== REGISTER_HISTORY_SOURCE;
+  } catch {
+    return true;
+  }
+}
+
+/** เก็บเฉพาะคำถามที่มีจริง — ตัดความยาว และแปลงชนิดให้ตรงกับคำถาม */
+export function sanitizeIntakeInfo(fields: { key: string; type: string }[], info: unknown): Record<string, unknown> {
+  const payload: Record<string, unknown> = { submittedAt: new Date().toISOString() };
+  const src = (info && typeof info === "object" ? info : {}) as Record<string, unknown>;
+  for (const f of fields) {
+    const raw = src[f.key];
+    if (f.type === "multi") {
+      payload[f.key] = Array.isArray(raw)
+        ? raw.map((v) => String(v).slice(0, 120))
+        : raw
+          ? [String(raw).slice(0, 120)] // ข้อมูลเก่าที่เคยเก็บเป็น string เดี่ยว
+          : [];
+    } else {
+      payload[f.key] = String(raw ?? "").trim().slice(0, 500);
+    }
+  }
+  return payload;
 }
