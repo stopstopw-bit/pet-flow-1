@@ -60,6 +60,7 @@ import {
   getCatStayInfo,
   getCustomer,
   getIntakeStatus,
+  copyBookingDocsToCustomer,
 } from "@/lib/customers-store";
 import { getSiteConfig } from "@/lib/config-store";
 import { getLineCredentials } from "@/lib/line-config";
@@ -649,6 +650,8 @@ function groomInfoCardFor(
         { status: res.error === "no_photo" ? 400 : 500 }
       );
     }
+    // เก็บที่ตัวน้องด้วย — หน้าข้อมูลลูกค้าขึ้น "ได้รับแล้ว" และรอบหน้าไม่ขอซ้ำ
+    await copyBookingDocsToCustomer(b, { newPhotos: res.addedUrls });
     return NextResponse.json({ ok: true, vaccinePhotoUrl: res.urls.join("\n") });
   }
   if (action === "remove_vaccine_photo") {
@@ -973,12 +976,12 @@ function groomInfoCardFor(
       } else if (part === "checkout" && b.pickupTime) {
         skipped.push(`เลือกเวลารับน้องไว้แล้ว (${b.pickupTime}) ไม่ถามซ้ำ`);
       } else if (part === "vaccine" || part === "idcard") {
-        // ส่งไปแล้วไม่ขอซ้ำ: สมุดวัคซีนดูทีละตัว (ที่นัดหรือที่ตัวน้อง) · บัตรประชาชนครั้งเดียวต่อลูกค้า
+        // สมุดวัคซีนขอทุกรอบ ข้ามเฉพาะนัดที่แนบมาแล้ว · บัตรประชาชนครั้งเดียวต่อลูกค้า
         const status = await Promise.all(household.map((x) => getIntakeStatus(to, String(x.catName))));
         let ask = household;
         if (part === "vaccine") {
-          ask = household.filter((x, i) => !status[i].vaccine && !x.vaccinePhotoUrl);
-          for (const x of household) if (!ask.includes(x)) skipped.push(`${x.catName}: มีสมุดวัคซีนแล้ว ไม่ขอซ้ำ`);
+          ask = household.filter((x) => !x.vaccinePhotoUrl);
+          for (const x of household) if (!ask.includes(x)) skipped.push(`${x.catName}: นัดนี้แนบสมุดวัคซีนแล้ว ไม่ขอซ้ำ`);
         } else if (status[0]?.idCard) {
           ask = [];
           skipped.push("มีบัตรประชาชนแล้ว ไม่ขอซ้ำ");
