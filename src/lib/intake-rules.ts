@@ -41,12 +41,12 @@ export function groomUsesCard(cfg: WithRules, part: string): boolean {
 export function intakeFields(
   form: "groom" | "stay",
   kind: PetKind | undefined,
-  cfg: (WithRules & Pick<SiteConfig, "groomForm">) | null | undefined
+  cfg: (WithRules & Partial<Pick<SiteConfig, "groomForm" | "stayForm">>) | null | undefined
 ): GroomField[] {
   const allRequired = Boolean(cfg?.intakeRules?.allRequired);
-  if (form === "stay") return resolveStayForm(undefined, kind, { allRequired });
+  if (form === "stay") return resolveStayForm(cfg?.stayForm, kind, { allRequired });
   if (cfg?.intakeRules?.groomUsesHistory) {
-    const history = resolveHistoryForm(kind, { allRequired });
+    const history = resolveHistoryForm(kind, { allRequired }, cfg?.stayForm);
     if (history) return history;
   }
   return resolveGroomForm(cfg?.groomForm, kind);
@@ -73,10 +73,10 @@ export function summaryFields(
  */
 export function registerHistoryFields(
   kind: PetKind | undefined,
-  cfg: WithRules
+  cfg: (WithRules & Partial<Pick<SiteConfig, "stayForm">>) | null | undefined
 ): { owner: GroomField[]; pet: GroomField[] } | null {
   if (!cfg?.intakeRules?.registerAsksHistory) return null;
-  const fs = resolveHistoryForm(kind)?.map((f) => ({
+  const fs = resolveHistoryForm(kind, undefined, cfg?.stayForm)?.map((f) => ({
     ...f,
     required: false,
     label: f.label.replace(/\s*\((ถ้าไม่มีเว้นว่างได้|หากมี|ถ้ามี)\)/, ""),

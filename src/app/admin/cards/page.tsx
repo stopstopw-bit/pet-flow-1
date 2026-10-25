@@ -14,6 +14,11 @@ import { BroadcastButtonPicker } from "@/components/BroadcastButtonPicker";
 import { toast } from "@/components/Toast";
 import { useConfig } from "@/components/ConfigProvider";
 import { Icon } from "@/components/Icon";
+import { FormFieldsEditor, FormFieldsPreview, resetFormConfig } from "@/components/FormFieldsEditor";
+import { RegisterFormEditor, RegisterFormPreview, resetRegisterForm } from "@/components/RegisterFormEditor";
+import { resolveStayForm, stayFormDefaults } from "@/lib/stay-form";
+import type { PetKind } from "@/lib/pet-kind";
+import type { RegisterFieldConfig, RegisterFormConfig } from "@/lib/register-form";
 import { brandColorsFor } from "@/lib/card-brand";
 import { DEPOSIT_REMINDER_DEFAULTS, DOC_REQUEST_DEFAULTS, INTAKE_CARD_DEFAULTS } from "@/lib/line-card-defaults";
 
@@ -725,8 +730,24 @@ const CARDS: CardMeta[] = [
   },
   {
     key: "groomFormFields",
-    name: "ฟอร์มถามประวัติน้อง",
+    name: "ฟอร์มก่อนอาบน้ำ",
     desc: "คำถามที่ลูกค้าเห็นในฟอร์มก่อนอาบน้ำ — เปิด/ปิด แก้คำถาม เพิ่ม-ลบตัวเลือกเองได้",
+    colors: [],
+    fields: [],
+    texts: [],
+  },
+  {
+    key: "stayFormFields",
+    name: "ฟอร์มก่อนเข้าพัก",
+    desc: "คำถามที่ลูกค้าเห็นในฟอร์มข้อมูลน้องก่อนเข้าพัก / ฟอร์มประวัติ — เปิด/ปิด แก้คำถาม เพิ่ม-ลบตัวเลือกเองได้",
+    colors: [],
+    fields: [],
+    texts: [],
+  },
+  {
+    key: "registerFormFields",
+    name: "ฟอร์มสมัครสมาชิก",
+    desc: "ช่องในหน้าสมัครสมาชิก — เปิด/ปิด บังคับกรอก และแก้ชื่อช่องได้ (ชื่อ เบอร์โทร ชื่อน้อง ปิดไม่ได้)",
     colors: [],
     fields: [],
     texts: [],
@@ -1578,10 +1599,15 @@ function Preview({
   );
 }
 
+/** การ์ดที่เป็นตัวแก้ฟอร์มลูกค้า (ไม่ใช่การ์ด LINE) */
+const FORM_KEYS = ["groomFormFields", "stayFormFields", "registerFormFields"];
+
 export default function CardsStudioPage() {
   const [cards, setCards] = useState<Record<string, CardStyleConfig>>({});
   const [texts, setTexts] = useState<Record<string, string>>({});
   const [groomForm, setGroomForm] = useState<GroomFormConfig>({});
+  const [stayForm, setStayForm] = useState<GroomFormConfig>({});
+  const [registerForm, setRegisterForm] = useState<RegisterFormConfig>({});
   // ร้านหมาเห็นตัวเลือกหน้าคน/คำถามของหมา เหมือนที่ลูกค้าเห็นจริง
   const [petKind, setPetKind] = useState<string | undefined>();
   const [branding, setBranding] = useState(BRAND_FALLBACK);
@@ -1603,6 +1629,8 @@ export default function CardsStudioPage() {
         const cfg = d.config || {};
         setCards(cfg.cards || {});
         setGroomForm(cfg.groomForm || {});
+        setStayForm(cfg.stayForm || {});
+        setRegisterForm(cfg.registerForm || {});
         setPetKind(cfg.business?.petKind);
         setBranding({ ...BRAND_FALLBACK, ...cfg.branding });
         setHasBrand(Boolean(cfg.branding?.primary));
@@ -1666,6 +1694,17 @@ export default function CardsStudioPage() {
     setGroomForm((prev) => ({ ...prev, [key]: { ...prev[key], ...p } }));
     setDirty(true);
   };
+  const patchStayField = (
+    key: string,
+    p: Partial<NonNullable<GroomFormConfig[string]>>
+  ) => {
+    setStayForm((prev) => ({ ...prev, [key]: { ...prev[key], ...p } }));
+    setDirty(true);
+  };
+  const patchRegisterField = (key: string, p: Partial<RegisterFieldConfig>) => {
+    setRegisterForm((prev) => ({ ...prev, [key]: { ...prev[key as keyof RegisterFormConfig], ...p } }));
+    setDirty(true);
+  };
   const toggleField = (key: string) => {
     const cur = st.show?.[key] !== false;
     patch({ show: { ...st.show, [key]: !cur } });
@@ -1695,6 +1734,8 @@ export default function CardsStudioPage() {
           patch: {
             cards,
             groomForm,
+            stayForm,
+            registerForm,
             // ว่าง = ไม่แตะ (ส่งข้อความว่างให้ลูกค้าไม่ได้)
             ...(texts.followUpMessage?.trim() ? { crm: { followUpMessage: texts.followUpMessage } } : {}),
             billing: {
@@ -1818,133 +1859,36 @@ export default function CardsStudioPage() {
 
           {/* ── ตัวแก้คำถามฟอร์มประวัติน้อง ── */}
           {activeKey === "groomFormFields" && (
-            <div className="space-y-3">
-              {groomFormDefaults(petKind).map((def) => {
-                const c = groomForm[def.key] || {};
-                const enabled = c.enabled ?? def.enabled;
-                const required = c.required ?? def.required;
-                const options = c.options ?? def.options;
-                const isChip = def.type === "single" || def.type === "multi";
-                return (
-                  <div
-                    key={def.key}
-                    className={`rounded-petflow-sm border p-3 ${
-                      enabled ? "border-petflow-line bg-paper/40" : "border-dashed border-petflow-line bg-paper/20 opacity-60"
-                    }`}
-                  >
-                    <div className="mb-2 flex flex-wrap items-center gap-2">
-                      <label className="flex items-center gap-1.5 text-[11px] font-bold text-brown">
-                        <input
-                          type="checkbox"
-                          checked={enabled}
-                          onChange={(e) => patchGroomField(def.key, { enabled: e.target.checked })}
-                          className="h-4 w-4 accent-latte-deep"
-                        />
-                        แสดงคำถามนี้
-                      </label>
-                      <label className="flex items-center gap-1.5 text-[11px] font-bold text-brown">
-                        <input
-                          type="checkbox"
-                          checked={required}
-                          disabled={!enabled}
-                          onChange={(e) => patchGroomField(def.key, { required: e.target.checked })}
-                          className="h-4 w-4 accent-latte-deep"
-                        />
-                        บังคับตอบ
-                      </label>
-                      <span className="ml-auto rounded-full bg-card px-2 py-0.5 text-[9px] font-bold text-brown-faint">
-                        {def.type === "multi"
-                          ? "เลือกหลายข้อ"
-                          : def.type === "single"
-                            ? "เลือก 1 ข้อ"
-                            : def.type === "textarea"
-                              ? "พิมพ์ยาว"
-                              : "พิมพ์สั้น"}
-                      </span>
-                    </div>
-
-                    <input
-                      value={c.label ?? def.label}
-                      disabled={!enabled}
-                      onChange={(e) => patchGroomField(def.key, { label: e.target.value })}
-                      className="w-full rounded-petflow-sm border border-petflow-line bg-card px-2.5 py-2 text-xs font-bold text-brown"
-                    />
-
-                    {!isChip && (
-                      <input
-                        value={c.placeholder ?? def.placeholder ?? ""}
-                        disabled={!enabled}
-                        onChange={(e) => patchGroomField(def.key, { placeholder: e.target.value })}
-                        placeholder="ข้อความตัวอย่างในช่องพิมพ์"
-                        className="mt-1.5 w-full rounded-petflow-sm border border-petflow-line bg-card px-2.5 py-1.5 text-[11px] text-brown-soft"
-                      />
-                    )}
-
-                    {isChip && enabled && (
-                      <div className="mt-2">
-                        <p className="mb-1 text-[10px] font-bold text-brown-soft">
-                          ตัวเลือก ({options.length})
-                        </p>
-                        <div className="space-y-1.5">
-                          {options.map((o, i) => (
-                            <div key={o.key} className="flex items-center gap-1.5">
-                              <input
-                                value={o.label}
-                                onChange={(e) => {
-                                  const next = options.map((x, j) =>
-                                    j === i ? { ...x, label: e.target.value } : x
-                                  );
-                                  patchGroomField(def.key, { options: next });
-                                }}
-                                className="flex-1 rounded-petflow-sm border border-petflow-line bg-card px-2.5 py-1.5 text-[11px]"
-                              />
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  patchGroomField(def.key, {
-                                    options: options.filter((_, j) => j !== i),
-                                  })
-                                }
-                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-wait/10 text-wait"
-                                aria-label="ลบตัวเลือก"
-                              >
-                                <Icon name="trash" size={14} />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const label = prompt("ชื่อตัวเลือกใหม่ (ใส่อิโมจิได้):");
-                            if (!label?.trim()) return;
-                            patchGroomField(def.key, {
-                              options: [...options, { key: label.trim(), label: label.trim() }],
-                            });
-                          }}
-                          className="mt-1.5 flex h-9 items-center gap-1 rounded-full bg-sage/20 px-3 text-[11px] font-bold text-ok"
-                        >
-                          <Icon name="plus" size={14} />
-                          เพิ่มตัวเลือก
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-
-              <button
-                type="button"
-                onClick={() => {
-                  setGroomForm({});
-                  setDirty(true);
-                }}
-                className="flex h-10 items-center gap-1.5 rounded-full bg-paper px-4 text-[11px] font-bold text-wait"
-              >
-                <Icon name="back" size={14} />
-                รีเซ็ตฟอร์มกลับค่าเริ่มต้นทั้งหมด
-              </button>
-            </div>
+            <FormFieldsEditor
+              defaults={groomFormDefaults(petKind)}
+              value={groomForm}
+              onPatch={patchGroomField}
+              onReset={() => {
+                setGroomForm(resetFormConfig(groomFormDefaults(petKind)));
+                setDirty(true);
+              }}
+            />
+          )}
+          {activeKey === "stayFormFields" && (
+            <FormFieldsEditor
+              defaults={stayFormDefaults(petKind as PetKind | undefined)}
+              value={stayForm}
+              onPatch={patchStayField}
+              onReset={() => {
+                setStayForm(resetFormConfig(stayFormDefaults(petKind as PetKind | undefined)));
+                setDirty(true);
+              }}
+            />
+          )}
+          {activeKey === "registerFormFields" && (
+            <RegisterFormEditor
+              value={registerForm}
+              onPatch={patchRegisterField}
+              onReset={() => {
+                setRegisterForm(resetRegisterForm());
+                setDirty(true);
+              }}
+            />
           )}
 
           {meta.colors.length > 0 && (
@@ -2224,51 +2168,14 @@ export default function CardsStudioPage() {
         <div className="lg:sticky lg:top-24 lg:self-start">
           <p className="mb-2 flex items-center justify-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">
             <Icon name="eye" size={14} />
-            {activeKey === "groomFormFields" ? "Preview · ฟอร์มที่ลูกค้าเห็น" : "Preview · ตัวอย่างใน LINE"}
+            {FORM_KEYS.includes(activeKey) ? "Preview · ฟอร์มที่ลูกค้าเห็น" : "Preview · ตัวอย่างใน LINE"}
           </p>
           {activeKey === "groomFormFields" ? (
-            <div className="rounded-2xl bg-[#efe6d6] p-3">
-              <div className="rounded-petflow bg-[#fdfaf4] p-3">
-                <p className="text-sm font-extrabold text-[#4a3a12]">🩺 ประวัติน้องก่อนอาบน้ำ</p>
-                <p className="mt-0.5 text-[10px] text-[#8a7a5c]">🐾 Soju</p>
-                {resolveGroomForm(groomForm, petKind).map((fd) => (
-                  <div key={fd.key} className="mt-2.5">
-                    <p className="mb-1 text-[10px] font-bold text-[#6b5c40]">
-                      {fd.label}
-                      {fd.required && " *"}
-                    </p>
-                    {fd.type === "single" || fd.type === "multi" ? (
-                      <div className="flex flex-wrap gap-1">
-                        {fd.options.map((o, i) => (
-                          <span
-                            key={o.key}
-                            className={`rounded-full px-2 py-1 text-[9.5px] font-bold ${
-                              i === 0
-                                ? "bg-[#7a6a48] text-[#fff8ec]"
-                                : "border border-[#e2d4b8] bg-[#f4ecd8] text-[#6b5c40]"
-                            }`}
-                          >
-                            {o.label}
-                          </span>
-                        ))}
-                        {fd.options.length === 0 && (
-                          <span className="text-[9.5px] text-wait">
-                            (ยังไม่มีตัวเลือก — เพิ่มด้านซ้าย)
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="rounded border border-[#e2d4b8] bg-white px-2 py-1.5 text-[9.5px] text-[#b3a68a]">
-                        {fd.placeholder || "…"}
-                      </div>
-                    )}
-                  </div>
-                ))}
-                <div className="mt-3 rounded-lg bg-[#8a7350] py-2 text-center text-[10px] font-extrabold text-[#fff8ec]">
-                  💛 ส่งข้อมูลให้ร้าน
-                </div>
-              </div>
-            </div>
+            <FormFieldsPreview title="🩺 ประวัติน้องก่อนอาบน้ำ" fields={resolveGroomForm(groomForm, petKind)} />
+          ) : activeKey === "stayFormFields" ? (
+            <FormFieldsPreview title="🏠 ข้อมูลน้องก่อนเข้าพัก" fields={resolveStayForm(stayForm, petKind as PetKind | undefined)} />
+          ) : activeKey === "registerFormFields" ? (
+            <RegisterFormPreview value={registerForm} />
           ) : (
             <div className="rounded-2xl bg-[#8cabd8] p-4">
               <Preview meta={meta} st={shownSt} texts={texts} />
