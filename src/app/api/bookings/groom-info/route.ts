@@ -9,7 +9,7 @@ import {
   setCatStayInfo,
   type CustomerRecord,
 } from "@/lib/customers-store";
-import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
+import { sendTelegramLater, formatBookingTelegram } from "@/lib/telegram";
 import { parseGroomInfo, groomInfoSummary } from "@/lib/groom-info";
 import { getSiteConfig } from "@/lib/config-store";
 import { isFeatureOn } from "@/lib/features";
@@ -158,7 +158,7 @@ async function postHandler(req: NextRequest) {
   }
 
   const customerName = t.booking?.customerName || (t.me as CustomerRecord | undefined)?.name || "-";
-  await sendTelegram(
+  sendTelegramLater(
     formatBookingTelegram(
       groomPayload
         ? "🏠🛁 ข้อมูลน้องก่อนเข้าพัก + อาบน้ำ (ลูกค้ากรอก)"

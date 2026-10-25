@@ -3,7 +3,7 @@ import {
   getCustomerLinkPreview,
   linkCustomerToLine,
 } from "@/lib/customers-store";
-import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
+import { sendTelegramLater, formatBookingTelegram } from "@/lib/telegram";
 import { withResolvedTenant } from "@/lib/tenant-context";
 import { requireCustomerSession } from "@/lib/customer-session";
 
@@ -61,7 +61,7 @@ async function handlePost(req: NextRequest) {
     );
   }
 
-  await sendTelegram(
+  sendTelegramLater(
     formatBookingTelegram("🔗 ลูกค้าผูก LINE กับบัญชีสำเร็จ", {
       ลูกค้า: result.customer.name,
       ชื่อไลน์: displayName || "-",

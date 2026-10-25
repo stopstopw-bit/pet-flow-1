@@ -22,7 +22,7 @@ import {
 import { findCustomerByLine } from "@/lib/customers-store";
 import { getSiteConfig } from "@/lib/config-store";
 import { pushLineMessage, buildPointsAwardFlex } from "@/lib/line";
-import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
+import { sendTelegramLater, formatBookingTelegram } from "@/lib/telegram";
 
 export async function GET(req: NextRequest) {
   const withClaims = req.nextUrl.searchParams.get("claims") === "1";
@@ -170,7 +170,7 @@ async function handlePost(req: NextRequest) {
       /* ส่ง LINE ไม่ผ่าน — แต้มให้ไปแล้ว ไม่ย้อนกลับ แค่บอกหน้าจอว่าส่งไม่สำเร็จ */
     }
 
-    await sendTelegram(
+    sendTelegramLater(
       formatBookingTelegram("🎁 ร้านกดใช้โปรแทนลูกค้า", {
         ลูกค้า: result.claim.customerName,
         โปรโมชั่น: result.claim.promoTitle,

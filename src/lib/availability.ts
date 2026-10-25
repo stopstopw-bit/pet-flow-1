@@ -1,6 +1,6 @@
 import { getSiteConfig } from "./config-store";
 import type { SiteConfig } from "./config-types";
-import { listBookings } from "./bookings-store";
+import { listGroomBookingsOn, listRoomBookingsOverlapping } from "./bookings-store";
 import { SELF_BOOKABLE_ROOM_INVENTORY_KEY } from "./self-bookable-rooms";
 
 /**
@@ -39,8 +39,8 @@ export function groomMinutesFor(config: Pick<SiteConfig, "groomDuration">, n: nu
 
 /**
  * ความว่างของแต่ละสล็อตอาบน้ำในวันที่กำหนด
- * ใช้ listBookings() แทนการยิง query เอง — ให้เดินทางเดียวกับที่อื่นในระบบ (ทำงานได้ทั้งโหมด
- * Supabase จริงและโหมด in-memory ตอน dev โดยไม่ต้องเขียน fallback ซ้ำสองที่)
+ * ดึงเฉพาะนัดอาบน้ำของวันนั้น (listGroomBookingsOn) — ทำงานได้ทั้งโหมด
+ * Supabase จริงและโหมด in-memory ตอน dev โดยไม่ต้องเขียน fallback ซ้ำสองที่
  */
 export async function getGroomAvailability(
   date: string,
@@ -59,7 +59,7 @@ export async function getGroomAvailability(
   const defaultCap = config.groomSlotDefaultCapacity ?? 1;
   const closed = isShopClosedOn(config, date);
 
-  const all = await listBookings();
+  const all = await listGroomBookingsOn(date);
   const bookedByTime = new Map<string, number>();
   for (const b of all) {
     if (b.service !== "groom" || b.date !== date || b.status === "cancelled" || !b.time) continue;
@@ -101,7 +101,7 @@ async function groomAvailabilityByDuration(config: SiteConfig, date: string, cat
   const need = groomMinutesFor(config, catCount);
 
   const households = new Map<string, { start: number; cats: number }>();
-  for (const b of await listBookings()) {
+  for (const b of await listGroomBookingsOn(date)) {
     if (b.service !== "groom" || b.date !== date || b.status === "cancelled" || !b.time) continue;
     const key = `${b.customerName}|${b.time}`;
     const h = households.get(key) || { start: toMin(b.time), cats: 0 };
@@ -193,7 +193,7 @@ export async function getRoomAvailability(
   // (พนักงานยังดูแลน้องตามปกติ แค่ไม่มีใครอยู่หน้าร้านรับ-ส่งของใหม่)
   const closed = isShopClosedOn(config, checkin) || isShopClosedOn(config, checkout);
 
-  const all = await listBookings();
+  const all = await listRoomBookingsOverlapping(roomTypeId, checkin, checkout);
   // นับเป็น "ห้อง" ไม่ใช่ "แมว" — บ้านเดียวกันช่วงเดียวกันอยู่ห้องเดียวกันได้ถึง maxCats ตัว
   const maxCats = Math.max(1, config.rooms.find((r) => r.id === roomTypeId)?.maxCats || 1);
   const households = new Map<string, number>();

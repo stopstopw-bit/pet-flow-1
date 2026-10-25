@@ -31,7 +31,7 @@ import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { withResolvedTenant, withTenant } from "@/lib/tenant-context";
 import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 import { listCustomers, resolveCustomerForBooking } from "@/lib/customers-store";
-import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
+import { sendTelegramLater, formatBookingTelegram } from "@/lib/telegram";
 import {
   pushLineMessage,
   buildConsentFlex,
@@ -244,7 +244,7 @@ async function handlePost(req: NextRequest) {
   const base = process.env.NEXT_PUBLIC_APP_URL || "";
   const icsUrl = `${base}/api/calendar/${booking.id}`;
 
-  await sendTelegram(
+  sendTelegramLater(
     formatBookingTelegram("📌 จองใหม่", {
       ลูกค้า: customer.name,
       น้อง: body.catName,
@@ -353,7 +353,7 @@ async function handlePatch(req: NextRequest, admin: boolean) {
         checkinTime,
       });
     }
-    await sendTelegram(
+    sendTelegramLater(
       formatBookingTelegram("✅ ลูกค้ายืนยันแล้ว", {
         ลูกค้า: String(b.customerName),
         น้อง: String(b.catName),
@@ -400,7 +400,7 @@ async function handlePatch(req: NextRequest, admin: boolean) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }
     const first = confirmed[0]!;
-    await sendTelegram(
+    sendTelegramLater(
       formatBookingTelegram("✅ ลูกค้ายืนยันแล้ว", {
         ลูกค้า: String(first.customerName),
         น้อง: confirmed.map((x) => x!.catName).join(", "),
@@ -1271,7 +1271,7 @@ function groomInfoCardFor(
     }
     const h = res.updated[0];
     const inv = res.invoice;
-    await sendTelegram(
+    sendTelegramLater(
       formatBookingTelegram(h?.service === "room" ? "📅 เลื่อนวัน/ต่อคืน" : "📅 เลื่อนนัด", {
         ลูกค้า: String(h?.customerName || ""),
         น้อง: res.updated.map((u) => u.catName).join(", "),
@@ -1338,7 +1338,7 @@ function groomInfoCardFor(
     }
 
     // แก้ทั้งบ้าน: ตัวแรกแจ้งครั้งเดียวพอ ตัวที่เหลือส่ง silent มา กันแจ้งเตือนรัวทีละตัว
-    if (!body.silent) await sendTelegram(
+    if (!body.silent) sendTelegramLater(
       formatBookingTelegram("✏️ แก้ไขนัด", {
         ลูกค้า: String(updated.customerName),
         น้อง: String(updated.catName),
@@ -1396,7 +1396,7 @@ function groomInfoCardFor(
       }
     }
 
-    await sendTelegram(
+    sendTelegramLater(
       formatBookingTelegram(
         status === "ready"
           ? "🎉 น้องพร้อมกลับบ้าน"
@@ -1428,7 +1428,7 @@ function groomInfoCardFor(
       }
     }
 
-    await sendTelegram(
+    sendTelegramLater(
       formatBookingTelegram("❌ ยกเลิกนัด", {
         ลูกค้า: String(b.customerName),
         น้อง: String(b.catName),

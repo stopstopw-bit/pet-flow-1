@@ -20,7 +20,7 @@ import {
 import { findCustomerByLine, getCustomer } from "@/lib/customers-store";
 import { getPaymentConfig } from "@/lib/payment-config";
 import { getSiteConfig } from "@/lib/config-store";
-import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
+import { sendTelegramLater, formatBookingTelegram } from "@/lib/telegram";
 import { pushLineMessage, buildPackageFlex, buildMemberBalanceFlex } from "@/lib/line";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { withResolvedTenant, withTenant } from "@/lib/tenant-context";
@@ -121,7 +121,7 @@ async function handlePost(req: NextRequest, isAdminSession: boolean) {
       offer,
     });
 
-    await sendTelegram(
+    sendTelegramLater(
       formatBookingTelegram(
         offer.kind === "credit" ? "🛒 ลูกค้าสั่งเติมเครดิต Member (รอโอน)" : "🛒 ลูกค้าสั่งซื้อคอร์ส (รอโอน)",
         {
@@ -158,7 +158,7 @@ async function handlePost(req: NextRequest, isAdminSession: boolean) {
       return NextResponse.json({ error: res.error }, { status: 400 });
     }
     const order = orders.find((o) => o.id === orderId)!;
-    await sendTelegram(
+    sendTelegramLater(
       formatBookingTelegram(
         order.kind === "credit" ? "🧾 ลูกค้าแจ้งสลิปเติมเครดิตแล้ว" : "🧾 ลูกค้าแจ้งสลิปคอร์สแล้ว",
         {
@@ -222,7 +222,7 @@ async function handlePatch(req: NextRequest) {
 
     const customer = await getCustomer(res.order.customerId);
     const isCredit = res.order.kind === "credit";
-    await sendTelegram(
+    sendTelegramLater(
       formatBookingTelegram(
         isCredit ? "✅ ยืนยันรับเงินเติมเครดิต Member แล้ว" : "✅ ยืนยันรับเงินค่าคอร์สแล้ว",
         {

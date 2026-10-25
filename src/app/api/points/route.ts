@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { featureOff } from "@/lib/features-server";
 import { getAccount, redeemReward, addPoints, deletePointsHistoryEntry } from "@/lib/points-store";
-import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
+import { sendTelegramLater, formatBookingTelegram } from "@/lib/telegram";
 import { pushLineMessage, buildPointsAwardFlex } from "@/lib/line";
 import { getSiteConfig } from "@/lib/config-store";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
@@ -133,7 +133,7 @@ async function handlePost(req: NextRequest, isAdmin: boolean) {
 
     const label = amount > 0 ? `🎁 ${reason}` : `ปรับแต้ม: ${reason}`;
     const acc = await addPoints(uid, amount, label, label, displayName || "");
-    await sendTelegram(
+    sendTelegramLater(
       formatBookingTelegram(
         amount > 0 ? "🎁 เพิ่มแต้มให้ลูกค้า (มือ)" : "➖ ปรับลดแต้มลูกค้า (มือ)",
         {
@@ -206,7 +206,7 @@ async function handlePost(req: NextRequest, isAdmin: boolean) {
     return NextResponse.json({ error: result.error, message: msg }, { status: 400 });
   }
 
-  await sendTelegram(
+  sendTelegramLater(
     formatBookingTelegram("🎁 ลูกค้าแลกแต้ม", {
       ลูกค้า: result.account.displayName || lineUserId,
       รางวัล: result.reward.reward.th,
