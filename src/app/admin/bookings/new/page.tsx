@@ -394,6 +394,11 @@ function ClientPetPicker({
   );
 }
 
+/** แผง "จองแล้ว" + ปุ่มออกบิลเลย อยู่บนสุดของหน้า → เลื่อนขึ้นบนสุดแบบนุ่ม ๆ */
+function scrollToSavedPanel() {
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
 export default function NewBookingPage() {
   const searchParams = useSearchParams();
   const presetDate = searchParams.get("date") || "";
@@ -841,9 +846,13 @@ export default function NewBookingPage() {
       const savedCats = Array.from(new Set(created.map((x) => x.catName)));
       savedPopup(
         failed > 0 ? `บันทึกแล้ว ${savedCats.length} ตัว` : "บันทึกการจองแล้ว",
-        [savedCats.join(", "), "ออกบิล / ส่ง LINE ต่อได้ที่ด้านบน"]
+        [savedCats.join(", "), "ออกบิล / ส่ง LINE ต่อได้ที่ด้านบน"],
+        // กดตกลงแล้วเลื่อนขึ้นไปที่แผง "จองแล้ว" (ปุ่มออกบิลเลย) — เลื่อนตอนป๊อปอัปปิด
+        // เพราะ iPhone ตัดการเลื่อนแบบนุ่มทิ้งถ้าเลื่อนตอนหน้ากำลังเปลี่ยน
+        { onClose: scrollToSavedPanel }
       );
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      // เลื่อนรอบแรกหลังหน้าวาดแผงเสร็จ (เผื่อป๊อปอัปปิดเองตอนไม่ได้มองจอ)
+      requestAnimationFrame(() => requestAnimationFrame(scrollToSavedPanel));
       setSaved(true);
       setLastBookings(created);
       setLastBath(
