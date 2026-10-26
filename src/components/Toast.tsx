@@ -15,8 +15,14 @@ export function toast(msg: string, kind: ToastKind = "success") {
   listeners.forEach((l) => l(item));
 }
 
-type PopupItem = { id: number; title: string; lines: string[] };
+type PopupItem = { id: number; title: string; lines: string[]; onClose?: () => void };
 const popupListeners = new Set<(p: PopupItem) => void>();
+/** เรียก onClose ครั้งเดียวพอ (กดปิดแล้ว ตัวจับเวลาปิดเองยังวิ่งอยู่) */
+function runOnClose(p: PopupItem) {
+  const cb = p.onClose;
+  p.onClose = undefined;
+  cb?.();
+}
 const PENDING_POPUP_KEY = "pf_pending_popup";
 
 /**
@@ -25,9 +31,14 @@ const PENDING_POPUP_KEY = "pf_pending_popup";
  *
  * afterNav: เรียกก่อนเปลี่ยนหน้า (router.replace / location.href) — เก็บไว้ใน sessionStorage
  * ถ้าหน้าโหลดใหม่ทั้งหน้า ป๊อปอัปจะขึ้นที่หน้าถัดไปแทน (ไม่หายไปกับหน้าเดิม)
+ * onClose: เรียกตอนป๊อปอัปปิด (กดตกลง / แตะนอกกรอบ / ปิดเองตามเวลา)
  */
-export function savedPopup(title: string, lines: string[] = [], opts: { afterNav?: boolean } = {}) {
-  const item = { id: nextId++, title, lines: lines.filter(Boolean) };
+export function savedPopup(
+  title: string,
+  lines: string[] = [],
+  opts: { afterNav?: boolean; onClose?: () => void } = {}
+) {
+  const item = { id: nextId++, title, lines: lines.filter(Boolean), onClose: opts.onClose };
   if (opts.afterNav) {
     try {
       sessionStorage.setItem(PENDING_POPUP_KEY, JSON.stringify({ title: item.title, lines: item.lines }));
@@ -60,7 +71,10 @@ export function Toaster() {
       setPopup(p);
       if (timer) clearTimeout(timer);
       // มีรายละเอียดหลายบรรทัด = ให้เวลาอ่านนานขึ้นนิด
-      timer = setTimeout(() => setPopup((cur) => (cur?.id === p.id ? null : cur)), p.lines.length ? 3500 : 2500);
+      timer = setTimeout(() => {
+        setPopup((cur) => (cur?.id === p.id ? null : cur));
+        runOnClose(p);
+      }, p.lines.length ? 3500 : 2500);
     };
     popupListeners.add(show);
     // ป๊อปอัปที่ค้างมาจากหน้าก่อน (เปลี่ยนหน้าแบบโหลดใหม่ทั้งหน้า)
@@ -103,7 +117,10 @@ export function Toaster() {
     {popup && (
       <div
         className="fixed inset-0 z-[90] flex items-center justify-center bg-petflow-chocolate/20 px-6 print:hidden"
-        onClick={() => setPopup(null)}
+        onClick={() => {
+          setPopup(null);
+          runOnClose(popup);
+        }}
         role="status"
         aria-live="polite"
       >
