@@ -582,7 +582,7 @@ function ProductSheet({ product, onClose, onSaved }: { product: PosProduct | nul
     name: product?.name || "",
     imageUrl: product?.imageUrl || "",
     price: product ? String(product.price) : "",
-    cost: product?.cost != null ? String(product.cost) : "",
+    cost: product?.cost ? String(product.cost) : "",
     sku: product?.sku || "",
     category: product?.category || "",
     trackStock: product?.trackStock ?? true,

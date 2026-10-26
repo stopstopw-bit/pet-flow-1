@@ -10,6 +10,7 @@ import { toJpegDataUrl } from "@/lib/image-convert";
 import { toast } from "@/components/Toast";
 import { Icon } from "@/components/Icon";
 import { EmptyState, MoreMenu, SectionLabel, Segmented } from "@/components/ui";
+import { NumInput } from "@/components/NumInput";
 
 type Record = {
   id: string;
@@ -278,7 +279,7 @@ export default function FinancePage() {
                   { id: "expense", label: "รายจ่าย" },
                 ]}
               />
-              <input
+              <NumInput
                 type="number"
                 required
                 inputMode="decimal"

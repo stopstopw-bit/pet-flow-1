@@ -7,6 +7,7 @@ import { Icon } from "@/components/Icon";
 import { useConfig } from "@/components/ConfigProvider";
 import { isFeatureOn } from "@/lib/features";
 import { EmptyState, MoreMenu, SectionLabel, Segmented } from "@/components/ui";
+import { NumInput } from "@/components/NumInput";
 
 type Offer = { id: string; title: string; amount: number; reason: string; validDays: number; active: boolean };
 type Coupon = {
@@ -201,7 +202,7 @@ export default function AdminCouponsPage() {
                   className={field}
                 />
                 <div className="flex gap-2">
-                  <input
+                  <NumInput
                     type="number"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
@@ -210,7 +211,7 @@ export default function AdminCouponsPage() {
                   />
                   <label className="flex w-32 shrink-0 items-center gap-1.5 rounded-petflow-sm border border-petflow-line bg-paper px-3">
                     <span className="shrink-0 text-xs text-brown-soft">ใช้ได้</span>
-                    <input
+                    <NumInput
                       type="number"
                       value={validDays}
                       onChange={(e) => setValidDays(e.target.value)}

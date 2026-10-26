@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { NumInput } from "@/components/NumInput";
 
 export type RoomOption = { id: string; name: string; price: number };
 
@@ -48,7 +49,7 @@ export function PercentOff({
   return (
     <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] font-bold text-brown-soft">
       ราคาเต็ม {full.toLocaleString()}฿ · ลด
-      <input
+      <NumInput
         type="number"
         min={0}
         max={100}

@@ -15,6 +15,7 @@ import {
   taxInvoiceProblem,
   type TaxInvoiceForm,
 } from "@/lib/tax-invoice";
+import { NumInput } from "@/components/NumInput";
 
 const emptyCompany = (): TaxInvoiceForm => ({ ...emptyTaxInvoiceForm("company"), on: true, account: true });
 
@@ -419,7 +420,7 @@ export function AddCustomerModal({
                   <div className="flex gap-2">
                     <label className={`${labelCls} min-w-0 flex-1`}>
                       อายุ
-                      <input
+                      <NumInput
                         type="number"
                         min="0"
                         inputMode="numeric"
@@ -444,7 +445,7 @@ export function AddCustomerModal({
                   </div>
                   <label className={labelCls}>
                     น้ำหนัก (กก.)
-                    <input
+                    <NumInput
                       type="number"
                       min="0"
                       step="0.1"

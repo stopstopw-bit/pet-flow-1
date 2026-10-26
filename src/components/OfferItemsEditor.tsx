@@ -3,6 +3,7 @@
 import { Icon } from "@/components/Icon";
 import type { RoomOption } from "@/components/RoomTypePicker";
 import type { GroomProgram } from "@/lib/grooming-prices";
+import { NumInput } from "@/components/NumInput";
 
 /** รายการในคอร์สชุดรวม — ตรงกับ OfferItem ฝั่งเซิร์ฟเวอร์ (ฟอร์มเก็บตัวเลขเป็นข้อความ) */
 export type OfferItemDraft = {
@@ -117,7 +118,7 @@ export function OfferItemsEditor({
             </button>
           </div>
           <div className="flex items-center gap-2 text-xs font-bold text-brown-soft">
-            <input
+            <NumInput
               type="number"
               min={0}
               inputMode="numeric"
@@ -127,7 +128,7 @@ export function OfferItemsEditor({
               className={`${field} w-20 text-right`}
             />
             {it.unit === "night" ? "คืน" : "ครั้ง"} · แถมฟรี
-            <input
+            <NumInput
               type="number"
               min={0}
               inputMode="numeric"

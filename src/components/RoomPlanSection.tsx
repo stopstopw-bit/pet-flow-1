@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "@/components/Toast";
 import { Icon } from "@/components/Icon";
 import { MoreMenu } from "@/components/ui";
+import { NumInput } from "@/components/NumInput";
 
 type PlanView = {
   id: string;
@@ -274,7 +275,7 @@ export function RoomPlanSection({
                 ห้อง {r.name}{" "}
                 <span className="font-normal text-brown-faint">({r.price.toLocaleString()}/คืน)</span>
               </span>
-              <input
+              <NumInput
                 type="number"
                 min="0"
                 inputMode="numeric"
@@ -290,7 +291,7 @@ export function RoomPlanSection({
           <div className="grid grid-cols-2 gap-2 border-t border-petflow-line pt-2">
             <label className="text-[11px] font-bold text-brown-soft">
               ส่วนลด %
-              <input
+              <NumInput
                 type="number"
                 min="0"
                 max="100"
@@ -346,7 +347,7 @@ export function RoomPlanSection({
           <div className="grid grid-cols-2 gap-2">
             <label className="text-[11px] font-bold text-brown-soft">
               รับเงินวันนี้ (บาท)
-              <input
+              <NumInput
                 type="number"
                 min="0"
                 inputMode="numeric"

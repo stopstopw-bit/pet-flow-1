@@ -27,6 +27,7 @@ import { FEATURES, FEATURE_GROUPS, isFeatureOn, type FeatureKey } from "@/lib/fe
 import { GROOM_EXTRA_CARDS, groomUsesCard, type IntakeRules } from "@/lib/intake-rules";
 import { REFERRAL_DEFAULT, referralReward } from "@/lib/referral";
 import { breedOptionsFor, petKindOf, petWords, usesLitter, withDefaultBreeds, type PetKind } from "@/lib/pet-kind";
+import { NumInput } from "@/components/NumInput";
 
 type Tab =
   | "features"
@@ -1454,7 +1455,7 @@ function RoomsTab({
                         {part.name}
                       </span>
                       {cur && (
-                        <input
+                        <NumInput
                           type="number"
                           min={1}
                           value={cur.units}
@@ -1621,7 +1622,7 @@ function GroomProgramsTab({
             />
             <label className="text-[10px] font-bold text-brown-soft">
               รับพร้อมกันต่อรอบ (ตัว)
-              <input
+              <NumInput
                 type="number"
                 min={1}
                 value={massageCap}
@@ -1735,7 +1736,7 @@ function GroomProgramsTab({
                   {sizes.map((sz) => (
                     <label key={sz.id} className="flex-1 text-[10px] font-bold text-brown-soft">
                       {sz.label}
-                      <input
+                      <NumInput
                         type="number"
                         value={b.prices[sz.id as GroomSize]}
                         onChange={(e) =>
@@ -2039,7 +2040,7 @@ function GroomingTab({
                 }}
                 className="rounded-petflow-sm border border-petflow-line bg-paper px-2 py-1.5 text-sm"
               />
-              <input
+              <NumInput
                 type="number"
                 min={1}
                 value={row.capacity}
@@ -2070,7 +2071,7 @@ function GroomingTab({
         </div>
         <label className="mt-2 flex items-center gap-2 text-[11px] font-bold text-brown-soft">
           จำนวนคิวเริ่มต้น (ใช้ตอนเพิ่มรอบใหม่)
-          <input
+          <NumInput
             type="number"
             min={1}
             value={defaultCapacity}
@@ -2093,7 +2094,7 @@ function GroomingTab({
           <div className="mt-2 space-y-1.5 text-[11px] font-bold text-brown-soft">
             <label className="flex items-center gap-2">
               ตัวแรกใช้
-              <input
+              <NumInput
                 type="number"
                 min={5}
                 step={5}
@@ -2105,7 +2106,7 @@ function GroomingTab({
             </label>
             <label className="flex items-center gap-2">
               ตัวต่อไป +
-              <input
+              <NumInput
                 type="number"
                 min={0}
                 step={5}
@@ -2593,13 +2594,22 @@ function Field({
   return (
     <label className="block text-xs font-bold text-brown-soft">
       {label}
-      <input
-        type={type}
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm"
-      />
+      {type === "number" ? (
+        <NumInput
+          value={value}
+          placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value)}
+          className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm"
+        />
+      ) : (
+        <input
+          type={type}
+          value={value}
+          placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value)}
+          className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2.5 text-sm"
+        />
+      )}
     </label>
   );
 }
@@ -3405,7 +3415,7 @@ function ListsTab({
               placeholder="ชื่อบริการ"
               className="min-w-0 flex-1 rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-sm"
             />
-            <input
+            <NumInput
               type="number"
               value={String(p.amount)}
               onChange={(e) => setPreset(i, { amount: Number(e.target.value) || 0 })}

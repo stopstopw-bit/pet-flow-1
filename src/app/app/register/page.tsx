@@ -61,6 +61,7 @@ import { referralReward } from "@/lib/referral";
 import { StaffNoteTagPicker } from "@/components/StaffNoteTagPicker";
 import { customerFetch } from "@/lib/customer-fetch";
 import { resolveRegisterForm } from "@/lib/register-form";
+import { NumInput } from "@/components/NumInput";
 
 function emptyCat(): CatInput {
   return {
@@ -734,7 +735,7 @@ export default function RegisterPage() {
                 <div className="text-[11px] font-bold text-brown-soft">
                   {rf.age.label}{optTag(rf.age.required)}
                   <div className="mt-0.5 flex items-center gap-2">
-                    <input
+                    <NumInput
                       disabled={cat.ageUnknown}
                       type="number"
                       min="0"
@@ -797,7 +798,7 @@ export default function RegisterPage() {
                 <div className="text-[11px] font-bold text-brown-soft">
                   {rf.weight.label}{optTag(rf.weight.required)}
                   <div className="mt-0.5 flex items-center gap-2">
-                    <input
+                    <NumInput
                       required={rf.weight.required && !cat.weightUnknown}
                       disabled={cat.weightUnknown}
                       type="number"

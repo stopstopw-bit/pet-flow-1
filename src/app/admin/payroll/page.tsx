@@ -5,6 +5,7 @@ import { Icon } from "@/components/Icon";
 import { EmptyState } from "@/components/ui";
 import { toast } from "@/components/Toast";
 import { bangkokToday } from "@/lib/bangkok-date";
+import { NumInput } from "@/components/NumInput";
 
 type Employee = {
   id: string;
@@ -149,7 +150,7 @@ export default function PayrollPage() {
     <label className="block text-[11px] font-bold text-brown-soft">
       {label}
       <span className="mt-1 flex items-center gap-1.5">
-        <input
+        <NumInput
           type="number"
           min={0}
           inputMode="decimal"
@@ -275,7 +276,7 @@ export default function PayrollPage() {
                     {(["bonus", "deduction"] as const).map((k) => (
                       <label key={k} className="w-28 text-[10px] font-bold text-brown-soft">
                         {k === "bonus" ? "โบนัส +" : "หัก (ลา/สาย) −"}
-                        <input
+                        <NumInput
                           type="number"
                           min={0}
                           inputMode="decimal"
