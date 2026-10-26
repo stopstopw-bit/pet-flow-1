@@ -29,6 +29,7 @@ import { useConfig } from "@/components/ConfigProvider";
 import { PreviewSendModal } from "@/components/PreviewSendModal";
 import { LINE_PROMO_KINDS, type LinePromoKind, type PromoBillRule } from "@/lib/line-discount";
 import { CheckBox, EmptyState, MoreMenu, SearchField, SectionLabel, Segmented } from "@/components/ui";
+import { NumInput } from "@/components/NumInput";
 
 /** กลุ่มลูกค้าสำเร็จรูป — ติ๊กได้หลายกลุ่ม ระบบเลือกคนที่ตรงทุกข้อ */
 const SEGMENT_CHIPS: { id: SegmentId | "inactive90"; label: string }[] = [
@@ -595,7 +596,7 @@ export default function PromosAdminPage() {
               {broadcastSegments.includes("regular") && (
                 <label className="flex items-center gap-2 text-xs text-brown-soft">
                   ขาประจำ = มาแล้วตั้งแต่
-                  <input
+                  <NumInput
                     type="number"
                     min={1}
                     value={regularMinVisits}
@@ -642,7 +643,7 @@ export default function PromosAdminPage() {
                     <label className="flex min-w-0 items-center gap-1.5 rounded-petflow-sm border border-petflow-line bg-card px-3">
                       <Icon name="clock" size={16} className="text-brown-soft" />
                       <span className="shrink-0 text-xs text-brown-soft">หายไป &gt;</span>
-                      <input
+                      <NumInput
                         type="number"
                         min={0}
                         value={broadcastInactive || ""}

@@ -15,6 +15,7 @@ import {
   itemsToPayload,
   type OfferItemDraft,
 } from "@/components/OfferItemsEditor";
+import { NumInput } from "@/components/NumInput";
 
 type OfferKind = "package" | "credit" | "nights" | "bundle";
 
@@ -260,7 +261,7 @@ function OfferRow({
           {isCredit ? (
             <div className="flex gap-2">
                 <Labeled label="ลูกค้าจ่าย (บาท)">
-                  <input
+                  <NumInput
                     type="number"
                     min={0}
                     value={price}
@@ -270,7 +271,7 @@ function OfferRow({
                   />
                 </Labeled>
                 <Labeled label="ได้เครดิต (บาท)">
-                  <input
+                  <NumInput
                     type="number"
                     min={0}
                     value={creditAmount}
@@ -284,7 +285,7 @@ function OfferRow({
             <>
               <OfferItemsEditor items={items} onChange={setItems} rooms={rooms} programs={programs} />
               <Labeled label="ราคาทั้งชุด (บาท)">
-                <input
+                <NumInput
                   type="number"
                   min={0}
                   value={price}
@@ -297,7 +298,7 @@ function OfferRow({
           ) : (
             <div className="flex gap-2">
               <Labeled label={isNights ? "กี่คืน" : "กี่ครั้ง"}>
-                <input
+                <NumInput
                   type="number"
                   min={1}
                   value={uses}
@@ -307,7 +308,7 @@ function OfferRow({
                 />
               </Labeled>
               <Labeled label="แถมฟรี">
-                <input
+                <NumInput
                   type="number"
                   min={0}
                   value={free}
@@ -317,7 +318,7 @@ function OfferRow({
                 />
               </Labeled>
               <Labeled label="ราคา (บาท)">
-                <input
+                <NumInput
                   type="number"
                   min={0}
                   value={price}
@@ -728,7 +729,7 @@ export default function AdminPackagesPage() {
             {kind === "credit" ? (
               <>
                 <div className="flex gap-2">
-                  <input
+                  <NumInput
                     type="number"
                     min={0}
                     value={price}
@@ -736,7 +737,7 @@ export default function AdminPackagesPage() {
                     placeholder="ลูกค้าจ่าย (บาท)"
                     className={`${field} min-w-0`}
                   />
-                  <input
+                  <NumInput
                     type="number"
                     min={0}
                     value={creditAmount}
@@ -754,7 +755,7 @@ export default function AdminPackagesPage() {
             ) : kind === "bundle" ? (
               <>
                 <OfferItemsEditor items={items} onChange={setItems} rooms={rooms} programs={groomPrograms} />
-                <input
+                <NumInput
                   type="number"
                   min={0}
                   value={price}
@@ -765,7 +766,7 @@ export default function AdminPackagesPage() {
               </>
             ) : (
               <div className="flex gap-2">
-                <input
+                <NumInput
                   type="number"
                   min={1}
                   value={uses}
@@ -773,7 +774,7 @@ export default function AdminPackagesPage() {
                   placeholder={kind === "nights" ? "กี่คืน" : "กี่ครั้ง"}
                   className={`${field} min-w-0`}
                 />
-                <input
+                <NumInput
                   type="number"
                   min={0}
                   value={free}
@@ -781,7 +782,7 @@ export default function AdminPackagesPage() {
                   placeholder="แถมฟรี"
                   className={`${field} min-w-0`}
                 />
-                <input
+                <NumInput
                   type="number"
                   min={0}
                   value={price}

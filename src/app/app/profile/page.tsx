@@ -24,6 +24,7 @@ import {
   type TaxInvoiceForm,
 } from "@/lib/tax-invoice";
 import { customerFetch } from "@/lib/customer-fetch";
+import { NumInput } from "@/components/NumInput";
 
 const REFERRAL_FALLBACK = [
   "Facebook",
@@ -473,7 +474,7 @@ export default function ProfilePage() {
                   ))}
                 </div>
                 <div className="flex gap-2">
-                  <input
+                  <NumInput
                     type="number"
                     min="0"
                     inputMode="numeric"
@@ -493,7 +494,7 @@ export default function ProfilePage() {
                 </div>
                 <label className="block text-[11px] font-bold text-brown-soft">
                   น้ำหนัก <span className="font-normal text-brown-faint">(กก. · ไม่บังคับ)</span>
-                  <input
+                  <NumInput
                     type="number"
                     min="0"
                     step="0.1"

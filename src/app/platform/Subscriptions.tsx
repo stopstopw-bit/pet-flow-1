@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { NumInput } from "@/components/NumInput";
 
 type Settings = {
   monthly: number;
@@ -123,15 +124,21 @@ export default function Subscriptions({ tenants, onChanged }: { tenants: ShopRef
           {FIELDS.map((f) => (
             <label key={f.key} className="text-[11px] text-white/60">
               {f.label}
-              <input
-                type={f.num ? "number" : "text"}
-                inputMode={f.num ? "numeric" : undefined}
-                value={String(settings[f.key] ?? "")}
-                onChange={(e) =>
-                  setSettings({ ...settings, [f.key]: f.num ? Number(e.target.value) || 0 : e.target.value })
-                }
-                className="mt-1 block w-full rounded-petflow-sm border border-white/15 bg-black/30 px-3 py-2 text-xs text-white"
-              />
+              {f.num ? (
+                <NumInput
+                  inputMode="numeric"
+                  value={settings[f.key] as number | undefined}
+                  onChange={(e) => setSettings({ ...settings, [f.key]: Number(e.target.value) || 0 })}
+                  className="mt-1 block w-full rounded-petflow-sm border border-white/15 bg-black/30 px-3 py-2 text-xs text-white"
+                />
+              ) : (
+                <input
+                  type="text"
+                  value={String(settings[f.key] ?? "")}
+                  onChange={(e) => setSettings({ ...settings, [f.key]: e.target.value })}
+                  className="mt-1 block w-full rounded-petflow-sm border border-white/15 bg-black/30 px-3 py-2 text-xs text-white"
+                />
+              )}
             </label>
           ))}
           <button

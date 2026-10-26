@@ -53,6 +53,7 @@ import {
   promoAsLinePromo,
   billRuleLabel,
 } from "@/lib/line-discount";
+import { NumInput } from "@/components/NumInput";
 
 type Customer = {
   id: string;
@@ -475,16 +476,19 @@ function NumField({
   onCommit: (n: number) => void;
   className?: string;
 }) {
-  const [draft, setDraft] = useState(String(value));
+  // 0 แสดงเป็นช่องว่าง (placeholder "0") — กดแล้วพิมพ์ได้เลย ไม่ต้องลบ 0 ก่อน
+  const show = (n: number) => (n ? String(n) : "");
+  const [draft, setDraft] = useState(show(value));
   const [editing, setEditing] = useState(false);
   // ค่าจากภายนอกเปลี่ยน (เช่น เลือกห้องใหม่) ตอนที่ไม่ได้พิมพ์อยู่ → sync ให้ตรง
   useEffect(() => {
-    if (!editing) setDraft(String(value));
+    if (!editing) setDraft(show(value));
   }, [value, editing]);
   return (
     <input
       type="text"
       inputMode="numeric"
+      placeholder="0"
       value={draft}
       onFocus={() => setEditing(true)}
       onChange={(e) => {
@@ -496,7 +500,7 @@ function NumField({
       onBlur={() => {
         setEditing(false);
         const n = draft === "" ? min : Math.max(min, Number(draft));
-        setDraft(String(n));
+        setDraft(show(n));
         onCommit(n);
       }}
       className={className}
@@ -3115,7 +3119,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
           <label className="block text-xs font-bold text-brown-soft">
             ส่วนลดเพิ่ม
             <div className="mt-1 flex gap-1.5">
-              <input
+              <NumInput
                 type="number"
                 min="0"
                 max={discountMode === "percent" ? 100 : undefined}
@@ -3277,7 +3281,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
           {/* มัดจำของบิลนี้ (ถ้ามี) — กด % หรือใส่เอง */}
           <div className="flex items-center justify-between gap-2 border-t border-petflow-line pt-1.5">
             <span className="text-xs font-bold text-brown-soft">มัดจำ (ถ้ามี)</span>
-            <input
+            <NumInput
               type="number"
               min="0"
               inputMode="numeric"
