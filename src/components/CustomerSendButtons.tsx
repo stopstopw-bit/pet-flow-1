@@ -1,7 +1,7 @@
 "use client";
 
 import { groomUsesCard } from "@/lib/intake-rules";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "@/components/Toast";
 import { relevantAutoMessageTopics } from "@/lib/auto-messages";
 import { PreviewSendModal } from "@/components/PreviewSendModal";
@@ -381,36 +381,59 @@ export function CustomerSendButtons({
   // 🔕 ปิดข้อความอัตโนมัติเฉพาะนัดนี้ — แก้ได้จากทุกที่ที่มีปุ่มส่ง LINE
   // (เดิมแก้ได้แค่ในหน้าแก้ไขนัดที่ ตารางนัด ย้ายมาไว้ตรงนี้ด้วยจะได้แก้จากหน้าคิดเงินได้เลย)
   const [autoOff, setAutoOff] = useState<string[]>(initialAutoOff || []);
-  const [autoOffSaving, setAutoOffSaving] = useState(false);
+  // แตะติดๆ กันได้เลย ไม่ล็อกปุ่มทั้งแถวระหว่างบันทึก (เดิมทุกชิปจางค้าง + iPhone วาดชิปซ้อนค้างไว้)
+  // เก็บค่าล่าสุดใน ref แล้วบันทึกทีละครั้งตามลำดับ — ค่าสุดท้ายที่แตะคือค่าที่ถูกบันทึก
+  const autoOffRef = useRef<string[]>(autoOff);
+  const autoOffSaved = useRef<string[]>(autoOff);
+  const autoOffSaving = useRef(false);
   useEffect(() => {
+    if (autoOffSaving.current) return;
+    autoOffRef.current = initialAutoOff || [];
+    autoOffSaved.current = initialAutoOff || [];
     setAutoOff(initialAutoOff || []);
   }, [initialAutoOff]);
-  const toggleAutoOff = async (topic: string) => {
-    if (!bookingId) return;
-    const next = autoOff.includes(topic)
-      ? autoOff.filter((x) => x !== topic)
-      : [...autoOff, topic];
-    setAutoOff(next);
-    setAutoOffSaving(true);
+  const saveAutoOff = async () => {
+    if (!bookingId || autoOffSaving.current) return;
+    autoOffSaving.current = true;
+    let ok = true;
+    let last = autoOffSaved.current;
     try {
-      const res = await fetch("/api/bookings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: bookingId, action: "update", autoOff: next }),
-      });
-      if (res.ok) {
-        toast(
-          next.includes(topic) ? "ปิดข้อความหัวข้อนี้แล้ว 🔕" : "เปิดกลับมาส่งตามปกติแล้ว",
-          "success"
-        );
-        onDone?.();
-      } else {
-        setAutoOff(autoOff); // ย้อนกลับถ้าบันทึกไม่สำเร็จ
-        toast("บันทึกไม่สำเร็จ", "error");
+      while (autoOffRef.current !== last) {
+        const next = autoOffRef.current;
+        const res = await fetch("/api/bookings", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: bookingId, action: "update", autoOff: next }),
+        }).catch(() => null);
+        if (!res?.ok) {
+          ok = false;
+          break;
+        }
+        last = next;
       }
     } finally {
-      setAutoOffSaving(false);
+      autoOffSaving.current = false;
     }
+    if (ok) {
+      const before = autoOffSaved.current;
+      autoOffSaved.current = last;
+      const turnedOff = last.length > before.length;
+      toast(turnedOff ? "ปิดข้อความหัวข้อนี้แล้ว 🔕" : "เปิดกลับมาส่งตามปกติแล้ว", "success");
+      onDone?.();
+    } else {
+      // ย้อนกลับเป็นค่าที่บันทึกได้ล่าสุด ถ้าบันทึกไม่สำเร็จ
+      autoOffRef.current = autoOffSaved.current;
+      setAutoOff(autoOffSaved.current);
+      toast("บันทึกไม่สำเร็จ", "error");
+    }
+  };
+  const toggleAutoOff = (topic: string) => {
+    if (!bookingId) return;
+    const cur = autoOffRef.current;
+    const next = cur.includes(topic) ? cur.filter((x) => x !== topic) : [...cur, topic];
+    autoOffRef.current = next;
+    setAutoOff(next);
+    void saveAutoOff();
   };
 
   // 📦 ชุดการ์ด — เลือกหลายใบ ส่งใน push เดียว (LINE นับ 1 ข้อความ)
@@ -890,13 +913,14 @@ export function CustomerSendButtons({
                       <button
                         key={t.id}
                         type="button"
-                        disabled={autoOffSaving}
+                        aria-pressed={off}
                         onClick={() => toggleAutoOff(t.id)}
-                        className={`flex min-h-[40px] items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold disabled:opacity-40 ${
+                        className={`flex min-h-[40px] items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold ${
                           off ? "bg-wait text-white" : "bg-paper text-brown-soft"
                         }`}
                       >
-                        {off && <Icon name="x" size={14} strokeWidth={2.4} />}
+                        {/* ไอคอนมีทุกสถานะ ชิปจะได้กว้างเท่าเดิม ไม่ดันกันขึ้นบรรทัดใหม่ตอนแตะ */}
+                        <Icon name={off ? "x" : "check"} size={14} strokeWidth={2.4} />
                         {t.label}
                       </button>
                     );
