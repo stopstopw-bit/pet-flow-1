@@ -19,6 +19,14 @@ export const CARD_COLOR_ROLES: Record<string, ColorKey[]> = {
   coupon: ["headerColor", "headerTextColor", "accentColor", "buttonColor"],
   promo: ["headerColor", "headerTextColor", "accentColor", "buttonColor"],
   missYou: ["headerColor", "headerTextColor", "buttonColor"],
+  intake: ["headerColor", "headerTextColor", "accentColor", "buttonColor"],
+  docRequest: ["headerColor", "headerTextColor", "accentColor", "buttonColor"],
+  depositReminder: ["headerColor", "headerTextColor", "accentColor", "buttonColor"],
+  consent: ["headerColor", "headerTextColor", "accentColor", "buttonColor"],
+  readyForPickup: ["headerColor", "accentColor"],
+  packageCard: ["headerColor", "accentColor"],
+  roomPlan: ["headerColor", "accentColor"],
+  pointsAward: ["headerColor", "accentColor"],
 };
 
 type Brand = { primary: string; accent: string; heading: string };
