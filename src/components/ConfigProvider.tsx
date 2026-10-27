@@ -31,8 +31,15 @@ const ConfigContext = createContext<ConfigCtx>({
   refresh: async () => {},
 });
 
-export function ConfigProvider({ children }: { children: React.ReactNode }) {
-  const [config, setConfig] = useState<SiteConfig>(initialConfig);
+export function ConfigProvider({
+  children,
+  initialConfig: fromServer,
+}: {
+  children: React.ReactNode;
+  /** config ที่เซิร์ฟเวอร์อ่านมาให้แล้ว (แอปลูกค้า) — ใช้ตั้งแต่เฟรมแรก แล้วค่อยโหลดใหม่ตามปกติ */
+  initialConfig?: SiteConfig | null;
+}) {
+  const [config, setConfig] = useState<SiteConfig>(() => fromServer ?? initialConfig());
   const pathname = usePathname();
   const [loading, setLoading] = useState(true);
 
