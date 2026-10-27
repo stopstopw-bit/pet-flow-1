@@ -85,6 +85,8 @@ export function flowProgress(params: URLSearchParams): {
   index: number;
   total: number;
   next: { href: string; label: string } | null;
+  /** ชื่อขั้นที่เหลือหลังหน้านี้ — บอกลูกค้าว่าเรื่องไหนอยู่หน้าไหน จะได้ไม่ส่งซ้ำ */
+  upcoming: string[];
 } | null {
   const total = Number(params.get("n")) || 0;
   if (!total) return null;
@@ -96,5 +98,5 @@ export function flowProgress(params: URLSearchParams): {
         label: FLOW_STEP_LABEL[rest[0].step],
       }
     : null;
-  return { index: total - rest.length, total, next };
+  return { index: total - rest.length, total, next, upcoming: rest.map((t) => FLOW_STEP_LABEL[t.step]) };
 }
