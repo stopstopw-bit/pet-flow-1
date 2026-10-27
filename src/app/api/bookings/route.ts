@@ -416,8 +416,9 @@ async function handlePatch(req: NextRequest, admin: boolean) {
         checkinTime,
       });
     }
-    sendTelegramLater(
-      formatBookingTelegram(admin ? "✅ ร้านยืนยันนัดแล้ว" : "✅ ลูกค้ายืนยันแล้ว", {
+    // ลูกค้ายืนยัน (กรอกข้อมูล) ไม่ส่งข้อความอะไรเลย (เจ้าของร้าน 2026-10-27) · แจ้งร้านเฉพาะตอนร้านกดยืนยันเอง
+    if (admin) sendTelegramLater(
+      formatBookingTelegram("✅ ร้านยืนยันนัดแล้ว", {
         ลูกค้า: String(b.customerName),
         น้อง: String(b.catName),
         วันที่: String(b.date || b.checkin),
@@ -465,8 +466,8 @@ async function handlePatch(req: NextRequest, admin: boolean) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }
     const first = confirmed[0]!;
-    sendTelegramLater(
-      formatBookingTelegram(admin ? "✅ ร้านยืนยันนัดแล้ว" : "✅ ลูกค้ายืนยันแล้ว", {
+    if (admin) sendTelegramLater(
+      formatBookingTelegram("✅ ร้านยืนยันนัดแล้ว", {
         ลูกค้า: String(first.customerName),
         น้อง: [...new Set(confirmed.map((x) => x!.catName))].join(", "),
         วันที่: String(first.date || first.checkin),

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { confirmHouseholdFrom } from "@/lib/booking-confirm";
 import { withResolvedTenant } from "@/lib/tenant-context";
 import { featureOff } from "@/lib/features-server";
 import { addBookingVaccinePhotos, getBooking } from "@/lib/bookings-store";
@@ -44,6 +45,8 @@ async function postHandler(req: NextRequest) {
   }
   // เก็บที่ตัวน้องด้วย — หน้าข้อมูลลูกค้าจะได้ขึ้น "ได้รับแล้ว"
   await copyBookingDocsToCustomer(b, { newPhotos: res.addedUrls });
+  // ส่งข้อมูลแล้ว = ยืนยันนัดแล้ว ทั้งบ้าน
+  await confirmHouseholdFrom(b.id);
   sendTelegramLater(
     formatBookingTelegram("💉 ลูกค้าแนบสมุดวัคซีนแล้ว", {
       น้อง: b.catName,
