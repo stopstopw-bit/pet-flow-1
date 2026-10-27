@@ -136,6 +136,7 @@ const DOG_FORM: GroomField[] = [
     label: "นิสัยน้อง (เลือกได้หลายข้อ)",
     required: true,
     enabled: true,
+    allowOther: true,
     options: [
       { key: "friendly", label: "🙂 เป็นมิตร ให้จับง่าย" },
       { key: "clingy", label: "🥰 ขี้อ้อน" },
@@ -154,6 +155,7 @@ const DOG_FORM: GroomField[] = [
     required: false,
     enabled: true,
     canSkip: true,
+    allowOther: true,
     options: [
       { key: "paws", label: "🐾 ไม่ชอบให้จับเท้า" },
       { key: "nails", label: "✂️ ไม่ชอบตัดเล็บ" },

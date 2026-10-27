@@ -1,6 +1,6 @@
 "use client";
 
-import type { GroomField } from "@/lib/groom-form";
+import { otherKey, type GroomField } from "@/lib/groom-form";
 import type { IntakeAnswers } from "@/lib/intake-rules";
 
 /** ช่องตอบคำถามฟอร์มทำประวัติ (ปุ่มเลือก / ช่องพิมพ์) — ใช้ในหน้าสมัครสมาชิก */
@@ -35,7 +35,8 @@ export function IntakeFieldsInput({
     <>
       {fields.map((fd) => {
         const value = answers[fd.key];
-        const missing = showMissing && fd.required && intakeAnswerEmpty(value);
+        const typed = fd.allowOther ? String(answers[otherKey(fd.key)] || "").trim() : "";
+        const missing = showMissing && fd.required && !typed && intakeAnswerEmpty(value);
         return (
           <div key={fd.key}>
             <p className={`mb-1 text-xs font-bold ${missing ? "text-wait" : "text-brown"}`}>
@@ -55,6 +56,14 @@ export function IntakeFieldsInput({
                   return chip(on, o.label, () => onChange(fd.key, on ? cur.filter((x) => x !== o.key) : [...cur, o.key]), o.key);
                 })}
               </div>
+            )}
+            {fd.allowOther && (
+              <input
+                value={String(answers[otherKey(fd.key)] || "")}
+                onChange={(e) => onChange(otherKey(fd.key), e.target.value)}
+                placeholder="อื่นๆ พิมพ์เองได้ (ถ้ามี)"
+                className={`mt-2 ${inputClass}`}
+              />
             )}
             {fd.type === "text" && (
               <input

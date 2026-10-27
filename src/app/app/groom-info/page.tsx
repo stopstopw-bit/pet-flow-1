@@ -7,7 +7,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLiff } from "@/components/LiffProvider";
 import { useConfig } from "@/components/ConfigProvider";
-import { type GroomField } from "@/lib/groom-form";
+import { otherKey, type GroomField } from "@/lib/groom-form";
 import { intakeFields } from "@/lib/intake-rules";
 import { normalizeSpecies, petKindOf, petWords, speciesWords } from "@/lib/pet-kind";
 import { BATH_SHARED_WITH_STAY } from "@/lib/stay-form";
@@ -42,7 +42,10 @@ const BATH_PREFIX = "g:";
 
 function emptyAnswers(fields: GroomField[]): Answers {
   const a: Answers = {};
-  for (const f of fields) a[f.key] = f.type === "multi" ? [] : "";
+  for (const f of fields) {
+    a[f.key] = f.type === "multi" ? [] : "";
+    if (f.allowOther) a[otherKey(f.key)] = "";
+  }
   return a;
 }
 
@@ -58,6 +61,7 @@ function loadAnswers(fields: GroomField[], info: Record<string, unknown> | null)
     } else {
       a[f.key] = Array.isArray(v) ? String(v[0] ?? "") : String(v);
     }
+    if (f.allowOther && info[otherKey(f.key)]) a[otherKey(f.key)] = String(info[otherKey(f.key)]);
   }
   return a;
 }
@@ -68,7 +72,12 @@ function answeredKeys(fields: GroomField[], a: Answers): string[] {
     .filter((f) => {
       const v = a[f.key];
       if (f.type === "single") return f.options.some((o) => o.key === v);
-      if (f.type === "multi") return Array.isArray(v) && v.length > 0 && v.every((x) => f.options.some((o) => o.key === x));
+      if (f.type === "multi") {
+        // พิมพ์เองไว้อย่างเดียว (ไม่ได้กดปุ่ม) ก็นับว่าตอบแล้ว
+        const typed = f.allowOther && !!String(a[otherKey(f.key)] || "").trim();
+        const list = Array.isArray(v) ? v : [];
+        return (list.length > 0 || typed) && list.every((x) => f.options.some((o) => o.key === x));
+      }
       return !!String(v || "").trim();
     })
     .map((f) => f.key);
@@ -194,6 +203,7 @@ function GroomInfoContent() {
       .filter((fd) => {
         if (!fd.required || f.skip.includes(fd.key)) return false;
         if (fd.hasUnknownToggle && f.weightUnknown) return false;
+        if (fd.allowOther && String(f.answers[otherKey(fd.key)] || "").trim()) return false;
         const v = f.answers[fd.key];
         return Array.isArray(v) ? v.length === 0 : !String(v || "").trim();
       })
@@ -430,6 +440,15 @@ function GroomInfoContent() {
                             />
                           ))}
                         </div>
+                      )}
+
+                      {fd.allowOther && (
+                        <input
+                          value={String(f.answers[otherKey(fd.key)] || "")}
+                          onChange={(e) => setAnswer(idx, otherKey(fd.key), e.target.value)}
+                          placeholder="อื่นๆ พิมพ์เองได้ (ถ้ามี)"
+                          className={`mt-2 ${inputClass}`}
+                        />
                       )}
 
                       {fd.type === "text" && (

@@ -33,7 +33,12 @@ export type GroomField = {
   section?: "owner" | "pet" | "care";
   /** ข้อที่ตอบ "ไม่มี" ได้ — ร้านตั้งบังคับทุกข้อก็ไม่บังคับข้อนี้ ลูกค้าไม่ต้องพิมพ์ "ไม่มี" */
   canSkip?: boolean;
+  /** ปุ่มเลือก + ช่องพิมพ์เอง (ไม่มีในตัวเลือก) — คำตอบที่พิมพ์เก็บที่ key otherKey(key) */
+  allowOther?: boolean;
 };
+
+/** key ที่เก็บคำตอบพิมพ์เองของข้อที่มีปุ่มเลือก (allowOther) */
+export const otherKey = (key: string) => `${key}Other`;
 
 /**
  * ค่าเริ่มต้นของระบบ — key ห้ามเปลี่ยน (ข้อมูลเก่าอ้างอิงอยู่)
