@@ -65,7 +65,10 @@ import {
 import { getSiteConfig } from "@/lib/config-store";
 import { getLineCredentials } from "@/lib/line-config";
 import { cleanRoomSegments } from "@/lib/room-segments";
-import { cardOn, CARD_FEATURE, featureLabel } from "@/lib/features";
+import { cardOn, cardsOff, CARD_FEATURE, featureLabel } from "@/lib/features";
+import { autoMuted } from "@/lib/auto-messages";
+import { stayForGroom } from "@/lib/booking-group";
+import { bangkokToday } from "@/lib/bangkok-date";
 import { cleanTransport, hasTransport, transportLabel } from "@/lib/transport";
 import { DEFAULT_MESSAGES, consentDates, consentTextFor, renderTemplate } from "@/lib/messages";
 import { listInvoices, getInvoice, updateInvoice, invoiceCatNames, findOpenInvoiceForBooking } from "@/lib/invoices-store";
@@ -124,7 +127,8 @@ async function resolveGroupBooking(b: StoredBooking, ids: unknown): Promise<Stor
     await Promise.all(list.map((x) => (x === b.id ? Promise.resolve(b) : getBooking(x))))
   ).filter((x): x is StoredBooking => !!x);
   if (group.length <= 1) return b;
-  return { ...b, catName: group.map((x) => x.catName).join(", ") };
+  // อาบก่อนกลับมากับการเข้าพัก = แมวตัวเดิม ชื่อไม่ซ้ำ
+  return { ...b, catName: [...new Set(group.map((x) => x.catName))].join(", ") };
 }
 
 export async function GET(req: NextRequest) {
@@ -145,11 +149,11 @@ export async function GET(req: NextRequest) {
     if (!lineUserId) {
       return noCustomerSessionResponse();
     }
-    return handleGet(lineUserId);
+    return handleGet(lineUserId, true);
   });
 }
 
-async function handleGet(lineUserId?: string) {
+async function handleGet(lineUserId?: string, customerApp = false) {
   const allCustomers = lineUserId ? [] : await listCustomers();
   const items = (await listBookings(lineUserId)).map((b) => {
     const customer = allCustomers.find((c) => bookingMatchesCustomer(b, c));
@@ -186,7 +190,44 @@ async function handleGet(lineUserId?: string) {
       catPrivateNote: cat?.staffPrivateNote || undefined,
     };
   });
+  if (lineUserId && customerApp) {
+    const raw = await listBookings(lineUserId);
+    const todos = await customerTodos(raw, lineUserId);
+    return NextResponse.json({ bookings: items.map((x) => ({ ...x, todo: todos.get(x.id) })) });
+  }
   return NextResponse.json({ bookings: items });
+}
+
+/** เรื่องที่ลูกค้ายังต้องทำก่อนวันนัด — ใช้บนหน้า "คิวของฉัน" ให้ทำต่อได้เองโดยไม่ต้องหาการ์ด LINE */
+export type BookingTodo = { info?: "stay" | "groom"; vaccine?: boolean; idcard?: boolean; consent?: boolean };
+
+/**
+ * ชุดเดียวกับที่การ์ดขอข้อมูลอัตโนมัติถาม (cron/reminders): ข้อมูลน้อง · สมุดวัคซีน (ทุกรอบ) ·
+ * บัตรประชาชน (เข้าพัก ครั้งเดียว) · กฎ + กดยินยอม (ทุกนัด) — ข้ามเรื่องที่ร้านปิดไว้ (ทั้งร้าน/รายนัด)
+ * อาบก่อนกลับระหว่างเข้าพักไม่มีรายการของตัวเอง (ไปกับฟอร์ม/ข้อตกลงของการเข้าพัก)
+ */
+async function customerTodos(list: StoredBooking[], lineUserId: string) {
+  const out = new Map<string, BookingTodo>();
+  const off = cardsOff(await getSiteConfig());
+  const today = bangkokToday();
+  for (const b of list) {
+    if (b.status !== "pending" && b.status !== "confirmed") continue;
+    if ((b.checkout || b.checkin || b.date || "").slice(0, 10) < today) continue;
+    if (b.service !== "room" && stayForGroom(b, list)) continue;
+    const muted = (t: string) => off.includes(t) || autoMuted(b, t);
+    const st = await getIntakeStatus(lineUserId, String(b.catName));
+    const room = b.service === "room";
+    const todo: BookingTodo = {
+      ...(room
+        ? !st.stayInfo && !muted("stayInfo") && { info: "stay" as const }
+        : !st.groomInfo && !muted("groomInfo") && { info: "groom" as const }),
+      ...(!b.vaccinePhotoUrl && !muted("vaccine") && { vaccine: true }),
+      ...(room && !st.idCard && !muted("idcard") && { idcard: true }),
+      ...(!b.consentAcceptedAt && !muted("consent") && { consent: true }),
+    };
+    if (Object.keys(todo).length) out.set(b.id, todo);
+  }
+  return out;
 }
 
 export async function POST(req: NextRequest) {
@@ -375,7 +416,14 @@ async function handlePatch(req: NextRequest, admin: boolean) {
         checkinTime,
       });
     }
-    // กดยืนยันนัดแล้วไม่ส่งข้อความอะไรเลย ทั้งถึงลูกค้าและแจ้งร้าน (เจ้าของร้าน 2026-10-27)
+    // ลูกค้ายืนยัน (กรอกข้อมูล) ไม่ส่งข้อความอะไรเลย (เจ้าของร้าน 2026-10-27) · แจ้งร้านเฉพาะตอนร้านกดยืนยันเอง
+    if (admin) sendTelegramLater(
+      formatBookingTelegram("✅ ร้านยืนยันนัดแล้ว", {
+        ลูกค้า: String(b.customerName),
+        น้อง: String(b.catName),
+        วันที่: String(b.date || b.checkin),
+      })
+    );
     const matched = await findCustomerForBooking(b);
     if (matched) await recalculateCustomerTier(matched.id);
     const updated = await getBooking(id);
@@ -418,6 +466,13 @@ async function handlePatch(req: NextRequest, admin: boolean) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }
     const first = confirmed[0]!;
+    if (admin) sendTelegramLater(
+      formatBookingTelegram("✅ ร้านยืนยันนัดแล้ว", {
+        ลูกค้า: String(first.customerName),
+        น้อง: [...new Set(confirmed.map((x) => x!.catName))].join(", "),
+        วันที่: String(first.date || first.checkin),
+      })
+    );
     const matched = await findCustomerForBooking(first);
     if (matched) await recalculateCustomerTier(matched.id);
     return NextResponse.json({ ok: true, count: confirmed.length });

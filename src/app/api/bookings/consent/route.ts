@@ -7,7 +7,7 @@ import {
   getBooking,
   listBookingsByCustomerName,
 } from "@/lib/bookings-store";
-import { bookingGroupKey } from "@/lib/booking-group";
+import { bookingGroupKey, stayForGroom } from "@/lib/booking-group";
 import { MAX_VACCINE_PHOTOS, splitVaccinePhotos } from "@/lib/vaccine-photos";
 import { sendTelegramLater, formatBookingTelegram } from "@/lib/telegram";
 import { copyBookingDocsToCustomer } from "@/lib/customers-store";
@@ -73,9 +73,11 @@ async function postHandler(req: NextRequest) {
     // ลิงก์ข้อตกลงชี้นัดตัวแรกของบ้าน แต่ลูกค้ากดยอมรับครั้งเดียวสำหรับทั้งรอบเข้าพักนี้
     // → ประทับให้น้องทุกตัวในนัดเดียวกัน ไม่งั้นระบบเห็นว่าตัวอื่น "ยังไม่กด" แล้วขอซ้ำทุกรอบ
     // (สมุดวัคซีนเป็นของแต่ละตัว — ไม่คัดลอกข้ามตัว ใช้รูปที่แนบให้ตัวนั้นเอง)
+    let bathCount = 0;
     if (b) {
       const key = bookingGroupKey(b);
-      const siblings = (await listBookingsByCustomerName(b.customerName)).filter(
+      const mine = await listBookingsByCustomerName(b.customerName);
+      const siblings = mine.filter(
         (x) =>
           x.id !== b.id &&
           !x.consentAcceptedAt &&
@@ -96,6 +98,17 @@ async function postHandler(req: NextRequest) {
         const fresh = r.ok ? await getBooking(x.id) : undefined;
         if (fresh && r.ok) await copyBookingDocsToCustomer(fresh, { newPhotos: r.vaccineAdded });
       }
+      // อาบน้ำก่อนกลับของรอบนี้: หน้าข้อตกลงเข้าพักแสดงข้อตกลงอาบน้ำด้วยแล้ว → ประทับนัดอาบน้ำไปพร้อมกัน
+      if (b.service === "room") {
+        const stays = [b, ...siblings];
+        const baths = mine.filter(
+          (x) => !x.consentAcceptedAt && stays.some((s) => stayForGroom(x, [s]) === s)
+        );
+        for (const x of baths) {
+          const r = await acceptBookingConsent(x.id, lineUserId, careNote, b.consentSignature, [], false);
+          if (r.ok) bathCount++;
+        }
+      }
     }
     // ยอมรับข้อตกลงแล้ว = ยืนยันนัดแล้ว ทั้งบ้าน
     await confirmHouseholdFrom(bookingId);
@@ -109,6 +122,7 @@ async function postHandler(req: NextRequest) {
             ? { นัดอาบน้ำ: `${b.date || "-"}${b.time ? ` ${b.time}` : ""}` }
             : { เข้าพัก: `${b.checkin || b.date || "-"}${b.checkout ? ` → ${b.checkout}` : ""}` }),
           ลายเซ็น: signature ? "มี ✍️" : "ไม่ได้เซ็น",
+          ...(bathCount ? { อาบน้ำก่อนกลับ: "✅ ยอมรับข้อตกลงอาบน้ำด้วยแล้ว" } : {}),
           ...(groom
             ? {}
             : { หยดยาเห็บหมัด: fleaTickTreated ? "✅ ลูกค้ายืนยันว่าหยดมาแล้ว" : "❌ ยังไม่ได้หยด/ไม่ระบุ" }),

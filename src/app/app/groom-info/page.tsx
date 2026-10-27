@@ -180,6 +180,24 @@ function GroomInfoContent() {
       )
     );
 
+  /**
+   * บ้านเดียวกันหลายตัว ส่วนใหญ่กิน/ดูแลเหมือนกัน — แตะเดียวคัดลอกคำตอบจากตัวแรก แล้วแก้เฉพาะข้อที่ต่าง
+   * ไม่คัดลอกน้ำหนัก (คนละตัวน้ำหนักไม่เท่ากัน)
+   */
+  const copyFromFirst = (idx: number) =>
+    setForms((prev) =>
+      prev.map((f, i) => {
+        if (i !== idx || !prev[0]) return f;
+        const answers = { ...f.answers };
+        for (const fd of f.fields) {
+          if (fd.hasUnknownToggle || !(fd.key in prev[0].answers)) continue;
+          const v = prev[0].answers[fd.key];
+          answers[fd.key] = Array.isArray(v) ? [...v] : v;
+        }
+        return { ...f, answers };
+      })
+    );
+
   const toggleOption = (idx: number, key: string, optKey: string) =>
     setForms((prev) =>
       prev.map((f, i) => {
@@ -363,6 +381,16 @@ function GroomInfoContent() {
                   </span>
                   {f.catName}
                 </p>
+                {idx > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => copyFromFirst(idx)}
+                    className="mt-2 flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-petflow-sm border border-dashed border-latte/60 bg-honey/10 px-3 text-xs font-bold text-latte-deep"
+                  >
+                    <Icon name="copy" size={15} />
+                    ตอบเหมือน{forms[0].catName} (แก้เฉพาะข้อที่ต่างได้)
+                  </button>
+                )}
                 {forms.length === 1 && shown.length > 0 && (
                   <p className="mt-1 text-xs text-brown-soft">
                     เพื่อความปลอดภัยของน้อง 🧡 กดเลือกสั้นๆ ไม่กี่ข้อ ให้เราเตรียมดูแลน้องได้ถูกวิธีนะคะ
