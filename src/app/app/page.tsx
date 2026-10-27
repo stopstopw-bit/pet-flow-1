@@ -73,13 +73,18 @@ export default function CustomerHome() {
               !stayForGroom(b, list)
           )
           .sort((a, b) => (a.checkin || a.date || "").localeCompare(b.checkin || b.date || ""))[0];
+        // ทั้งบ้านในวันเดียวกัน = นัดเดียว (อาบคนละรอบเวลาก็รวม) ตรงกับหน้า "คิวของฉัน" ที่ยืนยันครั้งเดียวทั้งบ้าน
+        const key = pending && bookingGroupKey(pending, { groomByDay: true });
+        const group = pending
+          ? list.filter((x) => bookingGroupKey(x, { groomByDay: true }) === key && !stayForGroom(x, list))
+          : [];
+        const times = Array.from(new Set(group.map((x) => x.time || "").filter(Boolean))).sort();
         setNextBooking(
           pending
             ? {
                 ...pending,
-                cats: groupCatNames(
-                  list.filter((x) => bookingGroupKey(x) === bookingGroupKey(pending))
-                ),
+                time: times.length > 1 ? `${times[0]} – ${times[times.length - 1]}` : pending.time,
+                cats: groupCatNames(group),
               }
             : null
         );
