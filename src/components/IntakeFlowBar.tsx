@@ -15,7 +15,8 @@ export function IntakeFlowBar({ mode }: { mode: "progress" | "next" }) {
 
   if (mode === "progress") {
     return (
-      <div className="mb-3 flex items-center gap-2">
+      <div className="mb-3">
+      <div className="flex items-center gap-2">
         <div className="flex flex-1 gap-1">
           {Array.from({ length: p.total }, (_, i) => (
             <span
@@ -27,6 +28,12 @@ export function IntakeFlowBar({ mode }: { mode: "progress" | "next" }) {
         <span className="shrink-0 text-[11px] font-bold text-brown-soft">
           ขั้นที่ {p.index} จาก {p.total}
         </span>
+      </div>
+      <p className="mt-1 text-[11px] text-brown-faint">
+        {p.upcoming.length
+          ? `ขั้นถัดไป: ${p.upcoming.join(" → ")} · แต่ละเรื่องส่งหน้าเดียวพอค่ะ`
+          : "ขั้นสุดท้ายแล้วค่ะ"}
+      </p>
       </div>
     );
   }
