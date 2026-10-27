@@ -100,10 +100,9 @@ function BookingsContent() {
       ) : (
         <ul className="space-y-3">
           {groups.map((group) => {
-            // บ้านเดียวกัน วันเดียวกัน หลายตัว → การ์ดเดียว ยืนยันทีเดียวทั้งบ้าน (เจ้าของร้านขอ 2026-10-27)
-            // อาบน้ำคนละรอบเวลาก็รวม — บอกเวลารายตัวในการ์ดแทน · ตัวที่ยังรอยืนยันเท่านั้นที่ถูกยืนยันตอนกด
+            // บ้านเดียวกัน วันเดียวกัน หลายตัว → การ์ดเดียวทั้งบ้าน (เจ้าของร้านขอ 2026-10-27)
+            // อาบน้ำคนละรอบเวลาก็รวม — บอกเวลารายตัวในการ์ดแทน · ไม่มีปุ่มยืนยัน กรอกข้อมูล = ยืนยัน
             const primary = group[0];
-            const status = group.some((x) => x.status === "pending") ? "pending" : primary.status;
             const baths = bathsOf(group);
             const past = lastDay(primary) < today;
             const waiting = group.filter((x) => x.status === "pending");
