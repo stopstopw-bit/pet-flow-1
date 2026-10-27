@@ -36,8 +36,9 @@ import { DEPOSIT_STATUS_LABEL } from "@/lib/booking-deposit";
 import { GroomClashNote, confirmClashes, useGroomClashes } from "@/components/GroomClashNote";
 import { addDaysIso, nightsBetweenIso } from "@/lib/stay-line";
 import { formatThaiDateShort } from "@/lib/format-thai-date";
+import { bangkokToday } from "@/lib/bangkok-date";
 import { roomColorMap } from "@/lib/room-colors";
-import { DAY_MOVE_LABELS, dayEntries, dayMoves, firstMoveTime, type DayMove } from "@/lib/day-moves";
+import { dayEntries, dayMoveLabel, dayMoves, firstMoveTime, type DayMove } from "@/lib/day-moves";
 
 type CalendarDay = EditableBooking & {
   customerId?: string;
@@ -217,7 +218,7 @@ function MiniEntry({
   const isRoom = b.service === "room";
   const confirmed = group.every((x) => x.status === "confirmed");
   const names = group.map((x) => x.catName).join(", ");
-  const moveWord = move && move.kind !== "stay" && move.kind !== "groom" ? DAY_MOVE_LABELS[move.kind] : "";
+  const moveWord = move && move.kind !== "stay" && move.kind !== "groom" ? dayMoveLabel(move.kind, b.transport) : "";
   const time = move ? move.time : b.time || "";
   return (
     <button
@@ -994,7 +995,7 @@ export function BookingCalendar() {
     loadConfig();
   }, [loadConfig]);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = bangkokToday();
   const activeDate = selectedDate || today;
   const activeWeekday = new Date(`${activeDate}T00:00:00`).getDay();
   const closedByWeekday = closedWeekdays.includes(activeWeekday);
@@ -1078,8 +1079,21 @@ export function BookingCalendar() {
   };
 
   // การ์ดที่รวมหลายตัวในบ้านเดียวกัน (นัดเดียวกัน) — ยืนยัน/ยกเลิกให้ครบทุกตัวในทีเดียว
+  // ยิงครั้งเดียวทั้งบ้าน (confirm_group) — ร้านได้แจ้งเตือน Telegram ข้อความเดียว ไม่ใช่ตัวละข้อความ
   const confirmGroup = async (group: CalendarDay[]) => {
-    const results = await Promise.all(group.map(confirmBooking));
+    // อาบก่อนกลับระหว่างเข้าพักยืนยันตามแบบเงียบ (confirm_group ไม่ส่ง LINE) — ลูกค้าได้ข้อความยืนยันเฉพาะการเข้าพัก
+    const hasStay = group.some((x) => x.service === "room");
+    const main = hasStay ? group.filter((x) => x.service === "room") : group;
+    const baths = hasStay ? group.filter((x) => x.service !== "room") : [];
+    const results = await Promise.all(main.map(confirmBooking));
+    if (baths.length) {
+      const r = await fetch("/api/bookings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: baths[0].id, action: "confirm_group", ids: baths.map((x) => x.id) }),
+      });
+      results.push({ ok: r.ok, notifyError: undefined });
+    }
     if (results.every((r) => r.ok)) toast("ยืนยันนัดแล้ว ✔️", "success");
     else toast("ยืนยันไม่สำเร็จบางรายการ", "error");
     const notifyErr = results.find((r) => r.notifyError)?.notifyError;
@@ -2047,7 +2061,7 @@ export function BookingCalendar() {
                     const dayRoom = isStay ? roomOn(b, key).room || "" : "";
                     const color = isStay ? roomColors[dayRoom] || "#9ca3af" : undefined;
                     const roomName = isStay ? rooms.find((r) => r.id === dayRoom)?.name || "" : "";
-                    const tag = `${DAY_MOVE_LABELS[move.kind]}${move.time ? ` ${move.time}` : ""}`;
+                    const tag = `${dayMoveLabel(move.kind, b.transport)}${move.time ? ` ${move.time}` : ""}`;
                     return (
                       <span
                         key={`${b.id}-${move.kind}`}
@@ -2198,14 +2212,29 @@ export function BookingCalendar() {
               // นับแบบเดียวกับป้ายสถานะ — ออกบิลแล้ว/เลยเวลานัดแล้ว ถือว่ายืนยันแล้ว
               // (เมื่อก่อนป้ายขึ้น "ยืนยันแล้ว" แต่ปุ่มหลักยังเป็น "ยืนยันนัด")
               // บิลเดียวคลุมทั้งบ้าน (รวมอาบน้ำก่อนกลับ) → ตัวไหนมีบิล ถือว่าทั้งการ์ดคิดเงินแล้ว
-              const groupBilled = group.some((x) => billedIds.has(x.id));
-              const allConfirmed = group.every(
+              // อาบก่อนกลับระหว่างเข้าพัก = ส่วนหนึ่งของนัดเข้าพัก — สถานะ/บิลตามการเข้าพัก
+              // (เมื่อก่อนการ์ดอาบน้ำวันออกยังขึ้น "รอยืนยัน" + ปุ่มยืนยัน/ออกบิล ทั้งที่ยืนยันและออกบิลรวมไปแล้ว)
+              const hostStay = b.service === "room" ? undefined : stayForGroom(b, liveBookings);
+              const inStayBath = !!hostStay && group.every((x) => !!stayForGroom(x, liveBookings));
+              const statusOf = (x: CalendarDay) => (inStayBath ? stayForGroom(x, liveBookings) || x : x);
+              // ฝั่งการ์ดเข้าพัก: แถวอาบก่อนกลับของน้องในบ้านนี้ — ยืนยัน/พร้อมกลับ/ปิดงานไปพร้อมกัน
+              const bathRows =
+                b.service === "room"
+                  ? liveBookings.filter((x) => x.service !== "room" && group.some((s) => stayForGroom(x, [s])))
+                  : [];
+              const groupBilled = group.some((x) => billedIds.has(statusOf(x).id));
+              const allConfirmed = group.map(statusOf).every(
                 (x) =>
                   x.status === "confirmed" ||
                   (x.status === "pending" && groupBilled) ||
                   effectiveBookingStatus(x, today, billedIds) === "confirmed"
               );
-              const stage = effectiveBookingStatus(group[0], today, billedIds);
+              const stage = effectiveBookingStatus(statusOf(group[0]), today, billedIds);
+              const withBath = [...group, ...bathRows];
+              // "พร้อมกลับบ้าน" ส่งการ์ดหาลูกค้าทันที — ขึ้นเป็นปุ่มหลักเฉพาะวันกลับบ้าน (หรือเลยมาแล้ว)
+              // ก่อนหน้านั้นพับไว้ในเมนู ⋯ กันเผลอกดตั้งแต่วันยืนยันนัด
+              const leaveDay = (b.service === "room" ? b.checkout || b.checkin || b.date : b.date || "").slice(0, 10);
+              const tooEarly = !!leaveDay && today < leaveDay;
               const catNames = group.map((x) => x.catName).join(", ");
               const caseDone = paidCases[b.id] === true;
               const many = group.length > 1;
@@ -2216,14 +2245,16 @@ export function BookingCalendar() {
 
               // ปุ่มหลักของการ์ด — ขั้นถัดไปของงาน (ยืนยัน → พร้อมรับกลับ → ปิดงาน) มีได้ทีละปุ่มเดียว
               const primary =
-                stage === "no_show" || stage === "cancelled"
+                stage === "no_show" || stage === "cancelled" || inStayBath
                   ? null
                   : !allConfirmed && stage !== "ready" && stage !== "done"
-                  ? { label: "ยืนยันนัด", icon: "check", run: () => confirmGroup(group) }
+                  ? { label: "ยืนยันนัด", icon: "check", run: () => confirmGroup(withBath) }
                   : allConfirmed && stage !== "ready" && stage !== "done"
-                    ? { label: "พร้อมกลับบ้าน", icon: "send", run: () => setStageFor(group, "set_ready") }
+                    ? tooEarly
+                      ? null
+                      : { label: "พร้อมกลับบ้าน", icon: "send", run: () => setStageFor(withBath, "set_ready") }
                     : stage === "ready"
-                      ? { label: "ปิดงาน", icon: "check", run: () => setStageFor(group, "set_done") }
+                      ? { label: "ปิดงาน", icon: "check", run: () => setStageFor(withBath, "set_done") }
                       : null;
 
               // ปุ่มรองทั้งหมดรวมไว้ในเมนู ⋯ (ชื่อซ้ำกันไม่ได้ เพราะเมนูใช้ชื่อเป็น key)
@@ -2260,6 +2291,9 @@ export function BookingCalendar() {
                     window.location.href = `/api/calendar/${b.id}`;
                   },
                 },
+                ...(!inStayBath && tooEarly && allConfirmed && stage !== "ready" && stage !== "done" && stage !== "no_show"
+                  ? [{ label: uniq("พร้อมกลับบ้าน (ก่อนกำหนด)"), icon: "send", onClick: () => setStageFor(withBath, "set_ready") }]
+                  : []),
                 ...(stage !== "done" && stage !== "no_show"
                   ? [{ label: uniq("ไม่มาตามนัด"), icon: "x", onClick: () => setStageFor(group, "set_no_show") }]
                   : []),
@@ -2381,7 +2415,7 @@ export function BookingCalendar() {
                           >
                             <Icon name="clock" size={12} strokeWidth={2.2} />
                             {x.time ? `${x.time} น. ` : ""}
-                            {DAY_MOVE_LABELS[x.kind]}
+                            {dayMoveLabel(x.kind, b.transport)}
                             {!x.time && " · ยังไม่แจ้งเวลา"}
                           </span>
                         ))}
@@ -2546,7 +2580,7 @@ export function BookingCalendar() {
                     <span className="flex-1" />
                   )}
                   <BillButton
-                    bookingId={b.id}
+                    bookingId={inStayBath && hostStay ? hostStay.id : b.id}
                     onPaidState={(paid) =>
                       setPaidCases((prev) =>
                         prev[b.id] === paid ? prev : { ...prev, [b.id]: paid }

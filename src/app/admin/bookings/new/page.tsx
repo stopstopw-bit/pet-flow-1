@@ -1240,6 +1240,26 @@ export default function NewBookingPage() {
                 { id: "day", label: "Day Care", icon: "clock" },
               ]}
             />
+            <div className={dayCare ? "" : "grid grid-cols-2 gap-2"}>
+              <Field
+                label={dayCare ? "วันที่ฝาก" : "เช็คอิน"}
+                name="checkin"
+                type="date"
+                required
+                value={appointmentDate}
+                onChange={setAppointmentDate}
+              />
+              {!dayCare && (
+                <Field
+                  label="เช็คเอาท์"
+                  name="checkout"
+                  type="date"
+                  required
+                  value={checkoutDate}
+                  onChange={setCheckoutDate}
+                />
+              )}
+            </div>
             <div>
               <p className="text-xs font-bold text-brown-soft">ห้อง</p>
               <p className="mb-1.5 text-[10px] text-brown-faint">
@@ -1247,7 +1267,9 @@ export default function NewBookingPage() {
                   ? "ฝากรายวัน ไม่ค้างคืน · คิดครึ่งราคาห้อง · ตัวเลขคือห้องที่ว่างวันนั้น"
                   : liveMoves.length
                     ? "ห้องแรก (ก่อนย้าย) · ตัวเลขคือห้องที่ว่างจริงถึงวันย้าย"
-                    : "ตัวเลขคือห้องที่ว่างจริงตลอดช่วงที่เลือก · ห้องเต็มจะกดไม่ได้"}
+                    : appointmentDate
+                      ? "ตัวเลขคือห้องที่ว่างจริงตลอดช่วงที่เลือก · ห้องเต็มจะกดไม่ได้"
+                      : "เลือกวันด้านบนก่อน ระบบจะขึ้นจำนวนห้องว่างให้"}
               </p>
               <input type="hidden" name="room" value={roomId} />
               <div className="space-y-1.5">
@@ -1255,7 +1277,9 @@ export default function NewBookingPage() {
                   const a = availability[r.id];
                   const combo = !r.count && !!compositionOf(r.id, boardRooms);
                   const free = a?.free ?? r.count ?? 0;
-                  const full = free <= 0;
+                  // ยังไม่ได้เลือกวัน = ยังไม่รู้ว่าเต็มไหม (ห้องเชื่อมไม่มีจำนวนของตัวเอง เคยขึ้น "เต็ม")
+                  const noDates = !a && !appointmentDate;
+                  const full = !noDates && free <= 0;
                   const picked = roomId === r.id;
                   return (
                     <button
@@ -1288,13 +1312,15 @@ export default function NewBookingPage() {
                               : ` · ทั้งหมด ${r.count} ห้อง`}
                         </span>
                       </span>
-                      <span
-                        className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-extrabold ${
-                          full ? "bg-red-50 text-red-600" : "bg-ok/15 text-ok"
-                        }`}
-                      >
-                        {full ? "เต็ม" : `ว่าง ${free}${combo ? " ชุด" : ""}`}
-                      </span>
+                      {!noDates && (
+                        <span
+                          className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-extrabold ${
+                            full ? "bg-red-50 text-red-600" : "bg-ok/15 text-ok"
+                          }`}
+                        >
+                          {full ? "เต็ม" : `ว่าง ${free}${combo ? " ชุด" : ""}`}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -1319,7 +1345,9 @@ export default function NewBookingPage() {
                     ไม่เลือก = ให้ระบบจัดห้องให้อัตโนมัติตอนถึงวันจริง
                   </p>
                   {freeUnits.length === 0 ? (
-                    <p className="text-[10px] text-brown-faint">ไม่มีห้องว่างให้เลือกช่วงนี้</p>
+                    <p className="text-[10px] text-brown-faint">
+                      {appointmentDate ? "ไม่มีห้องว่างให้เลือกช่วงนี้" : "เลือกวันเช็คอิน-เช็คเอาท์ก่อน"}
+                    </p>
                   ) : (
                     <div className="flex flex-wrap gap-1.5">
                       {freeUnits.map((u) => (
@@ -1434,24 +1462,6 @@ export default function NewBookingPage() {
                 </div>
               )}
             </div>
-            <Field
-              label={dayCare ? "วันที่ฝาก" : "เช็คอิน"}
-              name="checkin"
-              type="date"
-              required
-              value={appointmentDate}
-              onChange={setAppointmentDate}
-            />
-            {!dayCare && (
-              <Field
-                label="เช็คเอาท์"
-                name="checkout"
-                type="date"
-                required
-                value={checkoutDate}
-                onChange={setCheckoutDate}
-              />
-            )}
             {!dayCare && roomId && (
               <RoomMovesEditor
                 rooms={rooms}

@@ -429,7 +429,8 @@ function ConsentContent() {
                 )}
               </section>
 
-              {!idCardOnFile && !isGroom && isFeatureOn(config, "idCard") && (
+              {/* มาจากลำดับขอข้อมูล = บัตรมีขั้นของตัวเองแล้ว (หรือร้านไม่ได้ขอรอบนี้) ไม่ถามซ้ำ เหมือนสมุดวัคซีน */}
+              {!idCardOnFile && !inFlow && !isGroom && isFeatureOn(config, "idCard") && (
               <section className="mt-4 rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm">
                 <label className="flex items-center gap-1.5 text-xs font-bold text-petflow-chocolate">
                   <Icon name="user" size={14} />

@@ -26,6 +26,16 @@ export const DAY_MOVE_LABELS: Record<DayMoveKind, string> = {
   stay: "เข้าพัก",
 };
 
+/**
+ * ป้ายของงานนั้น — นัดที่ร้านไปรับ/ไปส่งเอง (บริการรับ-ส่ง) ลูกค้าไม่ได้ "มาส่ง/มารับ"
+ * พนักงานต้องรู้ว่าต้องออกไปรับน้องเอง ไม่ใช่นั่งรอลูกค้าที่ร้าน
+ */
+export function dayMoveLabel(kind: DayMoveKind, transport?: { pickup?: boolean; dropoff?: boolean } | null) {
+  if (kind === "in" && transport?.pickup) return "ไปรับน้อง";
+  if (kind === "out" && transport?.dropoff) return "ไปส่งน้อง";
+  return DAY_MOVE_LABELS[kind];
+}
+
 export function dayMoves(b: MoveSource, dateKey: string): DayMove[] {
   if (b.service !== "room") {
     const moves: DayMove[] = [{ kind: "groom", time: b.time || "" }];
