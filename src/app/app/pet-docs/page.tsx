@@ -124,7 +124,11 @@ function PetDocsContent() {
       <PageHeader
         eyebrow={need === "vaccine" ? "Vaccine book" : "ID card"}
         title={need === "vaccine" ? "แนบสมุดวัคซีนน้อง" : "แนบบัตรประชาชนผู้ปกครอง"}
-        subtitle={`${config.business.name} — ใช้ประกอบการรับน้องเข้าใช้บริการ`}
+        subtitle={
+          need === "vaccine"
+            ? "ถ่ายรูปหน้าสมุดที่มีสติกเกอร์วัคซีน / ตราประทับหมอ ให้เห็นชื่อวัคซีนและวันที่ชัดๆ นะคะ"
+            : `${config.business.name} — ใช้ประกอบการรับน้องเข้าใช้บริการ`
+        }
         back="/app"
         backLabel="กลับหน้าแรก"
         showLang={false}
