@@ -4,7 +4,8 @@ import { hasTransport, type BookingTransport } from "./transport";
 import { getLineCredentials } from "./line-config";
 import { buildAppointmentConfirmFlex } from "./line";
 import { groomProgramName, isMassageBooking, resolveGroomPrograms } from "./grooming-prices";
-import { roomName } from "./booking-reminders";
+import { roomText } from "./booking-reminders";
+import type { RoomSegment } from "./room-segments";
 
 export async function bookingConfirmUrl(bookingId: string) {
   const creds = await getLineCredentials();
@@ -22,6 +23,7 @@ export async function buildBookingConfirmFlex(
     checkin?: string;
     checkout?: string;
     room?: string;
+    roomSegments?: RoomSegment[];
     notes?: string;
     /** id ใน GROOM_PROGRAMS (เช่น "bath-dry") — โชว์ชื่อโปรแกรมในการ์ดยืนยันนัด */
     groomProgram?: string;
@@ -56,7 +58,7 @@ export async function buildBookingConfirmFlex(
   const creds = await getLineCredentials();
   return buildAppointmentConfirmFlex({
     ...rest,
-    room: rest.room ? roomName(rest.room, config) : undefined,
+    room: roomText(rest, config) || undefined,
     program,
     petLines,
     massage: isMassageBooking({ service: booking.service, groomProgram: group[0]?.groomProgram ?? groomProgramId }, programs),

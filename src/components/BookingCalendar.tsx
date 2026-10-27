@@ -26,6 +26,7 @@ import {
   typeAvailability,
   type RoomClosure,
 } from "@/lib/room-board";
+import { roomOn, roomSummary } from "@/lib/room-segments";
 import { RoomClosureSheet } from "@/components/RoomClosureSheet";
 import { BOOKING_STATUS_LABELS, type BookingStatus } from "@/lib/business";
 import { effectiveBookingStatus } from "@/lib/booking-status";
@@ -894,7 +895,8 @@ export function BookingCalendar() {
     const host = group[0];
 
     // เช็คว่าห้องประเภทนี้ยังว่างช่วงคืนที่เพิ่ม (ไม่นับตัวเองทั้งบ้าน)
-    const roomId = host.room || host.roomType || "";
+    // ย้ายห้องกลางทาง → คืนที่เพิ่มอยู่ห้องสุดท้าย
+    const roomId = roomOn(host, oldOut).room || host.roomType || "";
     const boardRooms = rooms.map((r) => ({
       id: r.id,
       name: r.name,
@@ -1161,6 +1163,7 @@ export function BookingCalendar() {
             transport: b.transport,
             room: b.room,
             roomUnit: b.roomUnit,
+            roomSegments: b.roomSegments,
             checkin: b.checkin,
             checkout: b.checkout,
           }),
@@ -1903,7 +1906,8 @@ export function BookingCalendar() {
                           )}
                           {u.leaving.length > 0 && (
                             <p className="mt-0.5 truncate text-[9px] text-wait">
-                              {u.leaving.map((x) => x.catName).join(", ")} ออกวันนี้
+                              {u.leaving.map((x) => x.catName).join(", ")}{" "}
+                              {u.leaving.every((x) => x.checkout && x.checkout.slice(0, 10) > activeDate) ? "ย้ายห้องวันนี้" : "ออกวันนี้"}
                             </p>
                           )}
                           {/* เลขในวงเล็บ = แมวที่เกินราคาห้อง (Cat Tower จุ 4 มา 5 = เกิน 1 ตัว +50) */}
@@ -1968,7 +1972,10 @@ export function BookingCalendar() {
               closedDates.some((c) => c.date === key);
             // สีพื้นช่อง = ประเภทห้องที่มีน้องพักมากที่สุดวันนั้น
             const byRoom = new Map<string, number>();
-            for (const b of stayItems) byRoom.set(b.room || "", (byRoom.get(b.room || "") || 0) + 1);
+            for (const b of stayItems) {
+              const r = roomOn(b, key).room || "";
+              byRoom.set(r, (byRoom.get(r) || 0) + 1);
+            }
             const topRoom = [...byRoom.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
             const tint = topRoom ? roomColors[topRoom] : undefined;
             // เรียงตามเวลา: มาส่ง/อาบน้ำ/มารับ ที่ลูกค้าแจ้งเวลาแล้วขึ้นก่อน น้องที่พักต่อไว้ท้าย
@@ -2032,9 +2039,10 @@ export function BookingCalendar() {
                   {shown.map(({ group: g, move }) => {
                     const b = g[0];
                     const names = g.map((x) => x.catName).join(", ");
-                    const color = b.service === "room" ? roomColors[b.room || ""] || "#9ca3af" : undefined;
                     const isStay = b.service === "room";
-                    const roomName = isStay ? rooms.find((r) => r.id === b.room)?.name || "" : "";
+                    const dayRoom = isStay ? roomOn(b, key).room || "" : "";
+                    const color = isStay ? roomColors[dayRoom] || "#9ca3af" : undefined;
+                    const roomName = isStay ? rooms.find((r) => r.id === dayRoom)?.name || "" : "";
                     const tag = `${DAY_MOVE_LABELS[move.kind]}${move.time ? ` ${move.time}` : ""}`;
                     return (
                       <span
@@ -2323,7 +2331,7 @@ export function BookingCalendar() {
                       )}
                       <span className="min-w-0">
                         {b.service === "room"
-                          ? rooms.find((r) => r.id === b.room)?.name || b.room || "ห้องพัก"
+                          ? roomSummary(b, (id) => rooms.find((r) => r.id === id)?.name || id || "ห้องพัก")
                           : "อาบน้ำ"}{" "}
                         · {bookingWhen(b)}
                       </span>

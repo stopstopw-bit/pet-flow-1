@@ -7,7 +7,11 @@
  * (เช่น มา 3 ตัว ห้องจุ 2 → ห้องแรก 2 ตัว ห้องถัดไป 1 ตัว)
  *
  * ถ้าอยากจัดเอง ใส่เลขห้องที่ roomUnit ของนัดนั้น ระบบจะยึดตามที่ระบุ
+ *
+ * นัดที่ย้ายห้องกลางทาง (roomSegments) ถูกแตกเป็นช่วงย่อยแล้วจัดห้องทีละช่วง
+ * วันย้าย = ออกจากห้องเก่า + เข้าห้องใหม่ในวันเดียวกัน (ดู room-segments.ts)
  */
+import { expandBySegments, type RoomSegment } from "./room-segments";
 
 export type BoardRoomType = {
   id: string;
@@ -80,7 +84,11 @@ export type BoardBooking = {
   status?: string;
   arrivalTime?: string;
   pickupTime?: string;
+  roomSegments?: RoomSegment[];
 };
+
+/** ช่วงย่อยของนัด (นัดที่ไม่ย้ายห้อง = ช่วงเดียว) — segKey ไม่ซ้ำกันแม้ id เดียวกัน */
+type Piece = BoardBooking & { segKey: string };
 
 export type UnitState = {
   typeId: string;
@@ -270,7 +278,9 @@ export function assignStays(rooms: BoardRoomType[], bookings: BoardBooking[]) {
 
   const assign = new Map<string, StayAssignment>();
   const overflow = new Set<string>();
-  const live = bookings.filter((b) => b.service === "room" && isLive(b) && b.checkin);
+  const live: Piece[] = expandBySegments(
+    bookings.filter((b) => b.service === "room" && isLive(b) && b.checkin)
+  );
 
   // 0) ห้องที่ปิดอยู่ — กันไว้ก่อน ไม่ให้ระบบจัดแมวลงห้องนี้ในช่วงที่ปิด
   for (const t of physical) {
@@ -280,18 +290,18 @@ export function assignStays(rooms: BoardRoomType[], bookings: BoardBooking[]) {
   }
 
   // 1) ปักหมุด — ห้องเดี่ยวที่ระบุเลขห้องไว้
-  const rest: BoardBooking[] = [];
+  const rest: Piece[] = [];
   for (const b of live) {
     const type = physical.find((t) => typeMatches(b, t));
     const u = b.roomUnit;
     if (type && u && u >= 1 && u <= type.count) {
       add(type.id, u, { range: stayRange(b), hh: householdKey(b), composite: false });
-      assign.set(b.id, { units: [{ typeId: type.id, unit: u }] });
+      assign.set(b.segKey, { units: [{ typeId: type.id, unit: u }] });
     } else rest.push(b);
   }
 
   // 2) ที่เหลือ — มาก่อนได้ก่อน (เรียงวันเข้า แล้ว id เพื่อให้ผลเหมือนเดิมทุกครั้ง)
-  rest.sort((a, b) => (a.checkin || "").localeCompare(b.checkin || "") || a.id.localeCompare(b.id));
+  rest.sort((a, b) => (a.checkin || "").localeCompare(b.checkin || "") || a.segKey.localeCompare(b.segKey));
   for (const b of rest) {
     const range = stayRange(b);
     const hh = householdKey(b);
@@ -310,8 +320,8 @@ export function assignStays(rooms: BoardRoomType[], bookings: BoardBooking[]) {
       }
       if (picked) {
         add(type.id, picked, { range, hh, composite: false });
-        assign.set(b.id, { units: [{ typeId: type.id, unit: picked }] });
-      } else overflow.add(b.id);
+        assign.set(b.segKey, { units: [{ typeId: type.id, unit: picked }] });
+      } else overflow.add(b.segKey);
       continue;
     }
 
@@ -321,10 +331,10 @@ export function assignStays(rooms: BoardRoomType[], bookings: BoardBooking[]) {
 
     // ห้องเชื่อม — บ้านเดียวกันช่วงเดียวกันที่จองห้องเชื่อมนี้ไปแล้ว ใช้ชุดเดิม
     const mate = rest.find(
-      (x) => x.id !== b.id && assign.has(x.id) && householdKey(x) === hh && typeMatches(x, compType)
+      (x) => x.segKey !== b.segKey && assign.has(x.segKey) && householdKey(x) === hh && typeMatches(x, compType)
     );
     if (mate) {
-      assign.set(b.id, assign.get(mate.id)!);
+      assign.set(b.segKey, assign.get(mate.segKey)!);
       continue;
     }
 
@@ -358,11 +368,11 @@ export function assignStays(rooms: BoardRoomType[], bookings: BoardBooking[]) {
       claimed.push(...pick.map((unit) => ({ typeId: part.typeId, unit })));
     }
     if (!ok) {
-      overflow.add(b.id);
+      overflow.add(b.segKey);
       continue;
     }
     for (const c of claimed) add(c.typeId, c.unit, { range, hh, composite: true });
-    assign.set(b.id, { units: claimed, partOf: compType.name, compositeId: compType.id });
+    assign.set(b.segKey, { units: claimed, partOf: compType.name, compositeId: compType.id });
   }
 
   const result = { assign, overflow };
@@ -382,9 +392,11 @@ export function buildRoomBoard(
   date: string
 ): RoomBoard {
   const { assign, overflow: overflowIds } = assignStays(rooms, bookings);
-  const relevant = bookings.filter(
-    (b) => b.service === "room" && isLive(b) && (isStayingOn(b, date) || isLeavingOn(b, date))
-  );
+  // ช่วงย่อยของนัดที่ย้ายห้อง — จัดห้องตามช่วง แต่ใส่ "นัดจริง" ลงผัง (กดเปิดแก้ไขได้ตามเดิม)
+  const origOf = new Map(bookings.map((b) => [b.id, b]));
+  const relevant = expandBySegments(
+    bookings.filter((b) => b.service === "room" && isLive(b))
+  ).filter((p) => isStayingOn(p, date) || isLeavingOn(p, date));
 
   const units: UnitState[] = [];
   const byType: RoomBoard["byType"] = [];
@@ -414,21 +426,22 @@ export function buildRoomBoard(
     units.push(...typeUnits);
   }
 
-  const sorted = [...relevant].sort((a, b) => a.id.localeCompare(b.id));
-  for (const b of sorted) {
-    const a = assign.get(b.id);
-    if (!a || overflowIds.has(b.id)) {
-      if (overflowIds.has(b.id)) overflow.push(b);
+  const sorted = [...relevant].sort((a, b) => a.segKey.localeCompare(b.segKey));
+  for (const p of sorted) {
+    const b = origOf.get(p.id) || p;
+    const a = assign.get(p.segKey);
+    if (!a || overflowIds.has(p.segKey)) {
+      if (overflowIds.has(p.segKey) && !overflow.includes(b)) overflow.push(b);
       continue;
     }
-    const leaving = isLeavingOn(b, date);
+    const leaving = isLeavingOn(p, date);
     const [first, ...others] = a.units;
     const host = unitsByType.get(first.typeId)?.[first.unit - 1];
     if (!host) continue;
     if (leaving) host.leaving.push(b);
     else {
       host.staying.push(b);
-      if (b.checkin === date) host.arriving = true;
+      if (p.checkin === date) host.arriving = true;
       // ห้องเชื่อม: ห้องที่เปิดทะลุถูกยึดไว้ด้วยตลอดการเข้าพัก
       if (a.partOf) {
         host.partOf = a.partOf;

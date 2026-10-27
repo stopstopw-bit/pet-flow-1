@@ -1,3 +1,4 @@
+import { roomSummary } from "./room-segments";
 import { getLineCredentials } from "./line-config";
 import { politeCat, buildDepositReminderFlex } from "./line";
 import { DEPOSIT_REMINDER_DEFAULTS } from "./line-card-defaults";
@@ -71,7 +72,7 @@ export function fixTomorrowWord(text: string, date: string, now = new Date()): s
 
 /** เนื้อความการ์ดเลือกเวลาเข้าพัก (เช็คอิน) */
 export function buildCheckinBodyText(
-  b: Pick<StoredBooking, "catName" | "checkin" | "date" | "room">,
+  b: Pick<StoredBooking, "catName" | "checkin" | "checkout" | "date" | "room" | "roomSegments">,
   cfg: SiteConfig
 ): string {
   const checkin = b.checkin || b.date || "";
@@ -80,7 +81,7 @@ export function buildCheckinBodyText(
       shop: cfg.business.name,
       cat: politeCat(b.catName),
       checkin,
-      room: b.room ? `🏠 ห้อง: ${roomName(b.room, cfg)}` : "",
+      room: b.room ? `🏠 ห้อง: ${roomText(b, cfg)}` : "",
       litterNote: "",
     }),
     checkin
@@ -264,6 +265,14 @@ export function balanceReminderSender(
 }
 
 /** ข้อความชวนกดยอมรับข้อตกลง (แนบลิงก์) — คืน "" ถ้ายังไม่มีลิงก์ */
+/** ชื่อห้องของการเข้าพักนี้ — ย้ายห้องกลางทาง = "Catflix 25–28 ต.ค. → Mid Cozy 28–31 ต.ค." */
+export function roomText(
+  b: Pick<StoredBooking, "room" | "checkin" | "checkout" | "roomSegments">,
+  cfg: Pick<SiteConfig, "rooms">
+): string {
+  return b.room ? roomSummary(b, (id) => (id ? roomName(id, cfg) : "-")) : "";
+}
+
 export function buildConsentInviteText(
   b: Pick<StoredBooking, "catName">,
   cfg: SiteConfig,
@@ -314,7 +323,7 @@ export function litterNoteFor(
 
 /** เนื้อความเตรียมตัวก่อนเข้าพัก (ไม่แนบลิงก์ — ใช้กับการ์ดที่มีปุ่มยอมรับเงื่อนไข) */
 export function buildPrestayBodyText(
-  b: Pick<StoredBooking, "catName" | "checkin" | "checkout" | "room" | "date">,
+  b: Pick<StoredBooking, "catName" | "checkin" | "checkout" | "room" | "date" | "roomSegments">,
   cfg: SiteConfig
 ): string {
   return renderTemplate(cfg.messages.prestayReminder, {
@@ -322,7 +331,7 @@ export function buildPrestayBodyText(
     cat: politeCat(b.catName),
     checkin: b.checkin || b.date || "",
     checkout: b.checkout ? `→ ${b.checkout}` : "",
-    room: b.room ? `🏠 ห้อง: ${roomName(b.room, cfg)}` : "",
+    room: b.room ? `🏠 ห้อง: ${roomText(b, cfg)}` : "",
     litterNote: litterNoteFor(b, cfg),
     consentUrl: "",
   });
@@ -330,7 +339,7 @@ export function buildPrestayBodyText(
 
 /** ข้อมูลการ์ดแจ้งเข้าพัก (แบบจัดรูปแบบสวยงาม) — ป้อนให้ buildPrestayFlex */
 export function buildPrestayFlexData(
-  b: Pick<StoredBooking, "catName" | "checkin" | "checkout" | "room" | "date">,
+  b: Pick<StoredBooking, "catName" | "checkin" | "checkout" | "room" | "date" | "roomSegments">,
   cfg: SiteConfig
 ) {
   const inDate = b.checkin || b.date || "";
@@ -345,7 +354,7 @@ export function buildPrestayFlexData(
     catName: b.catName,
     petEmoji: petWords(cfg).emoji,
     dateText,
-    room: b.room ? roomName(b.room, cfg) : undefined,
+    room: b.room ? roomText(b, cfg) : undefined,
     intro: renderTemplate(msg.prestayIntro ?? DEFAULT_MESSAGES.prestayIntro, {
       shop: cfg.business.name,
       cat: politeCat(b.catName),
@@ -363,7 +372,7 @@ export function buildPrestayFlexData(
 
 /** ข้อความแจ้งรายละเอียดก่อนเข้าพัก (+ แนบลิงก์ยอมรับข้อตกลงถ้ามี) */
 export function buildPrestayReminderText(
-  b: Pick<StoredBooking, "catName" | "checkin" | "checkout" | "room" | "date">,
+  b: Pick<StoredBooking, "catName" | "checkin" | "checkout" | "room" | "date" | "roomSegments">,
   cfg: SiteConfig,
   consentUrl: string
 ): string {
@@ -372,7 +381,7 @@ export function buildPrestayReminderText(
     cat: politeCat(b.catName),
     checkin: b.checkin || b.date || "",
     checkout: b.checkout ? `→ ${b.checkout}` : "",
-    room: b.room ? `🏠 ห้อง: ${roomName(b.room, cfg)}` : "",
+    room: b.room ? `🏠 ห้อง: ${roomText(b, cfg)}` : "",
     consentUrl,
   });
   const invite = buildConsentInviteText(b, cfg, consentUrl);
