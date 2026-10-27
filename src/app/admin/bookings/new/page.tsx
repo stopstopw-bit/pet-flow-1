@@ -261,7 +261,7 @@ function ClientPetPicker({
           <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">
             {`${pw.enPlural[0].toUpperCase()}${pw.enPlural.slice(1)} · น้อง${pw.th}ที่มา *`}
           </p>
-          {knownCats.length > 1 && (
+          {knownCats.length > 1 && knownCats.some((n) => !catNames.includes(n)) && (
             <button
               type="button"
               onClick={() => onSelectAll(knownCats)}
@@ -1037,8 +1037,9 @@ export default function NewBookingPage() {
             setCustomerId(c.id);
             setCustomerName(c.name);
             setLineUserId(c.lineUserId || "");
-            // มีน้องตัวเดียว เลือกให้เลย — ลดการแตะหนึ่งครั้ง
-            setCatNames(c.cats.length === 1 ? [c.cats[0].name] : []);
+            // เลือกน้องทุกตัวในบ้านให้เลย (ส่วนใหญ่มาด้วยกัน) — ตัวไหนไม่มาแตะออก
+            // เมื่อก่อนไม่เลือกให้ แต่กล่องถามข้อมูลด้านล่างติ๊กครบทุกตัว ดูเหมือนเลือกแล้ว บันทึกไม่ผ่าน
+            setCatNames(c.cats.map((cat) => cat.name));
           }}
           onNewCustomer={(name) => {
             setPickedCustomer(null);
