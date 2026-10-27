@@ -55,9 +55,14 @@ export async function buildBookingConfirmFlex(
       : undefined;
   const program = mixedProgram ? undefined : nameOf(group[0]?.groomProgram ?? groomProgramId);
 
+  // ทั้งบ้านอาบคนละรอบ → หัวการ์ดบอกช่วงเวลารวม (เวลารายตัวอยู่บรรทัด "แต่ละตัว") ไม่ใช่เวลาของตัวแรกตัวเดียว
+  const times = group.map((x) => x.time || "").filter(Boolean).sort();
+  const time = mixedTime && times.length > 1 ? `${times[0]} – ${times[times.length - 1]}` : rest.time;
+
   const creds = await getLineCredentials();
   return buildAppointmentConfirmFlex({
     ...rest,
+    time,
     room: roomText(rest, config) || undefined,
     program,
     petLines,

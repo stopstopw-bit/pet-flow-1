@@ -440,6 +440,8 @@ async function handlePatch(req: NextRequest, admin: boolean) {
       if (!bk) continue;
       // ยืนยันได้เฉพาะนัดของตัวเอง แม้จะมาในกลุ่มเดียวกัน — กันแอบยัด id ของคนอื่นปนมา
       if (!admin && !(!!lineUserId && bk.lineUserId === lineUserId)) continue;
+      // นัดที่ลูกค้าจองเอง ร้านเท่านั้นที่ยืนยันได้ — กันพ่วงมาในกลุ่มของทั้งบ้าน
+      if (!admin && bk.selfBooked && bk.status !== "confirmed") continue;
       await updateBooking(bk.id, {
         status: "confirmed",
         // เวลามาส่งน้องเป็นของการเข้าพัก — อาบน้ำก่อนกลับที่ยืนยันมาพร้อมกันไม่ต้องได้เวลานี้

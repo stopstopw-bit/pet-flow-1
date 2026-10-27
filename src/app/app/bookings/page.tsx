@@ -54,6 +54,8 @@ function todoFlow(group: BookingRow[]): { href: string; labels: string[] } | nul
 
 /** เวลามาส่งน้องที่บันทึกไว้ — ที่เดียวกับหน้าเลือกเวลาจากลิงก์ LINE และที่หลังบ้านเห็น */
 const savedArrival = (b: BookingRow) => b.arrivalTime || b.checkinTime || "";
+/** ทั้งบ้านในวันเดียวกัน = การ์ดเดียว ยืนยันครั้งเดียว (อาบน้ำคนละรอบเวลาก็รวม) — กุญแจเดียวกับการ์ดยืนยันใน LINE */
+const HOUSEHOLD = { groomByDay: true };
 
 function BookingsContent() {
   const { locale } = useLocale();
@@ -92,11 +94,11 @@ function BookingsContent() {
     if (!highlightId || loading || scrolledRef.current) return;
     // นัดที่ถูก highlight อาจถูกรวมเป็นการ์ดเดียวกับตัวอื่นในบ้านเดียวกัน — หากลุ่มก่อน
     // แล้วอ้างอิงด้วย id ของตัวหลักในกลุ่ม (นั่นคือ id ที่การ์ดจริงเรนเดอร์ไว้)
-    const group = groupBookings(bookings).find((g) => g.some((b) => b.id === highlightId));
+    const group = groupBookings(bookings, HOUSEHOLD).find((g) => g.some((b) => b.id === highlightId));
     if (!group) return;
     const primary = group[0];
     scrolledRef.current = true;
-    if (primary.status === "pending" && asksTime(primary)) {
+    if (group.some((x) => x.status === "pending") && asksTime(primary)) {
       setPickId(primary.id);
       setCheckin(savedArrival(primary));
     }
@@ -112,7 +114,7 @@ function BookingsContent() {
   // confirm_group ให้ร้านได้แจ้งเตือนเป็นข้อความเดียว ไม่ใช่แยกทีละตัวเหมือนเดิม)
   const confirmGroup = async (ids: string[], primary: BookingRow) => {
     if (confirmingId) return;
-    setConfirmingId(ids[0]);
+    setConfirmingId(primary.id);
     try {
       const res = await fetch("/api/bookings", {
         method: "PATCH",
@@ -148,7 +150,7 @@ function BookingsContent() {
   const today = bangkokToday();
   const lastDay = (b: BookingRow) => (b.checkout || b.date || b.checkin || "").slice(0, 10);
   // นัดที่ยังไม่ถึงขึ้นก่อน (ใกล้สุดก่อน) · นัดที่ผ่านไปแล้วไว้ท้ายสุด
-  const groups = groupBookings(bookings.filter((b) => !inStayBaths.includes(b))).sort((a, b) => {
+  const groups = groupBookings(bookings.filter((b) => !inStayBaths.includes(b)), HOUSEHOLD).sort((a, b) => {
     const pa = lastDay(a[0]) < today;
     const pb = lastDay(b[0]) < today;
     if (pa !== pb) return pa ? 1 : -1;
@@ -170,19 +172,20 @@ function BookingsContent() {
       ) : (
         <ul className="space-y-3">
           {groups.map((group) => {
-            // บ้านเดียวกัน + นัดเดียวกัน หลายตัว → รวมเป็นการ์ดเดียว ยืนยันทีเดียวจบ
-            // (สถานะต้องตรงกันทั้งกลุ่มถึงจะรวมโชว์ — ถ้าบางตัวยืนยันไปแล้วบางตัวยังไม่
-            //  ให้แยกโชว์ทีละตัวแทน กันสับสน)
-            const sameStatus = group.every((x) => x.status === group[0].status);
-            const combine = group.length > 1 && sameStatus;
+            // บ้านเดียวกัน วันเดียวกัน หลายตัว → การ์ดเดียว ยืนยันทีเดียวทั้งบ้าน (เจ้าของร้านขอ 2026-10-27)
+            // อาบน้ำคนละรอบเวลาก็รวม — บอกเวลารายตัวในการ์ดแทน · ตัวที่ยังรอยืนยันเท่านั้นที่ถูกยืนยันตอนกด
             const primary = group[0];
             const baths = bathsOf(group);
             const past = lastDay(primary) < today;
+            const waiting = group.filter((x) => x.status === "pending");
+            const status = waiting.length > 0 ? "pending" : primary.status;
+            const selfBooked = waiting.some((x) => x.selfBooked);
             const ids = [
-              ...group.map((x) => x.id),
+              ...waiting.map((x) => x.id),
               ...baths.filter((x) => x.status === "pending").map((x) => x.id),
             ];
-            const catLabel = combine ? groupCatNames(group) : primary.catName;
+            const catLabel = groupCatNames(group);
+            const mixedTime = new Set(group.map((x) => x.time || "")).size > 1;
 
             return (
               <li
@@ -213,8 +216,21 @@ function BookingsContent() {
                         : primary.date
                           ? formatThaiDateShort(primary.date)
                           : ""}
-                      {primary.time ? ` · ${primary.time}` : ""}
+                      {primary.time && !mixedTime ? ` · ${primary.time}` : ""}
                     </p>
+                    {mixedTime && (
+                      <ul className="mt-0.5 space-y-0.5 text-xs text-brown-soft">
+                        {[...group]
+                          .sort((a, b) => (a.time || "").localeCompare(b.time || ""))
+                          .map((x) => (
+                            <li key={x.id} className="flex items-center gap-1.5">
+                              <Icon name="paw" size={13} />
+                              {x.catName}
+                              {x.time ? ` · ${x.time}` : ""}
+                            </li>
+                          ))}
+                      </ul>
+                    )}
                     {primary.groomProgram && (
                       <p className="mt-0.5 text-[11px] font-bold text-latte-deep">
                         🧴 {groomProgram(primary.groomProgram)?.name || primary.groomProgram}
@@ -231,16 +247,16 @@ function BookingsContent() {
                   </div>
                   <span
                     className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${
-                      primary.status === "confirmed"
+                      status === "confirmed"
                         ? "bg-sage/20 text-ok"
-                        : primary.status === "cancelled"
+                        : status === "cancelled"
                           ? "bg-brown-soft/15 text-brown-soft"
                           : "bg-honey/25 text-wait"
                     }`}
                   >
-                    {primary.status === "confirmed"
+                    {status === "confirmed"
                       ? m.confirmed
-                      : primary.status === "cancelled"
+                      : status === "cancelled"
                         ? m.cancelled
                         : past
                           ? locale === "th"
@@ -249,17 +265,6 @@ function BookingsContent() {
                           : m.pending}
                   </span>
                 </div>
-
-                {!combine && group.length > 1 && (
-                  <ul className="mt-2 space-y-1 pl-[52px] text-xs text-brown-soft">
-                    {group.slice(1).map((x) => (
-                      <li key={x.id} className="flex items-center gap-1.5">
-                        <Icon name="paw" size={13} />
-                        {x.catName}
-                      </li>
-                    ))}
-                  </ul>
-                )}
 
                 {(() => {
                   const flow = past || primary.status === "cancelled" ? null : todoFlow(group);
@@ -285,7 +290,7 @@ function BookingsContent() {
                 })()}
 
                 {/* นัดที่ลูกค้าจองเอง → รอร้านยืนยัน ลูกค้ายืนยันเองไม่ได้ (กัน "จองเอง ยืนยันเอง") */}
-                {primary.status === "pending" && primary.selfBooked && !past && (
+                {status === "pending" && selfBooked && !past && (
                   <p className="mt-3 flex items-center justify-center gap-1.5 rounded-petflow-sm bg-honey/25 px-3 py-2.5 text-center text-xs font-bold text-wait">
                     <Icon name="clock" size={14} />
                     {locale === "th"
@@ -294,7 +299,7 @@ function BookingsContent() {
                   </p>
                 )}
                 {/* นัดที่ร้านสร้างให้ → ลูกค้ากดยืนยันเข้าร่วม (ตอบรับ) ได้ตามเดิม */}
-                {primary.status === "pending" && !primary.selfBooked && !past && (
+                {status === "pending" && !selfBooked && !past && (
                   <div className="mt-3">
                     {asksTime(primary) && pickId === primary.id && (
                       <div className="mb-3 rounded-petflow-sm bg-paper p-3">
@@ -316,17 +321,7 @@ function BookingsContent() {
                           setPickId(primary.id);
                           setCheckin(savedArrival(primary));
                         } else {
-                          confirmGroup(
-                            combine
-                              ? ids
-                              : [
-                                  primary.id,
-                                  ...baths
-                                    .filter((x) => x.status === "pending" && x.catName === primary.catName)
-                                    .map((x) => x.id),
-                                ],
-                            primary
-                          );
+                          confirmGroup(ids, primary);
                         }
                       }}
                       className={BTN_PRIMARY}
@@ -340,7 +335,7 @@ function BookingsContent() {
                         <>
                           <Icon name="check" size={18} strokeWidth={2.2} />
                           {m.confirm}
-                          {combine ? ` (${group.length} ตัว)` : ""}
+                          {waiting.length > 1 ? ` (${waiting.length} ตัว)` : ""}
                         </>
                       )}
                     </button>

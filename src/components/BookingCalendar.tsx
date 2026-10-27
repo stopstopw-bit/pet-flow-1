@@ -14,7 +14,7 @@ import { InvoiceActionButtons } from "@/components/InvoiceActionButtons";
 import { bookingOnDate } from "@/lib/booking-customer-match";
 import { toast } from "@/components/Toast";
 import { PreviewSendModal } from "@/components/PreviewSendModal";
-import { groupBookings, stayForGroom } from "@/lib/booking-group";
+import { bookingGroupKey, groupBookings, stayForGroom } from "@/lib/booking-group";
 import {
   attachClosures,
   buildRoomBoard,
@@ -1248,6 +1248,16 @@ export function BookingCalendar() {
 
   // มุมมองรายวัน — แถวละชั่วโมง ครอบคลุมช่วงที่มีนัดจริง (อย่างน้อย 9:00–18:00)
   // เรียงตามเวลาที่ต้องเจอลูกค้าวันนี้ (มาส่ง/อาบน้ำ/มารับ) — ไม่มีเวลาไว้ท้าย
+  /** นัดทั้งบ้านในวันนั้นที่ส่งการ์ดรวมใบเดียว — ตารางแยกแถวตามเวลา แต่ลูกค้ายืนยันครั้งเดียวทั้งบ้าน */
+  const householdIds = (b: (typeof dayBookings)[number], group: (typeof dayBookings)[number][]) => {
+    const key = bookingGroupKey(b, { groomByDay: true });
+    const ids = dayBookings
+      .filter((x) => bookingGroupKey(x, { groomByDay: true }) === key)
+      .map((x) => x.id);
+    const all = Array.from(new Set([...group.map((x) => x.id), ...ids]));
+    return all.length > 1 ? all : undefined;
+  };
+
   const dayGroups = groupBookings(dayBookings).sort((a, b) =>
     (firstMoveTime(a[0], activeDate) || "99").localeCompare(firstMoveTime(b[0], activeDate) || "99")
   );
@@ -2597,7 +2607,8 @@ export function BookingCalendar() {
                     lineUserId={b.lineUserId}
                     customerId={b.customerId}
                     service={b.service}
-                    groomBookingIds={many ? group.map((x) => x.id) : undefined}
+                    // ทั้งบ้านในวันนั้น (อาบน้ำคนละรอบเวลาก็รวม) — การ์ดยืนยันนัด/ขอข้อมูลส่งใบเดียวต่อบ้าน
+                    groomBookingIds={householdIds(b, group)}
                     initialAutoOff={b.autoOff}
                     onDone={load}
                   />
