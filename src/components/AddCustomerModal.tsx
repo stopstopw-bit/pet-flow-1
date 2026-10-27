@@ -34,6 +34,8 @@ type PetForm = {
   ageValue: string;
   ageUnit: "year" | "month";
   weightKg: string;
+  /** ติ๊ก "ไม่ทราบ" น้ำหนัก — เหมือนหน้าสมัครสมาชิก */
+  weightUnknown: boolean;
   birthday: string;
   medical: string;
   seizureHistory: string;
@@ -56,6 +58,7 @@ function emptyPet(): PetForm {
     ageValue: "",
     ageUnit: "year",
     weightKg: "",
+    weightUnknown: false,
     birthday: "",
     medical: "",
     seizureHistory: "",
@@ -187,7 +190,7 @@ export function AddCustomerModal({
           color: p.color || undefined,
           ageValue: p.ageValue || undefined,
           ageUnit: p.ageValue ? p.ageUnit : undefined,
-          weightKg: p.weightKg || undefined,
+          weightKg: (!p.weightUnknown && p.weightKg) || undefined,
           birthday: p.birthday || undefined,
           medical: p.medical || undefined,
           seizureHistory: p.seizureHistory.trim() || undefined,
@@ -426,6 +429,7 @@ export function AddCustomerModal({
                         inputMode="numeric"
                         value={pet.ageValue}
                         onChange={(e) => updatePet(idx, { ageValue: e.target.value })}
+                        placeholder="เช่น 3"
                         className={fieldCls}
                       />
                     </label>
@@ -443,19 +447,34 @@ export function AddCustomerModal({
                       </select>
                     </label>
                   </div>
-                  <label className={labelCls}>
+                  <div className={labelCls}>
                     น้ำหนัก (กก.)
-                    <NumInput
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      inputMode="decimal"
-                      value={pet.weightKg}
-                      onChange={(e) => updatePet(idx, { weightKg: e.target.value })}
-                      placeholder="เช่น 4.5"
-                      className={fieldCls}
-                    />
-                  </label>
+                    <div className="flex items-center gap-2">
+                      <NumInput
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        inputMode="decimal"
+                        aria-label="น้ำหนัก (กก.)"
+                        disabled={pet.weightUnknown}
+                        value={pet.weightUnknown ? "" : pet.weightKg}
+                        onChange={(e) => updatePet(idx, { weightKg: e.target.value })}
+                        placeholder={pet.weightUnknown ? "ไม่ทราบน้ำหนัก" : "เช่น 4.5"}
+                        className={`${fieldCls} min-w-0 flex-1 disabled:opacity-50`}
+                      />
+                      <label className="mt-1 flex min-h-[44px] shrink-0 cursor-pointer items-center gap-1.5 text-sm font-bold text-brown">
+                        <input
+                          type="checkbox"
+                          checked={pet.weightUnknown}
+                          onChange={(e) =>
+                            updatePet(idx, { weightUnknown: e.target.checked, weightKg: "" })
+                          }
+                          className="h-5 w-5 accent-latte-deep"
+                        />
+                        ไม่ทราบ
+                      </label>
+                    </div>
+                  </div>
                   <div className={labelCls}>
                     วันเกิดน้อง (ถ้าทราบ)
                     <div className="mt-1">
