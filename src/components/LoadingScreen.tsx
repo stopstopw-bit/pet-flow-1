@@ -2,6 +2,8 @@
 
 import Image from "next/image";
 import { useConfig } from "@/components/ConfigProvider";
+import { LogoInitial } from "@/components/Logo";
+import { isExternalLogo, shopLogoSrc } from "@/lib/shop-logo";
 
 /**
  * หน้าจอรอโหลดของแอปลูกค้า — ใช้แทนข้อความ "กำลังโหลด…" เปล่าๆ ทุกจุด
@@ -14,21 +16,27 @@ export function LoadingScreen({
   message?: string;
 }) {
   const { config } = useConfig();
-  const src = config.branding?.logoUrl || "/logo.jpg";
+  const src = shopLogoSrc(config);
   const name = config.business?.name || "";
 
   return (
     <div className="flex flex-col items-center justify-center gap-4 px-6 py-20 text-center">
       <div className="h-24 w-24 animate-bounce overflow-hidden rounded-full border border-petflow-line bg-cream shadow-petflow">
-        <Image
-          src={src}
-          alt={name}
-          width={96}
-          height={96}
-          className="h-full w-full object-cover"
-          unoptimized={src.startsWith("data:")}
-          priority
-        />
+        {src ? (
+          <Image
+            src={src}
+            alt={name}
+            width={96}
+            height={96}
+            className="h-full w-full object-cover"
+            unoptimized={isExternalLogo(src)}
+            priority
+          />
+        ) : (
+          <div className="h-full w-full text-3xl">
+            <LogoInitial name={name} />
+          </div>
+        )}
       </div>
       <div>
         <p className="text-sm font-extrabold tracking-wide text-petflow-chocolate">
