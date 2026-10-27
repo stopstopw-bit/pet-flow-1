@@ -38,6 +38,7 @@ import {
   roomCapacity,
   freeUnitsForRange,
   turnoverUnitsForRange,
+  turnoverLabel,
   type BoardBooking,
 } from "@/lib/room-board";
 
@@ -675,10 +676,10 @@ export default function NewBookingPage() {
   }, [freeUnits2, room2Unit]);
   // ห้องที่มีบ้านอื่นออกวันที่เข้า / เข้าวันที่ออก — เลือกได้ แต่บอกไว้ว่าต้องรับต่อวันเดียวกัน
   const turnUnits = useMemo(() => {
-    if (service !== "room" || !appointmentDate) return { r1: new Set<number>(), r2: new Set<number>() };
+    if (service !== "room" || !appointmentDate) return { r1: new Map<number, string>(), r2: new Map<number, string>() };
     return {
-      r1: new Set(roomId ? turnoverUnitsForRange(boardRooms, existing, roomId, appointmentDate, room1Out) : []),
-      r2: new Set(room2Id ? turnoverUnitsForRange(boardRooms, existing, room2Id, appointmentDate, stayOut) : []),
+      r1: roomId ? turnoverUnitsForRange(boardRooms, existing, roomId, appointmentDate, room1Out) : new Map<number, string>(),
+      r2: room2Id ? turnoverUnitsForRange(boardRooms, existing, room2Id, appointmentDate, stayOut) : new Map<number, string>(),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [service, roomId, room2Id, appointmentDate, room1Out, stayOut, rooms, existing]);
@@ -1335,7 +1336,7 @@ export default function NewBookingPage() {
                         >
                           {roomUnit === u && <Icon name="check" size={14} strokeWidth={2.4} />}
                           ห้อง {u}
-                          {turnUnits.r1.has(u) && <span className="font-normal text-wait"> · รับต่อ</span>}
+                          {turnoverLabel(turnUnits.r1, u) && <span className="font-normal text-wait"> · {turnoverLabel(turnUnits.r1, u)}</span>}
                         </button>
                       ))}
                     </div>
@@ -1397,7 +1398,7 @@ export default function NewBookingPage() {
                           }`}
                         >
                           ห้อง {u}
-                          {turnUnits.r2.has(u) && <span className="font-normal text-wait"> · รับต่อ</span>}
+                          {turnoverLabel(turnUnits.r2, u) && <span className="font-normal text-wait"> · {turnoverLabel(turnUnits.r2, u)}</span>}
                         </button>
                       ))}
                     </div>

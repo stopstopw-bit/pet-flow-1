@@ -11,6 +11,7 @@ import {
   compositionOf,
   freeUnitsForRange,
   turnoverUnitsForRange,
+  turnoverLabel,
   typeAvailability,
   type BoardBooking,
   type BoardRoomType,
@@ -81,8 +82,8 @@ export function RoomMovesEditor({
     () =>
       moves.map((m, i) => {
         const [from, to] = ranges[i];
-        if (!m.room || compositionOf(m.room, boardRooms) || !from || from >= to) return new Set<number>();
-        return new Set(turnoverUnitsForRange(boardRooms, existing, m.room, from, to));
+        if (!m.room || compositionOf(m.room, boardRooms) || !from || from >= to) return new Map<number, string>();
+        return turnoverUnitsForRange(boardRooms, existing, m.room, from, to);
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [JSON.stringify(moves), checkout, rooms, existing]
@@ -174,7 +175,7 @@ export function RoomMovesEditor({
                         }`}
                       >
                         ห้อง {u}
-                        {turns[i]?.has(u) && <span className="font-normal text-wait"> · รับต่อ</span>}
+                        {turnoverLabel(turns[i], u) && <span className="font-normal text-wait"> · {turnoverLabel(turns[i], u)}</span>}
                       </button>
                     ))}
                   </div>

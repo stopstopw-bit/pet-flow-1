@@ -222,7 +222,30 @@ const typeMatches = (b: BoardBooking, type: { id: string; name: string }) => {
   return r === type.id || r === type.name;
 };
 
-type Occupant = { range: [string, string]; hh: string; composite: boolean };
+type Occupant = {
+  range: [string, string];
+  hh: string;
+  composite: boolean;
+  /** เวลาที่ลูกค้าแจ้งว่าจะมาส่ง (วันแรก) / มารับ (วันสุดท้าย) — ไม่แจ้ง = ว่าง */
+  inTime?: string;
+  outTime?: string;
+};
+
+/** เวลาเข้า/ออกของช่วงนี้ — ช่วงย้ายห้องกลางทางไม่มีเวลา (ไม่รู้ว่าย้ายกี่โมง) */
+type Timed = BoardBooking & { segIndex?: number; segCount?: number };
+const inTimeOf = (p: Timed) => (!p.segIndex ? p.arrivalTime || undefined : undefined);
+const outTimeOf = (p: Timed) =>
+  (p.segIndex ?? 0) === (p.segCount ?? 1) - 1 ? p.pickupTime || undefined : undefined;
+
+/**
+ * ห้องนี้ต้องรับต่อวันเดียวกันแบบเสี่ยงไหม — มีบ้านอื่นออกวันที่เราเข้า หรือเข้าวันที่เราออก
+ * ถ้าลูกค้าแจ้งเวลามารับแล้ว ถือว่าห้องว่างหลังเวลานั้น (ไม่เสี่ยง) เว้นแต่เรารู้ว่าจะมาส่งก่อนเวลานั้น
+ */
+function riskyTurn(o: Occupant, range: [string, string], inTime?: string, outTime?: string) {
+  if (o.range[1] === range[0]) return !o.outTime || (!!inTime && inTime < o.outTime);
+  if (o.range[0] === range[1]) return !o.inTime || !outTime || o.inTime < outTime;
+  return false;
+}
 
 export type StayAssignment = {
   /** ห้องจริงที่นัดนี้ใช้ทั้งการเข้าพัก (ห้องเชื่อม = หลายห้อง ห้องแรกคือห้องหลัก) */
@@ -247,6 +270,7 @@ const assignCache = new WeakMap<
  * 2) ที่เหลือเรียงตามวันเข้า (มาก่อนได้ก่อน) แล้วหาห้องที่ว่าง "ตลอดทั้งช่วง"
  *    แมวบ้านเดียวกันช่วงเดียวกันนอนรวมห้องจนเต็มความจุ
  * 3) ไม่รู้ว่าลูกค้าจะมารับกี่โมง — เลี่ยงห้องที่มีบ้านอื่นออกวันเดียวกับที่เราเข้า (หรือเข้าวันที่เราออก)
+ *    ถ้าบ้านเก่าแจ้งเวลามารับแล้ว ถือว่าห้องว่างหลังเวลานั้น (เว้นแต่บ้านใหม่แจ้งว่าจะมาส่งก่อน)
  *    ให้ห้องที่ว่างจริงทั้งวันก่อน ห้องรับต่อวันเดียวกันใช้เป็นทางเลือกสุดท้ายเมื่อไม่มีห้องอื่นแล้ว
  */
 export function assignStays(rooms: BoardRoomType[], bookings: BoardBooking[]) {
@@ -278,9 +302,10 @@ export function assignStays(rooms: BoardRoomType[], bookings: BoardBooking[]) {
     return same < cap;
   };
   // ห้องนี้มีบ้านอื่นออกวันที่เราเข้า หรือเข้าวันที่เราออก — ต้องเคลียร์ห้องรับต่อวันเดียวกัน
-  const tight = (t: string, u: number, range: [string, string], hh: string) =>
+  // (ลูกค้าแจ้งเวลามารับแล้ว = ห้องว่างหลังเวลานั้น ไม่นับว่าเสี่ยง)
+  const tight = (t: string, u: number, range: [string, string], hh: string, inTime?: string, outTime?: string) =>
     (occ.get(slot(t, u)) || []).some(
-      (o) => o.hh !== hh && o.hh !== "__closed__" && (o.range[1] === range[0] || o.range[0] === range[1])
+      (o) => o.hh !== hh && o.hh !== "__closed__" && riskyTurn(o, range, inTime, outTime)
     );
 
   const assign = new Map<string, StayAssignment>();
@@ -302,7 +327,7 @@ export function assignStays(rooms: BoardRoomType[], bookings: BoardBooking[]) {
     const type = physical.find((t) => typeMatches(b, t));
     const u = b.roomUnit;
     if (type && u && u >= 1 && u <= type.count) {
-      add(type.id, u, { range: stayRange(b), hh: householdKey(b), composite: false });
+      add(type.id, u, { range: stayRange(b), hh: householdKey(b), composite: false, inTime: inTimeOf(b), outTime: outTimeOf(b) });
       assign.set(b.segKey, { units: [{ typeId: type.id, unit: u }] });
     } else rest.push(b);
   }
@@ -312,6 +337,8 @@ export function assignStays(rooms: BoardRoomType[], bookings: BoardBooking[]) {
   for (const b of rest) {
     const range = stayRange(b);
     const hh = householdKey(b);
+    const inT = inTimeOf(b);
+    const outT = outTimeOf(b);
     const type = physical.find((t) => typeMatches(b, t));
     if (type) {
       // แมวบ้านเดียวกันที่จัดไปแล้ว อยู่ห้องไหน → ลองห้องนั้นก่อน
@@ -324,13 +351,13 @@ export function assignStays(rooms: BoardRoomType[], bookings: BoardBooking[]) {
       }
       // ห้องว่างจริงทั้งวันก่อน แล้วค่อยห้องที่ต้องรับต่อวันเดียวกัน
       for (let u = 1; u <= type.count && !picked; u++) {
-        if (fits(type.id, u, range, hh, false) && !tight(type.id, u, range, hh)) picked = u;
+        if (fits(type.id, u, range, hh, false) && !tight(type.id, u, range, hh, inT, outT)) picked = u;
       }
       for (let u = 1; u <= type.count && !picked; u++) {
         if (fits(type.id, u, range, hh, false)) picked = u;
       }
       if (picked) {
-        add(type.id, picked, { range, hh, composite: false });
+        add(type.id, picked, { range, hh, composite: false, inTime: inT, outTime: outT });
         assign.set(b.segKey, { units: [{ typeId: type.id, unit: picked }] });
       } else overflow.add(b.segKey);
       continue;
@@ -363,7 +390,7 @@ export function assignStays(rooms: BoardRoomType[], bookings: BoardBooking[]) {
       }
       // ห้องเชื่อมต้องเป็นห้องติดกัน (เปิดทะลุถึงกันได้จริง) — ไม่มีชุดติดกันค่อยเอาที่ว่าง
       // ในแต่ละแบบ ห้องที่ไม่ต้องรับต่อวันเดียวกันได้ก่อน
-      const isTight = (u: number) => tight(part.typeId, u, range, hh);
+      const isTight = (u: number) => tight(part.typeId, u, range, hh, inT, outT);
       const relaxed = free.filter((u) => !isTight(u)).concat(free.filter(isTight));
       let pick = relaxed.slice(0, part.units);
       if (part.units > 1) {
@@ -389,7 +416,7 @@ export function assignStays(rooms: BoardRoomType[], bookings: BoardBooking[]) {
       overflow.add(b.segKey);
       continue;
     }
-    for (const c of claimed) add(c.typeId, c.unit, { range, hh, composite: true });
+    for (const c of claimed) add(c.typeId, c.unit, { range, hh, composite: true, inTime: inT, outTime: outT });
     assign.set(b.segKey, { units: claimed, partOf: compType.name, compositeId: compType.id });
   }
 
@@ -596,13 +623,16 @@ export function freeUnitsForRange(
     );
     free = free ? free.filter((u) => freeToday.has(u)) : [...freeToday];
   }
-  const turn = new Set(turnoverUnitsForRange(rooms, pool, typeId, checkin, checkout));
-  return (free || []).sort((a, b) => Number(turn.has(a)) - Number(turn.has(b)) || a - b);
+  // ว่างทั้งวัน → ว่างหลังเวลาที่แจ้ง → รับต่อแบบไม่รู้เวลา
+  const turn = turnoverUnitsForRange(rooms, pool, typeId, checkin, checkout);
+  const rank = (u: number) => (!turn.has(u) ? 0 : turn.get(u) ? 1 : 2);
+  return (free || []).sort((a, b) => rank(a) - rank(b) || a - b);
 }
 
 /**
  * เลขห้องของประเภทนี้ที่มีบ้านอื่นออกวันที่เราเข้า หรือเข้าวันที่เราออก (ต้องรับต่อวันเดียวกัน)
- * ไม่รู้ว่าลูกค้าจะมารับกี่โมง — ห้องพวกนี้ใช้ได้ แต่ควรเป็นทางเลือกสุดท้าย
+ * ค่าใน Map = เวลาที่ห้องว่าง ("" = ลูกค้ายังไม่แจ้งเวลามารับ → ควรเป็นทางเลือกสุดท้าย)
+ * ห้องที่บ้านเก่าแจ้งเวลามารับแล้ว ถือว่าว่างหลังเวลานั้น
  */
 export function turnoverUnitsForRange(
   rooms: BoardRoomType[],
@@ -611,18 +641,32 @@ export function turnoverUnitsForRange(
   checkin: string,
   checkout: string,
   ignoreBookingId?: string
-): number[] {
-  if (!checkin) return [];
+): Map<number, string> {
+  const units = new Map<number, string>();
+  if (!checkin) return units;
   const pool = ignoreBookingId ? bookings.filter((b) => b.id !== ignoreBookingId) : bookings;
   const { assign } = assignStays(rooms, pool);
   const out = checkout && checkout > checkin ? checkout : nextDay(checkin);
-  const units = new Set<number>();
   for (const p of expandBySegments(pool.filter((b) => b.service === "room" && isLive(b) && b.checkin))) {
     const [ci, co] = stayRange(p);
-    if (co !== checkin && ci !== out) continue;
-    for (const u of assign.get(p.segKey)?.units || []) if (u.typeId === typeId) units.add(u.unit);
+    // ออกวันที่เราเข้า → ว่างหลังเวลามารับ · เข้าวันที่เราออก → เราต้องออกก่อนเขามา (นับว่ายังไม่รู้เวลา)
+    const after = co === checkin ? outTimeOf(p) || "" : ci === out ? "" : null;
+    if (after === null) continue;
+    for (const u of assign.get(p.segKey)?.units || []) {
+      if (u.typeId !== typeId) continue;
+      const prev = units.get(u.unit);
+      // หลายบ้านในห้องเดียว — เอาเวลาช้าสุด ไม่รู้เวลาสักบ้าน = ไม่รู้
+      units.set(u.unit, prev === "" || after === "" ? "" : prev && prev > after ? prev : after);
+    }
   }
-  return [...units].sort((a, b) => a - b);
+  return units;
+}
+
+/** ป้ายต่อท้ายปุ่มเลือกห้อง — "" = ห้องว่างทั้งวัน */
+export function turnoverLabel(turn: Map<number, string> | undefined, unit: number) {
+  if (!turn?.has(unit)) return "";
+  const t = turn.get(unit);
+  return t ? `ว่างหลัง ${t} น.` : "รับต่อ";
 }
 
 /** คืนที่ต้องใช้ห้องจริง — วันเช็คเอาท์ไม่นับ (พัก 27→29 = ใช้ห้องคืน 27 กับ 28) */
