@@ -37,6 +37,7 @@ import {
   compositionOf,
   roomCapacity,
   freeUnitsForRange,
+  turnoverUnitsForRange,
   type BoardBooking,
 } from "@/lib/room-board";
 
@@ -672,6 +673,16 @@ export default function NewBookingPage() {
   useEffect(() => {
     if (room2Unit != null && !freeUnits2.includes(room2Unit)) setRoom2Unit(null);
   }, [freeUnits2, room2Unit]);
+  // ห้องที่มีบ้านอื่นออกวันที่เข้า / เข้าวันที่ออก — เลือกได้ แต่บอกไว้ว่าต้องรับต่อวันเดียวกัน
+  const turnUnits = useMemo(() => {
+    if (service !== "room" || !appointmentDate) return { r1: new Set<number>(), r2: new Set<number>() };
+    return {
+      r1: new Set(roomId ? turnoverUnitsForRange(boardRooms, existing, roomId, appointmentDate, room1Out) : []),
+      r2: new Set(room2Id ? turnoverUnitsForRange(boardRooms, existing, room2Id, appointmentDate, stayOut) : []),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [service, roomId, room2Id, appointmentDate, room1Out, stayOut, rooms, existing]);
+
   const closeRoom2 = () => {
     setRoom2Id("");
     setRoom2Unit(null);
@@ -1324,6 +1335,7 @@ export default function NewBookingPage() {
                         >
                           {roomUnit === u && <Icon name="check" size={14} strokeWidth={2.4} />}
                           ห้อง {u}
+                          {turnUnits.r1.has(u) && <span className="font-normal text-wait"> · รับต่อ</span>}
                         </button>
                       ))}
                     </div>
@@ -1385,6 +1397,7 @@ export default function NewBookingPage() {
                           }`}
                         >
                           ห้อง {u}
+                          {turnUnits.r2.has(u) && <span className="font-normal text-wait"> · รับต่อ</span>}
                         </button>
                       ))}
                     </div>

@@ -245,7 +245,9 @@ const assignCache = new WeakMap<
  * ทั้งที่ความจริงน้องต้องอยู่ห้องเดิม ตอนนี้จัดครั้งเดียวต่อการเข้าพัก:
  * 1) ห้องที่ปักหมุดเลขไว้ได้ก่อนเสมอ
  * 2) ที่เหลือเรียงตามวันเข้า (มาก่อนได้ก่อน) แล้วหาห้องที่ว่าง "ตลอดทั้งช่วง"
- *    แมวบ้านเดียวกันช่วงเดียวกันนอนรวมห้องจนเต็มความจุ · วันออกของคนหนึ่ง = วันเข้าของอีกคนได้
+ *    แมวบ้านเดียวกันช่วงเดียวกันนอนรวมห้องจนเต็มความจุ
+ * 3) ไม่รู้ว่าลูกค้าจะมารับกี่โมง — เลี่ยงห้องที่มีบ้านอื่นออกวันเดียวกับที่เราเข้า (หรือเข้าวันที่เราออก)
+ *    ให้ห้องที่ว่างจริงทั้งวันก่อน ห้องรับต่อวันเดียวกันใช้เป็นทางเลือกสุดท้ายเมื่อไม่มีห้องอื่นแล้ว
  */
 export function assignStays(rooms: BoardRoomType[], bookings: BoardBooking[]) {
   const key = rooms
@@ -275,6 +277,11 @@ export function assignStays(rooms: BoardRoomType[], bookings: BoardBooking[]) {
     }
     return same < cap;
   };
+  // ห้องนี้มีบ้านอื่นออกวันที่เราเข้า หรือเข้าวันที่เราออก — ต้องเคลียร์ห้องรับต่อวันเดียวกัน
+  const tight = (t: string, u: number, range: [string, string], hh: string) =>
+    (occ.get(slot(t, u)) || []).some(
+      (o) => o.hh !== hh && o.hh !== "__closed__" && (o.range[1] === range[0] || o.range[0] === range[1])
+    );
 
   const assign = new Map<string, StayAssignment>();
   const overflow = new Set<string>();
@@ -315,6 +322,10 @@ export function assignStays(rooms: BoardRoomType[], bookings: BoardBooking[]) {
         );
         if (hasHousemate && fits(type.id, u, range, hh, false)) picked = u;
       }
+      // ห้องว่างจริงทั้งวันก่อน แล้วค่อยห้องที่ต้องรับต่อวันเดียวกัน
+      for (let u = 1; u <= type.count && !picked; u++) {
+        if (fits(type.id, u, range, hh, false) && !tight(type.id, u, range, hh)) picked = u;
+      }
       for (let u = 1; u <= type.count && !picked; u++) {
         if (fits(type.id, u, range, hh, false)) picked = u;
       }
@@ -351,15 +362,22 @@ export function assignStays(rooms: BoardRoomType[], bookings: BoardBooking[]) {
           free.push(u);
       }
       // ห้องเชื่อมต้องเป็นห้องติดกัน (เปิดทะลุถึงกันได้จริง) — ไม่มีชุดติดกันค่อยเอาที่ว่าง
-      let pick = free.slice(0, part.units);
+      // ในแต่ละแบบ ห้องที่ไม่ต้องรับต่อวันเดียวกันได้ก่อน
+      const isTight = (u: number) => tight(part.typeId, u, range, hh);
+      const relaxed = free.filter((u) => !isTight(u)).concat(free.filter(isTight));
+      let pick = relaxed.slice(0, part.units);
       if (part.units > 1) {
+        let best: number[] | null = null;
         for (let i = 0; i + part.units - 1 < free.length; i++) {
           const w = free.slice(i, i + part.units);
-          if (w.every((u, j) => j === 0 || u === w[j - 1] + 1)) {
-            pick = w;
+          if (!w.every((u, j) => j === 0 || u === w[j - 1] + 1)) continue;
+          if (!w.some(isTight)) {
+            best = w;
             break;
           }
+          best = best || w;
         }
+        if (best) pick = best;
       }
       if (pick.length < part.units) {
         ok = false;
@@ -462,7 +480,8 @@ export function buildRoomBoard(
   for (const type of physical) {
     const typeUnits = unitsByType.get(type.id) || [];
     for (const s of typeUnits) {
-      s.turnover = s.leaving.length > 0 && s.staying.length > 0;
+      // ห้องย่อยของห้องเชื่อมที่มีคนออกวันนี้ก็ต้องรับต่อเหมือนกัน
+      s.turnover = s.leaving.length > 0 && (s.staying.length > 0 || !!s.partOf);
       s.overCapacity = s.staying.length > s.capacity || s.leaving.length > s.capacity;
       s.extraCats = s.overCapacity ? 0 : Math.max(0, s.staying.length - s.baseCats);
     }
@@ -550,6 +569,7 @@ export function typeAvailability(
 /**
  * เลขห้องจริง (unit) ของประเภทนี้ที่ว่างตลอดทั้งช่วงที่ขอ — ไว้ให้พนักงานเลือกห้องตรงๆ
  * ตอนจอง (เฉพาะห้องเดี่ยว ไม่ใช่ห้องเชื่อม เพราะห้องเชื่อมไม่มีเลขห้องของตัวเอง)
+ * เรียงห้องที่ว่างจริงทั้งวันก่อน ห้องที่ต้องรับต่อวันเดียวกัน (turnoverUnitsForRange) ไว้ท้าย
  */
 export function freeUnitsForRange(
   rooms: BoardRoomType[],
@@ -576,7 +596,33 @@ export function freeUnitsForRange(
     );
     free = free ? free.filter((u) => freeToday.has(u)) : [...freeToday];
   }
-  return (free || []).sort((a, b) => a - b);
+  const turn = new Set(turnoverUnitsForRange(rooms, pool, typeId, checkin, checkout));
+  return (free || []).sort((a, b) => Number(turn.has(a)) - Number(turn.has(b)) || a - b);
+}
+
+/**
+ * เลขห้องของประเภทนี้ที่มีบ้านอื่นออกวันที่เราเข้า หรือเข้าวันที่เราออก (ต้องรับต่อวันเดียวกัน)
+ * ไม่รู้ว่าลูกค้าจะมารับกี่โมง — ห้องพวกนี้ใช้ได้ แต่ควรเป็นทางเลือกสุดท้าย
+ */
+export function turnoverUnitsForRange(
+  rooms: BoardRoomType[],
+  bookings: BoardBooking[],
+  typeId: string,
+  checkin: string,
+  checkout: string,
+  ignoreBookingId?: string
+): number[] {
+  if (!checkin) return [];
+  const pool = ignoreBookingId ? bookings.filter((b) => b.id !== ignoreBookingId) : bookings;
+  const { assign } = assignStays(rooms, pool);
+  const out = checkout && checkout > checkin ? checkout : nextDay(checkin);
+  const units = new Set<number>();
+  for (const p of expandBySegments(pool.filter((b) => b.service === "room" && isLive(b) && b.checkin))) {
+    const [ci, co] = stayRange(p);
+    if (co !== checkin && ci !== out) continue;
+    for (const u of assign.get(p.segKey)?.units || []) if (u.typeId === typeId) units.add(u.unit);
+  }
+  return [...units].sort((a, b) => a - b);
 }
 
 /** คืนที่ต้องใช้ห้องจริง — วันเช็คเอาท์ไม่นับ (พัก 27→29 = ใช้ห้องคืน 27 กับ 28) */
