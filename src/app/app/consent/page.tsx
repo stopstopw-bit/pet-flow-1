@@ -24,7 +24,8 @@ import { flowProgress } from "@/lib/intake-flow";
 import { idCardPurpose, watermarkIdCard } from "@/lib/id-card-watermark";
 import { isFeatureOn } from "@/lib/features";
 import { customerFetch } from "@/lib/customer-fetch";
-import { bookingGroupKey, groupCatNames } from "@/lib/booking-group";
+import { bookingGroupKey, groupCatNames, stayForGroom } from "@/lib/booking-group";
+import { groomUsesCard } from "@/lib/intake-rules";
 
 type StayBooking = Booking & {
   checkin?: string;
@@ -163,10 +164,15 @@ function ConsentContent() {
   const [idCardOnFile, setIdCardOnFile] = useState(false);
   const [idCardBusy, setIdCardBusy] = useState(false);
   const [fleaError, setFleaError] = useState(false);
+  /** อาบน้ำก่อนกลับของรอบเข้าพักนี้ — มีแล้วต้องอ่านข้อตกลงอาบน้ำด้วย ยอมรับครั้งเดียวในหน้านี้ */
+  const [stayBath, setStayBath] = useState<{ date: string; time?: string } | null>(null);
 
   // นัดอาบน้ำใช้ข้อตกลงอาบน้ำ (แยกจากกฎเข้าพัก) — ไม่มีบัตรประชาชน/ยาเห็บหมัดก่อนเข้าพัก
   const isGroom = booking?.service === "groom";
   const { title: consentTitle, terms } = consentTextFor(config.messages, booking?.service);
+  const groomText = consentTextFor(config.messages, "groom");
+  // ร้านที่ไม่ขอข้อตกลงอาบน้ำ (ตั้งค่า › ขอข้อมูลตามบริการ) ก็ไม่ต้องโชว์ตรงนี้
+  const showBathTerms = !isGroom && !!stayBath && groomUsesCard(config, "consent");
 
   useEffect(() => {
     if (!profile?.lineUserId) return;
@@ -191,6 +197,10 @@ function ConsentContent() {
           const key = bookingGroupKey(stay);
           const group = list.filter((b) => bookingGroupKey(b) === key && b.status !== "cancelled");
           setCatLabel(groupCatNames(group));
+          if (stay.service === "room") {
+            const bath = list.find((x) => group.some((s) => stayForGroom(x, [s]) === s));
+            setStayBath(bath ? { date: bath.date, time: bath.time } : null);
+          }
           setVaccineOnFile(group.length > 0 && group.every((b) => !!b.vaccinePhotoUrl?.trim()));
           // ตัวที่ลิงก์ชี้มาก่อน แล้วตามด้วยตัวอื่นในบ้าน
           setGroupCats(
@@ -374,6 +384,28 @@ function ConsentContent() {
               {isGroom ? DEEMED_GROOM_CONSENT_NOTICE : DEEMED_CONSENT_NOTICE}
             </p>
           </section>
+
+          {/* เข้าพัก + อาบน้ำก่อนกลับ = นัดเดียว → กฎเข้าพักกับข้อตกลงอาบน้ำอยู่หน้าเดียว เซ็นครั้งเดียว */}
+          {showBathTerms && stayBath && (
+            <section className="mt-5">
+              <SectionLabel>
+                {`${groomText.title} · อาบน้ำก่อนกลับ ${stayBath.date}${stayBath.time ? ` ${stayBath.time} น.` : ""}`}
+              </SectionLabel>
+              <ol className="divide-y divide-petflow-line overflow-hidden rounded-petflow border border-petflow-line bg-card shadow-petflow-sm">
+                {groomText.terms.map((term, i) => (
+                  <li key={i} className="flex gap-3 px-4 py-3 text-xs leading-relaxed text-brown">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-honey/30 text-[11px] font-extrabold text-petflow-chocolate">
+                      {i + 1}
+                    </span>
+                    <TermText term={term} />
+                  </li>
+                ))}
+              </ol>
+              <p className="mt-2 rounded-petflow border border-petflow-line bg-cream px-3 py-2.5 text-[11px] leading-relaxed text-brown">
+                {DEEMED_GROOM_CONSENT_NOTICE}
+              </p>
+            </section>
+          )}
 
           <section className="mt-5 rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm">
             <label className="flex items-center gap-1.5 text-xs font-bold text-petflow-chocolate">
@@ -597,6 +629,7 @@ function ConsentContent() {
                     ข้าพเจ้าขอรับรองว่าข้อมูลทั้งหมดที่กรอกและแนบมาข้างต้น
                     (รวมถึงประวัติวัคซีนและการหยดยาเห็บหมัด) เป็นความจริงทุกประการ
                     และร้านสามารถใช้ข้อมูลนี้เป็นหลักฐานได้หากเกิดปัญหาที่เกี่ยวข้อง
+                    {showBathTerms ? " รวมถึงยอมรับข้อตกลงการอาบน้ำก่อนกลับบ้านด้วย" : ""}
                   </span>
                 )}
               </label>
