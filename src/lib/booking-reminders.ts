@@ -11,6 +11,8 @@ import type { SiteConfig } from "./config-types";
 import { autoMuted } from "./auto-messages";
 import { isFeatureOn } from "./features";
 import { petWords, usesLitter } from "./pet-kind";
+import { stayForGroom } from "./booking-group";
+import { groomProgramName, resolveGroomPrograms } from "./grooming-prices";
 
 /**
  * ตัวสร้างข้อความเตือนลูกค้า — ใช้ร่วมกันทั้ง "cron อัตโนมัติ" และ "ปุ่มกดส่งเอง"
@@ -368,6 +370,28 @@ export function buildPrestayFlexData(
     }),
     litterNote: litterNoteFor(b, cfg) || undefined,
   };
+}
+
+/**
+ * นัดอาบน้ำก่อนกลับของการเข้าพักนี้ (เช่น "2 พ.ย. 2026 · 09:30 · อาบน้ำ – เป่าขน") — ใส่ในการ์ดเตรียมตัว
+ * ลูกค้าจะได้รู้ตั้งแต่ก่อนเข้าพักว่ามีอาบน้ำด้วย ไม่ใช่มารู้ตอนกรอกฟอร์ม · ไม่มี = ""
+ */
+export function inStayBathText(
+  stayIds: string[],
+  all: StoredBooking[],
+  cfg: Pick<SiteConfig, "groomPricePrograms">
+): string {
+  const programs = resolveGroomPrograms(cfg.groomPricePrograms);
+  const seen = new Set<string>();
+  for (const g of all) {
+    const stay = stayForGroom(g, all);
+    if (!stay || !stayIds.includes(stay.id)) continue;
+    const program = g.groomProgram ? groomProgramName(g.groomProgram, programs) : "";
+    seen.add(
+      [formatThaiDateShort(String(g.date).slice(0, 10)), g.time, program].filter(Boolean).join(" · ")
+    );
+  }
+  return Array.from(seen).join("\n");
 }
 
 /** ข้อความแจ้งรายละเอียดก่อนเข้าพัก (+ แนบลิงก์ยอมรับข้อตกลงถ้ามี) */

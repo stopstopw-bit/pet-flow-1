@@ -174,11 +174,14 @@ function PetDocsContent() {
 }
 
 function StayLine({ b }: { b: StayBooking }) {
+  const { config } = useConfig();
+  // นัดเก็บรหัสห้อง (mid-cozy) — ลูกค้าต้องเห็นชื่อห้องแบบในการ์ด (Mid Cozy Room)
+  const roomLabel = b.room ? config.rooms.find((r) => r.id === b.room)?.name || b.room : "";
   return (
     <p className="text-xs text-brown-soft">
       {b.service === "room" ? "เข้าพัก" : "นัด"}: {b.checkin || b.date}
       {b.checkout ? ` → ${b.checkout}` : ""}
-      {b.room ? ` · ห้อง ${b.room}` : ""}
+      {roomLabel ? ` · ห้อง ${roomLabel}` : ""}
     </p>
   );
 }

@@ -402,6 +402,7 @@ const CARDS: CardMeta[] = [
         multiline: true,
       },
       { key: "confirmButton", label: "คำในปุ่มยืนยันเข้าพัก", placeholder: "🧡 อ่านรายละเอียด & ยืนยันการเข้าพัก" },
+      { key: "bathLabel", label: "ป้าย: อาบน้ำก่อนกลับบ้าน (เฉพาะนัดที่อาบน้ำด้วย)", placeholder: "อาบน้ำก่อนกลับบ้าน" },
       { key: "timeButton", label: "ปุ่ม: เลือกเวลาส่งน้อง (ส่งอัตโนมัติ)", placeholder: "🕒 เลือกเวลาส่งน้อง" },
       { key: "intakeTitle", label: "หัวข้อ: ข้อมูลที่ยังต้องส่ง", placeholder: "📋 ข้อมูลที่ยังต้องส่งให้ร้าน" },
       { key: "balanceLabel", label: "ป้าย: ยอดคงเหลือ", placeholder: "💳 ยอดคงเหลือที่ต้องโอน" },

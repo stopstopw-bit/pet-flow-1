@@ -73,6 +73,7 @@ import { getPaymentConfig } from "@/lib/payment-config";
 import {
   buildDepositReminderCard,
   buildPrestayFlexData,
+  inStayBathText,
   buildCheckinBodyText,
   buildCheckoutBodyText,
   buildGroomInfoBody,
@@ -99,6 +100,11 @@ async function resolveRecipient(
 
 const NO_LINE_ERROR =
   "ยังไม่มี LINE User ID — ให้ลูกค้าเปิดแอปจาก LINE หรือผูกในโปรไฟล์ลูกค้า";
+
+/** id ของทุกตัวในบ้าน (ปฏิทินส่งมาใน body.ids) — ไม่ส่งมา = ตัวที่กดตัวเดียว */
+function groupIdsOf(b: StoredBooking, ids: unknown): string[] {
+  return Array.isArray(ids) && ids.length > 0 ? ids.map(String) : [b.id];
+}
 
 /** ล็อกอินหลังบ้านอยู่ไหม — route นี้ใช้ร่วมกันทั้งแอปลูกค้าและหลังบ้าน */
 async function getAdminSession(req: NextRequest) {
@@ -852,6 +858,7 @@ function groomInfoCardFor(
         messages.push(
           buildPrestayFlex({
             ...buildPrestayFlexData(gb, cfg),
+            bath: inStayBathText(groupIdsOf(b, body.ids), await listBookings(), cfg) || undefined,
             consentUrl: undefined,
           }, cfg.cards?.prestay)
         );
@@ -1224,6 +1231,7 @@ function groomInfoCardFor(
       // (เงื่อนไข+ลายเซ็นแยกเป็นปุ่มของตัวเอง จะได้เลือกส่งทีละอย่างได้)
       const flex = buildPrestayFlex({
         ...buildPrestayFlexData(gb, cfg),
+        bath: inStayBathText(groupIdsOf(b, body.ids), await listBookings(), cfg) || undefined,
         consentUrl: undefined,
       }, cfg.cards?.prestay);
       try {

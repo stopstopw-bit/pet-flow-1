@@ -1223,6 +1223,8 @@ export function buildPrestayFlex(data: {
   /** ช่วงวันเข้าพัก จัดรูปแล้ว เช่น "12 ก.ค. 2569 → 17 ก.ค. 2569" */
   dateText: string;
   room?: string;
+  /** นัดอาบน้ำก่อนกลับ (วัน · เวลา · โปรแกรม) — ไม่มี = ไม่โชว์แถว */
+  bath?: string;
   intro: string;
   prepIntro?: string;
   prepItems: string[];
@@ -1318,6 +1320,33 @@ export function buildPrestayFlex(data: {
             {
               type: "text",
               text: data.room,
+              size: "sm",
+              weight: "bold",
+              color: "#4E3E32",
+              wrap: true,
+              margin: "xs",
+            },
+          ],
+        },
+      ],
+    });
+  }
+  if (data.bath && show("room")) {
+    dateBox.push({
+      type: "box",
+      layout: "horizontal",
+      margin: dateBox.length ? "md" : "none",
+      contents: [
+        { type: "text", text: "🛁", size: "sm", flex: 0 },
+        {
+          type: "box",
+          layout: "vertical",
+          flex: 5,
+          contents: [
+            { type: "text", text: t("bathLabel", "อาบน้ำก่อนกลับบ้าน"), size: "xxs", color: "#9B8B7E" },
+            {
+              type: "text",
+              text: data.bath,
               size: "sm",
               weight: "bold",
               color: "#4E3E32",

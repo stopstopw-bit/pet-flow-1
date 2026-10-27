@@ -26,6 +26,7 @@ import {
   balanceReminderSender,
   buildPrestayFlexData,
   buildCheckinBodyText,
+  inStayBathText,
   buildGroomInfoBody,
   getBookingTimeUrl,
   checkinPickerSender,
@@ -518,6 +519,7 @@ async function runForTenant() {
         ? [
             buildPrestayFlex({
               ...buildPrestayFlexData(b, cfg),
+              bath: inStayBathText(ids, allBookings, cfg) || undefined,
               consentUrl: undefined,
               timeUrl: timeUrl || undefined,
               intake: intakeLink || undefined,
