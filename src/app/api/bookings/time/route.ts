@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withResolvedTenant } from "@/lib/tenant-context";
 import { featureOff } from "@/lib/features-server";
-import { getBooking, listBookings, setBookingTime } from "@/lib/bookings-store";
-import { bookingGroupKey, groupCatNames } from "@/lib/booking-group";
+import { getBooking, listBookings, setBookingTime, updateBooking } from "@/lib/bookings-store";
+import { bookingGroupKey, groupCatNames, stayForGroom } from "@/lib/booking-group";
 import { sendTelegramLater, formatBookingTelegram } from "@/lib/telegram";
 import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 
@@ -60,10 +60,28 @@ async function postHandler(req: NextRequest) {
   const res = await setBookingTime(bookingId, type, time, session.lineUserId);
   // ลูกค้าเลือกเวลาให้ "รอบเข้าพัก" ไม่ใช่ให้แมวตัวเดียว — ตัวอื่นในบ้านต้องได้เวลาเดียวกัน
   // ไม่งั้นพรุ่งนี้ระบบจะถามซ้ำสำหรับตัวที่เหลือ
+  let confirmedNow = false;
   if (res.ok && res.booking) {
-    for (const sib of await householdSiblings(res.booking)) {
+    const siblings = await householdSiblings(res.booking);
+    for (const sib of siblings) {
       if (sib.id === bookingId) continue;
       await setBookingTime(sib.id, type, time, session.lineUserId);
+    }
+    // เลือกเวลามาส่งน้อง = ยืนยันกับร้านแล้ว (cron ก็ถือแบบนี้ ไม่ส่งการ์ดกำหนดการนัดให้อีก)
+    // เมื่อก่อนสถานะค้าง "รอยืนยัน" ทั้งที่ลูกค้าทำครบ เพราะนัดเข้าพักส่วนใหญ่ไม่ได้การ์ดที่มีปุ่มยืนยัน
+    // อาบน้ำก่อนกลับของรอบเข้าพักนี้ยืนยันไปด้วย (เป็นนัดเดียวกัน)
+    if (type === "checkin") {
+      const all = await listBookings();
+      const stayIds = new Set(siblings.map((x) => x.id));
+      const baths = all.filter((g) => {
+        const stay = stayForGroom(g, all);
+        return !!stay && stayIds.has(stay.id);
+      });
+      for (const x of [...siblings, ...baths]) {
+        if (x.status !== "pending") continue;
+        await updateBooking(x.id, { status: "confirmed" });
+        confirmedNow = true;
+      }
     }
   }
   if (!res.ok && res.error === "not_found") {
@@ -77,7 +95,9 @@ async function postHandler(req: NextRequest) {
   if (b) {
     sendTelegramLater(
       formatBookingTelegram(
-        type === "checkin" ? "🕒 ลูกค้าเลือกเวลาส่งน้อง" : "🕒 ลูกค้าเลือกเวลารับน้อง",
+        type === "checkin"
+          ? `🕒 ลูกค้าเลือกเวลาส่งน้อง${confirmedNow ? " (ยืนยันนัดแล้ว)" : ""}`
+          : "🕒 ลูกค้าเลือกเวลารับน้อง",
         {
           น้อง: b.catName,
           ลูกค้า: b.customerName,
