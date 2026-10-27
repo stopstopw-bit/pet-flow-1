@@ -47,6 +47,7 @@ import { stayForGroom, groupBookings, groupCatNames } from "@/lib/booking-group"
 import { findBirthdayMatch } from "@/lib/birthday-greeting";
 import { queueBirthdayGreeting } from "@/lib/birthday-queue";
 import { getAppUrlFromEnv } from "@/lib/telegram-config";
+import { logAutoRound } from "@/lib/auto-round-log";
 
 function addDays(dateStr: string, n: number) {
   const dt = new Date(`${dateStr}T12:00:00Z`);
@@ -72,6 +73,11 @@ export async function GET(req: NextRequest) {
         return { tenantId, ok: false, error: e instanceof Error ? e.message : String(e) };
       }
     })
+  );
+  await Promise.all(
+    results.map((r) =>
+      logAutoRound(r.tenantId, "reminders", "12:00", r as unknown as Record<string, unknown>)
+    )
   );
   return NextResponse.json({ ok: true, tenants: results.length, results });
 }
@@ -244,6 +250,16 @@ async function runForTenant() {
             // อาบน้ำก่อนกลับ: น้องอยู่ที่ร้านแล้ว ไม่ต้องยืนยัน/ขอประวัติแยก — เป็นส่วนหนึ่งของการเข้าพัก
             !stayForGroom(b, allBookings)
         );
+  // นัดที่ถึงรอบส่งวันนี้แต่ไม่ได้ผูกกับ LINE ลูกค้า — ส่งการ์ดไม่ได้ จดไว้ให้ร้านเห็นในประวัติการใช้งาน
+  const dueDates = new Set([confirmDate, addDays(todayStr, auto?.prestayReminderDays ?? 3)]);
+  const noLine = allBookings.filter(
+    (b) =>
+      !b.lineUserId &&
+      b.status !== "cancelled" &&
+      b.status !== "no_show" &&
+      dueDates.has(String(b.checkin || b.date || ""))
+  ).length;
+
   // บ้านเดียวกัน + นัดเวลาเดียวกัน (จองหลายตัวพร้อมกัน) → รวมเป็นการ์ดยืนยันใบเดียว
   // เมื่อก่อนส่งแยกทีละตัว บ้านที่มี 3 ตัวได้ 3 การ์ดรัวๆ ลิงก์ยืนยันก็ยังใช้ตัวแทนกลุ่มได้
   // เพราะหน้ายืนยันของลูกค้าจัดกลุ่มด้วยกุญแจเดียวกันนี้อยู่แล้ว
@@ -655,6 +671,7 @@ async function runForTenant() {
     groomInfoCards,
     groomBriefs,
     birthdayQueued,
+    noLine,
     errors,
   };
 }

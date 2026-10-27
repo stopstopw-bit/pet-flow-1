@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { logAutoRound } from "@/lib/auto-round-log";
 import { listBookings } from "@/lib/bookings-store";
 import { autoMuted } from "@/lib/auto-messages";
 import { isFeatureOn } from "@/lib/features";
@@ -45,6 +46,11 @@ export async function GET(req: NextRequest) {
         return { tenantId, ok: false, error: e instanceof Error ? e.message : String(e) };
       }
     })
+  );
+  await Promise.all(
+    results
+      .filter((r) => !("skipped" in r && r.skipped))
+      .map((r) => logAutoRound(r.tenantId, "checkin-checkout", slot, r as unknown as Record<string, unknown>))
   );
   return NextResponse.json({ ok: true, slot, tenants: results.length, results });
 }
