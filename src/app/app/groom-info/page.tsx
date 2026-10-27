@@ -32,6 +32,9 @@ type CatForm = {
   skip: string[];
   /** เข้าพัก + อาบก่อนกลับ — ถามเรื่องอาบน้ำต่อท้ายในฟอร์มเดียว (key ขึ้นต้น "g:") */
   bath: boolean;
+  /** ข้อที่ตอบไว้แล้ว (ตอนสมัครสมาชิก / ครั้งก่อน) — ซ่อนไว้ ไม่ถามซ้ำ กด "แก้คำตอบเดิม" เพื่อดู */
+  answered: string[];
+  showAnswered: boolean;
 };
 
 /** คำถามอาบน้ำในฟอร์มรวม — ใส่ "g:" กัน key ชนกับฝั่งเข้าพัก */
@@ -57,6 +60,18 @@ function loadAnswers(fields: GroomField[], info: Record<string, unknown> | null)
     }
   }
   return a;
+}
+
+/** ข้อที่มีคำตอบใช้ได้แล้ว — ตัวเลือกต้องตรงกับตัวเลือกปัจจุบัน (คำตอบพิมพ์แบบเก่าของข้อที่เปลี่ยนเป็นปุ่มเลือก ถามใหม่) */
+function answeredKeys(fields: GroomField[], a: Answers): string[] {
+  return fields
+    .filter((f) => {
+      const v = a[f.key];
+      if (f.type === "single") return f.options.some((o) => o.key === v);
+      if (f.type === "multi") return Array.isArray(v) && v.length > 0 && v.every((x) => f.options.some((o) => o.key === x));
+      return !!String(v || "").trim();
+    })
+    .map((f) => f.key);
 }
 
 function GroomInfoContent() {
@@ -129,15 +144,18 @@ function GroomInfoContent() {
                 .map((fd) => ({ ...fd, key: BATH_PREFIX + fd.key }))
             : [];
           const fs = [...own, ...bathFs];
+          const answers = loadAnswers(fs, info);
           loaded.push({
             id: ids[i],
             catName: d.booking?.catName || "น้อง",
             fields: fs,
             emoji: speciesWords(species, config).emoji,
-            answers: loadAnswers(fs, info),
+            answers,
             weightUnknown: info?.weight === "unknown",
             skip: d.knownMedical ? ["medical"] : [],
             bath,
+            answered: answeredKeys(fs, answers),
+            showAnswered: false,
           });
         });
         setForms(loaded);
@@ -322,6 +340,8 @@ function GroomInfoContent() {
 
           {forms.map((f, idx) => {
             const missing = missingKeys(f);
+            const hidden = f.showAnswered ? [] : f.answered.filter((k) => !missing.includes(k));
+            const shown = f.fields.filter((fd) => !f.skip.includes(fd.key) && !hidden.includes(fd.key));
             return (
               <div
                 key={f.id}
@@ -333,13 +353,26 @@ function GroomInfoContent() {
                   </span>
                   {f.catName}
                 </p>
-                {forms.length === 1 && (
+                {forms.length === 1 && shown.length > 0 && (
                   <p className="mt-1 text-xs text-brown-soft">
-                    เพื่อความปลอดภัยของน้อง 🧡 รบกวนแจ้งข้อมูลสั้นๆ ให้เราเตรียมดูแลน้องได้ถูกวิธีนะคะ
+                    เพื่อความปลอดภัยของน้อง 🧡 กดเลือกสั้นๆ ไม่กี่ข้อ ให้เราเตรียมดูแลน้องได้ถูกวิธีนะคะ
                   </p>
                 )}
+                {hidden.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setForms((prev) => prev.map((x, i) => (i === idx ? { ...x, showAnswered: true } : x)))}
+                    className="mt-2 flex min-h-[44px] w-full items-center gap-2 rounded-petflow-sm bg-sage/15 px-3 text-left text-xs font-bold text-ok"
+                  >
+                    <Icon name="check" size={15} />
+                    {shown.length === 0
+                      ? "ข้อมูลน้องครบแล้วจากที่เคยกรอกไว้ กดส่งได้เลยค่ะ"
+                      : `ข้อที่เคยตอบไว้แล้ว ${hidden.length} ข้อ ไม่ต้องตอบซ้ำค่ะ`}
+                    <span className="ml-auto shrink-0 text-brown-soft underline">แก้คำตอบเดิม</span>
+                  </button>
+                )}
 
-                {f.fields.filter((fd) => !f.skip.includes(fd.key)).map((fd) => {
+                {shown.map((fd) => {
                   const isMissing = attempted && missing.includes(fd.key);
                   const value = f.answers[fd.key];
                   return (
@@ -362,6 +395,9 @@ function GroomInfoContent() {
                       >
                         {fd.label}
                         {fd.required && " *"}
+                        {!fd.required && !/ข้ามได้|ถ้ามี|หากมี|เว้นว่างได้/.test(fd.label) && (
+                          <span className="font-normal text-brown-faint"> (ไม่บังคับ)</span>
+                        )}
                         {isMissing &&
                           (fd.type === "multi"
                             ? " — กรุณาเลือกอย่างน้อย 1 ข้อ"
