@@ -17,6 +17,8 @@ import { CustomerIntakeCards } from "@/components/CustomerIntakeCards";
 import { savedPopup, toast } from "@/components/Toast";
 import { Icon } from "@/components/Icon";
 import { TransportPicker } from "@/components/TransportPicker";
+import { RoomMovesEditor } from "@/components/RoomMovesEditor";
+import type { RoomSegment } from "@/lib/room-segments";
 import { PastPricesHint } from "@/components/PastPrices";
 import { pastPriceList, type PastInvoice, type PastPrice } from "@/lib/special-price";
 import type { BookingTransport } from "@/lib/transport";
@@ -526,6 +528,17 @@ export default function NewBookingPage() {
   const [roomId, setRoomId] = useState("");
   // ห้องจริงที่ปักหมุด (เลขห้อง) — เฉพาะห้องเดี่ยว ไม่ใช่ห้องเชื่อม (ห้องเชื่อมจัดให้อัตโนมัติเหมือนเดิม)
   const [roomUnit, setRoomUnit] = useState<number | null>(null);
+  // ย้ายห้องกลางทาง — ห้องแรก (roomId) ใช้ถึงวันย้ายครั้งแรก
+  const [roomMoves, setRoomMoves] = useState<RoomSegment[]>([]);
+  const liveMoves = useMemo(
+    () =>
+      service === "room" && !dayCare
+        ? roomMoves.filter((m) => m.room && m.from > appointmentDate && m.from < stayOut)
+        : [],
+    [roomMoves, service, dayCare, appointmentDate, stayOut]
+  );
+  /** วันที่ออกจากห้องแรก (ย้ายห้อง = วันย้ายครั้งแรก) */
+  const room1Out = liveMoves[0]?.from || stayOut;
   const [transport, setTransport] = useState<BookingTransport>({});
 
   // คิวอาบน้ำ: นับ 1 แมว = 1 คิว เหมือนฝั่งลูกค้าจองเอง หลายตัวจะไม่ไปกองอยู่เวลาเดียวกัน
@@ -606,12 +619,12 @@ export default function NewBookingPage() {
         existing,
         r.id,
         appointmentDate,
-        stayOut
+        room1Out
       );
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [service, appointmentDate, stayOut, rooms, existing]);
+  }, [service, appointmentDate, room1Out, rooms, existing]);
 
   // ห้องที่เลือกไว้เต็มไปแล้ว (เช่นเพิ่งเปลี่ยนวัน) → เด้งไปห้องที่ยังว่าง
   useEffect(() => {
@@ -634,10 +647,10 @@ export default function NewBookingPage() {
       existing,
       roomId,
       appointmentDate,
-      stayOut
+      room1Out
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [service, roomId, appointmentDate, stayOut, rooms, existing]);
+  }, [service, roomId, appointmentDate, room1Out, rooms, existing]);
 
   // เปลี่ยนห้อง/วัน แล้วเลขที่เคยเลือกไว้ไม่ว่างแล้ว → เคลียร์ทิ้ง (ให้ระบบเดาเองแทน)
   useEffect(() => {
@@ -782,6 +795,8 @@ export default function NewBookingPage() {
               ? { roomUnit: unit1 ?? undefined }
               : {}),
           time,
+          // ย้ายห้องกลางทาง — เฉพาะน้องห้องที่ 1 (ห้องที่ 2 อยู่ห้องเดิมตลอด)
+          ...(!inRoom2 && liveMoves.length ? { roomSegments: liveMoves } : {}),
           ...(service === "groom"
             ? {
                 // นัดนวดต้องมีโปรแกรมนวดเสมอ (ใช้แยกคิวนวดออกจากอาบน้ำ) — ไม่เลือก = โปรแกรมแรก
@@ -878,6 +893,8 @@ export default function NewBookingPage() {
       setGroomProgram("");
       setPetPrograms({});
       setAvailTick((n) => n + 1);
+      setRoomUnit(null);
+      setRoomMoves([]);
       closeRoom2();
       form.reset();
       setTimeout(() => setSaved(false), 2500);
@@ -1216,7 +1233,9 @@ export default function NewBookingPage() {
               <p className="mb-1.5 text-[10px] text-brown-faint">
                 {dayCare
                   ? "ฝากรายวัน ไม่ค้างคืน · คิดครึ่งราคาห้อง · ตัวเลขคือห้องที่ว่างวันนั้น"
-                  : "ตัวเลขคือห้องที่ว่างจริงตลอดช่วงที่เลือก · ห้องเต็มจะกดไม่ได้"}
+                  : liveMoves.length
+                    ? "ห้องแรก (ก่อนย้าย) · ตัวเลขคือห้องที่ว่างจริงถึงวันย้าย"
+                    : "ตัวเลขคือห้องที่ว่างจริงตลอดช่วงที่เลือก · ห้องเต็มจะกดไม่ได้"}
               </p>
               <input type="hidden" name="room" value={roomId} />
               <div className="space-y-1.5">
@@ -1417,6 +1436,19 @@ export default function NewBookingPage() {
                 required
                 value={checkoutDate}
                 onChange={setCheckoutDate}
+              />
+            )}
+            {!dayCare && roomId && (
+              <RoomMovesEditor
+                rooms={rooms}
+                boardRooms={boardRooms}
+                existing={existing}
+                checkin={appointmentDate}
+                checkout={stayOut}
+                firstRoom={roomId}
+                firstUnit={roomUnit}
+                moves={roomMoves}
+                onChange={setRoomMoves}
               />
             )}
 

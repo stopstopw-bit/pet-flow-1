@@ -3,7 +3,7 @@
  * เวลามาจากที่ลูกค้าเลือกผ่านการ์ด LINE (arrivalTime / pickupTime)
  * วันกลางของการเข้าพัก = "เข้าพัก" เฉยๆ ไม่มีเวลา (น้องอยู่ที่ร้านทั้งวัน)
  */
-export type DayMoveKind = "groom" | "in" | "out" | "stay";
+export type DayMoveKind = "groom" | "in" | "out" | "move" | "stay";
 export type DayMove = { kind: DayMoveKind; time: string };
 
 type MoveSource = {
@@ -14,12 +14,15 @@ type MoveSource = {
   checkout?: string;
   arrivalTime?: string;
   pickupTime?: string;
+  /** ย้ายห้องกลางทาง — วันย้ายขึ้นเป็น "ย้ายห้อง" (ดู room-segments.ts) */
+  roomSegments?: { from: string }[];
 };
 
 export const DAY_MOVE_LABELS: Record<DayMoveKind, string> = {
   groom: "อาบน้ำ",
   in: "มาส่ง",
   out: "มารับ",
+  move: "ย้ายห้อง",
   stay: "เข้าพัก",
 };
 
@@ -36,11 +39,14 @@ export function dayMoves(b: MoveSource, dateKey: string): DayMove[] {
   // Day Care (เข้า-ออกวันเดียวกัน) ได้ทั้งมาส่งและมารับในวันเดียว
   if (dateKey === ci) moves.push({ kind: "in", time: b.arrivalTime || "" });
   if (dateKey === co) moves.push({ kind: "out", time: b.pickupTime || "" });
+  if (dateKey > ci && dateKey < co && (b.roomSegments || []).some((s) => s.from === dateKey)) {
+    moves.push({ kind: "move", time: "" });
+  }
   if (moves.length === 0) moves.push({ kind: "stay", time: "" });
   return moves;
 }
 
-const KIND_ORDER: Record<DayMoveKind, number> = { in: 0, groom: 1, out: 2, stay: 3 };
+const KIND_ORDER: Record<DayMoveKind, number> = { in: 0, groom: 1, out: 2, move: 3, stay: 4 };
 
 /**
  * แตกการ์ดของวัน (บ้านละใบ) เป็นรายการบนปฏิทิน เรียงตามเวลา

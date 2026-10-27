@@ -1123,6 +1123,8 @@ async function deductCourseForBookedStay(
   const { getBooking } = await import("./bookings-store");
   const bk = await getBooking(inv.bookingId!);
   if (!bk || bk.status === "cancelled" || !bk.checkin || !bk.checkout || !bk.room) return;
+  // ย้ายห้องกลางทาง — คนละห้องคนละราคา ให้ร้านออกบิลค่าห้องแล้วเลือกหักคอร์สเอง
+  if (bk.roomSegments?.length) return;
   const { nightsBetween, findGroupSiblings } = await import("./stay-sync");
   const nights = nightsBetween(bk.checkin, bk.checkout);
   if (nights <= 0) return;

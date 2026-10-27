@@ -64,6 +64,7 @@ import {
 } from "@/lib/customers-store";
 import { getSiteConfig } from "@/lib/config-store";
 import { getLineCredentials } from "@/lib/line-config";
+import { cleanRoomSegments } from "@/lib/room-segments";
 import { cardOn, CARD_FEATURE, featureLabel } from "@/lib/features";
 import { cleanTransport, hasTransport, transportLabel } from "@/lib/transport";
 import { DEFAULT_MESSAGES, consentDates, consentTextFor, renderTemplate } from "@/lib/messages";
@@ -172,6 +173,7 @@ async function handleGet(lineUserId?: string) {
       depositAmount: b.depositAmount,
       depositSlipUrl: b.depositSlipUrl,
       depositStatus: b.depositStatus,
+      roomSegments: b.roomSegments,
       customerId: customer?.id,
       catMedical: cat?.medical || undefined,
       catStaffNote: cat?.staffNote || undefined,
@@ -217,6 +219,17 @@ async function handlePost(req: NextRequest) {
     checkin: body.checkin,
     room: body.room,
     roomUnit: body.roomUnit ? Number(body.roomUnit) || undefined : undefined,
+    // ย้ายห้องกลางทาง — ร้านจัดให้จากหลังบ้านเท่านั้น
+    // ย้ายห้องกลางทาง (route นี้หลังบ้านเท่านั้น)
+    roomSegments:
+      body.service === "room"
+        ? cleanRoomSegments(body.roomSegments, {
+            room: body.room,
+            roomUnit: body.roomUnit ? Number(body.roomUnit) || undefined : undefined,
+            checkin: body.checkin,
+            checkout: body.checkout,
+          })
+        : undefined,
     lineUserId: customer.lineUserId,
     notes: body.notes,
     groomProgram: body.groomProgram ? String(body.groomProgram) : undefined,
@@ -448,6 +461,7 @@ async function handlePatch(req: NextRequest, admin: boolean) {
         checkin: b.checkin,
         checkout: b.checkout,
         room: b.room,
+        roomSegments: b.roomSegments,
         notes: b.notes,
         groomProgram: b.groomProgram,
         transport: b.transport,
@@ -805,6 +819,7 @@ function groomInfoCardFor(
             checkin: b.checkin,
             checkout: b.checkout,
             room: b.room,
+            roomSegments: b.roomSegments,
             notes: b.notes,
             groomProgram: b.groomProgram,
             transport: b.transport,
@@ -1327,6 +1342,17 @@ function groomInfoCardFor(
     }
     // รับ-ส่ง — ส่ง null/{} มา = ยกเลิกบริการรับ-ส่งของนัดนี้
     if (body.transport !== undefined) patch.transport = cleanTransport(body.transport);
+    // ย้ายห้องกลางทาง — [] = อยู่ห้องเดียวตลอด · คิดจากห้อง/วันใหม่ในคำขอนี้ (ถ้ามี)
+    // แก้วัน/ห้องแรกโดยไม่ได้ส่งช่วงมา → กรองช่วงเดิมให้อยู่ในวันใหม่
+    const datesChanged = patch.checkin !== undefined || patch.checkout !== undefined || patch.room !== undefined;
+    if (body.roomSegments !== undefined || (datesChanged && b.roomSegments?.length)) {
+      patch.roomSegments = cleanRoomSegments(body.roomSegments ?? b.roomSegments, {
+        room: patch.room ?? b.room,
+        roomUnit: patch.roomUnit !== undefined ? patch.roomUnit || undefined : b.roomUnit,
+        checkin: patch.checkin ?? b.checkin,
+        checkout: patch.checkout ?? b.checkout,
+      });
+    }
     // หัวข้อข้อความอัตโนมัติที่นัดนี้ไม่ต้องส่ง
     if (Array.isArray(body.autoOff)) {
       const valid = new Set(AUTO_MESSAGE_TOPICS.map((t) => t.id));

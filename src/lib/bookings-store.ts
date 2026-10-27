@@ -5,6 +5,7 @@ import { seedEnabled } from "./demo-seed";
 import { requireTenantId } from "./tenant-context";
 import type { BookingTransport } from "./transport";
 import { cleanDepositStatus, type DepositStatus } from "./booking-deposit";
+import type { RoomSegment } from "./room-segments";
 import { MAX_VACCINE_PHOTOS, joinVaccinePhotos, splitVaccinePhotos } from "./vaccine-photos";
 
 export type StoredBooking = Booking & {
@@ -49,6 +50,8 @@ export type StoredBooking = Booking & {
   depositSlipUrl?: string;
   /** none = ยังไม่โอน, pending_review = แนบสลิปแล้วรอตรวจ, paid = ร้านยืนยันว่าได้รับแล้ว */
   depositStatus?: DepositStatus;
+  /** ย้ายห้องกลางทาง — ห้องถัดไปตั้งแต่วันไหน (ห้องแรกยังอยู่ที่ room/roomUnit) ดู room-segments.ts */
+  roomSegments?: RoomSegment[];
 };
 
 export { AUTO_MESSAGE_TOPICS, autoMuted } from "./auto-messages";
@@ -85,6 +88,7 @@ type BookingRow = {
   deposit_amount?: number | string | null;
   deposit_slip_url?: string | null;
   deposit_status?: string | null;
+  room_segments?: RoomSegment[] | null;
 };
 
 const mem: StoredBooking[] = seedEnabled()
@@ -140,6 +144,7 @@ function rowToStored(r: BookingRow): StoredBooking {
     depositSlipUrl: r.deposit_slip_url || undefined,
     depositStatus:
       Number(r.deposit_amount) > 0 || r.deposit_status ? cleanDepositStatus(r.deposit_status) : undefined,
+    roomSegments: r.room_segments?.length ? r.room_segments : undefined,
   };
 }
 
@@ -468,6 +473,28 @@ async function writeTransport(id: string, transport: BookingTransport | null) {
 }
 
 /**
+ * เขียนช่วงย้ายห้อง — คอลัมน์ room_segments เพิ่มมาทีหลัง เขียนแยกจากแถวหลักเหมือน transport
+ * ยังไม่มีคอลัมน์ → ลองอัปเดตฐานข้อมูลให้ก่อน แล้วเขียนใหม่
+ */
+async function writeRoomSegments(id: string, segs: RoomSegment[]) {
+  const sb = getSupabase();
+  if (!sb) return true;
+  const value = segs.length ? segs : null;
+  try {
+    const { error } = await sb.from("bookings").update({ room_segments: value }).eq("tenant_id", requireTenantId()).eq("id", id);
+    if (!error) return true;
+    const { ensureMigration } = await import("./migrations");
+    if (await ensureMigration("bookings.room_segments")) {
+      const res = await sb.from("bookings").update({ room_segments: value }).eq("tenant_id", requireTenantId()).eq("id", id);
+      return !res.error;
+    }
+  } catch {
+    /* ยังไม่มีคอลัมน์ room_segments */
+  }
+  return false;
+}
+
+/**
  * ลูกค้ากรอกจุดรับ-ส่ง (ลิงก์ Google Maps + ที่อยู่) ก่อนวันนัด — แก้ได้เฉพาะตำแหน่ง
  * ไม่ให้ลูกค้าเปิด/ปิดบริการรับ-ส่งเอง (ร้านเป็นคนตกลงกับลูกค้า)
  */
@@ -600,6 +627,7 @@ export async function addBooking(
         })
       );
     }
+    if (booking.roomSegments?.length) writes.push(writeRoomSegments(booking.id, booking.roomSegments));
     await Promise.all(writes);
     return booking;
   }
@@ -633,6 +661,7 @@ export async function updateBooking(
       | "pickupTime"
       | "roomUnit"
       | "transport"
+      | "roomSegments"
     >
   >
 ) {
@@ -721,6 +750,7 @@ export async function updateBooking(
     }
     // รับ-ส่ง — undefined ใน patch = ไม่ได้ส่งมา, ส่งมาเป็นค่าว่างให้ล้างทิ้ง (ใช้ "transport" in patch)
     if ("transport" in patch) await writeTransport(id, merged.transport || null);
+    if ("roomSegments" in patch) await writeRoomSegments(id, merged.roomSegments || []);
     return getBooking(id);
   }
 

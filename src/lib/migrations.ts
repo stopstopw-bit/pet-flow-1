@@ -68,6 +68,7 @@ const SCHEMA_CHECKS: { table: string; column: string; feature: string }[] = [
   { table: "package_offers", column: "items", feature: "คอร์สชุดรวม / แถมฟรี" },
   { table: "bookings", column: "transport", feature: "บริการรับ-ส่งในนัด" },
   { table: "bookings", column: "deposit_status", feature: "มัดจำ + สลิปตอนลูกค้าจองเอง" },
+  { table: "bookings", column: "room_segments", feature: "ย้ายห้องกลางทางในนัดเดียว" },
   { table: "booking_ops", column: "care_checks", feature: "บอร์ดคิวอาบน้ำ + เช็คลิสต์ดูแลรายวัน" },
   { table: "payroll_employees", column: "groom_commission_pct", feature: "เงินเดือน + ค่าคอมพนักงาน" },
   { table: "cats", column: "vaccine_photos", feature: "สมุดวัคซีนที่ตัวน้อง (ขอก่อนมีนัด)" },
@@ -556,6 +557,11 @@ where staff_note like '%🎁%';`,
     // บริการรับ-ส่งของนัด {pickup, dropoff, mapUrl, address} — ว่าง = ลูกค้ามาเอง
     name: "bookings.transport",
     sql: "alter table bookings add column if not exists transport jsonb;",
+  },
+  {
+    // ย้ายห้องกลางทางในนัดเดียว [{from, room, roomUnit}] — ว่าง = อยู่ห้องเดียวตลอด (ดู room-segments.ts)
+    name: "bookings.room_segments",
+    sql: "alter table bookings add column if not exists room_segments jsonb;",
   },
   {
     // มัดจำตอนลูกค้าจองเอง — ยอด (บาท, ของทั้งกลุ่มที่จองพร้อมกัน), ลิงก์สลิป, สถานะ none | pending_review | paid

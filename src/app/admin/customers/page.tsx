@@ -48,6 +48,7 @@ import { groomProgramName } from "@/lib/grooming-prices";
 import { tidyServiceText } from "@/lib/stay-line";
 import { Avatar, EmptyState, MoreMenu, SearchField, Segmented, SectionLabel } from "@/components/ui";
 import { NumInput } from "@/components/NumInput";
+import { roomSummary } from "@/lib/room-segments";
 
 type Summary = {
   customer: CustomerRecord;
@@ -677,9 +678,12 @@ function StaysConsentSection({ bookings }: { bookings: EditableBooking[] }) {
         ...(signed || group[0]),
         id: group[0].id,
         cats: group.map((x) => x.catName).filter(Boolean).join(", "),
-        roomText: Array.from(rooms.keys())
-          .map((r) => roomNames[r] || r)
-          .join(" + "),
+        // ย้ายห้องกลางทาง → โชว์ทุกช่วง "Catflix 25–28 ต.ค. → Mid Cozy 28–31 ต.ค."
+        roomText: group[0].roomSegments?.length
+          ? roomSummary(group[0], (r) => (r ? roomNames[r] || r : "-"))
+          : Array.from(rooms.keys())
+              .map((r) => roomNames[r] || r)
+              .join(" + "),
         roomCount: roomUnits.size > 1 ? roomUnits.size : 0,
         careNote: Array.from(new Set(group.map((x) => x.careNote).filter(Boolean))).join(" · "),
         consentSignature: signed?.consentSignature || group.find((x) => x.consentSignature)?.consentSignature,

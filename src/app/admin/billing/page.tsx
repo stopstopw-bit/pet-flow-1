@@ -31,6 +31,7 @@ import {
 import { priceSignature, findLastPrice } from "@/lib/special-price";
 import { groomPrefillForPet, itemIsForPet, lastGroomForPet, type PetCard } from "@/lib/pet-groom-memory";
 import { roomPricing, roomNightPrice } from "@/lib/room-board";
+import { expandBySegments, type RoomSegment } from "@/lib/room-segments";
 import { isRoomLine, roomLineLabel, splitRoomLabel } from "@/lib/stay-line";
 import {
   isTransportLabel,
@@ -118,6 +119,8 @@ type Booking = {
   service: "room" | "groom";
   room?: string;
   roomUnit?: number;
+  /** ย้ายห้องกลางทาง — ออกบิลแยกบรรทัดตามห้องแต่ละช่วง */
+  roomSegments?: RoomSegment[];
   checkin?: string;
   checkout?: string;
   date?: string;
@@ -1264,8 +1267,9 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
     if (stayPart.length > 0) {
       // คิดค่าห้องเป็นรายห้อง ไม่ใช่รายตัว: น้องที่อยู่ห้องเดียวกันรวมเป็นบรรทัดเดียว
       // ห้องที่ล็อกเลขไว้ = ห้องตามเลขนั้น · ไม่ได้ล็อก = จัดเต็มห้องละ cap ตัวตามที่ระบบจัดห้องทำ
+      // ย้ายห้องกลางทาง = แตกเป็นช่วงละห้อง แต่ละช่วงเป็นบรรทัดค่าห้องของตัวเอง
       const units = new Map<string, Booking[]>();
-      for (const g of stayPart) {
+      for (const g of expandBySegments(stayPart)) {
         // วันเข้า/ออกต่างกัน (บ้านเดียวกันแต่ต่อคืนไม่เท่ากัน) = คนละบรรทัด คืนของใครของมัน
         const k = `${g.checkin || ""}|${g.checkout || ""}|${g.room || ""}#${g.roomUnit ?? "auto"}`;
         units.set(k, [...(units.get(k) || []), g]);

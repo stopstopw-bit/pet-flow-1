@@ -23,6 +23,8 @@ import {
 } from "./invoices-store";
 import { addDaysIso, extensionNote, isRoomLine, roomLineLabel, splitRoomLabel } from "./stay-line";
 import { normalizeLineDiscount, stripDiscountTag } from "./line-discount";
+import { shiftRoomSegments, staySegments } from "./room-segments";
+import { getSiteConfig } from "./config-store";
 
 export type DatePatch = {
   date?: string;
@@ -94,13 +96,73 @@ function withNights(
   });
 }
 
+/**
+ * นัดที่ย้ายห้องกลางทาง: บิลมีบรรทัดห้องหลายห้อง (ห้องละช่วง) คิดคืนรวมแบบนัดปกติไม่ได้
+ * ทำให้อัตโนมัติเฉพาะ "ต่อคืน" (คืนที่เพิ่มอยู่ห้องสุดท้าย) กับ "เลื่อนทั้งช่วง" (คืนเท่าเดิม)
+ * นอกนั้นเตือนให้ร้านเช็กบิลเอง
+ */
+export type SegmentedStay = {
+  /** ชื่อรายการห้องของช่วงสุดท้าย เช่น "ห้อง Mid Cozy" */
+  lastRoomLabel: string;
+  /** เลื่อนทั้งช่วง จำนวนคืนแต่ละห้องเท่าเดิม */
+  shifted: boolean;
+};
+
+async function syncSegmentedInvoice(
+  paid: InvoiceRecord[],
+  pending: InvoiceRecord[],
+  checkout: string,
+  extendFrom: string | undefined,
+  seg: SegmentedStay
+): Promise<InvoiceSyncResult> {
+  if (seg.shifted) return { kind: "none" };
+  const extra = extendFrom ? nightsBetween(extendFrom, checkout) : 0;
+  const isLast = (it: InvoiceItem) =>
+    isRoomLine(it) && splitRoomLabel(stripDiscountTag(it.label)).base === seg.lastRoomLabel;
+  const manual = {
+    kind: "warn" as const,
+    message: "นัดนี้ย้ายห้องกลางทาง — เช็กจำนวนคืนของแต่ละห้องในบิลเองนะ",
+  };
+  if (extra <= 0 || pending.length > 1) return manual;
+  const open = pending[0];
+  if (open?.packageId) {
+    return { kind: "warn", message: "บิลนี้ใช้คอร์สหักคืน — แก้จำนวนคืนในบิลเองนะ (ระบบไม่เปลี่ยนการหักคอร์สให้)" };
+  }
+  if (open) {
+    const lines = open.items.filter(isLast);
+    if (lines.length === 0) return manual;
+    // บิลพักต่อรอบก่อน (มีแต่ห้องสุดท้าย) หรือบิลหลักที่ยังไม่จ่าย → ต่อคืนเฉพาะห้องสุดท้าย
+    const total = Math.round(Number(lines[0].qty) || 1) + extra;
+    const onlyLast = open.items.filter(isRoomLine).every(isLast);
+    const note = onlyLast && paid.length > 0 ? extensionNote(addDaysIso(checkout, -total), checkout) : undefined;
+    const items = open.items.map((it) => (isLast(it) ? withNights([it], total, note)[0] : it));
+    const res = await updateInvoice(open.id, { items });
+    if (!res.ok) return { kind: "warn", message: "แก้บิลไม่สำเร็จ" };
+    return { kind: "updated", invoiceId: open.id, nights: total, total: res.invoice.total };
+  }
+  const last = paid[paid.length - 1];
+  const roomItems = last?.items.filter(isLast) || [];
+  if (roomItems.length === 0) return manual;
+  const created = await createInvoice({
+    customerId: last.customerId,
+    lineUserId: last.lineUserId,
+    customerName: last.customerName,
+    catName: last.catName,
+    items: withNights(roomItems, extra, extensionNote(extendFrom!, checkout), true),
+    bookingId: last.bookingId,
+  });
+  return { kind: "created_extra", invoiceId: created.id, nights: extra, total: created.total };
+}
+
 /** ปรับบิลของนัดนี้ให้ตรงกับจำนวนคืนจริงหลังเลื่อนวัน/ต่อคืน */
 export async function syncStayInvoice(
   bookingIds: string[],
   checkin: string,
   checkout: string,
   /** วันออกเดิม เมื่อเป็นการ "ต่อคืน" (วันเข้าเท่าเดิม วันออกเลื่อนออกไป) */
-  extendFrom?: string
+  extendFrom?: string,
+  /** นัดนี้ย้ายห้องกลางทาง */
+  segmented?: SegmentedStay
 ): Promise<InvoiceSyncResult> {
   const nights = nightsBetween(checkin, checkout);
   if (nights <= 0) return { kind: "none" };
@@ -112,6 +174,7 @@ export async function syncStayInvoice(
 
   const paid = invoices.filter((i) => i.status === "paid");
   const pending = invoices.filter((i) => i.status !== "paid");
+  if (segmented) return syncSegmentedInvoice(paid, pending, checkout, extendFrom, segmented);
 
   // ต่อคืนหลังจ่ายรอบแรกแล้ว → คิดเฉพาะ "วันออกเดิม → วันออกใหม่" ตรงๆ
   // ไม่ย้อนนับจากวันเข้าพักแรกแล้วหักคืนที่จ่าย (นับคืนจากบิลเก่าพลาดได้ เช่นบิลที่เคยเปิดแก้
@@ -221,8 +284,14 @@ export async function rescheduleGroup(
   const ids = [host.id, ...siblings.map((s) => s.id)];
 
   const updated: StoredBooking[] = [];
+  const before = [host, ...siblings];
   for (const id of ids) {
-    const u = await updateBooking(id, patch);
+    const old = before.find((x) => x.id === id);
+    // ย้ายห้องกลางทาง: วันย้ายขยับตามการเลื่อนวัน (ต่อคืน = ห้องสุดท้ายยาวขึ้น)
+    const segs = old?.roomSegments?.length
+      ? { roomSegments: shiftRoomSegments(old.roomSegments, old, { ...old, ...patch }) }
+      : {};
+    const u = await updateBooking(id, { ...patch, ...segs });
     if (u) updated.push(u);
   }
 
@@ -235,7 +304,18 @@ export async function rescheduleGroup(
       host.checkin?.slice(0, 10) === h.checkin.slice(0, 10) && oldOut && oldOut < h.checkout.slice(0, 10)
         ? oldOut
         : undefined;
-    invoice = await syncStayInvoice(ids, h.checkin, h.checkout, extendFrom);
+    let segmented: SegmentedStay | undefined;
+    if (host.roomSegments?.length) {
+      const pieces = staySegments(h);
+      const lastRoom = pieces[pieces.length - 1]?.room;
+      const name = ((await getSiteConfig()).rooms || []).find((r) => r.id === lastRoom)?.name || lastRoom;
+      const nightsOf = (b: StoredBooking) => staySegments(b).map((p) => nightsBetween(p.checkin, p.checkout)).join(",");
+      segmented = {
+        lastRoomLabel: `ห้อง ${name}`,
+        shifted: !extendFrom && nightsOf(host) === nightsOf(h) && staySegments(host).length === pieces.length,
+      };
+    }
+    invoice = await syncStayInvoice(ids, h.checkin, h.checkout, extendFrom, segmented);
   }
   return { ok: true as const, updated, invoice, movedCount: updated.length };
 }

@@ -11,6 +11,7 @@ import {
 
 import { parseTelegramCommand } from "@/lib/telegram";
 import { buildTransportSummaryMessage } from "@/lib/transport-summary";
+import { roomOn } from "@/lib/room-segments";
 
 /**
  * สร้างข้อความตารางงานของวันหนึ่ง — อาบน้ำ + เช็คอิน + เช็คเอาท์
@@ -51,7 +52,13 @@ export async function buildDayScheduleMessage(
           date < (b.checkout || b.checkin || "")
       )
     : [];
-  const total = groom.length + checkin.length + checkout.length + ongoing.length;
+  // ย้ายห้องกลางทางวันนี้ — ต้องย้ายน้อง + เคลียร์ห้องเก่า
+  const moving = live.filter(
+    (b) => b.service === "room" && (b.roomSegments || []).some((s) => s.from === date)
+  );
+  /** ห้องของน้องในคืนวันนั้น (ย้ายห้องกลางทางแล้วห้องเปลี่ยนตามวัน) */
+  const roomAt = (b: (typeof live)[number], d: string) => roomOn(b, d).room || "-";
+  const total = groom.length + checkin.length + checkout.length + ongoing.length + moving.length;
 
   if (total === 0) {
     return `${heading}\n\n${opts?.emptyText ?? "ยังไม่มีนัด/เข้าพัก-ออกพักในระบบค่ะ 🎉"}`;
@@ -65,7 +72,7 @@ export async function buildDayScheduleMessage(
           .map((b, i) => {
             const consent = b.consentAcceptedAt ? "✅ เซ็นแล้ว" : "⏳ ยังไม่เซ็น";
             const note = b.careNote ? ` — 📝 ${b.careNote}` : "";
-            return `${i + 1}. ${b.catName} · ${b.customerName} — ห้อง ${b.room || "-"} · ${consent}${note}`;
+            return `${i + 1}. ${b.catName} · ${b.customerName} — ห้อง ${roomAt(b, date)} · ${consent}${note}`;
           })
           .join("\n")
     );
@@ -104,13 +111,24 @@ export async function buildDayScheduleMessage(
           .join("\n")
     );
   }
+  if (moving.length) {
+    lines.push(
+      `\n🔁 ย้ายห้อง (${moving.length}):\n` +
+        moving
+          .map((b, i) => {
+            const prev = roomOn(b, new Date(Date.parse(`${date}T12:00:00Z`) - 86_400_000).toISOString().slice(0, 10));
+            return `${i + 1}. ${b.catName} · ${b.customerName} — ห้อง ${prev.room || "-"} → ${roomAt(b, date)}`;
+          })
+          .join("\n")
+    );
+  }
   if (checkout.length) {
     lines.push(
       `\n🏠 เช็คเอาท์ (${checkout.length}):\n` +
         checkout
           .map(
             (b, i) =>
-              `${i + 1}. ${moveText("มารับ", b.pickupTime)} — ${b.catName} · ${b.customerName} · ห้อง ${b.room || "-"}`
+              `${i + 1}. ${moveText("มารับ", b.pickupTime)} — ${b.catName} · ${b.customerName} · ห้อง ${roomAt(b, date)}`
           )
           .join("\n")
     );
