@@ -3449,6 +3449,7 @@ export default function CustomersPage() {
                       min="0"
                       inputMode="numeric"
                       defaultValue={cat.ageValue || ""}
+                      placeholder="เช่น 3"
                       className={inputCls}
                       onBlur={(e) => {
                         const v = e.target.value ? Number(e.target.value) : undefined;
@@ -3475,22 +3476,12 @@ export default function CustomersPage() {
                     </select>
                   </label>
                 </div>
-                <label className="block text-[11px] font-bold text-brown-soft">
-                  <span className="mb-1 block">น้ำหนัก (กก.)</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.1"
-                    inputMode="decimal"
-                    defaultValue={cat.weightKg || ""}
-                    placeholder="เช่น 4.5"
-                    className={inputCls}
-                    onBlur={(e) => {
-                      const v = e.target.value ? Number(e.target.value) : null;
-                      if (v !== (cat.weightKg ?? null)) saveCat(cat.id, { weightKg: v });
-                    }}
-                  />
-                </label>
+                <PetWeightField
+                  weightKg={cat.weightKg ?? null}
+                  onSave={(v) => {
+                    if (v !== (cat.weightKg ?? null)) saveCat(cat.id, { weightKg: v });
+                  }}
+                />
                 <div className="text-[11px] font-bold text-brown-soft">
                   วันเกิดน้อง <span className="font-normal text-brown-faint">(ถ้าทราบ)</span>
                   <div className="mt-1">
@@ -4055,5 +4046,48 @@ function SortableTh({
         <span className="text-[9px]">{isActive ? (dir === "asc" ? "▲" : "▼") : "↕"}</span>
       </button>
     </th>
+  );
+}
+
+/** ช่องน้ำหนักในการ์ดน้อง — มีติ๊ก "ไม่ทราบ" เหมือนหน้าสมัครสมาชิก (ติ๊กแล้วล้างน้ำหนักเดิม) */
+function PetWeightField({
+  weightKg,
+  onSave,
+}: {
+  weightKg: number | null;
+  onSave: (v: number | null) => void;
+}) {
+  const [unknown, setUnknown] = useState(false);
+  return (
+    <div className="text-[11px] font-bold text-brown-soft">
+      <span className="mb-1 block">น้ำหนัก (กก.)</span>
+      <div className="flex items-center gap-2">
+        <input
+          key={unknown ? "unknown" : "known"}
+          type="number"
+          min="0"
+          step="0.1"
+          inputMode="decimal"
+          aria-label="น้ำหนัก (กก.)"
+          disabled={unknown}
+          defaultValue={unknown ? "" : weightKg || ""}
+          placeholder={unknown ? "ไม่ทราบน้ำหนัก" : "เช่น 4.5"}
+          className={`${inputCls} min-w-0 flex-1 disabled:opacity-50`}
+          onBlur={(e) => onSave(e.target.value ? Number(e.target.value) : null)}
+        />
+        <label className="flex min-h-[44px] shrink-0 cursor-pointer items-center gap-1.5 text-xs font-bold text-brown">
+          <input
+            type="checkbox"
+            checked={unknown}
+            onChange={(e) => {
+              setUnknown(e.target.checked);
+              if (e.target.checked) onSave(null);
+            }}
+            className="h-5 w-5 accent-latte-deep"
+          />
+          ไม่ทราบ
+        </label>
+      </div>
+    </div>
   );
 }
