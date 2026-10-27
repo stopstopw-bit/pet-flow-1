@@ -25,6 +25,7 @@ const ACTION_LABEL: Record<string, string> = {
   exclude_finance: "ตั้งไม่นับเป็นรายได้",
   include_finance: "กลับมานับเป็นรายได้",
   send_birthday_greetings: "ส่งการ์ดวันเกิด",
+  auto_line_round: "รอบส่ง LINE อัตโนมัติ",
 };
 
 /** ไอคอนเส้นของแต่ละการกระทำ */
@@ -38,6 +39,7 @@ const ACTION_ICON: Record<string, string> = {
   exclude_finance: "x",
   include_finance: "check",
   send_birthday_greetings: "cake",
+  auto_line_round: "clock",
 };
 
 function when(iso: string) {
@@ -75,7 +77,7 @@ export default function AuditPage() {
         <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brown-soft">Audit log</p>
         <h1 className="text-xl font-extrabold text-petflow-chocolate">ประวัติการใช้งาน</h1>
         <p className="mt-0.5 text-xs text-brown-soft">
-          บันทึกเฉพาะการกระทำที่กระทบเงินและสิทธิ์ลูกค้า — ไว้ไล่ย้อนตอนยอดไม่ตรง
+          บันทึกการกระทำที่กระทบเงินและสิทธิ์ลูกค้า + ผลรอบส่ง LINE อัตโนมัติแต่ละรอบ
         </p>
       </div>
 
