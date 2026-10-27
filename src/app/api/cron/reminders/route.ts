@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { petKindOf, petWords } from "@/lib/pet-kind";
-import { listBookings } from "@/lib/bookings-store";
+import { listBookings, updateBooking } from "@/lib/bookings-store";
 import { autoMuted } from "@/lib/auto-messages";
 import { listInvoices } from "@/lib/invoices-store";
 import { getSiteConfig } from "@/lib/config-store";
@@ -408,6 +408,14 @@ async function runForTenant() {
           cfg.cards?.intake
         )
       );
+
+      // ไม่มีปุ่มยืนยันนัดแล้ว (กรอกข้อมูล = ยืนยัน) — นัดอาบน้ำที่ไม่มีอะไรต้องกรอกเลย
+      // ถือว่ายืนยันตั้งแต่ได้การ์ดกำหนดการนัด ไม่ค้าง "รอยืนยัน" (ลูกค้าจองเองยังรอร้านยืนยันตามเดิม)
+      if (primary.service === "groom" && intake.length === 0 && dayMessages.length > 0) {
+        for (const x of group) {
+          if (x.status === "pending" && !x.selfBooked) await updateBooking(x.id, { status: "confirmed" });
+        }
+      }
 
       if (dayMessages.length === 0) continue;
       await pushInChunks(primary.lineUserId, dayMessages);

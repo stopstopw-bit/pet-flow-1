@@ -94,7 +94,6 @@ const CARDS: CardMeta[] = [
         placeholder: "หากมีรายละเอียดอื่นๆ เพิ่มเติม สามารถแจ้งในแชท LINE ได้เลยนะคะ",
         multiline: true,
       },
-      { key: "confirmButton", label: "คำในปุ่มยืนยัน", placeholder: "🐾 ยืนยันนัด" },
       { key: "mapButton", label: "คำในปุ่มดูแผนที่", placeholder: "🗺️ ดูแผนที่ / เส้นทาง" },
       {
         key: "groomPrepNote",

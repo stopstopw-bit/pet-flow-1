@@ -375,13 +375,7 @@ async function handlePatch(req: NextRequest, admin: boolean) {
         checkinTime,
       });
     }
-    sendTelegramLater(
-      formatBookingTelegram("✅ ลูกค้ายืนยันแล้ว", {
-        ลูกค้า: String(b.customerName),
-        น้อง: String(b.catName),
-        วันที่: String(b.date || b.checkin),
-      })
-    );
+    // กดยืนยันนัดแล้วไม่ส่งข้อความอะไรเลย ทั้งถึงลูกค้าและแจ้งร้าน (เจ้าของร้าน 2026-10-27)
     const matched = await findCustomerForBooking(b);
     if (matched) await recalculateCustomerTier(matched.id);
     const updated = await getBooking(id);
@@ -422,13 +416,6 @@ async function handlePatch(req: NextRequest, admin: boolean) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }
     const first = confirmed[0]!;
-    sendTelegramLater(
-      formatBookingTelegram("✅ ลูกค้ายืนยันแล้ว", {
-        ลูกค้า: String(first.customerName),
-        น้อง: confirmed.map((x) => x!.catName).join(", "),
-        วันที่: String(first.date || first.checkin),
-      })
-    );
     const matched = await findCustomerForBooking(first);
     if (matched) await recalculateCustomerTier(matched.id);
     return NextResponse.json({ ok: true, count: confirmed.length });
