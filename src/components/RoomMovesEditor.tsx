@@ -10,6 +10,7 @@ import { Icon } from "@/components/Icon";
 import {
   compositionOf,
   freeUnitsForRange,
+  turnoverUnitsForRange,
   typeAvailability,
   type BoardBooking,
   type BoardRoomType,
@@ -71,6 +72,17 @@ export function RoomMovesEditor({
         const [from, to] = ranges[i];
         if (!m.room || compositionOf(m.room, boardRooms) || !from || from >= to) return [];
         return freeUnitsForRange(boardRooms, existing, m.room, from, to);
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify(moves), checkout, rooms, existing]
+  );
+  // ห้องที่มีบ้านอื่นออกวันที่ย้ายเข้า / เข้าวันที่ย้ายออก — ต้องรับต่อวันเดียวกัน
+  const turns = useMemo(
+    () =>
+      moves.map((m, i) => {
+        const [from, to] = ranges[i];
+        if (!m.room || compositionOf(m.room, boardRooms) || !from || from >= to) return new Set<number>();
+        return new Set(turnoverUnitsForRange(boardRooms, existing, m.room, from, to));
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [JSON.stringify(moves), checkout, rooms, existing]
@@ -162,6 +174,7 @@ export function RoomMovesEditor({
                         }`}
                       >
                         ห้อง {u}
+                        {turns[i]?.has(u) && <span className="font-normal text-wait"> · รับต่อ</span>}
                       </button>
                     ))}
                   </div>

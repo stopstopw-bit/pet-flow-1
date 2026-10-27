@@ -11,7 +11,7 @@ import { TransportPicker } from "@/components/TransportPicker";
 import type { BookingTransport } from "@/lib/transport";
 import { isUnknownCat, pickableCatNames } from "@/lib/unknown-cat";
 import { GROOM_PROGRAMS, type GroomProgram } from "@/lib/grooming-prices";
-import { freeUnitsForRange, roomCapacity, compositionOf, type BoardBooking, type RoomClosure } from "@/lib/room-board";
+import { freeUnitsForRange, turnoverUnitsForRange, roomCapacity, compositionOf, type BoardBooking, type RoomClosure } from "@/lib/room-board";
 import { DEPOSIT_STATUS_LABEL, type DepositStatus } from "@/lib/booking-deposit";
 import { useConfig, usePetWords } from "@/components/ConfigProvider";
 import { RoomMovesEditor } from "@/components/RoomMovesEditor";
@@ -292,6 +292,13 @@ export function BookingEditModal({
       checkinSel,
       firstOut || checkoutSel || checkinSel,
       booking.id
+    );
+  }, [boardRooms, roomBookings, roomSel, checkinSel, checkoutSel, firstOut, booking.id]);
+  // ห้องที่มีบ้านอื่นออกวันที่เข้า / เข้าวันที่ออก — เลือกได้ แต่ต้องรับต่อวันเดียวกัน
+  const turn = useMemo(() => {
+    if (!roomSel || !checkinSel || compositionOf(roomSel, boardRooms)) return new Set<number>();
+    return new Set(
+      turnoverUnitsForRange(boardRooms, roomBookings, roomSel, checkinSel, firstOut || checkoutSel || checkinSel, booking.id)
     );
   }, [boardRooms, roomBookings, roomSel, checkinSel, checkoutSel, firstOut, booking.id]);
 
@@ -668,6 +675,7 @@ export function BookingEditModal({
                         >
                           {roomUnit === u && <Icon name="check" size={14} strokeWidth={2.4} />}
                           ห้อง {u}
+                          {turn.has(u) && <span className="font-normal text-wait"> · รับต่อ</span>}
                         </button>
                       ))}
                     </div>
