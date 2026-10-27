@@ -1907,7 +1907,11 @@ export function BookingCalendar() {
                           {u.leaving.length > 0 && (
                             <p className="mt-0.5 truncate text-[9px] text-wait">
                               {u.leaving.map((x) => x.catName).join(", ")}{" "}
-                              {u.leaving.every((x) => x.checkout && x.checkout.slice(0, 10) > activeDate) ? "ย้ายห้องวันนี้" : "ออกวันนี้"}
+                              {u.leaving.every((x) => x.checkout && x.checkout.slice(0, 10) > activeDate)
+                                ? "ย้ายห้องวันนี้"
+                                : u.leaving.every((x) => x.pickupTime)
+                                  ? `ออกวันนี้ ${u.leaving.map((x) => x.pickupTime || "").sort().pop()} น.`
+                                  : "ออกวันนี้"}
                             </p>
                           )}
                           {/* เลขในวงเล็บ = แมวที่เกินราคาห้อง (Cat Tower จุ 4 มา 5 = เกิน 1 ตัว +50) */}
