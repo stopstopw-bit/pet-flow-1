@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useLiff } from "@/components/LiffProvider";
 import { useConfig } from "@/components/ConfigProvider";
+import { catCurrentAgeLabel } from "@/lib/cat-age";
 import { BirthdayPicker } from "@/components/BirthdayPicker";
 import { BTN_PRIMARY, PageHeader } from "@/components/PageHeader";
 import { SectionLabel } from "@/components/ui";
@@ -187,7 +188,7 @@ export default function RegisterPage() {
       if (rf.neutered.required && !c.neutered) return `เลือกว่าน้อง${pw.th}${n}ทำหมันแล้วหรือยังด้วยนะคะ`;
       if (rf.vaccinated.required && !c.vaccinated) return `เลือกว่าน้อง${pw.th}${n}ได้รับวัคซีนครบหรือยังด้วยนะคะ`;
       if (rf.color.required && !c.color.trim()) return `กรอกสี/ลักษณะเด่นน้อง${pw.th}${n}ด้วยนะคะ`;
-      if (rf.age.required && !c.ageUnknown && !(Number(c.ageValue) > 0))
+      if (rf.age.required && !c.ageUnknown && !c.birthday && !(Number(c.ageValue) > 0))
         return `กรอกอายุน้อง${pw.th}${n} หรือติ๊ก "ไม่ทราบ" ด้วยนะคะ`;
       if (rf.weight.required && !c.weightUnknown && !(Number(c.weightKg) > 0))
         return `กรอกน้ำหนักน้อง${pw.th}${n} หรือติ๊ก "ไม่ทราบ" ด้วยนะคะ`;
@@ -732,8 +733,31 @@ export default function RegisterPage() {
                 )}
                 {rf.age.enabled && (
                 <>
+                {/* วันเกิดก่อน — กรอกแล้วระบบคิดอายุให้เอง ไม่ต้องกรอกอายุซ้ำ · ไม่ทราบวันเกิดค่อยใส่อายุคร่าวๆ (ไม่บังคับ) */}
+                {!cat.ageUnknown && (
+                  <div className="text-[11px] font-bold text-brown-soft">
+                    วันเกิดน้อง{pw.th}{" "}
+                    <span className="font-normal text-brown-faint">
+                      (ถ้าทราบ · ไม่บังคับ)
+                    </span>
+                    <div className="mt-0.5">
+                      <BirthdayPicker
+                        value={cat.birthday}
+                        onChange={(iso) => updateCat(idx, { birthday: iso, ...(iso ? { ageValue: "" } : {}) })}
+                        yearsBack={25}
+                        allowUnknown
+                      />
+                    </div>
+                    {cat.birthday && (
+                      <p className="mt-1 text-xs font-bold text-ok">
+                        อายุ {catCurrentAgeLabel({ birthday: cat.birthday })} (คิดจากวันเกิดให้แล้ว)
+                      </p>
+                    )}
+                  </div>
+                )}
+                {!cat.birthday && (
                 <div className="text-[11px] font-bold text-brown-soft">
-                  {rf.age.label}{optTag(rf.age.required)}
+                  {cat.ageUnknown ? rf.age.label : "หรือใส่อายุคร่าวๆ (ถ้าไม่ทราบวันเกิด)"}{optTag(rf.age.required)}
                   <div className="mt-0.5 flex items-center gap-2">
                     <NumInput
                       disabled={cat.ageUnknown}
@@ -776,21 +800,6 @@ export default function RegisterPage() {
                     </label>
                   </div>
                 </div>
-                {!cat.ageUnknown && (
-                  <div className="text-[11px] font-bold text-brown-soft">
-                    วันเกิดน้อง{pw.th}{" "}
-                    <span className="font-normal text-brown-faint">
-                      (ถ้าทราบ · ไม่บังคับ)
-                    </span>
-                    <div className="mt-0.5">
-                      <BirthdayPicker
-                        value={cat.birthday}
-                        onChange={(iso) => updateCat(idx, { birthday: iso })}
-                        yearsBack={25}
-                        allowUnknown
-                      />
-                    </div>
-                  </div>
                 )}
                 </>
                 )}

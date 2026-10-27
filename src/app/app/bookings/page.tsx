@@ -6,7 +6,7 @@ import { type Booking } from "@/lib/business";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/components/LocaleProvider";
 import { useLiff } from "@/components/LiffProvider";
-import { BTN_PRIMARY, PageHeader } from "@/components/PageHeader";
+import { BTN_PRIMARY, BTN_SECONDARY, PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/ui";
 import { Icon } from "@/components/Icon";
 import { LoadingScreen } from "@/components/LoadingScreen";
@@ -16,9 +16,41 @@ import { bangkokToday } from "@/lib/bangkok-date";
 import { TimeSlotPicker } from "@/components/TimeSlotPicker";
 import { useConfig } from "@/components/ConfigProvider";
 import { isFeatureOn } from "@/lib/features";
+import { formatThaiDateShort } from "@/lib/format-thai-date";
+import { FLOW_STEP_LABEL, flowStepHref, type FlowToken } from "@/lib/intake-flow";
 
 /** API ส่ง checkin มาด้วยจริง (ใช้จัดกลุ่มบ้านเดียวกัน/นัดเดียวกัน) แต่ type Booking กลางไม่มีฟิลด์นี้ */
-type BookingRow = Booking & { checkin?: string; checkout?: string; arrivalTime?: string };
+type BookingRow = Booking & {
+  checkin?: string;
+  checkout?: string;
+  arrivalTime?: string;
+  room?: string;
+  /** เรื่องที่ยังต้องทำก่อนวันนัด (เซิร์ฟเวอร์คิดให้ — ชุดเดียวกับการ์ดขอข้อมูล) */
+  todo?: { info?: "stay" | "groom"; vaccine?: boolean; idcard?: boolean; consent?: boolean };
+};
+
+/**
+ * รวมเรื่องที่ค้างของทั้งบ้านเป็นลำดับเดียว (ประวัติ → สมุดวัคซีน → บัตร → กฎ) แล้วคืนลิงก์ขั้นแรก
+ * ลูกค้าที่ปัดการ์ด LINE หายไป/ยังไม่ได้รับการ์ด ทำต่อเองจากหน้านี้ได้ ไม่ต้องทักถามร้าน
+ */
+function todoFlow(group: BookingRow[]): { href: string; labels: string[] } | null {
+  const pick = (k: "info" | "vaccine" | "idcard" | "consent") => group.filter((x) => x.todo?.[k]).map((x) => x.id);
+  const tokens: FlowToken[] = [];
+  const info = pick("info");
+  if (info.length) tokens.push({ step: "info", ids: info });
+  const vaccine = pick("vaccine");
+  if (vaccine.length) tokens.push({ step: "vaccine", ids: vaccine });
+  const idcard = pick("idcard");
+  if (idcard.length) tokens.push({ step: "idcard", ids: [idcard[0]] });
+  const consent = pick("consent");
+  if (consent.length) tokens.push({ step: "consent", ids: [consent[0]] });
+  if (!tokens.length) return null;
+  const kind = group[0].service === "room" ? "stay" : "groom";
+  return {
+    href: flowStepHref(tokens[0], tokens.slice(1), { by: "b", kind, total: tokens.length }),
+    labels: tokens.map((t) => FLOW_STEP_LABEL[t.step]),
+  };
+}
 
 /** เวลามาส่งน้องที่บันทึกไว้ — ที่เดียวกับหน้าเลือกเวลาจากลิงก์ LINE และที่หลังบ้านเห็น */
 const savedArrival = (b: BookingRow) => b.arrivalTime || b.checkinTime || "";
@@ -175,10 +207,15 @@ function BookingsContent() {
                       <span className="font-medium text-brown-soft">· {primary.customerName}</span>
                     </p>
                     <p className="mt-0.5 text-xs text-brown-soft">
-                      {primary.service === "groom" ? m.groom : m.room} ·{" "}
+                      {primary.service === "groom"
+                        ? m.groom
+                        : config.rooms.find((r) => r.id === primary.room)?.name || m.room}{" "}
+                      ·{" "}
                       {primary.service === "room" && primary.checkin
-                        ? `${primary.checkin}${primary.checkout ? ` → ${primary.checkout}` : ""}`
-                        : primary.date}
+                        ? `${formatThaiDateShort(primary.checkin)}${primary.checkout ? ` → ${formatThaiDateShort(primary.checkout)}` : ""}`
+                        : primary.date
+                          ? formatThaiDateShort(primary.date)
+                          : ""}
                       {primary.time && !mixedTime ? ` · ${primary.time}` : ""}
                     </p>
                     {mixedTime && (
@@ -202,7 +239,8 @@ function BookingsContent() {
                     {baths.length > 0 && (
                       <p className="mt-0.5 flex items-center gap-1 text-xs text-brown-soft">
                         <Icon name="bath" size={13} />
-                        {locale === "th" ? "อาบน้ำก่อนกลับ" : "Bath before going home"} {baths[0].date}
+                        {locale === "th" ? "อาบน้ำก่อนกลับ" : "Bath before going home"}{" "}
+                        {baths[0].date ? formatThaiDateShort(baths[0].date) : ""}
                         {baths[0].time ? ` · ${baths[0].time}` : ""}
                       </p>
                     )}
@@ -227,6 +265,29 @@ function BookingsContent() {
                           : m.pending}
                   </span>
                 </div>
+
+                {(() => {
+                  const flow = past || primary.status === "cancelled" ? null : todoFlow(group);
+                  if (!flow) return null;
+                  return (
+                    <div className="mt-3 rounded-petflow-sm bg-honey/15 p-3">
+                      <p className="text-xs font-extrabold text-petflow-chocolate">
+                        {locale === "th"
+                          ? `ก่อนวันนัด เหลืออีก ${flow.labels.length} อย่าง`
+                          : `${flow.labels.length} thing(s) left before your visit`}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-brown-soft">{flow.labels.join(" · ")}</p>
+                      {/* ยังรอยืนยัน = ปุ่มยืนยันด้านล่างเป็นปุ่มหลัก ตัวนี้เป็นปุ่มรอง (ปุ่มหลักมีได้ทีละปุ่ม) */}
+                      <a
+                        href={flow.href}
+                        className={`mt-2 ${primary.status === "pending" ? `${BTN_SECONDARY} bg-card` : BTN_PRIMARY}`}
+                      >
+                        <Icon name="send" size={16} />
+                        {locale === "th" ? "ทำต่อเลย" : "Continue"}
+                      </a>
+                    </div>
+                  );
+                })()}
 
                 {/* นัดที่ลูกค้าจองเอง → รอร้านยืนยัน ลูกค้ายืนยันเองไม่ได้ (กัน "จองเอง ยืนยันเอง") */}
                 {status === "pending" && selfBooked && !past && (
