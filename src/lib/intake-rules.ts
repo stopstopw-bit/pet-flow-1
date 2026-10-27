@@ -1,5 +1,5 @@
 import type { SiteConfig } from "./config-types";
-import { resolveGroomForm, type GroomField } from "./groom-form";
+import { otherKey, resolveGroomForm, type GroomField } from "./groom-form";
 import { resolveHistoryForm, resolveStayForm } from "./stay-form";
 import type { PetKind } from "./pet-kind";
 
@@ -113,7 +113,10 @@ export function stayInfoDone(json?: string | null): boolean {
 }
 
 /** เก็บเฉพาะคำถามที่มีจริง — ตัดความยาว และแปลงชนิดให้ตรงกับคำถาม */
-export function sanitizeIntakeInfo(fields: { key: string; type: string }[], info: unknown): Record<string, unknown> {
+export function sanitizeIntakeInfo(
+  fields: { key: string; type: string; allowOther?: boolean }[],
+  info: unknown
+): Record<string, unknown> {
   const payload: Record<string, unknown> = { submittedAt: new Date().toISOString() };
   const src = (info && typeof info === "object" ? info : {}) as Record<string, unknown>;
   for (const f of fields) {
@@ -127,6 +130,7 @@ export function sanitizeIntakeInfo(fields: { key: string; type: string }[], info
     } else {
       payload[f.key] = String(raw ?? "").trim().slice(0, 500);
     }
+    if (f.allowOther) payload[otherKey(f.key)] = String(src[otherKey(f.key)] ?? "").trim().slice(0, 300);
   }
   return payload;
 }

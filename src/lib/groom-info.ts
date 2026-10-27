@@ -84,6 +84,7 @@ export function groomInfoSummary(
     type: string;
     label: string;
     options: { key: string; label: string }[];
+    allowOther?: boolean;
   }[]
 ): Record<string, string> {
   const val = (k: string) => (info as Record<string, unknown>)[k];
@@ -98,7 +99,8 @@ export function groomInfoSummary(
       if (f.type === "multi" || f.type === "single") {
         const label = (k: string) =>
           f.options.find((o) => o.key === k)?.label || LEGACY_LABELS[k] || k;
-        out[f.label] = asList(raw).map(label).join(", ") || "-";
+        const typed = f.allowOther ? String(val(`${f.key}Other`) ?? "").trim() : "";
+        out[f.label] = [...asList(raw).map(label), ...(typed ? [typed] : [])].join(", ") || "-";
       } else {
         const s = String(raw ?? "").trim();
         out[f.label] = s === "unknown" ? "ไม่ทราบ" : s || "-";

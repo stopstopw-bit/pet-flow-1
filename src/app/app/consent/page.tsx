@@ -20,6 +20,7 @@ import { IntakeFlowBar } from "@/components/IntakeFlowBar";
 import { SectionLabel } from "@/components/ui";
 import { Icon } from "@/components/Icon";
 import { MAX_VACCINE_PHOTOS } from "@/lib/vaccine-photos";
+import { flowProgress } from "@/lib/intake-flow";
 import { idCardPurpose, watermarkIdCard } from "@/lib/id-card-watermark";
 import { isFeatureOn } from "@/lib/features";
 import { customerFetch } from "@/lib/customer-fetch";
@@ -30,6 +31,7 @@ type StayBooking = Booking & {
   room?: string;
   consentAcceptedAt?: string;
   careNote?: string;
+  vaccinePhotoUrl?: string;
 };
 
 function SignaturePad({
@@ -151,6 +153,10 @@ function ConsentContent() {
   const [groupCats, setGroupCats] = useState<{ id: string; catName: string }[]>([]);
   const [vaccineByCat, setVaccineByCat] = useState<Record<string, string[]>>({});
   const [vaccineUploading, setVaccineUploading] = useState("");
+  // น้องทุกตัวในนัดนี้แนบสมุดวัคซีนไว้แล้ว (ขั้นแนบสมุดวัคซีน / พนักงานแนบให้) → ไม่ถามซ้ำ
+  const [vaccineOnFile, setVaccineOnFile] = useState(false);
+  // มาจากการ์ดรวมขอข้อมูล (ไล่ทีละหน้า) — สมุดวัคซีนมีขั้นของตัวเองแล้ว ไม่ถามซ้ำในหน้านี้
+  const inFlow = !!flowProgress(params);
   const [fleaTickTreated, setFleaTickTreated] = useState(false);
   const [idCardUrl, setIdCardUrl] = useState("");
   // เคยแนบบัตรไว้แล้วจากรอบก่อน → ไม่ถามซ้ำ (ขอครั้งเดียวพอ)
@@ -185,6 +191,7 @@ function ConsentContent() {
           const key = bookingGroupKey(stay);
           const group = list.filter((b) => bookingGroupKey(b) === key && b.status !== "cancelled");
           setCatLabel(groupCatNames(group));
+          setVaccineOnFile(group.length > 0 && group.every((b) => !!b.vaccinePhotoUrl?.trim()));
           // ตัวที่ลิงก์ชี้มาก่อน แล้วตามด้วยตัวอื่นในบ้าน
           setGroupCats(
             [stay, ...group.filter((b) => b.id !== stay.id)].map((b) => ({ id: b.id, catName: b.catName }))
@@ -465,8 +472,8 @@ function ConsentContent() {
               </section>
               )}
 
-              {/* ลิงก์จากหน้าข้อมูลลูกค้า: สมุดวัคซีนมีการ์ดขอแยกต่างหาก (เก็บที่ตัวน้อง) ไม่ถามซ้ำตรงนี้ */}
-              {!customerMode && isFeatureOn(config, "vaccine") && (
+              {/* ลิงก์จากหน้าข้อมูลลูกค้า / การ์ดรวมขอข้อมูล: สมุดวัคซีนมีขั้นของตัวเองแล้ว · แนบไว้แล้วก็ไม่ถามซ้ำ */}
+              {!customerMode && !inFlow && !vaccineOnFile && isFeatureOn(config, "vaccine") && (
               <section className="mt-4 rounded-petflow border border-petflow-line bg-card p-4 shadow-petflow-sm">
                 <label className="flex items-center gap-1.5 text-xs font-bold text-petflow-chocolate">
                   <Icon name="image" size={14} />
