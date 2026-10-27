@@ -27,6 +27,7 @@ export const STAY_FORM_DEFAULTS: GroomField[] = [
   },
   {
     key: "snacks",
+    canSkip: true,
     type: "text",
     label: "ขนมที่ให้ได้ / ห้ามให้ (ถ้ามี)",
     placeholder: "เช่น ให้ขนมได้วันละ 1 ชิ้น",
@@ -36,6 +37,7 @@ export const STAY_FORM_DEFAULTS: GroomField[] = [
   },
   {
     key: "likes",
+    canSkip: true,
     type: "text",
     label: "น้องชอบอะไรคะ (ของเล่น / ให้อุ้ม / ที่นอนแบบไหน)",
     placeholder: "เช่น ชอบเล่นลูกบอล ชอบนอนในที่มืดๆ",
@@ -45,6 +47,7 @@ export const STAY_FORM_DEFAULTS: GroomField[] = [
   },
   {
     key: "dislikes",
+    canSkip: true,
     type: "text",
     label: "น้องไม่ชอบหรือกลัวอะไรคะ",
     placeholder: "เช่น ไม่ชอบให้จับท้อง กลัวเสียงดัง",
@@ -67,6 +70,7 @@ export const STAY_FORM_DEFAULTS: GroomField[] = [
   },
   {
     key: "litter",
+    canSkip: true,
     type: "text",
     label: "ทรายที่ใช้ / การขับถ่ายที่ควรรู้",
     placeholder: "เช่น ทรายเต้าหู้ ขับถ่ายปกติ",
@@ -76,6 +80,7 @@ export const STAY_FORM_DEFAULTS: GroomField[] = [
   },
   {
     key: "medical",
+    canSkip: true,
     type: "textarea",
     label: "โรคประจำตัว / ยาที่ต้องกิน (ถ้าไม่มีเว้นว่างได้)",
     placeholder: "เช่น กินยาโรคไต เช้า-เย็น หลังอาหาร",
@@ -85,6 +90,7 @@ export const STAY_FORM_DEFAULTS: GroomField[] = [
   },
   {
     key: "note",
+    canSkip: true,
     type: "textarea",
     label: "อยากให้ดูแลอะไรเป็นพิเศษไหมคะ",
     placeholder: "เช่น ขอรูปอัปเดตทุกเย็น ช่วยแปรงขนให้หน่อย",
@@ -120,17 +126,49 @@ const WITH_OTHERS = STAY_FORM_DEFAULTS.find((d) => d.key === "withOthers")!;
  * key ที่ใช้ร่วมกับแมว (food/likes/withOthers/note) คงไว้ให้ข้อมูลเก่าอ่านได้
  */
 const DOG_FORM: GroomField[] = [
-  // ประวัติเจ้าของ
-  text("ownerNickname", "ชื่อเล่นเจ้าของ", "เช่น พี่ส้ม", true),
-  text("emergencyContact", "เบอร์ฉุกเฉินและความเกี่ยวข้อง", "เช่น 081-234-5678 (คุณแม่)", true),
-  // ประวัติสุนัข
-  text("temperament", "นิสัยส่วนตัว", "เช่น ขี้อ้อน ตื่นคนแปลกหน้านิดหน่อย", true),
-  text("likes", "สิ่งที่ชอบและไม่ชอบ", "เช่น ชอบลูกบอล ไม่ชอบให้จับเท้า"),
-  text("fleaLast", "กำจัดเห็บหมัดครั้งล่าสุดเมื่อไหร่", "เช่น ต้นเดือนนี้", true),
+  // ประวัติเจ้าของ — ถามครั้งเดียวตอนสมัครสมาชิก ฟอร์มก่อนอาบน้ำ/เข้าพักไม่ถามซ้ำ (เจ้าของระบบ 2026-10-27)
+  // ชื่อเล่นเจ้าของเอาออก — หน้าสมัครถามชื่อจริงแล้ว
+  { ...text("emergencyContact", "เบอร์ฉุกเฉินและความเกี่ยวข้อง", "เช่น 081-234-5678 (คุณแม่)"), canSkip: true },
+  // ประวัติสุนัข — กดเลือกให้มากที่สุด ลูกค้าพิมพ์น้อยที่สุด · ข้อที่ "ไม่มี" ได้ ไม่บังคับ
+  {
+    key: "temperament",
+    type: "multi",
+    label: "นิสัยน้อง (เลือกได้หลายข้อ)",
+    required: true,
+    enabled: true,
+    options: [
+      { key: "friendly", label: "🙂 เป็นมิตร ให้จับง่าย" },
+      { key: "clingy", label: "🥰 ขี้อ้อน" },
+      { key: "playful", label: "😆 ขี้เล่น ซน" },
+      { key: "fearful", label: "😨 ขี้กลัว ตกใจง่าย" },
+      { key: "strangerShy", label: "🙈 ตื่นคนแปลกหน้า" },
+      { key: "struggle", label: "🌀 ดิ้นเวลาโดนจับ" },
+      { key: "bite", label: "😠 หวง/อาจงับ" },
+      { key: "dogShy", label: "🐕 ไม่ถูกกับหมาตัวอื่น" },
+    ],
+  },
+  {
+    key: "cautions",
+    type: "multi",
+    label: "มีอะไรต้องระวังเป็นพิเศษไหมคะ (ไม่มีข้ามได้)",
+    required: false,
+    enabled: true,
+    canSkip: true,
+    options: [
+      { key: "paws", label: "🐾 ไม่ชอบให้จับเท้า" },
+      { key: "nails", label: "✂️ ไม่ชอบตัดเล็บ" },
+      { key: "ears", label: "👂 ไม่ชอบให้จับหู" },
+      { key: "dryer", label: "💨 กลัวไดร์/เสียงดัง" },
+      { key: "skin", label: "🫧 ผิวแพ้ง่าย" },
+      { key: "joints", label: "🦴 ขา/ข้อไม่ดี อุ้มเบาๆ" },
+      { key: "senior", label: "👵 สูงอายุ เหนื่อยง่าย" },
+    ],
+  },
+  { ...text("likes", "อยากบอกอะไรเพิ่มไหมคะ (ไม่มีข้ามได้)", "เช่น ชอบลูกบอล ไม่ชอบให้จับหาง"), canSkip: true },
   {
     key: "fleaMethod",
     type: "single",
-    label: "กำจัดเห็บหมัดโดยการหยด หรือ ทานยา",
+    label: "กำจัดเห็บหมัดแบบไหนคะ",
     required: true,
     enabled: true,
     options: [
@@ -139,9 +177,23 @@ const DOG_FORM: GroomField[] = [
       { key: "none", label: "❓ ไม่ได้ทำ / ไม่แน่ใจ" },
     ],
   },
+  {
+    key: "fleaLast",
+    type: "single",
+    label: "ทำครั้งล่าสุดเมื่อไหร่คะ",
+    required: false,
+    enabled: true,
+    canSkip: true,
+    options: [
+      { key: "1m", label: "🗓️ ภายใน 1 เดือน" },
+      { key: "3m", label: "📅 1–3 เดือน" },
+      { key: "older", label: "⏳ นานกว่า 3 เดือน" },
+      { key: "unknown", label: "❓ จำไม่ได้" },
+    ],
+  },
   // การดูแล
   text("food", "อาหาร ให้เวลาไหน อย่างไรบ้าง — รบกวนเตรียมอาหารมาเองนะคะ", "เช่น เม็ด Royal Canin เช้า 8 โมง เย็น 6 โมง มื้อละ 1 ถ้วย", true),
-  text("medicine", "การทานยา (หากมี)", "เช่น ยาโรคหัวใจ 1/2 เม็ด หลังอาหารเช้า"),
+  { ...text("medicine", "การทานยา (หากมี)", "เช่น ยาโรคหัวใจ 1/2 เม็ด หลังอาหารเช้า"), canSkip: true },
   // ฟอร์มหมายังถามเรื่องเข้าสังคม (ข้อของแมวปิดไว้เป็นค่าเริ่มต้น)
   { ...WITH_OTHERS, label: "เข้าสังคมกับน้องตัวอื่นได้ไหมคะ", enabled: true },
   {
@@ -158,6 +210,7 @@ const DOG_FORM: GroomField[] = [
   },
   {
     key: "note",
+    canSkip: true,
     type: "textarea",
     label: "การดูแลเพิ่มเติม (request) — บอกได้เหมือนเลี้ยงที่บ้าน ทางร้านจะดูแลตามนี้ให้ได้มากที่สุด อาจปรับเล็กน้อยตามขอบเขตค่ะ",
     placeholder: "เช่น ก่อนนอนชอบให้เปิดเพลงเบาๆ ขอรูปอัปเดตทุกเย็น",
@@ -174,12 +227,12 @@ const LITTER_BOTH: Pick<GroomField, "label" | "placeholder"> = {
 
 /** หมวดของคำถามในฟอร์มหมา — เจ้าของ → น้อง → การดูแล (ตามลำดับใน DOG_FORM) */
 const DOG_SECTIONS: Record<string, GroomField["section"]> = {
-  ownerNickname: "owner",
   emergencyContact: "owner",
   temperament: "pet",
+  cautions: "pet",
   likes: "pet",
-  fleaLast: "pet",
   fleaMethod: "pet",
+  fleaLast: "pet",
 };
 for (const f of DOG_FORM) f.section = DOG_SECTIONS[f.key] ?? "care";
 
@@ -194,12 +247,13 @@ function fieldsFor(kind?: PetKind): GroomField[] {
   return STAY_FORM_DEFAULTS;
 }
 
-/** บังคับตอบข้อนี้ — ข้อความ "ถ้าไม่มีเว้นว่างได้" ไม่ใช้แล้ว ให้พิมพ์ "ไม่มี" แทน */
+/**
+ * บังคับตอบข้อนี้ (ร้านตั้ง "บังคับทุกข้อ") — ยกเว้นข้อที่ "ไม่มี" ได้ (canSkip) ไม่บังคับ ลูกค้าไม่ต้องพิมพ์ "ไม่มี"
+ * (เจ้าของระบบ 2026-10-27)
+ */
 function requireAnswer(f: GroomField): GroomField {
-  if (f.required) return f;
-  const label = f.label.replace(/\s*\((ถ้าไม่มีเว้นว่างได้|หากมี|ถ้ามี)\)/, "");
-  const hint = f.type === "text" || f.type === "textarea" ? " — ไม่มีพิมพ์ \"ไม่มี\"" : "";
-  return { ...f, required: true, label: `${label}${hint}` };
+  if (f.required || f.canSkip) return f;
+  return { ...f, required: true };
 }
 
 /**

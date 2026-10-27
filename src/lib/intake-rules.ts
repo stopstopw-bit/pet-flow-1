@@ -37,19 +37,30 @@ export function groomUsesCard(cfg: WithRules, part: string): boolean {
 /**
  * คำถามในฟอร์มที่ลูกค้ากรอก — ชุดเดียวกันทั้งหน้าฟอร์ม, API ที่บันทึก และสรุปในหลังบ้าน
  * form: "groom" ฟอร์มของนัดอาบน้ำ/นวด · "stay" ฟอร์มก่อนเข้าพัก · kind: ชนิดของน้องตัวนั้น
+ * หมวดเจ้าของ (เบอร์ฉุกเฉิน) ถามครั้งเดียวตอนสมัครสมาชิก ไม่ถามซ้ำในฟอร์มนี้ (เจ้าของระบบ 2026-10-27)
+ * — withOwner: ใส่หมวดเจ้าของด้วย ใช้ตอนสรุปคำตอบในหลังบ้าน
  */
 export function intakeFields(
   form: "groom" | "stay",
   kind: PetKind | undefined,
-  cfg: (WithRules & Partial<Pick<SiteConfig, "groomForm" | "stayForm">>) | null | undefined
+  cfg: (WithRules & Partial<Pick<SiteConfig, "groomForm" | "stayForm">>) | null | undefined,
+  opts?: { withOwner?: boolean }
 ): GroomField[] {
   const allRequired = Boolean(cfg?.intakeRules?.allRequired);
-  if (form === "stay") return resolveStayForm(cfg?.stayForm, kind, { allRequired });
+  const ask = (fs: GroomField[]) => (opts?.withOwner ? fs : fs.filter((f) => f.section !== "owner"));
+  if (form === "stay") return ask(resolveStayForm(cfg?.stayForm, kind, { allRequired }));
   if (cfg?.intakeRules?.groomUsesHistory) {
     const history = resolveHistoryForm(kind, { allRequired }, cfg?.stayForm);
-    if (history) return history;
+    if (history) return ask(history);
   }
   return resolveGroomForm(cfg?.groomForm, kind);
+}
+
+/** key หมวดเจ้าของของฟอร์มทำประวัติ — เก็บคำตอบจากหน้าสมัครไว้ตอนลูกค้าส่งฟอร์มก่อนเข้าพัก */
+export function ownerHistoryKeys(kind: PetKind | undefined, cfg: Parameters<typeof intakeFields>[2]): string[] {
+  return intakeFields("stay", kind, cfg, { withOwner: true })
+    .filter((f) => f.section === "owner")
+    .map((f) => f.key);
 }
 
 /**
@@ -62,7 +73,7 @@ export function summaryFields(
   cfg: Parameters<typeof intakeFields>[2],
   info: Record<string, unknown>
 ): GroomField[] | undefined {
-  const fs = intakeFields(form, kind, cfg);
+  const fs = intakeFields(form, kind, cfg, { withOwner: true });
   return fs.some((f) => f.key in info) ? fs : undefined;
 }
 
