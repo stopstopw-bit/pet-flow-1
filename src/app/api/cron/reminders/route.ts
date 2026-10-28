@@ -35,6 +35,7 @@ import {
   getPetDocsUrl,
   buildStayInfoBody,
   bookingScheduleText,
+  prestayDue,
 } from "@/lib/booking-reminders";
 import { listCustomers, getCatGroomInfo, getCatStaffNotes, getIntakeStatus } from "@/lib/customers-store";
 import type { StoredBooking } from "@/lib/bookings-store";
@@ -271,7 +272,14 @@ async function runForTenant() {
       const catLabel = groupCatNames(group);
       // เข้าพักที่ลูกค้าเลือกเวลามาส่งแล้ว = ยืนยันกับเราแล้ว และได้การ์ดเตรียมตัว (วัน/ห้อง) ไปก่อนหน้านี้แล้ว
       // ไม่ต้องส่งการ์ด "กำหนดการนัด" ซ้ำอีกใบ — ส่งเฉพาะบ้านที่ยังไม่ได้เลือกเวลา
-      const skipConfirmCard = primary.service === "room" && group.every((x) => x.arrivalTime);
+      // จองกระชั้นที่ได้ชุดก่อนเข้าพักตามหลังในรอบนี้ (ดู prestayDue) — ชุดนั้นบอกวัน/ห้องแล้ว ไม่ต้องส่งซ้ำ
+      const skipConfirmCard =
+        primary.service === "room" &&
+        (group.every((x) => x.arrivalTime) ||
+          (auto?.prestayReminderEnabled !== false &&
+            cardOn(cfg, "prestay") &&
+            !group.every((x) => autoMuted(x, "prestay")) &&
+            prestayDue(group, cfg) === "catchup"));
       // รวมการ์ดของวันนี้ไว้ใน push เดียว (เตือนนัด + ขอประวัติ ถ้าจำเป็น) — นับ 1 ข้อความ LINE
       const dayMessages: object[] = skipConfirmCard ? [] : [
         await buildBookingConfirmFlex({
@@ -427,7 +435,6 @@ async function runForTenant() {
 
   // ── เตือนก่อนเข้าพัก (ห้องพัก) — จำนวนวันตั้งค่าได้ในหลังบ้าน ──
   const in7 = addDays(todayStr, auto?.depositReminderDays ?? 7);
-  const in3 = addDays(todayStr, auto?.prestayReminderDays ?? 3);
   const afterCheckoutReview = addDays(todayStr, -(auto?.reviewRequestDaysAfter ?? 1));
 
   let depositReminders = 0;
@@ -488,12 +495,19 @@ async function runForTenant() {
     if (
       auto?.prestayReminderEnabled !== false &&
       !groupMuted("prestay") &&
-      b.checkin === in3
+      prestayDue(group, cfg) !== null
     ) {
       // ปุ่มเลือกเวลาเช็คอินอยู่ในการ์ดเตรียมตัวเลย ไม่ส่งการ์ดเลือกเวลาแยกอีกใบ
       // (ข้ามถ้าเลือกเวลาแล้ว หรือ cron เตือนเช็คอินเป็นคนส่งแทน — บ้านหนึ่งได้ปุ่มนี้รอบเดียว)
+      // จองกระชั้นจนรอบเตือนเช็คอินก็ผ่านไปแล้ว — ใส่ปุ่มเลือกเวลาในชุดตามหลังนี้แทน (ถ้ายังไม่ได้เลือก)
+      const picker = checkinPickerSender(group, cfg);
+      const lateNoPicker =
+        picker === null &&
+        prestayDue(group, cfg) === "catchup" &&
+        isFeatureOn(cfg, "checkinTime") &&
+        group.some((x) => !x.arrivalTime);
       const timeUrl =
-        checkinPickerSender(group, cfg) === "prestay"
+        picker === "prestay" || lateNoPicker
           ? await getBookingTimeUrl(b.id, "checkin")
           : "";
       // กฎ + กดยินยอม (ปิดรายนัดได้ ไม่ส่งซ้ำถ้ากดยอมรับนัดนี้แล้ว) + ข้อมูลก่อนเข้าพัก / สมุดวัคซีน /
