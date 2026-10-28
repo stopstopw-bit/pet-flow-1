@@ -134,6 +134,32 @@ export function checkinPickerSender(
   return null;
 }
 
+/**
+ * รอบเที่ยงนี้ต้องส่งชุดก่อนเข้าพักให้บ้านนี้ไหม
+ * ปกติส่ง N วันก่อนเข้าพักพอดี (prestayReminderDays) — แต่นัดที่จองเข้ามาหลังรอบนั้นผ่านไปแล้ว
+ * (จองกระชั้น เช่น วันนี้จองพรุ่งนี้) เคยไม่ได้อะไรเลยสักใบ: ไม่ได้ชุดก่อนเข้าพัก ไม่ถูกขอกฎ/วัคซีน
+ * และการ์ดยืนยันนัดก็ข้ามไปอีกเพราะร้านใส่เวลารับน้องไว้แล้ว → ส่งตามให้ในรอบเที่ยงแรกหลังจอง
+ * ครั้งเดียว: นับเฉพาะนัดที่จองระหว่างเที่ยงเมื่อวานถึงเที่ยงวันนี้ (ยึดเวลารอบ ไม่ใช่เวลาที่ cron รันจริง
+ * — Vercel แพ็กฟรีรันคลาดได้ถึง 1 ชม. ถ้าใช้ "24 ชม. ย้อนหลัง" จะได้ซ้ำหรือหล่น) และยังไม่ถึงวันเข้าพัก
+ */
+export function prestayDue(
+  group: Pick<StoredBooking, "checkin" | "date" | "createdAt">[],
+  cfg: SiteConfig,
+  now: number = Date.now()
+): "regular" | "catchup" | null {
+  if (group.length === 0) return null;
+  const checkin = group[0].checkin || group[0].date || "";
+  if (!checkin) return null;
+  const days = cfg.automation?.prestayReminderDays ?? 3;
+  const today = new Date(now + 7 * 3600_000).toISOString().slice(0, 10);
+  if (checkin === shiftDate(today, days)) return "regular";
+  if (checkin <= today) return null;
+  const prestayAt = Date.parse(`${shiftDate(checkin, -days)}T12:00:00+07:00`);
+  const roundAt = Date.parse(`${today}T12:00:00+07:00`);
+  const created = Math.min(...group.map((x) => Date.parse(x.createdAt) || 0));
+  return created >= prestayAt && created >= roundAt - 24 * 3600_000 && created < roundAt ? "catchup" : null;
+}
+
 /** ลิงก์หน้ากรอกประวัติน้องก่อนอาบน้ำ (คืน "" ถ้ายังไม่ได้ตั้ง LIFF ID) — ใส่ array ได้ถ้าจองทั้งบ้านหลายตัว */
 export async function getGroomInfoUrl(
   bookingIds: string | string[],
