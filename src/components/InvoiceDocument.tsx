@@ -27,7 +27,7 @@ export type Invoice = {
   promoLabel?: string;
   total: number;
   status: "pending" | "paid";
-  paymentMethod?: "transfer" | "member_credit" | "cash";
+  paymentMethod?: "transfer" | "member_credit" | "cash" | "package";
   paidAt?: string;
   createdAt: string;
 };
@@ -289,6 +289,7 @@ export function InvoiceDocument({
                           ["transfer", "โอนเงิน"],
                           ["card", "บัตรเครดิต"],
                           ...(inv.paymentMethod === "member_credit" ? [["member_credit", "เครดิตสมาชิก"] as const] : []),
+                          ...(inv.paymentMethod === "package" ? [["package", "หักจากคอร์ส"] as const] : []),
                         ] as const
                       ).map(([m, l]) => (
                         <span key={m} className="inline-flex items-center gap-[5px]">
