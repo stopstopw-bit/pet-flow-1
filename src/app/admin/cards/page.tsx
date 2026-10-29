@@ -174,7 +174,7 @@ const CARDS: CardMeta[] = [
         stateKey: "depositRequestBody",
         label: "เนื้อความ",
         multiline: true,
-        hint: "ใช้ได้: {name} {cat} {amount} {pct}",
+        hint: "ใช้ได้: {name} {pet} {amount} {pct}",
       },
     ],
     styleTexts: [
@@ -227,7 +227,7 @@ const CARDS: CardMeta[] = [
         stateKey: "reviewRequest",
         label: "เนื้อความขอรีวิว (แบบอัตโนมัติหลังเช็คเอาท์)",
         multiline: true,
-        hint: "ใช้ได้: {shop} {cat}",
+        hint: "ใช้ได้: {shop} {pet}",
       },
     ],
     styleTexts: [
@@ -287,7 +287,7 @@ const CARDS: CardMeta[] = [
         stateKey: "groomInfoIntro",
         label: "เนื้อความชวนกรอกประวัติ",
         multiline: true,
-        hint: "ใช้ได้: {shop} {cat}",
+        hint: "ใช้ได้: {shop} {pet}",
       },
     ],
     styleTexts: [
@@ -313,7 +313,7 @@ const CARDS: CardMeta[] = [
     styleTexts: [
       { key: "headerStay", label: "หัวการ์ด (นัดเข้าพัก)", placeholder: INTAKE_CARD_DEFAULTS.headerStay },
       { key: "headerGroom", label: "หัวการ์ด (นัดอาบน้ำ)", placeholder: INTAKE_CARD_DEFAULTS.headerGroom },
-      { key: "body", label: "เนื้อความ (ใช้ได้: {cat} {shop})", placeholder: INTAKE_CARD_DEFAULTS.body, multiline: true },
+      { key: "body", label: "เนื้อความ (ใช้ได้: {pet} {shop})", placeholder: INTAKE_CARD_DEFAULTS.body, multiline: true },
       { key: "startButton", label: "ปุ่ม: เริ่มกรอกข้อมูล (ปุ่มเดียว ไล่ทีละหน้า)", placeholder: INTAKE_CARD_DEFAULTS.startButton },
       { key: "stayInfoButton", label: "ขั้น: ข้อมูลก่อนเข้าพัก", placeholder: INTAKE_CARD_DEFAULTS.stayInfoButton },
       { key: "infoButton", label: "ขั้น: ประวัติก่อนอาบน้ำ", placeholder: INTAKE_CARD_DEFAULTS.infoButton },
@@ -340,7 +340,7 @@ const CARDS: CardMeta[] = [
     texts: [],
     styleTexts: [
       { key: "vaccineHeader", label: "สมุดวัคซีน: หัวการ์ด", placeholder: DOC_REQUEST_DEFAULTS.vaccineHeader },
-      { key: "vaccineBody", label: "สมุดวัคซีน: เนื้อความ (ใช้ได้: {cat})", placeholder: DOC_REQUEST_DEFAULTS.vaccineBody, multiline: true },
+      { key: "vaccineBody", label: "สมุดวัคซีน: เนื้อความ (ใช้ได้: {pet})", placeholder: DOC_REQUEST_DEFAULTS.vaccineBody, multiline: true },
       { key: "vaccineButton", label: "สมุดวัคซีน: ปุ่ม", placeholder: DOC_REQUEST_DEFAULTS.vaccineButton },
       { key: "idcardHeader", label: "บัตรประชาชน: หัวการ์ด", placeholder: DOC_REQUEST_DEFAULTS.idcardHeader },
       { key: "idcardBody", label: "บัตรประชาชน: เนื้อความ", placeholder: DOC_REQUEST_DEFAULTS.idcardBody, multiline: true },
@@ -372,7 +372,7 @@ const CARDS: CardMeta[] = [
         stateKey: "prestayIntro",
         label: "ข้อความเปิดหัวการ์ด",
         multiline: true,
-        hint: "ใช้ได้: {cat}",
+        hint: "ใช้ได้: {pet}",
       },
       {
         stateKey: "prestayPrepIntro",
@@ -437,7 +437,7 @@ const CARDS: CardMeta[] = [
       { key: "header", label: "ข้อความบนแถบหัว", placeholder: DEPOSIT_REMINDER_DEFAULTS.header },
       {
         key: "body",
-        label: "เนื้อความ (ใช้ได้: {shop} {cat} {days} {checkin} {deposit} {remaining})",
+        label: "เนื้อความ (ใช้ได้: {shop} {pet} {days} {checkin} {deposit} {remaining})",
         placeholder: DEPOSIT_REMINDER_DEFAULTS.body,
         multiline: true,
       },
@@ -464,13 +464,13 @@ const CARDS: CardMeta[] = [
         stateKey: "checkinReminder",
         label: "เนื้อความการ์ด — เลือกเวลาเข้าพัก (ก่อนวันเข้าพัก)",
         multiline: true,
-        hint: "ใช้ได้: {shop} {cat} {checkin} {room} {litterNote}",
+        hint: "ใช้ได้: {shop} {pet} {checkin} {room} {litterNote}",
       },
       {
         stateKey: "checkoutReminder",
         label: "เนื้อความการ์ด — เลือกเวลารับน้อง (ก่อนวันออก)",
         multiline: true,
-        hint: "ใช้ได้: {shop} {cat} {checkout}",
+        hint: "ใช้ได้: {shop} {pet} {checkout}",
       },
     ],
     styleTexts: [
@@ -499,7 +499,7 @@ const CARDS: CardMeta[] = [
         stateKey: "depositThanksBody",
         label: "เนื้อความ",
         multiline: true,
-        hint: "ใช้ได้: {shop} {cat} {amount}",
+        hint: "ใช้ได้: {shop} {pet} {amount}",
       },
       {
         stateKey: "depositTerms",
@@ -1024,7 +1024,7 @@ function Preview({
           </p>
           <p className="whitespace-pre-line">
             {(texts.depositRequestBody || "รบกวนชำระมัดจำเพื่อจองคิวนะคะ")
-              .replace("{name}", "ตาล").replace("{cat}", "Soju")
+              .replace("{name}", "ตาล").replace(/\{(?:pet|cat)\}/g, "Soju")
               .replace("{amount}", "200").replace("{pct}", "")}
           </p>
           {show("note") && <p className="text-[10px] text-[#A2907E]">📝 โน้ต: จองคิววันเสาร์</p>}
@@ -1089,7 +1089,7 @@ function Preview({
         <div className="space-y-1.5 px-4 py-3 text-[11px] text-[#4E3E32]">
           <p className="whitespace-pre-line">
             {(texts.reviewRequest || "ถ้าประทับใจ ฝากรีวิวให้ทีมงานหน่อยนะคะ")
-              .replace("{shop}", shop).replace("{cat}", "น้อง Soju")}
+              .replace("{shop}", shop).replace(/\{(?:pet|cat)\}/g, "น้อง Soju")}
           </p>
           {st.closing && <p className="whitespace-pre-line text-[10px] text-[#A2907E]">{st.closing}</p>}
         </div>
@@ -1229,7 +1229,7 @@ function Preview({
         <div className="space-y-2 px-4 py-3 text-[11px] text-[#4E3E32]">
           <p className="whitespace-pre-line">
             {(st.texts?.body?.trim() || D.body)
-              .replace(/\{days\}/g, "7").replace(/\{cat\}/g, "น้องโมจิ").replace(/\{shop\}/g, shop)
+              .replace(/\{days\}/g, "7").replace(/\{(?:pet|cat)\}/g, "น้องโมจิ").replace(/\{shop\}/g, shop)
               .replace(/\{checkin\}/g, "20 ก.ค. 69").replace(/\{deposit\}/g, "641").replace(/\{remaining\}/g, "1,496")}
           </p>
           {show("schedule") && <p className="font-bold text-[#4A7348]">🏠 เข้าพัก: 20 ก.ค. 69 → 26 ก.ค. 69</p>}
@@ -1614,7 +1614,7 @@ function Preview({
           <p className={`${titleCls} font-extrabold`} style={{ color: c("accentColor", "#5C4033") }}>🐾 น้องโรเซ่, Soju</p>
           <p className="text-[10px] text-[#A2907E]">{shop} · 🏠 เข้าพัก: 24 ต.ค. → 27 ต.ค.</p>
           <p className="whitespace-pre-line">
-            {t("body", INTAKE_CARD_DEFAULTS.body).replaceAll("{cat}", "น้องโรเซ่, Soju").replaceAll("{shop}", shop)}
+            {t("body", INTAKE_CARD_DEFAULTS.body).replace(/\{(?:pet|cat)\}/g, "น้องโรเซ่, Soju").replaceAll("{shop}", shop)}
           </p>
           <div className="space-y-0.5 text-xs text-[#5C4033]">
             {[
@@ -1662,7 +1662,7 @@ function Preview({
           <p className={`${titleCls} font-extrabold`} style={{ color: c("accentColor", "#5C4033") }}>🐾 น้อง Soju</p>
           <p className="text-[10px] text-[#A2907E]">{shop} · 🏠 เข้าพัก: 24 ต.ค. → 27 ต.ค.</p>
           <p className="whitespace-pre-line">
-            {t(`${kind}Body`, DOC_REQUEST_DEFAULTS[`${kind}Body`]).replaceAll("{cat}", "น้อง Soju")}
+            {t(`${kind}Body`, DOC_REQUEST_DEFAULTS[`${kind}Body`]).replace(/\{(?:pet|cat)\}/g, "น้อง Soju")}
           </p>
           {st.closing && <p className="whitespace-pre-line text-[10px] text-[#A2907E]">{st.closing}</p>}
         </div>
@@ -1688,7 +1688,7 @@ function Preview({
         {show("date") && <p className="text-[10px] text-[#A2907E]">📅 นัดอาบน้ำ: 24 ก.ค. 12:30</p>}
         <p className="whitespace-pre-line">
           {(texts.groomInfoIntro || "รบกวนแจ้งประวัติน้องสั้นๆ นะคะ 🐾")
-            .replace("{shop}", shop).replace("{cat}", "น้อง Soju")}
+            .replace("{shop}", shop).replace(/\{(?:pet|cat)\}/g, "น้อง Soju")}
         </p>
         {st.closing && <p className="whitespace-pre-line text-[10px] text-[#A2907E]">{st.closing}</p>}
       </div>

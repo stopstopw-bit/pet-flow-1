@@ -65,29 +65,29 @@ export type TierRulesConfig = {
 
 /** ข้อความ (plain text) ที่ส่งหาลูกค้า — แก้ได้ในหน้าตั้งค่า > ข้อความ */
 export type MessagesConfig = {
-  /** เตือนยอดคงเหลือ 7 วันก่อนเข้าพัก — {shop} {cat} {checkin} {deposit} {remaining} {bank} {accountNumber} {accountName} */
+  /** เตือนยอดคงเหลือ 7 วันก่อนเข้าพัก — {shop} {pet} {checkin} {deposit} {remaining} {bank} {accountNumber} {accountName} */
   depositReminder: string;
-  /** รายละเอียด 3 วันก่อนเข้าพัก — {shop} {cat} {checkin} {checkout} {room} (เก่า/สำรอง) */
+  /** รายละเอียด 3 วันก่อนเข้าพัก — {shop} {pet} {checkin} {checkout} {room} (เก่า/สำรอง) */
   prestayReminder: string;
-  /** การ์ดเข้าพัก — ประโยคทักทายเปิด — {shop} {cat} */
+  /** การ์ดเข้าพัก — ประโยคทักทายเปิด — {shop} {pet} */
   prestayIntro: string;
   /** การ์ดเข้าพัก — ประโยคเกริ่นก่อนลิสต์ของที่ต้องเตรียม */
   prestayPrepIntro: string;
   /** การ์ดเข้าพัก — รายการของที่ต้องเตรียม (บรรทัดละ 1 ข้อ) */
   prestayPrepItems: string[];
-  /** การ์ดเข้าพัก — ประโยคปิดชวนแจ้งการดูแลพิเศษ — {cat} */
+  /** การ์ดเข้าพัก — ประโยคปิดชวนแจ้งการดูแลพิเศษ — {pet} */
   prestayCareNote: string;
   /** การ์ดเข้าพัก — ข้อความเตือนให้เตรียมทราย (เข้าพักสั้นกว่าเกณฑ์แถมฟรี) — {min} */
   prestayLitterNote: string;
-  /** เตือนเช็คอิน ก่อนเข้าพัก — {shop} {cat} {checkin} {room} */
+  /** เตือนเช็คอิน ก่อนเข้าพัก — {shop} {pet} {checkin} {room} */
   checkinReminder: string;
-  /** เตือนเช็คเอาท์ ก่อนออก — {shop} {cat} {checkout} */
+  /** เตือนเช็คเอาท์ ก่อนออก — {shop} {pet} {checkout} */
   checkoutReminder: string;
-  /** ขอรีวิวหลังเช็คเอาท์ — {shop} {cat} */
+  /** ขอรีวิวหลังเช็คเอาท์ — {shop} {pet} */
   reviewRequest: string;
-  /** สอบถามประวัติน้องก่อนอาบน้ำ — {shop} {cat} */
+  /** สอบถามประวัติน้องก่อนอาบน้ำ — {shop} {pet} */
   groomInfoIntro: string;
-  /** ข้อความชวนกดยอมรับข้อตกลงก่อนเข้าพัก (แนบลิงก์) — {shop} {cat} {url} */
+  /** ข้อความชวนกดยอมรับข้อตกลงก่อนเข้าพัก (แนบลิงก์) — {shop} {pet} {url} */
   consentInvite: string;
   /** หัวเรื่องหน้ายอมรับข้อตกลงก่อนเข้าพัก */
   consentTitle: string;
@@ -99,21 +99,21 @@ export type MessagesConfig = {
   groomConsentTerms: string[];
   /** การ์ดเรียกเก็บมัดจำ (ส่งก่อนลูกค้าโอน) — หัวเรื่อง */
   depositRequestTitle: string;
-  /** การ์ดเรียกเก็บมัดจำ — ข้อความ ({name} {cat} {amount}) */
+  /** การ์ดเรียกเก็บมัดจำ — ข้อความ ({name} {pet} {amount}) */
   depositRequestBody: string;
   /** การ์ดขอบคุณตอนรับมัดจำ — หัวเรื่อง */
   depositThanksTitle: string;
-  /** การ์ดขอบคุณตอนรับมัดจำ — ข้อความ ({name} {cat} {amount}) */
+  /** การ์ดขอบคุณตอนรับมัดจำ — ข้อความ ({name} {pet} {amount}) */
   depositThanksBody: string;
   /** เงื่อนไขมัดจำในการ์ด — บรรทัดละ 1 ข้อ */
   depositTerms: string[];
-  /** อวยพรวันเกิดแมวอัตโนมัติ — {shop} {name} {cat} */
+  /** อวยพรวันเกิดแมวอัตโนมัติ — {shop} {name} {pet} */
   birthdayGreeting: string;
   /** วันเกิดเจ้าของ — คนละข้อความกับวันเกิดน้องแมว */
   birthdayGreetingOwner: string;
   /** แจ้งลูกค้าทันทีที่ร้านกดยืนยันคิว — ยืนยันว่าได้คิววันที่จองมาแล้ว
    * (คนละอันกับ checkinReminder ที่เตือนล่วงหน้าก่อนถึงวันจริง)
-   * — {shop} {cat} {when} (วันที่+เวลา+ประเภทนัด จัดรูปแบบมาแล้วจาก bookingScheduleText) */
+   * — {shop} {pet} {when} (วันที่+เวลา+ประเภทนัด จัดรูปแบบมาแล้วจาก bookingScheduleText) */
   bookingApprovedText: string;
 };
 

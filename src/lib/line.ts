@@ -1827,7 +1827,7 @@ export function buildGroomInfoFlex(data: {
 /**
  * การ์ดขอเอกสารก่อนเข้าพัก — ขอรูปสมุดวัคซีน หรือ ขอรูปบัตรประชาชนผู้ปกครอง
  * ปุ่มเปิดหน้าแนบรูปในแอปลูกค้า (/app/pet-docs) ซึ่งแนบได้อย่างเดียว ไม่ต้องเซ็นข้อตกลงซ้ำ
- * ข้อความ/สีแก้ได้ใน /admin/cards (cards.docRequest) — {cat} = ชื่อน้อง
+ * ข้อความ/สีแก้ได้ใน /admin/cards (cards.docRequest) — {pet} = ชื่อน้อง
  */
 
 export function buildDocRequestFlex(data: {
@@ -1843,7 +1843,7 @@ export function buildDocRequestFlex(data: {
   const t = (k: keyof typeof DOC_REQUEST_DEFAULTS) => st.texts?.[k]?.trim() || DOC_REQUEST_DEFAULTS[k];
   const vaccine = data.kind === "vaccine";
   const header = vaccine ? t("vaccineHeader") : t("idcardHeader");
-  const bodyText = (vaccine ? t("vaccineBody") : t("idcardBody")).replaceAll("{cat}", politeCat(data.catName));
+  const bodyText = (vaccine ? t("vaccineBody") : t("idcardBody")).replace(/\{(?:pet|cat)\}/g, politeCat(data.catName));
   const contents: Record<string, unknown>[] = [
     {
       type: "text",
@@ -1945,7 +1945,7 @@ export function buildIntakeFlex(data: {
     },
     {
       type: "text",
-      text: t("body").replaceAll("{cat}", cat).replaceAll("{shop}", data.businessName),
+      text: t("body").replace(/\{(?:pet|cat)\}/g, cat).replaceAll("{shop}", data.businessName),
       size: "sm",
       color: "#4E3E32",
       margin: "md",

@@ -226,7 +226,7 @@ const KEEP_KEYS = new Set(["id", "typeId", "image", "poster", "logoUrl", "catBre
 
 export function dogWords(text: string): string {
   if (!text || /^(https?:|data:|\/|#)/.test(text.trim())) return text;
-  // ห้ามแตะตัวแปรในข้อความ เช่น {cat} {cats} — ระบบใช้แทนชื่อน้อง
+  // ห้ามแตะตัวแปรในข้อความ เช่น {pet} {cats} — ระบบใช้แทนชื่อน้อง
   return text
     .split(/(\{[^}]*\})/)
     .map((part) => (part.startsWith("{") ? part : DOG_WORDS.reduce((s, [re, to]) => s.replace(re, to), part)))
