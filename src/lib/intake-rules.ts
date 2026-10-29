@@ -60,7 +60,7 @@ export function intakeFields(
 export function ownerHistoryKeys(kind: PetKind | undefined, cfg: Parameters<typeof intakeFields>[2]): string[] {
   return intakeFields("stay", kind, cfg, { withOwner: true })
     .filter((f) => f.section === "owner")
-    .map((f) => f.key);
+    .flatMap((f) => (f.allowOther ? [f.key, otherKey(f.key)] : [f.key]));
 }
 
 /**

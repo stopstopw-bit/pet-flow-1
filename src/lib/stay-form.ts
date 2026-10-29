@@ -128,7 +128,27 @@ const WITH_OTHERS = STAY_FORM_DEFAULTS.find((d) => d.key === "withOthers")!;
 const DOG_FORM: GroomField[] = [
   // ประวัติเจ้าของ — ถามครั้งเดียวตอนสมัครสมาชิก ฟอร์มก่อนอาบน้ำ/เข้าพักไม่ถามซ้ำ (เจ้าของระบบ 2026-10-27)
   // ชื่อเล่นเจ้าของเอาออก — หน้าสมัครถามชื่อจริงแล้ว
-  { ...text("emergencyContact", "เบอร์ฉุกเฉินและความเกี่ยวข้อง", "เช่น 081-234-5678 (คุณแม่)"), canSkip: true },
+  // คำตอบเก่าที่พิมพ์ "เบอร์ (ความเกี่ยวข้อง)" รวมในช่องเดียวยังอยู่ที่ key เดิม อ่านได้ตามปกติ
+  { ...text("emergencyContact", "เบอร์ติดต่อฉุกเฉิน", "เช่น 081-234-5678"), canSkip: true },
+  // ความเกี่ยวข้องกดเลือก ไม่ต้องพิมพ์ — ไม่มีในตัวเลือกพิมพ์เองได้ (เจ้าของระบบ 2026-10-29)
+  {
+    key: "emergencyRelation",
+    type: "single",
+    label: "ผู้ติดต่อฉุกเฉินเกี่ยวข้องเป็นอะไรกับคุณคะ",
+    required: false,
+    enabled: true,
+    canSkip: true,
+    allowOther: true,
+    options: [
+      { key: "father", label: "👨 พ่อ" },
+      { key: "mother", label: "👩 แม่" },
+      { key: "spouse", label: "💑 สามี/ภรรยา/แฟน" },
+      { key: "sibling", label: "👫 พี่น้อง" },
+      { key: "child", label: "🧒 ลูก" },
+      { key: "relative", label: "👪 ญาติ" },
+      { key: "friend", label: "🤝 เพื่อน" },
+    ],
+  },
   // ประวัติสุนัข — กดเลือกให้มากที่สุด ลูกค้าพิมพ์น้อยที่สุด · ข้อที่ "ไม่มี" ได้ ไม่บังคับ
   {
     key: "temperament",
@@ -230,6 +250,7 @@ const LITTER_BOTH: Pick<GroomField, "label" | "placeholder"> = {
 /** หมวดของคำถามในฟอร์มหมา — เจ้าของ → น้อง → การดูแล (ตามลำดับใน DOG_FORM) */
 const DOG_SECTIONS: Record<string, GroomField["section"]> = {
   emergencyContact: "owner",
+  emergencyRelation: "owner",
   temperament: "pet",
   cautions: "pet",
   likes: "pet",
