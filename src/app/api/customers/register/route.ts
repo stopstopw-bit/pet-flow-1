@@ -17,6 +17,7 @@ import { isFeatureOn } from "@/lib/features";
 import { referralReward } from "@/lib/referral";
 import { issueCoupon, listCustomerCoupons } from "@/lib/coupons-store";
 import { pushLineMessage } from "@/lib/line";
+import { buildReferralRewardCard } from "@/lib/notice-cards";
 import { setCatStayInfo } from "@/lib/customers-store";
 import { REGISTER_HISTORY_SOURCE, registerHistoryFields, sanitizeIntakeInfo, stayInfoDone } from "@/lib/intake-rules";
 import { petKindOf } from "@/lib/pet-kind";
@@ -186,12 +187,9 @@ async function handlePost(req: NextRequest) {
         });
         const referrerLine = referrer.lineUserId;
         if (referrerLine) {
-          runAfterResponse("referral push", () =>
+          runAfterResponse("referral push", async () =>
             pushLineMessage(referrerLine, [
-              {
-                type: "text",
-                text: `🎉 เพื่อนสมัครด้วยโค้ดของคุณแล้ว!\nคุณได้รับคูปองส่วนลด ${reward.amount}฿ เก็บไว้ในกระเป๋าคูปองแล้วนะคะ 🧡 (ใช้ได้ ${reward.expiresInDays} วัน)`,
-              },
+              await buildReferralRewardCard("signup", reward, await getSiteConfig()),
             ])
           );
         }

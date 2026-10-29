@@ -20,7 +20,15 @@ import { resolveStayForm, stayFormDefaults } from "@/lib/stay-form";
 import { usesLitter, type PetKind } from "@/lib/pet-kind";
 import type { RegisterFieldConfig, RegisterFormConfig } from "@/lib/register-form";
 import { brandColorsFor } from "@/lib/card-brand";
-import { DEPOSIT_REMINDER_DEFAULTS, DOC_REQUEST_DEFAULTS, INTAKE_CARD_DEFAULTS } from "@/lib/line-card-defaults";
+import {
+  BIRTHDAY_CARD_DEFAULTS,
+  BOOKING_APPROVED_DEFAULTS,
+  DEPOSIT_REMINDER_DEFAULTS,
+  DOC_REQUEST_DEFAULTS,
+  INTAKE_CARD_DEFAULTS,
+  REFERRAL_REWARD_DEFAULTS,
+  fillCardText,
+} from "@/lib/line-card-defaults";
 
 /**
  * ปรับแต่งการ์ด LINE — สี ขนาดตัวอักษร ข้อความ เงื่อนไข และส่วนประกอบของการ์ดแต่ละใบ
@@ -621,6 +629,73 @@ const CARDS: CardMeta[] = [
       { key: "pickupTimeLabel", label: "ป้าย: เวลามารับ", placeholder: "🚗 เวลาที่แจ้งไว้ว่าจะมารับ" },
     ],
     closingLabel: "ข้อความปิดท้าย (ว่าง = ขอบคุณที่ไว้ใจ…)",
+    hasTitleSize: true,
+  },
+  {
+    key: "bookingApproved",
+    name: "ร้านยืนยันนัดแล้ว",
+    desc: "ส่งตอนร้านกดยืนยันนัดที่ลูกค้าจองเข้ามา — เนื้อความแก้ได้ที่ตั้งค่า › ข้อความ",
+    colors: [
+      { key: "headerColor", label: "สีแถบหัว", fallback: "#6e2f48" },
+      { key: "headerTextColor", label: "สีตัวหนังสือหัว", fallback: "#FFFFFF" },
+      { key: "buttonColor", label: "สีปุ่ม", fallback: "#bd3a6a" },
+    ],
+    fields: [{ key: "header", label: "แถบหัวการ์ด" }],
+    texts: [],
+    styleTexts: [
+      { key: "header", label: "ข้อความบนแถบหัว", placeholder: BOOKING_APPROVED_DEFAULTS.header },
+      { key: "button", label: "คำในปุ่ม", placeholder: BOOKING_APPROVED_DEFAULTS.button },
+    ],
+    closingLabel: "ข้อความท้ายการ์ด (ว่าง = ไม่มี)",
+    hasTitleSize: true,
+  },
+  {
+    key: "referralReward",
+    name: "ได้คูปองชวนเพื่อน",
+    desc: "ส่งหาคนชวน ตอนเพื่อนสมัครด้วยโค้ด และตอนเพื่อนมาใช้บริการครั้งแรก",
+    colors: [
+      { key: "headerColor", label: "สีแถบหัว", fallback: "#6e2f48" },
+      { key: "headerTextColor", label: "สีตัวหนังสือหัว", fallback: "#FFFFFF" },
+      { key: "buttonColor", label: "สีปุ่ม", fallback: "#bd3a6a" },
+    ],
+    fields: [{ key: "header", label: "แถบหัวการ์ด" }],
+    texts: [],
+    styleTexts: [
+      { key: "header", label: "ข้อความบนแถบหัว", placeholder: REFERRAL_REWARD_DEFAULTS.header },
+      {
+        key: "signupBody",
+        label: "ข้อความ: เพื่อนสมัครด้วยโค้ด ({amount} = มูลค่าคูปอง)",
+        placeholder: REFERRAL_REWARD_DEFAULTS.signupBody,
+        multiline: true,
+      },
+      {
+        key: "visitBody",
+        label: "ข้อความ: เพื่อนมาใช้บริการครั้งแรก ({amount} = มูลค่าคูปอง)",
+        placeholder: REFERRAL_REWARD_DEFAULTS.visitBody,
+        multiline: true,
+      },
+      { key: "expiry", label: "บรรทัดวันหมดอายุ ({days} = จำนวนวัน)", placeholder: REFERRAL_REWARD_DEFAULTS.expiry },
+      { key: "button", label: "คำในปุ่ม", placeholder: REFERRAL_REWARD_DEFAULTS.button },
+    ],
+    closingLabel: "ข้อความท้ายการ์ด (ว่าง = ไม่มี)",
+    hasTitleSize: true,
+  },
+  {
+    key: "birthday",
+    name: "อวยพรวันเกิด",
+    desc: "ส่งตอนกดส่งที่หน้าวันเกิด — เนื้อความอวยพรแก้ได้ที่ตั้งค่า › ข้อความ",
+    colors: [
+      { key: "headerColor", label: "สีแถบหัว", fallback: "#6e2f48" },
+      { key: "headerTextColor", label: "สีตัวหนังสือหัว", fallback: "#FFFFFF" },
+      { key: "buttonColor", label: "สีปุ่ม", fallback: "#bd3a6a" },
+    ],
+    fields: [{ key: "header", label: "แถบหัวการ์ด" }],
+    texts: [],
+    styleTexts: [
+      { key: "header", label: "ข้อความบนแถบหัว", placeholder: BIRTHDAY_CARD_DEFAULTS.header },
+      { key: "button", label: "คำในปุ่ม (แสดงเฉพาะตอนแจกคูปอง)", placeholder: BIRTHDAY_CARD_DEFAULTS.button },
+    ],
+    closingLabel: "ข้อความท้ายการ์ด (ว่าง = ไม่มี)",
     hasTitleSize: true,
   },
   {
@@ -1394,6 +1469,55 @@ function Preview({
             </div>
           </div>
         ))}
+      </div>
+    );
+  }
+
+  if (meta.key === "bookingApproved" || meta.key === "referralReward" || meta.key === "birthday") {
+    // ตัวอย่างใช้ชื่อสมมติ — ตอนส่งจริงระบบเติมชื่อน้อง/วันนัด/มูลค่าคูปองให้
+    const d =
+      meta.key === "bookingApproved"
+        ? {
+            header: t("header", BOOKING_APPROVED_DEFAULTS.header),
+            body: `${shop} ยืนยันนัดของน้องมะลิแล้วค่ะ 🐾\nพรุ่งนี้ 10:00 น. แล้วเจอกันนะคะ`,
+            note: "",
+            button: t("button", BOOKING_APPROVED_DEFAULTS.button),
+          }
+        : meta.key === "referralReward"
+          ? {
+              header: t("header", REFERRAL_REWARD_DEFAULTS.header),
+              body: fillCardText(t("signupBody", REFERRAL_REWARD_DEFAULTS.signupBody), { amount: 50 }),
+              note: fillCardText(t("expiry", REFERRAL_REWARD_DEFAULTS.expiry), { days: 30 }),
+              button: t("button", REFERRAL_REWARD_DEFAULTS.button),
+            }
+          : {
+              header: t("header", BIRTHDAY_CARD_DEFAULTS.header),
+              body: "🎂 สุขสันต์วันเกิดน้องมะลินะคะ ขอให้แข็งแรง ซนสุดๆ ไปอีกปีค่ะ 🧡\n\n🎁 ร้านมีของขวัญวันเกิดให้ — คูปองส่วนลด 100 บาท เก็บไว้ในกระเป๋าคูปองแล้วนะคะ (ใช้ได้ 30 วัน) 🎟️",
+              note: "",
+              button: t("button", BIRTHDAY_CARD_DEFAULTS.button),
+            };
+    return (
+      <div className={bubble}>
+        {show("header") && (
+          <div className="px-4 py-3" style={{ background: c("headerColor", "#6e2f48") }}>
+            <p className={`${titleCls} font-extrabold`} style={{ color: c("headerTextColor", "#FFFFFF") }}>
+              {d.header}
+            </p>
+          </div>
+        )}
+        <div className="space-y-1 px-4 py-4 text-[11px] text-[#4E3E32]">
+          <p className="whitespace-pre-line">{d.body}</p>
+          {d.note && <p className="pt-1 text-[10px] text-[#A2907E]">{d.note}</p>}
+          {st.closing && <p className="whitespace-pre-line pt-2 text-[10px] text-[#A2907E]">{st.closing}</p>}
+        </div>
+        <div className="px-3 pb-3">
+          <div
+            className="rounded-lg py-1.5 text-center text-[11px] font-bold"
+            style={{ background: c("buttonColor", "#bd3a6a"), color: "#fff" }}
+          >
+            {d.button}
+          </div>
+        </div>
       </div>
     );
   }
