@@ -7,6 +7,7 @@ const LABELS: Record<string, string> = {
   prestayReminders: "ชุดก่อนเข้าพัก",
   depositReminders: "แจ้งยอดคงเหลือ",
   reviewRequests: "ขอรีวิว",
+  bathConsentReminders: "ขอยอมรับข้อตกลงก่อนอาบน้ำ (ระหว่างพัก)",
   groomInfoCards: "ขอประวัติก่อนอาบน้ำ",
   checkinReminders: "เตือนเลือกเวลาส่ง",
   checkoutReminders: "เตือนเลือกเวลารับ",

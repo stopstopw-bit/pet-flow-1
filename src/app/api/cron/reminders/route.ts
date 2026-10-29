@@ -440,6 +440,7 @@ async function runForTenant() {
   let depositReminders = 0;
   let prestayReminders = 0;
   let reviewRequests = 0;
+  let bathConsentReminders = 0;
 
   // บ้านเดียวกันเข้าพักพร้อมกันหลายตัว = การ์ดใบเดียว ไม่ใช่ใบต่อแมวหนึ่งตัว
   // (เมื่อก่อนวนทีละนัด บ้านที่ฝาก 3 ตัวจึงได้การ์ดเลือกเวลารับ-ส่งรัวๆ 3 ใบ)
@@ -492,6 +493,7 @@ async function runForTenant() {
 
     // #4 — ก่อนเข้าพัก N วัน: การ์ดใบเดียว = เตรียมตัว + ข้อมูลที่ยังขาด (ปุ่มเดียว) + ยอดคงเหลือ
     // + ปุ่มเลือกเวลาส่งน้อง — ลิงก์ยอมรับชี้ที่นัดนี้เท่านั้น
+    let prestaySent = false;
     if (
       auto?.prestayReminderEnabled !== false &&
       !groupMuted("prestay") &&
@@ -583,8 +585,28 @@ async function runForTenant() {
         try {
           await pushInChunks(to, prestayBundle);
           prestayReminders++;
+          prestaySent = true;
         } catch (e) {
           errors.push(`prestay ${b.id}: ${String(e)}`);
+        }
+      }
+    }
+
+    // อาบน้ำก่อนกลับพรุ่งนี้ แต่บ้านนี้ยังไม่ได้กดยอมรับข้อตกลง (หน้าข้อตกลงเข้าพักมีข้ออาบน้ำรวมอยู่แล้ว)
+    // นัดอาบน้ำระหว่างพักไม่มีการ์ดของตัวเอง — ถ้าชุดก่อนเข้าพักไม่เคยไปถึงลูกค้า (จองกระชั้น) ข้อตกลงอาบน้ำก็ไม่เคยถูกส่งเลย
+    const bathTomorrow = allBookings.some((g) => {
+      if (g.service !== "groom" || (g.date || "").slice(0, 10) !== confirmDate || autoMuted(g, "consent")) return false;
+      const stay = stayForGroom(g, allBookings);
+      return !!stay && ids.includes(stay.id);
+    });
+    if (bathTomorrow && !prestaySent) {
+      const consent = await consentCardFor(group, b, cfg);
+      if (consent) {
+        try {
+          await pushLineMessage(to, [consent.card]);
+          bathConsentReminders++;
+        } catch (e) {
+          errors.push(`bath consent ${b.id}: ${String(e)}`);
         }
       }
     }
@@ -692,6 +714,7 @@ async function runForTenant() {
     depositReminders,
     prestayReminders,
     reviewRequests,
+    bathConsentReminders,
     groomInfoCards,
     groomBriefs,
     birthdayQueued,
