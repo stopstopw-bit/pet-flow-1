@@ -2303,9 +2303,28 @@ export async function topupMemberCredit(
     });
   }
 
-  // เติมเครดิต Member ไม่ให้แต้ม (เจ้าของร้าน 2026-10-29: แต้มให้เฉพาะบริการรายครั้งเท่านั้น
-  // ซื้อคอร์ส/เติมเครดิตไม่ได้แต้ม)
-  const pointsEarned = 0;
+  // ให้แต้มตอนเติมเครดิต — คิดจากยอดที่จ่ายจริงเท่านั้น ไม่รวมเครดิตแถม
+  // (ยอดยกมาจากระบบเก่าไม่ให้ เพราะไม่ใช่การจ่ายเงินรอบนี้)
+  // คู่กับ noPointsOnMemberCredit ที่ปิดแต้มตอนตัดใช้ → ได้แต้มรอบเดียว ไม่เบิ้ล
+  // 🔁 เครดิตจากบิลยกเลิกนัดไม่ให้ — แต้มของเงินก้อนนี้ได้ไปแล้วตอนจ่ายบิลเดิม
+  let pointsEarned = 0;
+  if (paid > 0 && !isLegacy && !isCancelCredit && updated.lineUserId) {
+    const { getSiteConfig } = await import("./config-store");
+    const biz = (await getSiteConfig()).business;
+    if (biz.pointsOnMemberTopup === true) {
+      pointsEarned = Math.floor(paid / biz.pointsRate);
+      if (pointsEarned > 0) {
+        const { addPoints } = await import("./points-store");
+        await addPoints(
+          updated.lineUserId,
+          pointsEarned,
+          `เติมเครดิต Member ${paid.toLocaleString()} บาท`,
+          `Member top-up ${paid} THB`,
+          updated.name
+        );
+      }
+    }
+  }
 
   await recalculateCustomerTier(customerId);
   return { customer: updated, topup, pointsEarned };
