@@ -3,7 +3,6 @@ import { getLineCredentials, shopAppBase } from "./line-config";
 import { resolveBroadcastActionUri, type BroadcastActionId } from "./line-broadcast";
 import {
   BIRTHDAY_CARD_DEFAULTS,
-  BOOKING_APPROVED_DEFAULTS,
   REFERRAL_REWARD_DEFAULTS,
   fillCardText,
 } from "./line-card-defaults";
@@ -54,17 +53,3 @@ export async function buildBirthdayCard(
   );
 }
 
-/** การ์ดแจ้งว่าร้านยืนยันนัดแล้ว — เนื้อความมาจากแม่แบบ bookingApprovedText */
-export async function buildBookingApprovedCard(text: string, cfg: Pick<SiteConfig, "cards" | "business">) {
-  const style = cfg.cards?.bookingApproved;
-  const tx = { ...BOOKING_APPROVED_DEFAULTS, ...style?.texts };
-  return buildNoticeFlex(
-    {
-      header: tx.header,
-      body: text,
-      button: { label: tx.button, uri: await appUri("bookings", cfg) },
-      altText: text.split("\n")[0],
-    },
-    style
-  );
-}
