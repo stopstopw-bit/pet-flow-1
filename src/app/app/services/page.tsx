@@ -35,8 +35,8 @@ export default function ServicesPage() {
           ? "เมนูอาบน้ำ-เป่าขน + รอบเวลา"
           : "Bath & grooming menu + time slots",
     }] : []),
-    // โผล่ให้เห็นเฉพาะเมื่อร้านใส่เนื้อหาไว้แล้ว — ไม่งั้นเป็นลิงก์ไปหน้าเปล่า
-    ...(hotelOn && config.boardingRules?.length
+    // มีเนื้อหาเสมอ — หน้านี้โชว์กฎชุดเดียวกับการ์ดกดยินยอม (+ บล็อกเสริมที่ร้านใส่)
+    ...(hotelOn
       ? [
           {
             href: "/app/boarding-rules",
