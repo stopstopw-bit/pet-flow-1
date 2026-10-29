@@ -108,7 +108,7 @@ export type InvoiceRecord = {
   promoLabel?: string;
   total: number;
   status: "pending" | "paid";
-  paymentMethod?: "transfer" | "member_credit" | "cash";
+  paymentMethod?: "transfer" | "member_credit" | "cash" | "package";
   paidAt?: string;
   pointsEarned?: number;
   bookingId?: string;
@@ -906,7 +906,7 @@ export async function receiveInvoicePayment(
 
 export async function markInvoicePaid(
   id: string,
-  paymentMethod: "transfer" | "member_credit" | "cash" = "transfer"
+  paymentMethod: "transfer" | "member_credit" | "cash" | "package" = "transfer"
 ) {
   if (payingNow.has(id)) return { ok: false as const, error: "already_paid" };
   if (await findCancelCreditTopup(id)) return { ok: false as const, error: CONVERTED_MSG };
@@ -920,7 +920,7 @@ export async function markInvoicePaid(
 
 async function markInvoicePaidInner(
   id: string,
-  paymentMethod: "transfer" | "member_credit" | "cash" = "transfer"
+  paymentMethod: "transfer" | "member_credit" | "cash" | "package" = "transfer"
 ) {
   const inv = await getInvoice(id);
   if (!inv || inv.status === "paid") return { ok: false as const, error: "invalid" };
@@ -928,6 +928,11 @@ async function markInvoicePaidInner(
   // ยอดที่ลงบัญชีไปแล้วของบิลนี้ (เช่น มัดจำที่กดรับไปก่อน) → รอบนี้เก็บแค่ "ที่เหลือจริง"
   const alreadyReceived = await incomeForInvoice(id);
   const settleAmount = Math.max(0, inv.total - alreadyReceived);
+
+  // ปิดบิลแบบ "หักจากคอร์ส" — ได้เฉพาะบิลที่หักคอร์สไว้และไม่มียอดต้องเก็บเพิ่ม (ไม่มีเงินเข้า)
+  if (paymentMethod === "package" && (!inv.packageId || settleAmount > 0)) {
+    return { ok: false as const, error: "package_not_covered" };
+  }
 
   const customer = await getCustomer(inv.customerId);
   if (paymentMethod === "member_credit") {

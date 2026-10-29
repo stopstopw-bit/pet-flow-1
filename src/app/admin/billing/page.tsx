@@ -84,6 +84,9 @@ type Invoice = {
   deposit?: number;
   promoId?: string;
   promoLabel?: string;
+  /** บิลที่หักคอร์ส — ส่วนลดของบิลคือค่าบริการที่จ่ายไปแล้วตอนซื้อคอร์ส ไม่ใช่ส่วนลดจริง */
+  packageId?: string;
+  packageUnits?: number;
   status: string;
   customerName: string;
   catName: string;
@@ -1890,7 +1893,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
 
   const markPaid = async (
     id: string,
-    method: "transfer" | "member_credit" | "cash"
+    method: "transfer" | "member_credit" | "cash" | "package"
   ) => {
     // กันกดรัว — ปุ่มนี้เมื่อก่อนไม่มีตัวล็อก กดสองทีเสี่ยงลงบัญชีซ้ำ
     if (invoiceBusy) return;
@@ -1904,8 +1907,15 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         // ปุ่มนี้เป็นแค่สถานะหลังบ้าน — ไม่ส่งอะไรหาลูกค้า ต้องบอกให้ร้านรู้ว่าใบเสร็จต้องกดส่งเอง
-        toast("รับเงินแล้ว — ลงบัญชี + แต้ม ✅ (ใบเสร็จกดส่งเองที่ปุ่ม ส่ง LINE)", "success");
+        toast(
+          method === "package"
+            ? "ปิดบิลแล้ว — หักจากคอร์ส ไม่มีเงินเข้า ✅"
+            : "รับเงินแล้ว — ลงบัญชี + แต้ม ✅ (ใบเสร็จกดส่งเองที่ปุ่ม ส่ง LINE)",
+          "success"
+        );
         load();
+      } else if (data.error === "package_not_covered") {
+        toast("บิลนี้ยังมียอดต้องเก็บ หรือไม่ได้หักคอร์ส — ใช้รับเงินแบบปกติ", "error");
       } else if (data.error === "insufficient_credit") {
         toast("เครดิต Member ไม่พอ", "error");
       } else if (data.error === "invalid" || data.error === "already_paid") {
@@ -1984,7 +1994,17 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
     const got = receivedOf(inv);
     const due = Math.max(0, inv.total - got);
     const close = () => setPayFor(null);
+    // บิลที่หักคอร์สจนยอดเหลือ 0 — ปิดบิลได้เลยโดยไม่ต้องเลือกโอน/เงินสด (ลูกค้าจ่ายค่าคอร์สไปแล้ว)
+    const coveredByCourse = !!inv.packageId && due === 0;
     const rows: { key: string; icon: string; title: string; sub?: string; run: () => void; when: boolean }[] = [
+      {
+        key: "package",
+        icon: "ticket",
+        title: "ปิดบิล · หักจากคอร์ส",
+        sub: "จ่ายค่าคอร์สไปแล้ว · ไม่มีเงินเข้า ไม่ลงรายรับ",
+        when: coveredByCourse,
+        run: () => markPaid(inv.id, "package"),
+      },
       {
         key: "apply_deposit_credit",
         icon: "money",
@@ -2011,7 +2031,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
         icon: "wallet",
         title: got > 0 ? "รับเงินที่เหลือ · โอน (ปิดบิล)" : "รับเต็มจำนวน · โอน (ปิดบิล)",
         sub: `${due.toLocaleString()} ฿ · ปิดบิล ลงบัญชี + แต้ม`,
-        when: true,
+        when: !coveredByCourse,
         run: () => markPaid(inv.id, "transfer"),
       },
       {
@@ -2019,7 +2039,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
         icon: "money",
         title: got > 0 ? "รับเงินที่เหลือ · เงินสด (ปิดบิล)" : "รับเต็มจำนวน · เงินสด (ปิดบิล)",
         sub: `${due.toLocaleString()} ฿`,
-        when: true,
+        when: !coveredByCourse,
         run: () => markPaid(inv.id, "cash"),
       },
       {
@@ -2027,7 +2047,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
         icon: "card",
         title: "หักเครดิต Member",
         sub: "ดูยอดก่อนยืนยัน",
-        when: isMember,
+        when: isMember && !coveredByCourse,
         run: () => setConfirmCredit(inv),
       },
       {
@@ -2036,7 +2056,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
         // บิลที่ยังไม่ได้ตั้งมัดจำ ใช้แถวนี้ "รับแค่มัดจำ" ได้เลย (ใส่ยอดเอง บิลยังเปิดอยู่)
         title: hasDep ? "รับเงินบางส่วน" : "รับแค่มัดจำ / บางส่วน",
         sub: "ใส่ยอดเอง · บิลยังเปิด ค้างที่เหลือไว้เก็บทีหลัง",
-        when: true,
+        when: !coveredByCourse,
         run: () => receivePartial(inv),
       },
     ];
@@ -3627,7 +3647,11 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
                 })}
                 {inv.discount ? (
                   <div className="flex justify-between border-t border-petflow-line pt-1 text-wait">
-                    <span>ส่วนลด{inv.promoLabel ? ` (${inv.promoLabel})` : ""}</span>
+                    <span>
+                      {inv.packageId && !inv.promoLabel
+                        ? `หักคอร์ส ${inv.packageUnits || 1} ${billServiceKind(inv.items) === "room" ? "คืน" : "ครั้ง"} (จ่ายค่าคอร์สแล้ว)`
+                        : `ส่วนลด${inv.promoLabel ? ` (${inv.promoLabel})` : ""}`}
+                    </span>
                     <span>-{inv.discount.toLocaleString()} ฿</span>
                   </div>
                 ) : null}

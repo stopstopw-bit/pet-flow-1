@@ -33,6 +33,8 @@ type Invoice = {
   discount?: number;
   promoId?: string;
   promoLabel?: string;
+  /** บิลที่หักคอร์ส — ยอด discount คือค่าห้อง/บริการที่ลูกค้าจ่ายไปแล้วตอนซื้อคอร์ส */
+  packageId?: string;
   paidAt?: string;
   createdAt?: string;
   items?: { label: string; amount: number; kind?: string }[];
@@ -199,7 +201,8 @@ export default function InsightsPage() {
     // ── ค่าโปรที่จ่ายไป ──
     const promoRows = promoStats.filter((p) => p.uses > 0 || p.discount > 0);
     const promoCost = promoRows.reduce((s, p) => s + p.discount, 0);
-    const discountTotal = paid.reduce((s, i) => s + (i.discount || 0), 0);
+    // บิลหักคอร์สไม่นับเป็นส่วนลด — ลูกค้าจ่ายค่าคอร์สไปแล้ว (ลงรายรับตอนขายคอร์ส)
+    const discountTotal = paid.reduce((s, i) => s + (i.packageId ? 0 : i.discount || 0), 0);
 
     return {
       coursesSold,

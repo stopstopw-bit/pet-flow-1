@@ -648,6 +648,8 @@ export async function dayTotals(date: string): Promise<DayTotals> {
       inv.deposit > 0 && (!inv.depositReceivedAt || inv.depositReceivedAt.slice(0, 10) !== date);
     const amount = money(inv.total - (depositEarlier ? inv.deposit : 0));
     const m = inv.paymentMethod || "transfer";
+    // ปิดบิลแบบหักคอร์ส = ไม่มีเงินเข้าลิ้นชัก
+    if (m === "package") continue;
     services[m] = money(services[m] + amount);
     servicesCount++;
   }
