@@ -28,6 +28,8 @@ export async function buildBookingConfirmFlex(
     /** id ใน GROOM_PROGRAMS (เช่น "bath-dry") — โชว์ชื่อโปรแกรมในการ์ดยืนยันนัด */
     groomProgram?: string;
     transport?: BookingTransport;
+    /** ปุ่มเลือกเวลาส่งน้องในการ์ดนี้ (แทนการ์ดเลือกเวลาเช็คอินแยกอีกใบ) */
+    timeUrl?: string;
   },
   /** น้องทุกตัวในบ้านที่จองมาด้วยกัน (นัดละตัว) — อาบคนละโปรแกรม/คนละเวลา จะแยกบอกรายตัวในการ์ด */
   pets?: { catName: string; groomProgram?: string; time?: string }[]

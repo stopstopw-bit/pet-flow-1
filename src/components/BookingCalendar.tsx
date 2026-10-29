@@ -2610,6 +2610,8 @@ export function BookingCalendar() {
                     // ทั้งบ้านในวันนั้น (อาบน้ำคนละรอบเวลาก็รวม) — การ์ดยืนยันนัด/ขอข้อมูลส่งใบเดียวต่อบ้าน
                     groomBookingIds={householdIds(b, group)}
                     initialAutoOff={b.autoOff}
+                    checkinTimeKnown={!!b.arrivalTime}
+                    checkoutTimeKnown={!!b.pickupTime}
                     onDone={load}
                   />
                   <InvoiceActionButtons bookingId={b.id} onDone={load} />

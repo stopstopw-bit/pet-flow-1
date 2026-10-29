@@ -186,6 +186,8 @@ export function buildAppointmentConfirmFlex(booking: {
   /** บริการรับ-ส่ง — โชว์แถวรับ-ส่ง + ปุ่มให้ลูกค้าส่งจุดรับ-ส่ง (ลิงก์ Google Maps) */
   transport?: BookingTransport;
   transportUrl?: string;
+  /** ลิงก์ให้ลูกค้าเลือกเวลาส่งน้อง (เข้าพัก) — ร้านเลือกส่งแจ้งเตือนนัดพร้อมเลือกเวลาเช็คอิน รวมเป็นปุ่มในการ์ดนี้ */
+  timeUrl?: string;
   /** ไม่ใช้แล้ว (เอาปุ่มยืนยันนัดออก) — คงไว้ให้คนเรียกเดิมไม่พัง */
   confirmUrl?: string;
   /** แผนที่/ที่อยู่ของร้าน — มาจาก config ไม่ใช่ค่าตายตัว ไม่มีก็ซ่อนแถวนั้นไป */
@@ -363,6 +365,17 @@ export function buildAppointmentConfirmFlex(booking: {
         paddingAll: "12px",
         contents: [
           // ไม่มีปุ่ม "ยืนยันนัด" แล้ว — ลูกค้ากรอกข้อมูล = ยืนยันนัด (เจ้าของร้าน 2026-10-27)
+          ...(booking.timeUrl
+            ? [
+                {
+                  type: "button",
+                  style: "primary",
+                  color: st.buttonColor || BRAND_ACTION,
+                  height: "sm",
+                  action: { type: "uri", label: "🕒 เลือกเวลาส่งน้อง", uri: booking.timeUrl },
+                },
+              ]
+            : []),
           ...(booking.transportUrl
             ? [
                 {
