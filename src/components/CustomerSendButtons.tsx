@@ -31,7 +31,9 @@ const INTAKE_PARTS = new Set(["stayInfo", "groomInfo", "vaccine", "idcard", "con
 /** จำนวนการ์ดจริงที่จะได้จากหัวข้อที่เลือก — หัวข้อขอข้อมูลกี่เรื่องก็รวมเป็นใบเดียว */
 const bundleCardCount = (parts: string[]) => {
   const intake = parts.filter((p) => INTAKE_PARTS.has(p)).length;
-  return parts.length - intake + (intake > 0 ? 1 : 0);
+  // แจ้งเตือนนัด + เลือกเวลาเช็คอิน = การ์ดใบเดียว (ปุ่มเลือกเวลาอยู่ในการ์ดแจ้งเตือนนัด)
+  const merged = parts.includes("reminder") && parts.includes("checkin") ? 1 : 0;
+  return parts.length - intake + (intake > 0 ? 1 : 0) - merged;
 };
 
 /** เรื่องที่เลือกใส่ในการ์ดขอข้อมูลได้ (info = ประวัติ/ข้อมูลก่อนเข้าพักตามบริการ) — เรียงตามลำดับขั้น */
@@ -96,6 +98,8 @@ export function CustomerSendButtons({
   invoiceStatus,
   groomBookingIds,
   initialAutoOff,
+  checkinTimeKnown,
+  checkoutTimeKnown,
   onDone,
   open,
   onOpenChange,
@@ -113,6 +117,9 @@ export function CustomerSendButtons({
   groomBookingIds?: string[];
   /** หัวข้อข้อความอัตโนมัติที่นัดนี้ปิดไว้แล้ว (ถ้ามี) — ให้ปุ่มเปิด/ปิดตรงนี้เริ่มตรงกับของจริง */
   initialAutoOff?: string[];
+  /** รู้เวลาส่งน้อง/เวลารับน้องแล้ว (ร้านใส่เวลารับ-ส่ง หรือลูกค้าเลือกมาแล้ว) — ไม่มีปุ่มให้ถามเวลาซ้ำ */
+  checkinTimeKnown?: boolean;
+  checkoutTimeKnown?: boolean;
   onDone?: () => void;
   /** (ไม่บังคับ) ควบคุมการเปิดแผ่นส่งการ์ดจากข้างนอก — เช่นเมนู ⋯ ของบิล */
   open?: boolean;
@@ -440,12 +447,16 @@ export function CustomerSendButtons({
   const [bundleParts, setBundleParts] = useState<string[]>([]);
   // LINE ส่งได้สูงสุด 5 การ์ดต่อ 1 ข้อความ — กันเลือกเกินแล้วโดนตัดทิ้งเงียบๆ
   const BUNDLE_MAX = 5;
+  // เข้าพัก: การ์ดเตรียมตัวบอกวัน/ห้องครบแล้ว ซ้ำกับแจ้งเตือนนัด — เลือกได้ทีละใบ (กดอีกใบ = สลับ)
+  const stayOnlyBundle = service === "room";
+  const BUNDLE_EXCLUSIVE: Record<string, string> = stayOnlyBundle ? { reminder: "prestay", prestay: "reminder" } : {};
   const toggleBundlePart = (p: string) =>
-    setBundleParts((prev) => {
-      if (prev.includes(p)) return prev.filter((x) => x !== p);
+    setBundleParts((current) => {
+      if (current.includes(p)) return current.filter((x) => x !== p);
+      const prev = current.filter((x) => x !== BUNDLE_EXCLUSIVE[p]);
       if (bundleCardCount([...prev, p]) > BUNDLE_MAX) {
         toast(`เลือกได้สูงสุด ${BUNDLE_MAX} การ์ดต่อ 1 ข้อความ`, "error");
-        return prev;
+        return current;
       }
       return [...prev, p];
     });
@@ -497,8 +508,8 @@ export function CustomerSendButtons({
     { key: "consent", label: INTAKE_LABEL.consent, when: !!bookingId && stayOn("consent") },
     { key: "prestay", label: INTAKE_LABEL.prestay, when: !!bookingId && stayOn("prestay") },
     { key: "reminder", label: "แจ้งเตือนนัด", when: !!bookingId },
-    { key: "checkin", label: "เลือกเวลาเช็คอิน", when: !!bookingId && stayOn("checkin") },
-    { key: "checkout", label: "เลือกเวลาเช็คเอาท์", when: !!bookingId && stayOn("checkout") },
+    { key: "checkin", label: "เลือกเวลาเช็คอิน", when: !!bookingId && stayOn("checkin") && !checkinTimeKnown },
+    { key: "checkout", label: "เลือกเวลาเช็คเอาท์", when: !!bookingId && stayOn("checkout") && !checkoutTimeKnown },
     { key: "deposit", label: "เรียกเก็บมัดจำ", when: canAskDeposit },
     {
       key: "depositThanks",
@@ -608,14 +619,14 @@ export function CustomerSendButtons({
       k: "send_checkin_reminder",
       label: "เตือนเช็คอิน + เลือกเวลา",
       icon: "calendar",
-      when: !!bookingId && hasRoomStay && stayOn("checkin"),
+      when: !!bookingId && hasRoomStay && stayOn("checkin") && !checkinTimeKnown,
       onClick: () => bookingSend("send_checkin_reminder", "ส่งการ์ดเลือกเวลาเช็คอินแล้ว 🧳"),
     },
     {
       k: "send_checkout_reminder",
       label: "เตือนเช็คเอาท์ + เลือกเวลา",
       icon: "clock",
-      when: !!bookingId && hasRoomStay && on("checkout"),
+      when: !!bookingId && hasRoomStay && on("checkout") && !checkoutTimeKnown,
       onClick: () => bookingSend("send_checkout_reminder", "ส่งการ์ดเลือกเวลาเช็คเอาท์แล้ว 🧳"),
     },
     {
@@ -869,6 +880,8 @@ export function CustomerSendButtons({
                   เลือกการ์ดที่จะส่งพร้อมกัน ({bundleCardCount(bundleParts)}/{BUNDLE_MAX}) — ทั้งหมดรวมเป็น{" "}
                   <b>1 ข้อความ LINE</b> ตัดโควตาแค่ครั้งเดียว · เรื่องขอข้อมูล (ประวัติ/วัคซีน/บัตร/กฎ/มัดจำ)
                   เลือกหลายเรื่องจะรวมเป็นการ์ดใบเดียว
+                  {stayOnlyBundle && " · แจ้งเตรียมตัวกับแจ้งเตือนนัดบอกวัน/ห้องเหมือนกัน เลือกได้ทีละใบ"}
+                  {(checkinTimeKnown || checkoutTimeKnown) && " · รู้เวลาส่ง/รับน้องแล้ว ไม่มีปุ่มถามเวลาซ้ำ"}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {BUNDLE_OPTIONS.filter((o) => o.when).map((o) => {

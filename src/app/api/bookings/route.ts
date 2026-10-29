@@ -842,7 +842,13 @@ function groomInfoCardFor(
       return direct.find(want) || mine.find(want) || direct[0] || mine[0];
     };
 
+    // เลือกทั้งแจ้งเตือนนัด + เลือกเวลาเช็คอิน → ปุ่มเลือกเวลาอยู่ในการ์ดแจ้งเตือนนัดใบเดียว ไม่แยกการ์ด
+    const reminderTimeUrl =
+      parts.includes("reminder") && parts.includes("checkin") && !b.arrivalTime
+        ? await getBookingTimeUrl(b.id, "checkin")
+        : "";
     for (const part of parts) {
+      if (part === "checkin" && reminderTimeUrl) continue;
       if (part === "reminder") {
         messages.push(
           await buildBookingConfirmFlex({
@@ -859,6 +865,7 @@ function groomInfoCardFor(
             notes: b.notes,
             groomProgram: b.groomProgram,
             transport: b.transport,
+            timeUrl: reminderTimeUrl || undefined,
           }, household)
         );
       } else if (part === "consent") {
