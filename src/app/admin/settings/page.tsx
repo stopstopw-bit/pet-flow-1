@@ -68,7 +68,7 @@ const TAB_GROUPS: { title: string; items: { id: Tab; icon: string; hint?: string
     title: "Hotel",
     items: [
       { id: "rooms", icon: "bed", hint: "ประเภทห้องและราคา" },
-      { id: "boardingRules", icon: "receipt", hint: "หน้ากฎการฝากของลูกค้า" },
+      { id: "boardingRules", icon: "receipt", hint: "รูป/ข้อความเสริมหน้ากฎการฝาก" },
       { id: "roomsPageBlocks", icon: "grid", hint: "เนื้อหาท้ายหน้าห้องพัก" },
     ],
   },
@@ -300,7 +300,7 @@ export default function SettingsPage() {
           saving={saving}
           onSave={save}
           field="boardingRules"
-          hint="เนื้อหาหน้ากฎระเบียบการฝาก (ฝั่งลูกค้า ในหน้าบริการ) — ใส่ได้ทั้งรูปและ/หรือข้อความต่อบล็อก เรียงลำดับได้ตามต้องการ"
+          hint="หน้ากฎระเบียบการฝาก (ฝั่งลูกค้า ในหน้าบริการ) โชว์ข้อตกลงชุดเดียวกับการ์ดกดยินยอมอัตโนมัติ — แก้ข้อกฎที่ ข้อความ › กฎ + กดยินยอม · บล็อกด้านล่างเป็นรูป/ข้อความเสริมที่ต่อท้าย ไม่ต้องใส่ก็ได้"
           saveLabel="บันทึกกฎระเบียบ"
         />
       )}
