@@ -161,12 +161,14 @@ function dropCopiedShopValues(stored: Partial<SiteConfig>, envOwner: boolean): P
  * ลูกค้าต้องเห็นชื่อร้านที่ตัวเองใช้บริการ ไม่ใช่ชื่อระบบ · ข้ามลิงก์/รูป (มี petflow อยู่ใน URL ได้)
  */
 function withShopNameInTexts(config: SiteConfig): SiteConfig {
-  const name = config.business?.name?.trim();
-  if (!name || /petflow/i.test(name)) return config;
+  const raw = config.business?.name?.trim();
+  const name = raw && !/petflow/i.test(raw) ? raw : "";
+  // ตัวแปรชื่อน้องเดิมชื่อ {cat} — ร้านหมาเห็นแล้วงง เปลี่ยนเป็น {pet} ในข้อความที่บันทึกไว้ (ตัวแทนค่ายังรับทั้งสองแบบ)
   const walk = (v: unknown): unknown => {
     if (typeof v === "string") {
-      if (!v.includes("PetFlow") || /^(https?:|data:|\/)/.test(v.trim())) return v;
-      return v.replace(/PetFlow/g, name);
+      if (/^(https?:|data:|\/)/.test(v.trim())) return v;
+      const out = v.replaceAll("{cat}", "{pet}");
+      return name ? out.replace(/PetFlow/g, name) : out;
     }
     if (Array.isArray(v)) return v.map(walk);
     if (v && typeof v === "object") {

@@ -1024,7 +1024,7 @@ function MessagesTab({
           />
           <TextAreaField
             label="ข้อความ"
-            hint="ใช้ได้: {name} {cat} {amount} · {pct} = ' 30% ของค่าบริการ' (เว้นว่างถ้าไม่ได้เลือก %)"
+            hint="ใช้ได้: {name} {pet} {amount} · {pct} = ' 30% ของค่าบริการ' (เว้นว่างถ้าไม่ได้เลือก %)"
             value={msgs?.depositRequestBody || ""}
             onChange={(v) => setMsgs({ ...msgs, depositRequestBody: v })}
             rows={4}
@@ -1037,7 +1037,7 @@ function MessagesTab({
           />
           <TextAreaField
             label="ข้อความขอบคุณ"
-            hint="ใช้ได้: {name} {cat} {amount}"
+            hint="ใช้ได้: {name} {pet} {amount}"
             value={msgs?.depositThanksBody || ""}
             onChange={(v) => setMsgs({ ...msgs, depositThanksBody: v })}
             rows={4}
@@ -1072,7 +1072,7 @@ function MessagesTab({
           />
           <TextAreaField
             label="ข้อความชวนกดยอมรับ (แนบลิงก์ตอนแจ้งเข้าพัก + ปุ่ม 📋 เงื่อนไข)"
-            hint="ใช้ได้: {shop} {cat} {url} — ต้องมี {url} เพื่อแนบลิงก์"
+            hint="ใช้ได้: {shop} {pet} {url} — ต้องมี {url} เพื่อแนบลิงก์"
             value={msgs?.consentInvite || ""}
             onChange={(v) => setMsgs({ ...msgs, consentInvite: v })}
             rows={3}
@@ -1085,7 +1085,7 @@ function MessagesTab({
         <>
           <TextAreaField
             label="สอบถามประวัติน้องก่อนอาบน้ำ"
-            hint="ใช้ได้: {shop} {cat}"
+            hint="ใช้ได้: {shop} {pet}"
             value={msgs?.groomInfoIntro || ""}
             onChange={(v) => setMsgs({ ...msgs, groomInfoIntro: v })}
             rows={5}
@@ -1111,7 +1111,7 @@ function MessagesTab({
           {sub("การ์ดแจ้งเข้าพัก (ส่ง 3 วันก่อนเข้าพัก · จัดรูปแบบให้อัตโนมัติ)")}
           <TextAreaField
             label="ทักทายเปิดการ์ด"
-            hint="ใช้ได้: {shop} {cat}"
+            hint="ใช้ได้: {shop} {pet}"
             value={msgs?.prestayIntro || ""}
             onChange={(v) => setMsgs({ ...msgs, prestayIntro: v })}
             rows={2}
@@ -1130,7 +1130,7 @@ function MessagesTab({
           />
           <TextAreaField
             label="ข้อความปิดท้าย (ชวนแจ้งการดูแลพิเศษ)"
-            hint="ใช้ได้: {cat}"
+            hint="ใช้ได้: {pet}"
             value={msgs?.prestayCareNote || ""}
             onChange={(v) => setMsgs({ ...msgs, prestayCareNote: v })}
             rows={3}
@@ -1147,7 +1147,7 @@ function MessagesTab({
           {sub("เตือนเช็คอิน (ก่อนวันเข้าพัก)")}
           <TextAreaField
             label="ข้อความ"
-            hint={litter ? "ใช้ได้: {shop} {cat} {checkin} {room} {litterNote}" : "ใช้ได้: {shop} {cat} {checkin} {room}"}
+            hint={litter ? "ใช้ได้: {shop} {pet} {checkin} {room} {litterNote}" : "ใช้ได้: {shop} {pet} {checkin} {room}"}
             value={msgs?.checkinReminder || ""}
             onChange={(v) => setMsgs({ ...msgs, checkinReminder: v })}
             rows={8}
@@ -1160,14 +1160,14 @@ function MessagesTab({
         <>
           <TextAreaField
             label="เตือนเช็คเอาท์ (ก่อนวันออก)"
-            hint="ใช้ได้: {shop} {cat} {checkout}"
+            hint="ใช้ได้: {shop} {pet} {checkout}"
             value={msgs?.checkoutReminder || ""}
             onChange={(v) => setMsgs({ ...msgs, checkoutReminder: v })}
             rows={6}
           />
           <TextAreaField
             label="ขอรีวิว (หลังเช็คเอาท์)"
-            hint="ใช้ได้: {shop} {cat}"
+            hint="ใช้ได้: {shop} {pet}"
             value={msgs?.reviewRequest || ""}
             onChange={(v) => setMsgs({ ...msgs, reviewRequest: v })}
             rows={5}
@@ -1192,14 +1192,14 @@ function MessagesTab({
           </p>
           <TextAreaField
             label="ข้อความอวยพร — วันเกิดน้อง"
-            hint="ใช้ได้: {shop} {name} {cat}"
+            hint="ใช้ได้: {shop} {name} {pet}"
             value={msgs?.birthdayGreeting || ""}
             onChange={(v) => setMsgs({ ...msgs, birthdayGreeting: v })}
             rows={5}
           />
           <TextAreaField
             label="ข้อความอวยพร — วันเกิดเจ้าของ"
-            hint="ใช้ได้: {shop} {name} · ไม่มี {cat} เพราะอวยพรคน ไม่ใช่น้อง"
+            hint="ใช้ได้: {shop} {name} · ไม่มี {pet} เพราะอวยพรคน ไม่ใช่น้อง"
             value={msgs?.birthdayGreetingOwner || ""}
             onChange={(v) => setMsgs({ ...msgs, birthdayGreetingOwner: v })}
             rows={5}
