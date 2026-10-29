@@ -1,3 +1,4 @@
+import { buildBookingApprovedCard } from "@/lib/notice-cards";
 import { GROOM_EXTRA_CARDS, groomUsesCard } from "@/lib/intake-rules";
 import { NextRequest, NextResponse } from "next/server";
 import { petWords } from "@/lib/pet-kind";
@@ -397,7 +398,7 @@ async function handlePatch(req: NextRequest, admin: boolean) {
               when: bookingScheduleText(b),
             }
           );
-          await pushLineMessage(b.lineUserId, [{ type: "text", text }]);
+          await pushLineMessage(b.lineUserId, [await buildBookingApprovedCard(text, cfg)]);
         }
       } catch (e) {
         notifyError = e instanceof Error ? e.message : String(e);

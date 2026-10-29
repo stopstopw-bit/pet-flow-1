@@ -3611,3 +3611,72 @@ export function buildReadyForPickupFlex(data: {
     },
   };
 }
+
+/**
+ * การ์ดแจ้งเรื่องทั่วไป (ร้านยืนยันนัด / ได้คูปองชวนเพื่อน / อวยพรวันเกิด)
+ * ร้านไม่ส่งข้อความเปล่าหาลูกค้าเลย — ทุกอย่างต้องเป็นการ์ด และแก้คำได้ที่ /admin/cards
+ */
+export function buildNoticeFlex(data: {
+  header: string;
+  body: string;
+  /** บรรทัดเล็กใต้เนื้อความ เช่น "ใช้ได้ 30 วัน" */
+  note?: string;
+  button?: { label: string; uri: string };
+  altText?: string;
+}, style?: CardStyleConfig) {
+  const show = (k: string) => style?.show?.[k] !== false;
+  const contents: Record<string, unknown>[] = [
+    { type: "text", text: data.body, size: "sm", color: "#4E3E32", wrap: true },
+  ];
+  if (data.note) {
+    contents.push({ type: "text", text: data.note, size: "xs", color: "#A2907E", margin: "md", wrap: true });
+  }
+  if (style?.closing) {
+    contents.push({ type: "text", text: style.closing, size: "xs", color: "#A2907E", margin: "lg", wrap: true });
+  }
+  return {
+    type: "flex",
+    altText: (data.altText || data.header).slice(0, 100),
+    contents: {
+      type: "bubble",
+      ...(show("header")
+        ? {
+            header: {
+              type: "box",
+              layout: "vertical",
+              backgroundColor: style?.headerColor || BRAND_HEADER,
+              paddingAll: "16px",
+              contents: [
+                {
+                  type: "text",
+                  text: data.header,
+                  color: style?.headerTextColor || "#FFFFFF",
+                  weight: "bold",
+                  size: style?.titleSize || "md",
+                  wrap: true,
+                },
+              ],
+            },
+          }
+        : {}),
+      body: { type: "box", layout: "vertical", paddingAll: "16px", contents },
+      ...(data.button
+        ? {
+            footer: {
+              type: "box",
+              layout: "vertical",
+              contents: [
+                {
+                  type: "button",
+                  style: "primary",
+                  color: style?.buttonColor || BRAND_ACTION,
+                  height: "sm",
+                  action: { type: "uri", label: data.button.label.slice(0, 40), uri: data.button.uri },
+                },
+              ],
+            },
+          }
+        : {}),
+    },
+  };
+}
