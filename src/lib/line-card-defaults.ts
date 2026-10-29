@@ -57,12 +57,6 @@ export const BIRTHDAY_CARD_DEFAULTS = {
   button: "🎟️ ดูคูปองของฉัน",
 };
 
-/** การ์ดแจ้งลูกค้าว่าร้านยืนยันนัดแล้ว (cards.bookingApproved) — เนื้อความมาจากแม่แบบ bookingApprovedText */
-export const BOOKING_APPROVED_DEFAULTS = {
-  header: "✅ ร้านยืนยันนัดแล้ว",
-  button: "📅 ดูคิวของฉัน",
-};
-
 /** แทน {key} ในข้อความการ์ด */
 export function fillCardText(text: string, vars: Record<string, string | number>): string {
   return text.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));

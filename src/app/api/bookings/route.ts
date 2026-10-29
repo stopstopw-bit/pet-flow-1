@@ -1,4 +1,3 @@
-import { buildBookingApprovedCard } from "@/lib/notice-cards";
 import { GROOM_EXTRA_CARDS, groomUsesCard } from "@/lib/intake-rules";
 import { NextRequest, NextResponse } from "next/server";
 import { petWords } from "@/lib/pet-kind";
@@ -71,7 +70,7 @@ import { autoMuted } from "@/lib/auto-messages";
 import { stayForGroom } from "@/lib/booking-group";
 import { bangkokToday } from "@/lib/bangkok-date";
 import { cleanTransport, hasTransport, transportLabel } from "@/lib/transport";
-import { DEFAULT_MESSAGES, consentDates, consentTextFor, renderTemplate } from "@/lib/messages";
+import { consentDates, consentTextFor, renderTemplate } from "@/lib/messages";
 import { listInvoices, getInvoice, updateInvoice, invoiceCatNames, findOpenInvoiceForBooking } from "@/lib/invoices-store";
 import { getPaymentConfig } from "@/lib/payment-config";
 import {
@@ -374,36 +373,14 @@ async function handlePatch(req: NextRequest, admin: boolean) {
 
   let notifyError: string | undefined;
   if (action === "confirm") {
-    // ต้องเช็คสถานะ "ก่อน" อัปเดต — กันส่งข้อความซ้ำถ้ากดยืนยันซ้ำ/ลูกค้ากดยืนยันหลังร้านยืนยันไปแล้ว
-    const wasNotYetConfirmed = b.status !== "confirmed";
     // เวลาที่เลือกตอนกดยืนยัน = เวลามาส่งน้อง (ที่เดียวกับหน้าเลือกเวลา/หลังบ้าน/แจ้งเตือน)
     await updateBooking(id, {
       status: "confirmed",
       ...(checkinTime ? { checkinTime, arrivalTime: checkinTime } : {}),
     });
 
-    // แจ้งลูกค้าทันทีว่าได้คิวแล้ว — คนละเรื่องกับการ์ดเตือนล่วงหน้าก่อนถึงวันจริง (send_reminder / cron)
-    // ส่งเฉพาะตอน "ร้าน" เป็นคนยืนยัน — ลูกค้ากดตอบรับเองในแอปไม่ต้องส่งซ้ำ (เขาเพิ่งกดเองเห็นผลอยู่แล้ว
-    // ส่งไปก็เปลืองโควตาข้อความ LINE ฟรี ๆ)
-    // ส่งไม่สำเร็จก็ยังยืนยันนัดต่อไปได้ (ไม่บล็อก) แต่ต้องบอก staff ว่าลูกค้าไม่ได้รับ ไม่ใช่เงียบไปเฉยๆ
-    if (wasNotYetConfirmed && admin && b.lineUserId) {
-      try {
-        const cfg = await getSiteConfig();
-        if (cfg.automation?.bookingApprovedEnabled !== false) {
-          const text = renderTemplate(
-            cfg.messages.bookingApprovedText || DEFAULT_MESSAGES.bookingApprovedText,
-            {
-              shop: cfg.business.name,
-              cat: b.catName,
-              when: bookingScheduleText(b),
-            }
-          );
-          await pushLineMessage(b.lineUserId, [await buildBookingApprovedCard(text, cfg)]);
-        }
-      } catch (e) {
-        notifyError = e instanceof Error ? e.message : String(e);
-      }
-    }
+    // ร้านกดยืนยันคิว: ไม่ส่งอะไรหาลูกค้า — วัน/เวลานัดอยู่ในการ์ดเตือนนัดล่วงหน้าใบเดียวอยู่แล้ว
+    // (เจ้าของร้านไม่อยากให้ลูกค้าได้หลายข้อความ ให้รวมไปทีเดียว)
 
     if (b.calendarEventId) {
       await updateCalendarEventConfirmed(b.calendarEventId, {

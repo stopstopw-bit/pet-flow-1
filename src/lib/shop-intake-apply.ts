@@ -544,7 +544,6 @@ function buildDrafts(ans: IntakeAnswers, cfg: SiteConfig): Draft[] {
     };
     if (auto) {
       const on = (opt: string) => auto.includes(opt);
-      next.bookingApprovedEnabled = on("ยืนยันทันทีที่ร้านรับคิว");
       next.confirmTomorrowEnabled = on("เตือนนัดล่วงหน้า");
       next.confirmDaysBefore = days("เตือนนัดล่วงหน้า", am.confirmDaysBefore);
       next.depositReminderEnabled = on("เตือนยอดค้างจ่ายก่อนเข้าพัก");
@@ -568,7 +567,6 @@ function buildDrafts(ans: IntakeAnswers, cfg: SiteConfig): Draft[] {
     }
     const desc = (x: typeof am) =>
       [
-        x.bookingApprovedEnabled && "ยืนยันคิวทันที",
         x.confirmTomorrowEnabled && `เตือนนัด ${x.confirmDaysBefore} วันก่อน`,
         x.depositReminderEnabled && `เตือนยอดค้าง ${x.depositReminderDays} วันก่อน`,
         x.prestayReminderEnabled && `ของที่ต้องเตรียม ${x.prestayReminderDays} วันก่อน`,

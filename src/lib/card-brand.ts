@@ -29,7 +29,6 @@ export const CARD_COLOR_ROLES: Record<string, ColorKey[]> = {
   pointsAward: ["headerColor", "accentColor"],
   referralReward: ["headerColor", "headerTextColor", "buttonColor"],
   birthday: ["headerColor", "headerTextColor", "buttonColor"],
-  bookingApproved: ["headerColor", "headerTextColor", "buttonColor"],
 };
 
 type Brand = { primary: string; accent: string; heading: string };

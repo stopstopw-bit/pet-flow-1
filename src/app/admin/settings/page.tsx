@@ -2910,11 +2910,6 @@ function AutoTimeline({ form, config }: { form: AutoForm; config: SiteConfig }) 
   type Row = { order: number; when: string; what: string; parts?: string[] };
   const groom: Row[] = [];
   const stay: Row[] = [];
-  if (form.bookingApprovedEnabled) {
-    const r = { order: 1e6, when: "ทันทีที่กดยืนยันคิว", what: "การ์ดยืนยันคิว" };
-    groom.push(r);
-    stay.push(r);
-  }
   if (form.confirmTomorrowEnabled) {
     const d = form.confirmDaysBefore;
     groom.push({
@@ -3088,15 +3083,6 @@ function AutomationTab({
       {group(
         "✔️ ยืนยันนัด",
         <>
-          {item({
-            emoji: "🎉",
-            title: "แจ้งลูกค้าทันทีที่ร้านกดยืนยันคิว",
-            services: ["groom", "stay"],
-            when: "ทันทีตอนกด ✔️ ยืนยันนัด",
-            sends: "การ์ดยืนยันคิว บอกวันเวลาและชื่อน้อง (คนละใบกับการ์ดเตือนนัดล่วงหน้า)",
-            on: form.bookingApprovedEnabled,
-            onToggle: (v) => set({ bookingApprovedEnabled: v }),
-          })}
           {item({
             emoji: "📆",
             title: "การ์ดเตือนนัดล่วงหน้า",

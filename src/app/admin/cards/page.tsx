@@ -22,7 +22,6 @@ import type { RegisterFieldConfig, RegisterFormConfig } from "@/lib/register-for
 import { brandColorsFor } from "@/lib/card-brand";
 import {
   BIRTHDAY_CARD_DEFAULTS,
-  BOOKING_APPROVED_DEFAULTS,
   DEPOSIT_REMINDER_DEFAULTS,
   DOC_REQUEST_DEFAULTS,
   INTAKE_CARD_DEFAULTS,
@@ -629,24 +628,6 @@ const CARDS: CardMeta[] = [
       { key: "pickupTimeLabel", label: "ป้าย: เวลามารับ", placeholder: "🚗 เวลาที่แจ้งไว้ว่าจะมารับ" },
     ],
     closingLabel: "ข้อความปิดท้าย (ว่าง = ขอบคุณที่ไว้ใจ…)",
-    hasTitleSize: true,
-  },
-  {
-    key: "bookingApproved",
-    name: "ร้านยืนยันนัดแล้ว",
-    desc: "ส่งตอนร้านกดยืนยันนัดที่ลูกค้าจองเข้ามา — เนื้อความแก้ได้ที่ตั้งค่า › ข้อความ",
-    colors: [
-      { key: "headerColor", label: "สีแถบหัว", fallback: "#6e2f48" },
-      { key: "headerTextColor", label: "สีตัวหนังสือหัว", fallback: "#FFFFFF" },
-      { key: "buttonColor", label: "สีปุ่ม", fallback: "#bd3a6a" },
-    ],
-    fields: [{ key: "header", label: "แถบหัวการ์ด" }],
-    texts: [],
-    styleTexts: [
-      { key: "header", label: "ข้อความบนแถบหัว", placeholder: BOOKING_APPROVED_DEFAULTS.header },
-      { key: "button", label: "คำในปุ่ม", placeholder: BOOKING_APPROVED_DEFAULTS.button },
-    ],
-    closingLabel: "ข้อความท้ายการ์ด (ว่าง = ไม่มี)",
     hasTitleSize: true,
   },
   {
@@ -1473,17 +1454,10 @@ function Preview({
     );
   }
 
-  if (meta.key === "bookingApproved" || meta.key === "referralReward" || meta.key === "birthday") {
+  if (meta.key === "referralReward" || meta.key === "birthday") {
     // ตัวอย่างใช้ชื่อสมมติ — ตอนส่งจริงระบบเติมชื่อน้อง/วันนัด/มูลค่าคูปองให้
     const d =
-      meta.key === "bookingApproved"
-        ? {
-            header: t("header", BOOKING_APPROVED_DEFAULTS.header),
-            body: `${shop} ยืนยันนัดของน้องมะลิแล้วค่ะ 🐾\nพรุ่งนี้ 10:00 น. แล้วเจอกันนะคะ`,
-            note: "",
-            button: t("button", BOOKING_APPROVED_DEFAULTS.button),
-          }
-        : meta.key === "referralReward"
+      meta.key === "referralReward"
           ? {
               header: t("header", REFERRAL_REWARD_DEFAULTS.header),
               body: fillCardText(t("signupBody", REFERRAL_REWARD_DEFAULTS.signupBody), { amount: 50 }),
