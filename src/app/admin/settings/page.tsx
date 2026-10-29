@@ -750,23 +750,8 @@ function ShopTab({
           แต้มของลูกค้า Member
         </p>
         <p className="mb-2.5 text-[10px] text-brown-faint">
-          ให้แต้มรอบเดียวพอ — ถ้าให้ทั้งตอนเติมและตอนใช้ ลูกค้าจะได้แต้มสองรอบจากเงินก้อนเดียว
+          เติมเครดิต Member และซื้อคอร์สไม่ได้แต้ม — แต้มให้เฉพาะบริการรายครั้ง
         </p>
-        <label className="flex items-start gap-2 border-t border-petflow-line pt-2.5">
-          <input
-            type="checkbox"
-            checked={form.pointsOnMemberTopup !== false}
-            onChange={(e) => setForm({ ...form, pointsOnMemberTopup: e.target.checked })}
-            className="mt-0.5 h-4 w-4 accent-latte-deep"
-          />
-          <span className="text-xs font-bold text-brown-soft">
-            ให้แต้มตอน<span className="text-ok">เติมเครดิต</span>
-            <span className="mt-0.5 block text-[10px] font-normal text-brown-faint">
-              คิดจากยอดที่จ่ายจริง ไม่รวมเครดิตแถม — เช่น จ่าย 10,000 รับเพิ่ม 2,000
-              จะได้แต้มจาก 10,000
-            </span>
-          </span>
-        </label>
         <label className="mt-2 flex items-start gap-2 border-t border-petflow-line pt-2.5">
           <input
             type="checkbox"
@@ -777,7 +762,7 @@ function ShopTab({
           <span className="text-xs font-bold text-brown-soft">
             จ่ายด้วยเครดิต Member <span className="text-wait">ไม่ให้แต้ม</span>
             <span className="mt-0.5 block text-[10px] font-normal text-brown-faint">
-              ตอนตัดเครดิตใช้บริการจะไม่ได้แต้มอีก เพราะได้ไปแล้วตอนเติม
+              ติ๊กไว้ = ลูกค้า Member ไม่ได้แต้มเลย · เอาติ๊กออก = ได้แต้มตอนตัดเครดิตใช้บริการแต่ละครั้ง
             </span>
           </span>
         </label>
