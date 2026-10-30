@@ -1024,6 +1024,8 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
     if (autoRoomPackageId) setPackageId(autoRoomPackageId);
   }, [autoRoomPackageId]);
 
+  // แก้บิลที่หักคอร์สไปแล้ว — ไม่ให้เลือกคอร์สซ้ำ (ส่วนที่คอร์สคลุมอยู่ในส่วนลดที่โหลดมาแล้ว)
+  const editingHasPackage = !!editingId && !!invoices.find((i) => i.id === editingId)?.packageId;
   // คอร์สนับครั้ง: หัก 1 ครั้ง → คลุมยอดที่เหลือทั้งบิลให้เป็น 0 (จ่ายไปแล้วตอนซื้อคอร์ส)
   const packageCovers = !packageId
     ? 0
@@ -1531,9 +1533,11 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
           items: payloadItems,
           // ส่งค่าจริงเสมอ ("" = ไม่ใช้โปร, 0 = ไม่มีส่วนลดเพิ่ม) — เมื่อก่อนส่ง undefined
           // เซิร์ฟเวอร์เลยคงโปร/ส่วนลดเดิมไว้ กดแก้บิลแล้วยอดไม่เปลี่ยน
-          extraDiscount: manualDiscount,
+          // เลือกคอร์สมาหักตอนแก้บิล (เช่น บิลต่อคืน) — ส่วนที่คอร์สคลุมรวมเป็นส่วนลดของบิล
+          extraDiscount: manualDiscount + packageCovers,
           deposit: depositAmount || 0,
           promoId,
+          ...(packageId ? { packageId, packageUnits: packageUnitsToUse || undefined } : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -1546,9 +1550,13 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
         toast(
           data.error === "already_paid"
             ? "บิลปิดแล้ว แก้ไขไม่ได้"
-            : data.error === "out_of_stock"
-              ? `สต็อกไม่พอ: ${data.message || ""}`
-              : "แก้ไขไม่สำเร็จ",
+            : data.error === "package_unavailable"
+              ? "หักคอร์สไม่ได้ (คืนในคอร์สไม่พอ?)"
+              : typeof data.error === "string" && /[\u0E00-\u0E7F]/.test(data.error)
+                ? data.error
+                : data.error === "out_of_stock"
+                  ? `สต็อกไม่พอ: ${data.message || ""}`
+                  : "แก้ไขไม่สำเร็จ",
           "error"
         );
       }
@@ -3194,7 +3202,7 @@ function BillsView({ tabs }: { tabs: React.ReactNode }) {
             </div>
           )}
 
-          {customerPackages.length > 0 && (
+          {customerPackages.length > 0 && !editingHasPackage && (
             <div>
               <span className="mb-1.5 flex items-start gap-1.5 text-xs font-bold text-brown-soft">
                 <Icon name="ticket" size={14} />

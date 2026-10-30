@@ -508,6 +508,9 @@ export async function updateInvoice(
     deposit?: number;
     extraDiscount?: number;
     promoId?: string;
+    /** เลือกคอร์สมาหักตอนแก้บิล (หักคอร์สไปแล้วที่ API) — ส่วนที่คอร์สคลุมอยู่ใน extraDiscount */
+    packageId?: string;
+    packageUnits?: number;
   }
 ) {
   const inv = await getInvoice(id);
@@ -550,6 +553,10 @@ export async function updateInvoice(
   inv.deposit = deposit;
   inv.promoId = promoId || undefined; // "" = เอาโปรออก
   inv.promoLabel = label;
+  if (patch.packageId) {
+    inv.packageId = patch.packageId;
+    inv.packageUnits = patch.packageUnits && patch.packageUnits > 1 ? Math.round(patch.packageUnits) : undefined;
+  }
 
   const sb = getSupabase();
   if (sb) {
@@ -560,6 +567,14 @@ export async function updateInvoice(
       .eq("id", id)
       .eq("tenant_id", requireTenantId());
     if (error) return { ok: false as const, error: "save_failed", message: error.message };
+    if (patch.packageId) {
+      const { error: pkErr } = await sb
+        .from("invoices")
+        .update({ package_id: inv.packageId, package_units: inv.packageUnits ?? null })
+        .eq("id", id)
+        .eq("tenant_id", requireTenantId());
+      if (pkErr) return { ok: false as const, error: "save_failed", message: pkErr.message };
+    }
   }
   await syncBillStock(id, before, items);
   return { ok: true as const, invoice: inv };

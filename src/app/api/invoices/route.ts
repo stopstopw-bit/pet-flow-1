@@ -170,6 +170,33 @@ async function actorName(req: NextRequest): Promise<string> {
   return s?.name || s?.role || "ไม่ทราบ";
 }
 
+/**
+ * เช็กว่าเอาคอร์สนี้มาหักบิลนี้ได้ไหม (ใช้ทั้งตอนออกบิลและตอนแก้บิล) — คืนข้อความเหตุผลถ้าไม่ได้
+ * แพ็กห้องรายเดือนต้องจ่ายครบก่อน · คอร์สคืนผูกห้องหักได้ไม่เกินคืนของห้องนั้น · คอร์สอาบน้ำผูกโปรแกรมเหมือนกัน
+ */
+async function packageProblem(packageId: string, rawItems: unknown, packageUnits: number) {
+  const pk = await getPackage(packageId);
+  const owed = await roomPlanOutstanding(pk?.planId);
+  if (owed > 0) return `แพ็กนี้ยังค้างจ่าย ${owed.toLocaleString()} บาท — ต้องจ่ายครบก่อนถึงจะใช้คืนได้`;
+  const items: { label?: string; kind?: string; qty?: number; program?: string }[] = Array.isArray(rawItems)
+    ? rawItems
+    : [];
+  if (pk?.unit === "night" && pk.roomType && pk.roomLabel) {
+    const nightsOfRoom = items
+      .filter((it) => it.kind === "room" && String(it.label || "").includes(pk.roomLabel!))
+      .reduce((n, it) => n + Math.max(1, Math.round(Number(it.qty) || 1)), 0);
+    if (nightsOfRoom < packageUnits) return `คอร์สนี้ใช้ได้กับ${pk.roomLabel}เท่านั้น (บิลนี้มี ${nightsOfRoom} คืน)`;
+  }
+  if (pk && pk.unit !== "night" && pk.groomProgram) {
+    const usesOfProgram = items
+      .filter((it) => it.kind === "grooming" && it.program === pk.groomProgram)
+      .reduce((n, it) => n + Math.max(1, Math.round(Number(it.qty) || 1)), 0);
+    if (usesOfProgram < packageUnits) return `คอร์สนี้ใช้ได้กับโปรแกรมที่ผูกไว้เท่านั้น (บิลนี้มี ${usesOfProgram} ครั้ง)`;
+  }
+  return null;
+}
+
+
 export async function POST(req: NextRequest) {
   const session = await getAdminSession(req);
   if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -189,46 +216,8 @@ async function handlePost(req: NextRequest) {
     // คอร์สแบบคืนหักหลายหน่วยในบิลเดียว (พัก 5 คืน = หัก 5) ไม่ระบุ = 1 เหมือนเดิม
     const packageUnits = Math.max(1, Math.round(Number(body.packageUnits) || 1));
     if (body.packageId) {
-      // คอร์สคืนผูกประเภทห้อง (แพ็กห้องรายเดือน) — หักได้ไม่เกินคืนของห้องประเภทนั้นในบิลนี้
-      // กันเอาคืนห้องเล็ก (ราคาถูก) ไปคลุมห้องใหญ่ (ราคาแพง)
-      const pk = await getPackage(String(body.packageId));
-      // แพ็กห้องรายเดือนต้องจ่ายครบทุกงวดก่อนถึงจะเริ่มใช้คืนได้
-      const owed = await roomPlanOutstanding(pk?.planId);
-      if (owed > 0) {
-        return NextResponse.json(
-          { error: `แพ็กนี้ยังค้างจ่าย ${owed.toLocaleString()} บาท — ต้องจ่ายครบก่อนถึงจะใช้คืนได้` },
-          { status: 400 }
-        );
-      }
-      if (pk?.unit === "night" && pk.roomType && pk.roomLabel) {
-        const items: { label?: string; kind?: string; qty?: number }[] = Array.isArray(body.items)
-          ? body.items
-          : [];
-        const nightsOfRoom = items
-          .filter((it) => it.kind === "room" && String(it.label || "").includes(pk.roomLabel!))
-          .reduce((n, it) => n + Math.max(1, Math.round(Number(it.qty) || 1)), 0);
-        if (nightsOfRoom < packageUnits) {
-          return NextResponse.json(
-            { error: `คอร์สนี้ใช้ได้กับ${pk.roomLabel}เท่านั้น (บิลนี้มี ${nightsOfRoom} คืน)` },
-            { status: 400 }
-          );
-        }
-      }
-      // คอร์สอาบน้ำผูกโปรแกรม — หักได้ไม่เกินจำนวนตัวที่อาบโปรแกรมนั้นในบิลนี้
-      if (pk && pk.unit !== "night" && pk.groomProgram) {
-        const items: { kind?: string; program?: string; qty?: number }[] = Array.isArray(body.items)
-          ? body.items
-          : [];
-        const usesOfProgram = items
-          .filter((it) => it.kind === "grooming" && it.program === pk.groomProgram)
-          .reduce((n, it) => n + Math.max(1, Math.round(Number(it.qty) || 1)), 0);
-        if (usesOfProgram < packageUnits) {
-          return NextResponse.json(
-            { error: `คอร์สนี้ใช้ได้กับโปรแกรมที่ผูกไว้เท่านั้น (บิลนี้มี ${usesOfProgram} ครั้ง)` },
-            { status: 400 }
-          );
-        }
-      }
+      const bad = await packageProblem(String(body.packageId), body.items, packageUnits);
+      if (bad) return NextResponse.json({ error: bad }, { status: 400 });
       try {
         const used = await consumePackage(String(body.packageId), packageUnits);
         if (used.ok) consumedPackageId = String(body.packageId);
@@ -857,12 +846,24 @@ async function handlePatch(req: NextRequest) {
   }
 
   if (action === "update") {
+    // แก้บิลแล้วเลือกคอร์สมาหัก (เช่น บิลต่อคืน) — ได้เฉพาะบิลที่ยังไม่ได้หักคอร์สใบไหนมาก่อน
+    let addPackageId: string | undefined;
+    const addUnits = Math.max(1, Math.round(Number(body.packageUnits) || 1));
+    if (body.packageId && !inv.packageId) {
+      const bad = await packageProblem(String(body.packageId), body.items ?? inv.items, addUnits);
+      if (bad) return NextResponse.json({ error: bad }, { status: 400 });
+      const used = await consumePackage(String(body.packageId), addUnits).catch(() => null);
+      if (!used?.ok) return NextResponse.json({ error: "package_unavailable" }, { status: 400 });
+      addPackageId = String(body.packageId);
+    }
     const res = await updateInvoice(id, {
       items: body.items,
       deposit: body.deposit,
       extraDiscount: body.extraDiscount,
       promoId: body.promoId,
+      ...(addPackageId ? { packageId: addPackageId, packageUnits: addUnits } : {}),
     });
+    if (!res.ok && addPackageId) await refundPackageUse(addPackageId, addUnits);
     if (!res.ok) {
       return NextResponse.json(
         { error: res.error, message: "message" in res ? res.message : undefined },
