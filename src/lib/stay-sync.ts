@@ -17,6 +17,7 @@ import { bookingGroupKey } from "./booking-group";
 import {
   createInvoice,
   listInvoicesForBookings,
+  markInvoicePaid,
   updateInvoice,
   type InvoiceItem,
   type InvoiceRecord,
@@ -143,15 +144,54 @@ async function syncSegmentedInvoice(
   const last = paid[paid.length - 1];
   const roomItems = last?.items.filter(isLast) || [];
   if (roomItems.length === 0) return manual;
+  const created = await createExtraNightsInvoice(last, withNights(roomItems, extra, extensionNote(extendFrom!, checkout), true));
+  return { kind: "created_extra", invoiceId: created.id, nights: extra, total: created.total };
+}
+
+/**
+ * ออกบิลคืนที่ต่อ (หลังบิลก่อนหน้าปิดแล้ว) — ถ้าบิลก่อนหน้าหักคอร์สคืนไว้ ให้หักคืนที่ต่อจากคอร์สเดิมต่อเลย
+ * (ลูกค้ามีคอร์สอยู่แล้ว ไม่ควรต้องจ่ายเงิน/ไปแก้บิลเอง) · คอร์สเหลือไม่พอ = หักเท่าที่เหลือ ส่วนเกินคิดเงินปกติ
+ * หักครบจนยอด 0 → ปิดบิลแบบ "หักจากคอร์ส" ให้เลย
+ */
+async function createExtraNightsInvoice(last: InvoiceRecord, items: InvoiceItem[]) {
+  let packageId: string | undefined;
+  let units = 0;
+  let cover = 0;
+  if (last.packageId) {
+    const { getPackage, consumePackage } = await import("./packages-store");
+    const pk = await getPackage(last.packageId).catch(() => undefined);
+    const left = pk && pk.status === "active" && pk.unit === "night" ? pk.totalUses - pk.usedUses : 0;
+    if (pk && left > 0) {
+      // คอร์สผูกห้อง — หักได้แค่คืนของห้องนั้น
+      const lines = items.filter(
+        (it) => isRoomLine(it) && (!pk.roomLabel || String(it.label).includes(pk.roomLabel))
+      );
+      for (const it of lines) {
+        const qty = Math.max(1, Math.round(Number(it.qty) || 1));
+        const take = Math.min(qty, left - units);
+        if (take <= 0) break;
+        units += take;
+        cover += Math.round((it.amount / qty) * take);
+      }
+      if (units > 0) {
+        const used = await consumePackage(pk.id, units).catch(() => null);
+        if (used?.ok) packageId = pk.id;
+      }
+    }
+  }
   const created = await createInvoice({
     customerId: last.customerId,
     lineUserId: last.lineUserId,
     customerName: last.customerName,
     catName: last.catName,
-    items: withNights(roomItems, extra, extensionNote(extendFrom!, checkout), true),
+    items,
     bookingId: last.bookingId,
+    ...(packageId ? { packageId, packageUnits: units, extraDiscount: cover } : {}),
   });
-  return { kind: "created_extra", invoiceId: created.id, nights: extra, total: created.total };
+  if (packageId && created.total <= 0) {
+    await markInvoicePaid(created.id, "package").catch(() => undefined);
+  }
+  return created;
 }
 
 /** ปรับบิลของนัดนี้ให้ตรงกับจำนวนคืนจริงหลังเลื่อนวัน/ต่อคืน */
@@ -198,14 +238,7 @@ export async function syncStayInvoice(
       return { kind: "updated", invoiceId: open.id, nights: total, total: res.invoice.total };
     }
     const last = paid[paid.length - 1];
-    const created = await createInvoice({
-      customerId: last.customerId,
-      lineUserId: last.lineUserId,
-      customerName: last.customerName,
-      catName: last.catName,
-      items: withNights(last.items.filter(isRoomLine), extra, extensionNote(extendFrom!, checkout), true),
-      bookingId: last.bookingId,
-    });
+    const created = await createExtraNightsInvoice(last, withNights(last.items.filter(isRoomLine), extra, extensionNote(extendFrom!, checkout), true));
     return { kind: "created_extra", invoiceId: created.id, nights: extra, total: created.total };
   }
   const paidNights = paid.reduce((s, i) => s + billedNights(i), 0);
@@ -256,14 +289,7 @@ export async function syncStayInvoice(
   // ลูกค้าอยู่ต่อหลังปิดบิลแล้ว → ออกบิลเฉพาะคืนที่เพิ่ม ราคาต่อคืนตามบิลล่าสุด
   const last = paid[paid.length - 1];
   const roomItems = last.items.filter(isRoomLine);
-  const created = await createInvoice({
-    customerId: last.customerId,
-    lineUserId: last.lineUserId,
-    customerName: last.customerName,
-    catName: last.catName,
-    items: withNights(roomItems, stillDue, note, true),
-    bookingId: last.bookingId,
-  });
+  const created = await createExtraNightsInvoice(last, withNights(roomItems, stillDue, note, true));
   return { kind: "created_extra", invoiceId: created.id, nights: stillDue, total: created.total };
 }
 
