@@ -7,6 +7,7 @@ import { Icon } from "@/components/Icon";
 import { MoreMenu } from "@/components/ui";
 import { toast } from "@/components/Toast";
 import { CancelToCreditButton } from "@/components/CancelToCreditButton";
+import { askDepositReceive } from "@/lib/deposit-confirm";
 
 type Inv = {
   id: string;
@@ -15,6 +16,8 @@ type Inv = {
   depositReceivedAt?: string;
   status: "pending" | "paid";
   customerId?: string;
+  customerName?: string;
+  lineUserId?: string;
 };
 
 /**
@@ -77,8 +80,16 @@ export function InvoiceActionButtons({
   };
 
   const busyAny = busy !== "";
-  const receiveDeposit = () =>
-    act("receive_deposit", { action: "receive_deposit" }, "รับมัดจำแล้ว 💰");
+  // ถามก่อนเสมอ: ยืนยันลงบัญชี แล้วถามแยกว่าจะส่งการ์ดขอบคุณไหม (เดิมกดทีเดียวส่งการ์ดเลย)
+  const receiveDeposit = () => {
+    const ask = askDepositReceive(inv.customerName, inv.deposit ?? 0, !!inv.lineUserId);
+    if (!ask) return;
+    act(
+      "receive_deposit",
+      { action: "receive_deposit", notify: ask.notify },
+      ask.notify ? "รับมัดจำแล้ว 💰 + ส่งการ์ดขอบคุณแล้ว" : "รับมัดจำแล้ว 💰 (ไม่ได้ส่งการ์ด)"
+    );
+  };
   const paidTransfer = () =>
     act(
       "paid_transfer",

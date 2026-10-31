@@ -345,7 +345,8 @@ async function handlePost(req: NextRequest) {
       })
     );
     let dtNotifyErr: string | undefined;
-    if (customer?.lineUserId) {
+    // ส่งการ์ดขอบคุณเฉพาะเมื่อขอมาชัดๆ (notify: true)
+    if (body.notify === true && customer?.lineUserId) {
       const cfgDt = await getSiteConfig();
       const msgs = cfgDt.messages;
       const catName = customer.cats[0]?.name || "น้อง";
@@ -819,9 +820,24 @@ async function handlePatch(req: NextRequest) {
         บิล: inv.id,
       })
     );
-    // ส่งการ์ดขอบคุณ + เงื่อนไข ให้ลูกค้า
+    // การ์ดขอบคุณ + เงื่อนไข ส่งเฉพาะเมื่อแอดมินกดยืนยันว่า "ส่ง" (notify: true) เท่านั้น
+    const rdNotify = body.notify === true;
+    await logAudit({
+      tenantId: requireTenantId(),
+      actorType: "tenant",
+      actorId: await actorName(req),
+      action: "receive_deposit",
+      resourceType: "invoice",
+      resourceId: id,
+      afterState: {
+        ลูกค้า: inv.customerName,
+        มัดจำ: res.deposit,
+        คงเหลือ: res.remaining,
+        ส่งการ์ดขอบคุณ: rdNotify ? (inv.lineUserId ? "ส่ง" : "ไม่มี LINE") : "ไม่ส่ง",
+      },
+    });
     let rdNotifyErr: string | undefined;
-    if (inv.lineUserId) {
+    if (rdNotify && inv.lineUserId) {
       const cfgRd = await getSiteConfig();
       const msgs = cfgRd.messages;
       rdNotifyErr = await notifyCustomer(inv.lineUserId, [
