@@ -539,6 +539,33 @@ export async function lineDeletedAt(lineUserId: string): Promise<string | undefi
 }
 
 /**
+ * นัดที่ห้ามส่ง LINE อัตโนมัติแล้ว เพราะร้านลบลูกค้าเจ้าของนัดไปแล้ว (นัดยังค้างในปฏิทิน แต่ลูกค้าไม่ใช่ของร้านแล้ว)
+ * ตัด = มีบัญชีที่ถูกลบถือ LINE ID นี้ และนัดสร้างก่อนวันลบ
+ * ยกเว้นมีบัญชีที่ยังใช้งานถือ LINE ID เดียวกันอยู่ก่อนวันลบ (= รวมลูกค้าซ้ำ ไม่ใช่ลบทิ้ง)
+ * กลับมาสมัครใหม่หลังลบ = นัดเก่าก่อนวันลบยังตัด นัดใหม่ส่งได้ (กฎเดียวกับหน้านัดฝั่งลูกค้า)
+ */
+export async function deletedLineFilter(): Promise<(b: { lineUserId?: string; createdAt: string }) => boolean> {
+  const all = await fetchAllCustomers(true);
+  const ids = (c: CustomerRecord) => [c.lineUserId, ...(c.lineUserIds || [])].filter(Boolean) as string[];
+  const cutAt = new Map<string, string>();
+  for (const c of all) {
+    if (!c.deletedAt) continue;
+    for (const uid of ids(c)) if ((cutAt.get(uid) || "") < c.deletedAt) cutAt.set(uid, c.deletedAt);
+  }
+  for (const c of all) {
+    if (c.deletedAt) continue;
+    for (const uid of ids(c)) {
+      const at = cutAt.get(uid);
+      if (at && c.createdAt <= at) cutAt.delete(uid);
+    }
+  }
+  return (b) => {
+    const at = b.lineUserId ? cutAt.get(b.lineUserId) : undefined;
+    return !!at && b.createdAt <= at;
+  };
+}
+
+/**
  * ปลด LINE ID หลักออกจากลูกค้าที่ถูกลบ — line_user_id ห้ามซ้ำในร้านเดียวกัน
  * ไม่ปลด = คนเดิมกลับมาสมัครใหม่สร้างบัญชีไม่ได้ (ลูกค้าที่ลบไว้ก่อนแก้นี้ยังถือ ID ค้างอยู่)
  * line_user_ids ยังเก็บไว้ ใช้ผูกกลับตอนกู้จากถังขยะ
