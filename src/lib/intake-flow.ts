@@ -1,5 +1,6 @@
 /**
- * ขอข้อมูลก่อนรับน้องแบบ "ปุ่มเดียว ไล่ทีละหน้า" — ประวัติ → สมุดวัคซีน → บัตรประชาชน → กฎ + กดยินยอม
+ * ขอข้อมูลก่อนรับน้องแบบ "ปุ่มเดียว ไล่ทีละหน้า" — ประวัติ → สมุดวัคซีน → บัตรประชาชน → เลือกเวลาส่งน้อง → กฎ + กดยินยอม
+ * (กดยินยอมเป็นขั้นสุดท้ายเสมอ = ปุ่มยืนยันครั้งเดียวจบ)
  * การ์ด LINE มีปุ่มเดียว (LIFF path=intake) แล้วแต่ละหน้าพาไปขั้นต่อไปเอง เรื่องที่ส่งแล้วไม่อยู่ในลำดับตั้งแต่ตอนส่งการ์ด
  *
  * พารามิเตอร์ที่ส่งต่อกันไปทุกหน้า:
@@ -10,16 +11,17 @@
  * ไฟล์นี้ใช้ได้ทั้งฝั่งเบราว์เซอร์และเซิร์ฟเวอร์
  */
 
-export type FlowStep = "info" | "vaccine" | "idcard" | "consent";
+export type FlowStep = "info" | "vaccine" | "idcard" | "time" | "consent";
 export type FlowToken = { step: FlowStep; ids: string[] };
 export type FlowBy = "b" | "c";
 
-const STEPS: FlowStep[] = ["info", "vaccine", "idcard", "consent"];
+const STEPS: FlowStep[] = ["info", "vaccine", "idcard", "time", "consent"];
 
 export const FLOW_STEP_LABEL: Record<FlowStep, string> = {
   info: "แจ้งประวัติน้อง",
   vaccine: "แนบสมุดวัคซีน",
   idcard: "แนบบัตรประชาชน",
+  time: "เลือกเวลาส่งน้อง",
   consent: "อ่านกฎ + กดยินยอม",
 };
 
@@ -54,6 +56,11 @@ export function flowStepHref(
     path = "/app/pet-docs";
     q.set("need", token.step);
     if (ids) q.set(opts.by === "c" ? "cats" : "id", ids);
+  } else if (token.step === "time") {
+    // เวลาเข้าพักผูกกับนัดเสมอ (ทั้งบ้านใช้เวลาเดียวกัน — API ตั้งให้ทุกตัวเอง)
+    path = "/app/booking-time";
+    q.set("id", token.ids[0] || "");
+    q.set("type", "checkin");
   } else if (token.step === "consent") {
     path = "/app/consent";
     if (opts.by === "b" && token.ids[0]) q.set("id", token.ids[0]);

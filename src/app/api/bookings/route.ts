@@ -769,16 +769,17 @@ function groomInfoCardFor(
     !intakeAlways
       ? []
       : body.separate === true
-        ? ["stayInfo", "info", "vaccine", "idcard", "consent", "deposit"]
+        ? ["stayInfo", "info", "vaccine", "idcard", "time", "consent", "deposit"]
         : (Array.isArray(body.separateParts) ? body.separateParts : [])
             .map(String)
-            .map((x: string) => (x === "groomInfo" ? "info" : x))
+            .map((x: string) => (x === "groomInfo" ? "info" : x === "checkin" ? "time" : x))
   );
   if (intakeAlways) {
     const room = b.service === "room";
     const hasDeposit = Number(body.depositAmount) > 0;
     // ร้านติ๊กเลือกเองว่าจะขออะไรบ้าง · ไม่ส่งมา = ทุกเรื่องตามบริการ (ระบบยังข้ามเรื่องที่ส่งแล้วให้)
-    const allowed = new Set(["stayInfo", "groomInfo", "vaccine", "idcard", "consent"]);
+    // checkin = เลือกเวลาส่งน้อง — ขั้นหนึ่งในปุ่มเดียวกัน (ก่อนกดยินยอม)
+    const allowed = new Set(["stayInfo", "groomInfo", "vaccine", "idcard", "checkin", "consent"]);
     const raw: string[] = Array.isArray(body.parts) ? body.parts.map(String) : [];
     const picked: string[] | null = Array.isArray(body.parts) ? raw.filter((x) => allowed.has(x)) : null;
     // นัดอาบน้ำ: ประวัติ + เฉพาะการ์ดที่ร้านตั้งให้ขอในนัดอาบน้ำ (ตั้งค่า › ขอข้อมูลตามบริการ)
@@ -786,7 +787,7 @@ function groomInfoCardFor(
     body.parts = [
       ...(picked ??
         (room
-          ? ["stayInfo", "vaccine", "idcard", "consent"]
+          ? ["stayInfo", "vaccine", "idcard", "checkin", "consent"]
           : ["groomInfo", ...GROOM_EXTRA_CARDS.map((c) => c.key).filter((k) => groomUsesCard(groomCfg, k))])),
       ...(hasDeposit ? ["deposit"] : []),
       // แจ้งยอดชำระค่าบริการ (บิล) — การ์ดแยกของตัวเอง ส่งไปพร้อมกันในข้อความเดียว
@@ -1072,22 +1073,27 @@ function groomInfoCardFor(
             }, cfg.cards?.docRequest),
           });
         } else skipped.push("ยังไม่ได้ตั้ง LIFF ID — ข้ามการ์ดขอเอกสาร");
-      } else if (part === "checkin" || part === "checkout") {
+      } else if (part === "checkin") {
+        // เลือกเวลาส่งน้องเป็นขั้นหนึ่งของปุ่มเดียว (ไปกับประวัติ/วัคซีน/บัตร/กฎ ถ้าเลือกส่งด้วย)
+        // ส่งเรื่องนี้เรื่องเดียว = การ์ดเลือกเวลาใบเดิม
+        const url = await getBookingTimeUrl(b.id, "checkin");
+        const card = buildTimePickerFlex({
+          title: "🕒 เลือกเวลาเข้าพัก",
+          body: buildCheckinBodyText(gb, cfg),
+          url: url || undefined,
+          label: "🕒 เลือกเวลาส่งน้อง",
+        }, cfg.cards?.timePicker);
+        if (url) addIntake({ kind: "time", url, ids: [b.id], card });
+        else messages.push(card);
+      } else if (part === "checkout") {
         const url = await getBookingTimeUrl(b.id, part);
         messages.push(
-          part === "checkin"
-            ? buildTimePickerFlex({
-                title: "🕒 เลือกเวลาเข้าพัก",
-                body: buildCheckinBodyText(gb, cfg),
-                url: url || undefined,
-                label: "🕒 เลือกเวลาส่งน้อง",
-              }, cfg.cards?.timePicker)
-            : buildTimePickerFlex({
-                title: "🕒 เลือกเวลารับน้อง",
-                body: buildCheckoutBodyText(gb, cfg),
-                url: url || undefined,
-                label: "🕒 เลือกเวลารับน้อง",
-              }, cfg.cards?.timePicker)
+          buildTimePickerFlex({
+            title: "🕒 เลือกเวลารับน้อง",
+            body: buildCheckoutBodyText(gb, cfg),
+            url: url || undefined,
+            label: "🕒 เลือกเวลารับน้อง",
+          }, cfg.cards?.timePicker)
         );
       } else if (part === "deposit") {
         const amount = Math.round(Number(body.depositAmount) || 0);

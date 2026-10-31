@@ -301,7 +301,7 @@ const CARDS: CardMeta[] = [
   {
     key: "intake",
     name: "การ์ดรวมขอข้อมูล (ปุ่มเดียว ไล่ทีละหน้า)",
-    desc: "ขอหลายเรื่องในใบเดียว ปุ่มเดียวพาลูกค้าไล่ทีละหน้า — ประวัติน้อง → สมุดวัคซีน → บัตรประชาชน → กฎ + กดยินยอม (กฎขอใหม่ทุกรอบเข้าพัก) · เรื่องที่ส่งแล้วข้ามให้เอง",
+    desc: "ขอหลายเรื่องในใบเดียว ปุ่มเดียวพาลูกค้าไล่ทีละหน้า — ประวัติน้อง → สมุดวัคซีน → บัตรประชาชน → เลือกเวลาส่งน้อง → กฎ + กดยินยอม (ขั้นสุดท้าย · กฎขอใหม่ทุกรอบเข้าพัก) · เรื่องที่ส่งแล้วข้ามให้เอง",
     colors: [
       { key: "headerColor", label: "สีแถบหัว", fallback: "#6e2f48" },
       { key: "headerTextColor", label: "สีตัวหนังสือหัว", fallback: "#FFFFFF" },
@@ -319,6 +319,7 @@ const CARDS: CardMeta[] = [
       { key: "infoButton", label: "ขั้น: ประวัติก่อนอาบน้ำ", placeholder: INTAKE_CARD_DEFAULTS.infoButton },
       { key: "vaccineButton", label: "ขั้น: แนบสมุดวัคซีน", placeholder: INTAKE_CARD_DEFAULTS.vaccineButton },
       { key: "idcardButton", label: "ขั้น: แนบบัตรประชาชน", placeholder: INTAKE_CARD_DEFAULTS.idcardButton },
+      { key: "timeButton", label: "ขั้น: เลือกเวลาส่งน้อง", placeholder: INTAKE_CARD_DEFAULTS.timeButton },
       { key: "consentButton", label: "ขั้น: กฎ + กดยินยอม", placeholder: INTAKE_CARD_DEFAULTS.consentButton },
       { key: "depositLabel", label: "ป้าย: ยอดมัดจำ", placeholder: INTAKE_CARD_DEFAULTS.depositLabel },
       { key: "copyButton", label: "ปุ่ม: คัดลอกเลขบัญชี", placeholder: INTAKE_CARD_DEFAULTS.copyButton },
@@ -1199,7 +1200,8 @@ function Preview({
           </p>
           <div className="space-y-1 rounded-lg bg-[#FBF7F0] px-2.5 py-2 text-[10px]">
             <p>1. 📸 แนบสมุดวัคซีน</p>
-            <p>2. 📋 อ่านกฎ + กดยินยอม</p>
+            <p>2. {t("timeButton", "🕒 เลือกเวลาส่งน้อง")}</p>
+            <p>3. 📋 อ่านกฎ + กดยินยอม</p>
           </div>
           <div className="rounded-xl bg-[#FBF4E9] px-3 py-2.5 text-center">
             <p className="text-[10px] text-[#A2907E]">{t("balanceLabel", "💳 ยอดคงเหลือที่ต้องโอน")}</p>
@@ -1211,7 +1213,6 @@ function Preview({
           {st.closing && <p className="whitespace-pre-line text-[10px] text-[#A2907E]">{st.closing}</p>}
         </div>
         {btn(c("buttonColor", "#bd3a6a"), "📋 เริ่มกรอกข้อมูล")}
-        {btn(c("buttonColor", "#bd3a6a"), t("timeButton", "🕒 เลือกเวลาส่งน้อง"))}
         {btn("#8C7B6B", t("copyButton", "📋 คัดลอกเลขบัญชี"))}
       </div>
     );

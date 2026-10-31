@@ -514,6 +514,22 @@ async function runForTenant() {
       // บัตรประชาชน ที่ยังขาด → เป็นปุ่มเดียวในการ์ดเตรียมตัว ระบบพาไปทีละหน้า
       const consent = await consentCardFor(group, b, cfg);
       const intake = [...(consent ? [consent] : []), ...(await intakeCardsFor(group, "room", cfg))];
+      // มีเรื่องต้องกรอกด้วย → เลือกเวลาส่งน้องเป็นขั้นหนึ่งในปุ่มเดียวกัน (ก่อนกดยินยอมขั้นสุดท้าย)
+      // ลูกค้ากดปุ่มเดียวแล้วตอบทุกอย่างจบ ไม่ต้องกลับมากดปุ่มเลือกเวลาอีกปุ่ม
+      const timeInFlow = !!timeUrl && intake.length > 0;
+      if (timeInFlow) {
+        intake.push({
+          kind: "time",
+          url: timeUrl,
+          ids: [b.id],
+          card: buildTimePickerFlex({
+            title: "🕒 เลือกเวลาเข้าพัก",
+            body: buildCheckinBodyText(b, cfg),
+            url: timeUrl,
+            label: "🕒 เลือกเวลาส่งน้อง",
+          }, cfg.cards?.timePicker),
+        });
+      }
       const flow = liffId ? { liffId, by: "b" as const } : undefined;
       const prestayOn = cardOn(cfg, "prestay");
       const intakeLink = prestayOn ? intakeStartLink(intake, { flow }, cfg.cards?.intake) : null;
@@ -543,7 +559,7 @@ async function runForTenant() {
               ...buildPrestayFlexData(b, cfg),
               bath: inStayBathText(ids, allBookings, cfg) || undefined,
               consentUrl: undefined,
-              timeUrl: timeUrl || undefined,
+              timeUrl: (!timeInFlow && timeUrl) || undefined,
               intake: intakeLink || undefined,
               balance,
             }, cfg.cards?.prestay),
@@ -567,7 +583,7 @@ async function runForTenant() {
         );
       }
       // ร้านปิดการ์ดเตรียมตัว → ปุ่มเลือกเวลา/ยอดคงเหลือไม่มีที่อยู่ ส่งเป็นการ์ดแยกเหมือนเดิม
-      if (!prestayOn && timeUrl) {
+      if (!prestayOn && timeUrl && !timeInFlow) {
         prestayBundle.push(
           buildTimePickerFlex({
             title: "🕒 เลือกเวลาเข้าพัก",
