@@ -16,6 +16,7 @@ import { withTenant } from "@/lib/tenant-context";
 import { listActiveTenantIds } from "@/lib/tenant-directory";
 import { verifyCronSecret } from "@/lib/cron-auth";
 import { groupBookings, groupCatNames } from "@/lib/booking-group";
+import { deletedLineFilter } from "@/lib/customers-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -74,10 +75,13 @@ async function runForTenant(slot: string) {
   const inCheckin = addDays(todayStr, auto?.checkinReminderDays ?? 1);
   const inCheckout = addDays(todayStr, auto?.checkoutReminderDays ?? 1);
 
+  // ร้านลบลูกค้าแล้ว = ไม่ส่งอะไรหานัดเก่าของคนนั้นอีก
+  const cutOff = await deletedLineFilter();
   const roomStays = (await listBookings()).filter(
     (b) =>
       b.service === "room" &&
       b.lineUserId &&
+      !cutOff(b) &&
       b.status !== "cancelled" &&
       b.status !== "no_show"
   );

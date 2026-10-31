@@ -37,7 +37,7 @@ import {
   bookingScheduleText,
   prestayDue,
 } from "@/lib/booking-reminders";
-import { listCustomers, getCatGroomInfo, getCatStaffNotes, getIntakeStatus } from "@/lib/customers-store";
+import { deletedLineFilter, listCustomers, getCatGroomInfo, getCatStaffNotes, getIntakeStatus } from "@/lib/customers-store";
 import type { StoredBooking } from "@/lib/bookings-store";
 import { parseGroomInfo, groomInfoSummary } from "@/lib/groom-info";
 import { groomUsesCard, summaryFields } from "@/lib/intake-rules";
@@ -232,7 +232,9 @@ async function runForTenant() {
   // การ์ดที่ร้านปิดในตั้งค่า › เปิด/ปิดฟีเจอร์ = ถือว่าทุกนัดปิดหัวข้อนั้นไว้ (ไม่ได้บันทึกลงนัดจริง)
   // ยกเว้นการ์ดเตรียมตัว — ชุดก่อนเข้าพักยังต้องส่งเรื่องอื่นที่เปิดอยู่ แค่ไม่ใส่การ์ดเตรียมตัว
   const featureMuted = cardsOff(cfg).filter((t) => t !== "prestay");
-  const allBookings = (await listBookings()).map((b) =>
+  // ร้านลบลูกค้าแล้ว = ไม่ส่งอะไรหานัดเก่าของคนนั้นอีก (นัดยังค้างในปฏิทินร้าน)
+  const cutOff = await deletedLineFilter();
+  const allBookings = (await listBookings()).filter((b) => !cutOff(b)).map((b) =>
     featureMuted.length ? { ...b, autoOff: [...(b.autoOff || []), ...featureMuted] } : b
   );
   const allInvoices = await listInvoices();
