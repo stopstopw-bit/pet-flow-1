@@ -35,7 +35,17 @@ type CatForm = {
   /** ข้อที่ตอบไว้แล้ว (ตอนสมัครสมาชิก / ครั้งก่อน) — ซ่อนไว้ ไม่ถามซ้ำ กด "แก้คำตอบเดิม" เพื่อดู */
   answered: string[];
   showAnswered: boolean;
+  /** บันทึกสำเร็จแล้ว — กดส่งใหม่ (หลังมีตัวที่ไม่สำเร็จ) ไม่ส่งตัวนี้ซ้ำ */
+  saved?: boolean;
 };
+
+/** เหตุที่บันทึกไม่ผ่าน → ข้อความที่ลูกค้าอ่านเข้าใจ */
+function saveFailReason(status: number, error?: string): string {
+  if (status === 401) return "ยืนยันบัญชี LINE ไม่ผ่าน ปิดหน้านี้แล้วเปิดลิงก์จากแชทใหม่";
+  if (status === 404) return "ไม่พบน้องตัวนี้ในบัญชี";
+  if (error === "feature_disabled") return "ร้านปิดฟอร์มนี้อยู่";
+  return "ระบบขัดข้อง";
+}
 
 /** คำถามอาบน้ำในฟอร์มรวม — ใส่ "g:" กัน key ชนกับฝั่งเข้าพัก */
 const BATH_PREFIX = "g:";
@@ -239,15 +249,21 @@ function GroomInfoContent() {
     setSaving(true);
     setSaveError("");
     try {
-      const results = await Promise.all(
-        forms.map((f) => {
-          const own: Answers = {};
-          const bath: Answers = {};
-          for (const [k, v] of Object.entries(f.answers)) {
-            if (k.startsWith(BATH_PREFIX)) bath[k.slice(BATH_PREFIX.length)] = v;
-            else own[k] = v;
-          }
-          return fetch("/api/bookings/groom-info", {
+      // ส่งทีละตัว (ไม่ยิงพร้อมกัน) — ทุกตัวยืนยันนัดทั้งบ้านซ้ำกัน ยิงพร้อมกันจะชนกันเอง
+      // ตัวที่บันทึกแล้วไม่ส่งซ้ำ · ตัวที่ไม่ผ่านบอกชื่อ + เหตุ ลูกค้า/ร้านจะได้รู้ว่าตัวไหน
+      const failed: string[] = [];
+      for (let i = 0; i < forms.length; i++) {
+        const f = forms[i];
+        if (f.saved) continue;
+        const own: Answers = {};
+        const bath: Answers = {};
+        for (const [k, v] of Object.entries(f.answers)) {
+          if (k.startsWith(BATH_PREFIX)) bath[k.slice(BATH_PREFIX.length)] = v;
+          else own[k] = v;
+        }
+        let reason = "";
+        try {
+          const r = await fetch("/api/bookings/groom-info", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -262,11 +278,20 @@ function GroomInfoContent() {
                 ? { groomInfo: { ...bath, weight: f.weightUnknown ? "unknown" : bath.weight || "" } }
                 : {}),
             }),
-          }).then((r) => r.ok);
-        })
-      );
-      if (!results.every(Boolean)) {
-        setSaveError("บันทึกไม่สำเร็จบางตัว — ลองใหม่อีกครั้ง หรือแจ้งพนักงานที่ร้านได้เลยค่ะ");
+          });
+          const j = await r.json().catch(() => ({}));
+          // 200 แต่ ok:false = เขียนลงฐานไม่สำเร็จ — ไม่นับว่าบันทึกแล้ว
+          if (!r.ok || j.ok === false) reason = saveFailReason(r.status, j.error);
+        } catch {
+          reason = "อินเทอร์เน็ตหลุด";
+        }
+        if (reason) failed.push(`${f.catName} (${reason})`);
+        else setForms((prev) => prev.map((x, k) => (k === i ? { ...x, saved: true } : x)));
+      }
+      if (failed.length > 0) {
+        setSaveError(
+          `บันทึกไม่สำเร็จ: ${failed.join(", ")} — ลองกดบันทึกอีกครั้ง หรือแจ้งพนักงานที่ร้านได้เลยค่ะ`
+        );
         return;
       }
       // มาจากการ์ดรวมขอข้อมูล → ไปขั้นต่อไปเลย (สมุดวัคซีน / บัตร / กฎ) ไม่ปิดหน้า
