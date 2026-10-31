@@ -4,6 +4,7 @@ import { withResolvedTenant } from "@/lib/tenant-context";
 import { getBooking, listBookings } from "@/lib/bookings-store";
 import { stayForGroom } from "@/lib/booking-group";
 import {
+  addCat,
   findCustomerByLine,
   getCatGroomInfo,
   setCatGroomInfo,
@@ -18,6 +19,21 @@ import { intakeFields, ownerHistoryKeys, sanitizeIntakeInfo } from "@/lib/intake
 import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 import { petKindOf, speciesOf } from "@/lib/pet-kind";
 import { BATH_SHARED_WITH_STAY } from "@/lib/stay-form";
+import { catNameKey } from "@/lib/cat-name-replace";
+
+type CatLike = { id: string; name: string };
+
+/**
+ * หาน้องในบัญชีจากชื่อในนัด — เทียบแบบเดียวกับตอนส่งการ์ด (ไม่สนช่องว่าง/อักขระล่องหน/ตัวพิมพ์)
+ * ไม่เจอค่อยลองตัดคำนำหน้า "น้อง" (นัดพิมพ์ "น้องโบ้" แต่ในบัญชีเป็น "โบ้")
+ */
+function findCatByName<T extends CatLike>(cats: T[] | undefined, name: string): T | undefined {
+  const key = catNameKey(name);
+  const exact = cats?.find((c) => catNameKey(c.name) === key);
+  if (exact) return exact;
+  const bare = (n: string) => catNameKey(n).replace(/^น้อง/, "");
+  return bare(name) ? cats?.find((c) => bare(c.name) === bare(name)) : undefined;
+}
 
 type Kind = "groom" | "stay";
 
@@ -35,7 +51,7 @@ async function resolveTarget(lineUserId: string, bookingId: string, catId: strin
   const b = await getBooking(bookingId);
   if (!b) return null;
   if (b.lineUserId && b.lineUserId !== lineUserId) return "forbidden" as const;
-  const cat = me?.cats.find((c) => c.name.trim().toLowerCase() === String(b.catName).trim().toLowerCase());
+  const cat = findCatByName(me?.cats, String(b.catName));
   const kind: Kind = kindParam === "stay" || kindParam === "groom" ? kindParam : b.service === "room" ? "stay" : "groom";
   return { kind, catName: String(b.catName), me, cat, booking: b };
 }
@@ -121,6 +137,14 @@ async function postHandler(req: NextRequest) {
   if (!isFeatureOn(cfg, feature)) {
     return NextResponse.json({ error: "feature_disabled", feature }, { status: 403 });
   }
+  // นัดที่ร้านลงให้ แต่น้องตัวนี้ยังไม่มีในบัญชีลูกค้า (ลูกค้าสมัครแค่บางตัว) → เพิ่มน้องเข้าบัญชีให้เลย
+  // ไม่งั้นข้อมูลที่ลูกค้าตั้งใจกรอกไม่มีที่เก็บ แล้วขึ้น "บันทึกไม่สำเร็จบางตัว"
+  if (t.booking && t.me && !t.cat) {
+    const added = await addCat(t.me.id, { name: t.catName }).catch(() => null);
+    const fresh = added ? await findCustomerByLine(session.lineUserId) : undefined;
+    t.cat = findCatByName(fresh?.cats, t.catName);
+    if (fresh) t.me = fresh;
+  }
   // ชุดคำถามตามชนิดของน้องตัวนี้ — ต้องตรงกับที่หน้าฟอร์มถาม ไม่งั้นคำตอบข้อของหมาจะหาย
   const kind = speciesOf(t.cat, cfg) ?? petKindOf(cfg);
   const fields = intakeFields(t.kind, kind, cfg);
@@ -152,13 +176,13 @@ async function postHandler(req: NextRequest) {
     const keep = Object.fromEntries(ownerHistoryKeys(kind, cfg).filter((k) => prev?.[k]).map((k) => [k, prev![k]]));
     res = t.me && t.cat ? await setCatStayInfo(t.me.id, t.cat.id, JSON.stringify({ ...keep, ...payload })) : { ok: false, error: "not_found" };
   } else {
-    res = await setCatGroomInfo(session.lineUserId, t.catName, JSON.stringify(payload));
+    res = await setCatGroomInfo(session.lineUserId, t.cat?.name ?? t.catName, JSON.stringify(payload));
   }
   if (!res.ok && res.error === "not_found") {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
   if (res.ok && groomPayload) {
-    res = await setCatGroomInfo(t.booking?.lineUserId || session.lineUserId, t.catName, JSON.stringify(groomPayload));
+    res = await setCatGroomInfo(t.booking?.lineUserId || session.lineUserId, t.cat?.name ?? t.catName, JSON.stringify(groomPayload));
   }
 
   // กรอกข้อมูลแล้ว = ยืนยันนัดแล้ว ทั้งบ้าน
