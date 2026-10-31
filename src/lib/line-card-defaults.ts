@@ -24,6 +24,7 @@ export const INTAKE_CARD_DEFAULTS = {
   infoButton: "🩺 แจ้งประวัติก่อนอาบน้ำ",
   vaccineButton: "📸 แนบสมุดวัคซีน",
   idcardButton: "🪪 แนบบัตรประชาชน",
+  timeButton: "🕒 เลือกเวลาส่งน้อง",
   consentButton: "📋 อ่านกฎ + กดยินยอม",
   depositLabel: "💰 มัดจำที่ต้องโอน",
   copyButton: "📋 คัดลอกเลขบัญชี",

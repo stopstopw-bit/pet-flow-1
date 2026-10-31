@@ -10,6 +10,8 @@ import { BTN_PRIMARY, PageHeader } from "@/components/PageHeader";
 import { EmptyState, SectionLabel } from "@/components/ui";
 import { Icon } from "@/components/Icon";
 import { TimeSlotPicker } from "@/components/TimeSlotPicker";
+import { IntakeFlowBar } from "@/components/IntakeFlowBar";
+import { flowProgress } from "@/lib/intake-flow";
 
 type Bk = {
   id: string;
@@ -36,6 +38,8 @@ function BookingTimeContent() {
   const [done, setDone] = useState(false);
 
   const isCheckin = type === "checkin";
+  // เปิดมาจากปุ่มเดียว (ไล่ทีละหน้า) — เลือกเวลาแล้วไปขั้นต่อไป ไม่ปิดหน้ากลับแชท
+  const flow = flowProgress(params);
 
   useEffect(() => {
     if (!id) {
@@ -132,6 +136,7 @@ function BookingTimeContent() {
         backLabel="กลับหน้าแรก"
         showLang={false}
       />
+      <IntakeFlowBar mode="progress" />
 
       {loading ? (
         <LoadingScreen />
@@ -167,12 +172,21 @@ function BookingTimeContent() {
                 <Icon name="check" size={18} strokeWidth={2.4} className="text-ok" />
                 เลือกเวลา {saved} แล้ว
               </p>
-              <p className="mt-1 text-center text-xs text-brown-soft">
-                ถ้าถูกต้องแล้ว กดปุ่มด้านล่างเพื่อยืนยันและกลับไปที่แชทได้เลยค่ะ 🧡
-              </p>
-              <button type="button" onClick={finish} className={`mt-3 ${BTN_PRIMARY}`}>
-                เสร็จแล้ว — กลับไปที่แชท
-              </button>
+              {flow?.next ? (
+                <a href={flow.next.href} className={`mt-3 ${BTN_PRIMARY}`}>
+                  ถัดไป: {flow.next.label}
+                  <Icon name="chevron" size={16} />
+                </a>
+              ) : (
+                <>
+                  <p className="mt-1 text-center text-xs text-brown-soft">
+                    ถ้าถูกต้องแล้ว กดปุ่มด้านล่างเพื่อยืนยันและกลับไปที่แชทได้เลยค่ะ 🧡
+                  </p>
+                  <button type="button" onClick={finish} className={`mt-3 ${BTN_PRIMARY}`}>
+                    เสร็จแล้ว — กลับไปที่แชท
+                  </button>
+                </>
+              )}
             </div>
           )}
         </>
