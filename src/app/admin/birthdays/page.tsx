@@ -31,7 +31,8 @@ export default function BirthdaysPage() {
       .then((d) => {
         const list: Row[] = d.rows || [];
         setRows(list);
-        setSelected(new Set(list.map((r) => r.id)));
+        // ไม่ติ๊กให้ล่วงหน้า — ต้องเลือกเองทีละใบ กันกดส่งทั้งหมดโดยไม่ได้ตั้งใจ
+        setSelected(new Set());
       })
       .catch(() => {
         setRows([]);
@@ -53,6 +54,19 @@ export default function BirthdaysPage() {
 
   const sendSelected = async () => {
     if (selected.size === 0) return;
+    const picked = rows.filter((r) => selected.has(r.id));
+    const couponTotal = picked.reduce((sum, r) => sum + r.couponAmount, 0);
+    const names = picked
+      .map((r) => `• ${r.customerName}${r.couponAmount > 0 ? ` (คูปอง ${r.couponAmount} บาท)` : ""}`)
+      .join("\n");
+    if (
+      !confirm(
+        `ส่งการ์ดวันเกิดทาง LINE ${picked.length} ใบ?\n\n${names}${
+          couponTotal > 0 ? `\n\nแจกคูปองรวม ${couponTotal} บาท` : ""
+        }\n\nส่งแล้วยกเลิกไม่ได้`
+      )
+    )
+      return;
     setBusy(true);
     try {
       const res = await fetch("/api/admin/birthdays", {
