@@ -2,6 +2,7 @@ import { LocaleProvider } from "@/components/LocaleProvider";
 import { LiffProvider } from "@/components/LiffProvider";
 import { ConfigProvider } from "@/components/ConfigProvider";
 import { BrandingStyle } from "@/components/BrandingStyle";
+import { CustomerTextStyle } from "@/components/CustomerTextStyle";
 import { CustomerNav } from "@/components/CustomerNav";
 import { LiffStuckBanner } from "@/components/LiffStuckBanner";
 import { AppFeatureGate } from "@/components/AppFeatureGate";
@@ -20,9 +21,10 @@ export default async function CustomerLayout({
     <LocaleProvider>
       <ConfigProvider initialConfig={initialConfig}>
         <BrandingStyle />
+        <CustomerTextStyle />
         <TextSizeScope />
         <LiffProvider>
-          <div className="bg-petflow-gradient min-h-screen pb-[calc(6rem+env(safe-area-inset-bottom))]">
+          <div className="customer-text bg-petflow-gradient min-h-screen pb-[calc(6rem+env(safe-area-inset-bottom))]">
             <LiffStuckBanner />
             <div className="mx-auto max-w-lg">
               <AppFeatureGate>{children}</AppFeatureGate>
