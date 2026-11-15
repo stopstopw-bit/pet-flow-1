@@ -3405,6 +3405,7 @@ const AUTOMATION_DEFAULT = {
   reviewRequestEnabled: true,
   reviewRequestDaysAfter: 1,
   receiptAskOnPaid: false,
+  groomVaccineOnce: false,
   groomInfoEnabled: true,
   intakeAutoEnabled: true,
   freeLitterMinNights: 3,
@@ -3938,6 +3939,15 @@ function AutomationTab({
             sends: "ขึ้นคำถาม \"ส่งใบเสร็จให้ลูกค้าทาง LINE เลยไหม?\" กดตกลง = ส่งการ์ดใบเสร็จ · ปิดไว้ = ไม่ถาม ส่งเองที่ปุ่ม ส่ง LINE",
             on: form.receiptAskOnPaid === true,
             onToggle: (v) => set({ receiptAskOnPaid: v }),
+          })}
+          {item({
+            emoji: "💉",
+            title: "นัดอาบน้ำ ขอสมุดวัคซีนครั้งเดียว",
+            services: ["groom"],
+            when: "ตอนส่งการ์ดขอข้อมูลก่อนอาบน้ำ",
+            sends: "เปิด = น้องที่มีรูปสมุดวัคซีนในบัญชีแล้ว นัดอาบน้ำไม่ขอซ้ำ (เข้าพักยังขอทุกรอบ) · ปิด = ขอทุกนัด",
+            on: form.groomVaccineOnce === true,
+            onToggle: (v) => set({ groomVaccineOnce: v }),
           })}
           {item({
             emoji: "⭐",

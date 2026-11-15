@@ -143,7 +143,11 @@ async function intakeCardsFor(
 
   const wantVaccine = mode === "room" || groomUsesCard(cfg, "vaccine");
   // สมุดวัคซีนขอทุกรอบ (วัคซีนหมดอายุได้) — ข้ามเฉพาะนัดที่แนบมาแล้ว
-  const needVaccine = group.filter((x) => wantVaccine && !autoMuted(x, "vaccine") && !x.vaccinePhotoUrl);
+  // ร้านเปิด "นัดอาบน้ำ ขอสมุดวัคซีนครั้งเดียว" → น้องมีรูปในบัญชีแล้วไม่ขอ (เข้าพักยังขอทุกรอบ)
+  const groomOnce = mode === "groom" && cfg.automation?.groomVaccineOnce === true;
+  const needVaccine = group.filter(
+    (x, i) => wantVaccine && !autoMuted(x, "vaccine") && !x.vaccinePhotoUrl && !(groomOnce && status[i].vaccine)
+  );
   if (needVaccine.length > 0) {
     const url = await getPetDocsUrl(needVaccine.map((x) => x.id), "vaccine");
     if (url) {

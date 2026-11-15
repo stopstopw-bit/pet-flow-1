@@ -230,7 +230,9 @@ export type BookingTodo = { info?: "stay" | "groom"; vaccine?: boolean; idcard?:
  */
 async function customerTodos(list: StoredBooking[], lineUserId: string) {
   const out = new Map<string, BookingTodo>();
-  const off = cardsOff(await getSiteConfig());
+  const todoCfg = await getSiteConfig();
+  const off = cardsOff(todoCfg);
+  const groomVaccineOnce = todoCfg.automation?.groomVaccineOnce === true;
   const today = bangkokToday();
   for (const b of list) {
     if (b.status !== "pending" && b.status !== "confirmed") continue;
@@ -243,7 +245,7 @@ async function customerTodos(list: StoredBooking[], lineUserId: string) {
       ...(room
         ? !st.stayInfo && !muted("stayInfo") && { info: "stay" as const }
         : !st.groomInfo && !muted("groomInfo") && { info: "groom" as const }),
-      ...(!b.vaccinePhotoUrl && !muted("vaccine") && { vaccine: true }),
+      ...(!b.vaccinePhotoUrl && !(groomVaccineOnce && !room && st.vaccine) && !muted("vaccine") && { vaccine: true }),
       ...(room && !st.idCard && !muted("idcard") && { idcard: true }),
       ...(!b.consentAcceptedAt && !muted("consent") && { consent: true }),
     };
@@ -1100,8 +1102,14 @@ function groomInfoCardFor(
         const status = await Promise.all(household.map((x) => getIntakeStatus(to, String(x.catName))));
         let ask = household;
         if (part === "vaccine") {
-          ask = household.filter((x) => !x.vaccinePhotoUrl);
-          for (const x of household) if (!ask.includes(x)) skipped.push(`${x.catName}: นัดนี้แนบสมุดวัคซีนแล้ว ไม่ขอซ้ำ`);
+          // ร้านเปิด "นัดอาบน้ำ ขอสมุดวัคซีนครั้งเดียว" → น้องมีรูปในบัญชีแล้วไม่ขอ
+          const once = (await getSiteConfig()).automation?.groomVaccineOnce === true;
+          const groomOnce = (x: StoredBooking, i: number) => once && x.service !== "room" && status[i]?.vaccine;
+          ask = household.filter((x, i) => !x.vaccinePhotoUrl && !groomOnce(x, i));
+          household.forEach((x, i) => {
+            if (x.vaccinePhotoUrl) skipped.push(`${x.catName}: นัดนี้แนบสมุดวัคซีนแล้ว ไม่ขอซ้ำ`);
+            else if (groomOnce(x, i)) skipped.push(`${x.catName}: มีสมุดวัคซีนในบัญชีแล้ว (อาบน้ำขอครั้งเดียว)`);
+          });
         } else if (status[0]?.idCard) {
           ask = [];
           skipped.push("มีบัตรประชาชนแล้ว ไม่ขอซ้ำ");
