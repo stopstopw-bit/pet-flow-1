@@ -29,6 +29,12 @@ export const CUSTOMER_FONTS: { id: string; label: string; family?: string; googl
     google: "Noto+Sans+Thai+Looped:wght@400;500;600;700;800",
   },
   { id: "sarabun", label: "Sarabun (มีหัว แบบทางการ)", family: "'Sarabun'", google: "Sarabun:wght@400;500;600;700;800" },
+  { id: "krub", label: "Krub (มีหัว โค้งมน ทันสมัย)", family: "'Krub'", google: "Krub:wght@400;500;600;700" },
+  { id: "bai-jamjuree", label: "Bai Jamjuree (มีหัว สะอาดตา)", family: "'Bai Jamjuree'", google: "Bai+Jamjuree:wght@400;500;600;700" },
+  { id: "k2d", label: "K2D (มีหัว ทันสมัย)", family: "'K2D'", google: "K2D:wght@400;500;600;700" },
+  { id: "niramit", label: "Niramit (มีหัว อ่านง่าย)", family: "'Niramit'", google: "Niramit:wght@400;500;600;700" },
+  { id: "koho", label: "KoHo (มีหัว กลม น่ารัก)", family: "'KoHo'", google: "KoHo:wght@400;500;600;700" },
+  { id: "mali", label: "Mali (มีหัว ลายมือ น่ารัก)", family: "'Mali'", google: "Mali:wght@400;500;600;700" },
   { id: "anuphan", label: "Anuphan (ไม่มีหัว ทันสมัย)", family: "'Anuphan'", google: "Anuphan:wght@400;500;600;700" },
 ];
 
