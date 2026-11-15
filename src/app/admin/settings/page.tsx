@@ -1,5 +1,7 @@
 "use client";
 
+import { CUSTOMER_FONTS, CUSTOMER_TEXT_SIZES, customerFont, customerTextCss, type CustomerTextConfig } from "@/lib/customer-text";
+
 import { savedPopup } from "@/components/Toast";
 import { roomPricing } from "@/lib/room-board";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -773,6 +775,7 @@ function ShopTab({
 }) {
   const [form, setForm] = useState(config.business);
   const [branding, setBranding] = useState({ ...BRANDING_DEFAULT, ...config.branding });
+  const [customerText, setCustomerText] = useState<CustomerTextConfig>(config.customerText || {});
   const gradientOn = Boolean(branding.backgroundGradientFrom && branding.backgroundGradientTo);
   const [extracting, setExtracting] = useState(false);
   const [extractErr, setExtractErr] = useState("");
@@ -796,6 +799,9 @@ function ShopTab({
   useEffect(() => {
     setBranding({ ...BRANDING_DEFAULT, ...config.branding });
   }, [config.branding]);
+  useEffect(() => {
+    setCustomerText(config.customerText || {});
+  }, [config.customerText]);
 
   // เตือนก่อนบันทึก ถ้าคู่สีที่ต้องอ่านคู่กันจริงในหน้าเว็บ (ตัวอักษร/พื้นหลัง, ปุ่ม/ตัวหนังสือขาว)
   // คอนทราสต์ต่ำเกินไป — กันเคสแบบ "แก้สีตัวอักษรแล้วอ่านไม่ออกทั้งระบบ" ไม่ให้เงียบๆ หลุดไป
@@ -823,7 +829,8 @@ function ShopTab({
       className="space-y-3 rounded-petflow bg-card p-4 shadow-petflow-sm"
       onSubmit={(e) => {
         e.preventDefault();
-        onSave({ business: form, branding });
+        // ส่งครบทุกช่อง (ค่าว่าง = กลับเป็นค่าเริ่มต้น) — config รวมแบบชั้นเดียว ส่ง {} เฉยๆ ค่าเก่าไม่หาย
+        onSave({ business: form, branding, customerText: { font: "", size: "", color: "", ...customerText } });
       }}
     >
       <p className="text-xs font-extrabold text-petflow-chocolate">🎨 สีและโลโก้ประจำร้าน</p>
@@ -994,6 +1001,79 @@ function ShopTab({
           🔄 รีเซ็ตเป็นสีเริ่มต้น
         </button>
       )}
+
+      <hr className="border-petflow-line" />
+      <p className="text-xs font-extrabold text-petflow-chocolate">🔤 ตัวอักษรหน้าลูกค้า</p>
+      <p className="text-[10px] text-brown-faint">
+        ฟอนต์ ขนาด และสีตัวอักษรในหน้าที่ลูกค้าเปิดจาก LINE (ฟอร์ม เงื่อนไข คิวของฉัน) · ไม่ตั้ง = เหมือนเดิม · หลังบ้านไม่เปลี่ยน
+      </p>
+      <label className="block text-[10px] font-bold text-brown-soft">
+        ฟอนต์
+        <select
+          value={customerText.font || "default"}
+          onChange={(e) => setCustomerText({ ...customerText, font: e.target.value === "default" ? "" : e.target.value })}
+          className="mt-1 w-full rounded-petflow-sm border border-petflow-line bg-card px-3 py-2 text-sm text-brown"
+        >
+          {CUSTOMER_FONTS.map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="text-[10px] font-bold text-brown-soft">ขนาดตัวหนังสือเล็ก</p>
+      <div className="flex flex-wrap gap-2">
+        {CUSTOMER_TEXT_SIZES.map((s) => {
+          const active = (customerText.size || "normal") === s.id;
+          return (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => setCustomerText({ ...customerText, size: s.id === "normal" ? "" : s.id })}
+              className={`rounded-full border px-3 py-1.5 text-[11px] font-bold ${
+                active ? "border-petflow-chocolate bg-petflow-chocolate text-white" : "border-petflow-line bg-card text-brown"
+              }`}
+            >
+              {s.label}
+            </button>
+          );
+        })}
+      </div>
+      <div className="grid grid-cols-2 items-end gap-2">
+        <ColorField
+          label="สีตัวอักษร (หน้าลูกค้า)"
+          value={customerText.color || branding.text}
+          onChange={(v) => setCustomerText({ ...customerText, color: v })}
+        />
+        {customerText.color && (
+          <button
+            type="button"
+            onClick={() => setCustomerText({ ...customerText, color: "" })}
+            className="pb-2 text-left text-[10px] font-bold text-brown-faint underline"
+          >
+            ใช้สีตัวอักษรของร้านตามเดิม
+          </button>
+        )}
+      </div>
+      {(() => {
+        const css = customerTextCss(customerText);
+        const font = customerFont(customerText);
+        return (
+          <div className="customer-text rounded-petflow-sm border border-petflow-line bg-card p-3">
+            {font?.google && (
+              // eslint-disable-next-line @next/next/no-page-custom-font
+              <link rel="stylesheet" href={`https://fonts.googleapis.com/css2?family=${font.google}&display=swap`} />
+            )}
+            {css && <style dangerouslySetInnerHTML={{ __html: css }} />}
+            <p className="text-[9px] font-bold uppercase tracking-wide text-brown-faint">ตัวอย่างหน้าลูกค้า</p>
+            <p className="text-sm font-extrabold text-brown">เงื่อนไขการอาบน้ำ</p>
+            <p className="text-xs text-brown-soft">
+              กรุณาแจ้งโรคประจำตัวและประวัติการแพ้ของน้องก่อนเข้ารับบริการ เพื่อความปลอดภัยของน้อง
+            </p>
+            <p className="text-[11px] text-brown-faint">ข้อความตัวเล็ก เช่น หมายเหตุใต้ปุ่ม</p>
+          </div>
+        );
+      })()}
 
       <hr className="border-petflow-line" />
       <Field label="ชื่อร้าน" value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
