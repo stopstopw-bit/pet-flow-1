@@ -11,7 +11,9 @@ import { sendTelegramLater, formatBookingTelegram } from "@/lib/telegram";
 import { pushLineMessage, buildPackageFlex, buildRoomPlanFlex } from "@/lib/line";
 import { getSiteConfig } from "@/lib/config-store";
 import { cleanBranchIds } from "@/lib/branches";
-import { normalizeOfferItems, sellOfferItems } from "@/lib/package-shop-store";
+import { normalizeOfferItems, sellOfferItems, listPackageOffers } from "@/lib/package-shop-store";
+import { listInvoices } from "@/lib/invoices-store";
+import { getBooking } from "@/lib/bookings-store";
 import { roomPlanOutstanding, createPackagePlan, viewRoomPlan } from "@/lib/room-plans-store";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { withResolvedTenant, withTenant } from "@/lib/tenant-context";
@@ -66,6 +68,11 @@ async function handleGet(req: NextRequest, isStaff: boolean) {
       : undefined;
   if (!cust) return NextResponse.json({ found: false, packages: [] });
 
+  // หน้าแรกแอปลูกค้า — คอร์สพร้อมรายละเอียด (ใช้ไปตอนไหน · คอร์สที่ใช้ครบแล้ว · คอร์สในบิลที่ยังจ่ายไม่ครบ)
+  if (req.nextUrl.searchParams.get("view") === "mine") {
+    return NextResponse.json({ found: true, customerId: cust.id, ...(await customerCourseView(cust.id)) });
+  }
+
   const list = activeOnly
     ? await activeCustomerPackages(cust.id)
     : await listCustomerPackages(cust.id);
@@ -79,6 +86,114 @@ async function handleGet(req: NextRequest, isStaff: boolean) {
     return due > 0 ? { ...p, locked: true, outstanding: due } : p;
   });
   return NextResponse.json({ found: true, customerId: cust.id, packages });
+}
+
+/** คอร์สที่ใช้ครบแล้วยังโชว์ให้ลูกค้าเห็นอีกกี่วัน (นับจากวันซื้อ) — ซื้อ 30 คืนแล้วพักรวดเดียวจะได้ไม่หายไปเฉยๆ */
+const USED_UP_SHOW_DAYS = 120;
+
+/**
+ * คอร์สของลูกค้าแบบมีรายละเอียด สำหรับหน้าแรกแอป
+ * - คอร์สที่ยังใช้ได้ + คอร์สที่ใช้ครบแล้ว (ซื้อภายใน 120 วัน) พร้อมประวัติหักแต่ละครั้ง (วันเข้าพัก/จำนวนคืน)
+ * - คอร์สที่ขายในบิลที่ยังจ่ายไม่ครบ — ยังไม่ได้คอร์ส แต่ลูกค้าต้องรู้ว่าซื้อไว้แล้ว รอจ่ายส่วนที่เหลือ
+ */
+async function customerCourseView(customerId: string) {
+  const [all, invoices] = await Promise.all([
+    listCustomerPackages(customerId),
+    listInvoices(customerId).catch(() => []),
+  ]);
+  const since = Date.now() - USED_UP_SHOW_DAYS * 86400000;
+  const shown = all.filter((p) => {
+    if (p.status === "cancelled") return false;
+    if (p.status === "active" && p.usedUses < p.totalUses) return true;
+    return new Date(p.createdAt).getTime() >= since;
+  });
+
+  const owed = new Map<string, number>();
+  for (const pid of new Set(shown.map((p) => p.planId).filter(Boolean) as string[])) {
+    owed.set(pid, await roomPlanOutstanding(pid));
+  }
+
+  // ครั้งที่หัก — อ่านจากบิลที่จ่ายแล้วและผูกคอร์สไว้ (เหมือนประวัติคอร์สหลังบ้าน)
+  const usedBills = invoices.filter(
+    (i) => i.packageId && i.status === "paid" && shown.some((p) => p.id === i.packageId)
+  );
+  const bookingIds = [...new Set(usedBills.map((i) => i.bookingId).filter(Boolean) as string[])];
+  const bookings = new Map(
+    (await Promise.all(bookingIds.map((id) => getBooking(id).catch(() => undefined))))
+      .filter((b): b is NonNullable<typeof b> => !!b)
+      .map((b) => [b.id, b])
+  );
+
+  const packages = shown.map((p) => {
+    const due = p.planId ? owed.get(p.planId) || 0 : 0;
+    const uses = usedBills
+      .filter((i) => i.packageId === p.id)
+      .map((i) => {
+        const bk = i.bookingId ? bookings.get(i.bookingId) : undefined;
+        return {
+          date: (i.paidAt || i.createdAt || "").slice(0, 10),
+          units: i.packageUnits || 1,
+          checkin: bk?.checkin,
+          checkout: bk?.checkout,
+          catName: i.catName || undefined,
+        };
+      })
+      .sort((a, b) => (b.checkin || b.date).localeCompare(a.checkin || a.date));
+    return {
+      id: p.id,
+      name: p.name,
+      totalUses: p.totalUses,
+      usedUses: p.usedUses,
+      status: p.status,
+      unit: p.unit,
+      roomLabel: p.roomLabel,
+      createdAt: p.createdAt,
+      ...(due > 0 ? { locked: true, outstanding: due } : {}),
+      uses,
+    };
+  });
+
+  // บรรทัด "ขายคอร์ส" ในบิลที่ยังไม่จ่ายครบ และยังไม่ได้เปิดคอร์สให้
+  let pending: {
+    invoiceId: string;
+    name: string;
+    amount: number;
+    remaining: number;
+    detail: string;
+  }[] = [];
+  const unpaid = invoices.filter(
+    (i) =>
+      i.status !== "paid" &&
+      (i.items || []).some((it) => it.kind === "package" && it.offerId && !it.packageIds?.length)
+  );
+  if (unpaid.length) {
+    const offers = await listPackageOffers().catch(() => []);
+    pending = unpaid.flatMap((i) =>
+      (i.items || [])
+        .filter((it) => it.kind === "package" && it.offerId && !it.packageIds?.length)
+        .flatMap((it) => {
+          const o = offers.find((x) => x.id === it.offerId);
+          if (!o || o.kind === "credit") return [];
+          const items = o.items?.length
+            ? o.items
+            : [{ unit: o.kind === "nights" ? "night" : "use", paid: o.totalUses, free: 0 }];
+          const detail = items
+            .map((x) => `${(x.paid || 0) + (x.free || 0)} ${x.unit === "night" ? "คืน" : "ครั้ง"}`)
+            .join(" + ");
+          return [
+            {
+              invoiceId: i.id,
+              name: o.name || it.label,
+              amount: it.amount || 0,
+              remaining: Math.max(0, (i.total || 0) - (i.deposit || 0)),
+              detail,
+            },
+          ];
+        })
+    );
+  }
+
+  return { packages, pending };
 }
 
 /** ขายคอร์สให้ลูกค้า — หลังบ้านเท่านั้น */
