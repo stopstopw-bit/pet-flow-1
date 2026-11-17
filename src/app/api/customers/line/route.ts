@@ -96,6 +96,7 @@ async function handlePost(req: NextRequest) {
       isMember: customer.isMember,
       memberCredit: customer.memberCredit,
       tier: customer.tier,
+      language: customer.language,
     },
     needsRegistration: !isProfileComplete(customer),
   });
@@ -134,6 +135,7 @@ async function handleGet(req: NextRequest) {
       // ต้องส่งเหมือนตอน sync (POST) ไม่งั้นพอ refreshCustomer แล้วเครดิตจะหายไปจากหน้าจอ
       isMember: customer.isMember,
       memberCredit: customer.memberCredit,
+      language: customer.language,
     },
   });
 }

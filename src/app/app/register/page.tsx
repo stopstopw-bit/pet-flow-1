@@ -9,6 +9,7 @@ import { useConfig } from "@/components/ConfigProvider";
 import { catCurrentAgeLabel } from "@/lib/cat-age";
 import { BirthdayPicker } from "@/components/BirthdayPicker";
 import { BTN_PRIMARY, PageHeader } from "@/components/PageHeader";
+import { LanguagePicker } from "@/components/LangSwitch";
 import { SectionLabel } from "@/components/ui";
 import { Icon } from "@/components/Icon";
 import { LoadingScreen } from "@/components/LoadingScreen";
@@ -417,6 +418,8 @@ export default function RegisterPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           lineUserId: profile.lineUserId,
+          // ร้านเปิดการ์ดอังกฤษ = จำภาษาที่ลูกค้าเลือก (ปิด = ไม่ส่ง ไม่แตะค่าเดิม)
+          language: config.automation?.englishCards === true ? locale : undefined,
           name: contact.name,
           phone: contact.phone,
           address: contact.address,
@@ -525,6 +528,9 @@ export default function RegisterPage() {
         backLabel={tr("กลับหน้าแรก", "Back to home")}
         showLang={false}
       />
+
+      {/* ร้านเปิดการ์ด LINE ภาษาอังกฤษ — ถามภาษาก่อนเลย เลือกแล้วฟอร์มเปลี่ยนภาษาทันที และร้านจำไว้ส่งการ์ดภาษานี้ */}
+      <LanguagePicker className="mb-4" />
 
       {fromLink && referralOn && (
         <div className="mb-4 flex items-start gap-2 rounded-petflow border border-honey/50 bg-honey/20 px-4 py-3 text-xs font-extrabold text-petflow-chocolate">

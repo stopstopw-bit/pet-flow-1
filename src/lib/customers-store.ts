@@ -101,6 +101,8 @@ export type CustomerRecord = {
   postalCode?: string;
   /** ขอบิล/ใบกำกับภาษีเต็มรูป (นิติบุคคลหรือบุคคลธรรมดา) — ไม่มี = ออกในชื่อลูกค้าตามปกติ */
   taxInvoice?: CustomerTaxInvoice;
+  /** ภาษาที่ลูกค้าใช้ — "en" = ส่งการ์ด LINE ภาษาอังกฤษ (ไม่มี = ไทย) */
+  language?: "th" | "en";
   /** รูปบัตรประชาชนผู้ปกครอง (มีข้อความขีดทับ "ใช้ลงทะเบียนที่ร้าน" ฝังในรูปแล้ว) */
   idCardUrl?: string;
   /** ลูกค้ากดยอมรับข้อตกลงของร้านล่าสุด (ส่งจากหน้าลูกค้า ยังไม่ต้องมีนัด) */
@@ -222,6 +224,7 @@ type CustomerRow = {
   address_map_url?: string | null;
   postal_code?: string | null;
   tax_invoice?: unknown;
+  language?: string | null;
   id_card_url?: string | null;
   consent_accepted_at?: string | null;
   consent_signature?: string | null;
@@ -325,6 +328,7 @@ function mapCustomer(row: CustomerRow): CustomerRecord {
     addressMapUrl: row.address_map_url ?? undefined,
     postalCode: row.postal_code ?? undefined,
     taxInvoice: taxInvoiceFromRow(row.tax_invoice),
+    language: row.language === "en" ? "en" : row.language === "th" ? "th" : undefined,
     idCardUrl: row.id_card_url ?? undefined,
     consentAcceptedAt: row.consent_accepted_at ?? undefined,
     consentSignature: row.consent_signature ?? undefined,
@@ -1271,6 +1275,7 @@ export async function updateCustomer(
       | "address"
       | "addressMapUrl"
       | "postalCode"
+      | "language"
       | "isMember"
       | "memberCredit"
       | "memberSince"
@@ -1354,6 +1359,9 @@ export async function updateCustomer(
           .eq("tenant_id", requireTenantId());
       const { error } = await write();
       if (error && (await ensureMigration("customers.nickname"))) await write();
+    }
+    if (patch.language !== undefined) {
+      await healWrite("customers", ["language"], () => sb.from("customers").update({ language: c.language || null }).eq("id", id));
     }
   } else {
     memCustomers.set(id, c);
@@ -2822,6 +2830,7 @@ export async function registerCustomerFromLine(data: {
   emergencyContact?: EmergencyContact;
   nickname?: string;
   marketingConsent?: boolean;
+  language?: "th" | "en";
   cats: {
     name: string;
     gender?: CatGender;
@@ -2922,6 +2931,7 @@ export async function registerCustomerFromLine(data: {
     // ไม่กรอก (ร้านปิดช่องนี้) = ไม่แตะค่าเดิม
     ...(data.emergencyContact ? { emergencyContact: data.emergencyContact } : {}),
     ...(data.nickname?.trim() ? { nickname: data.nickname.trim() } : {}),
+    ...(data.language ? { language: data.language } : {}),
   });
 
   for (const cat of cats) {
