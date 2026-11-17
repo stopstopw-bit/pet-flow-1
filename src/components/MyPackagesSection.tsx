@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useLiff } from "@/components/LiffProvider";
 import { customerFetch } from "@/lib/customer-fetch";
+import { thaiDateRange } from "@/lib/service-history-rows";
 import { useLocale, useTr } from "@/components/LocaleProvider";
 
 type CourseUse = {
@@ -56,9 +57,13 @@ function thaiDate(d?: string, withYear = true, locale: "th" | "en" = "th") {
 function describeUse(u: CourseUse, unit: string, locale: "th" | "en") {
   const amount = `${u.units} ${unit}`;
   if (u.checkin && u.checkout) {
-    return { main: `${thaiDate(u.checkin, false, locale)} → ${thaiDate(u.checkout, true, locale)}`, amount };
+    const range =
+      locale === "en"
+        ? `${thaiDate(u.checkin, false, locale)} – ${thaiDate(u.checkout, true, locale)}`
+        : thaiDateRange(u.checkin, u.checkout);
+    return { main: `${locale === "en" ? "Stay" : "เข้าพัก"} ${range}`, amount };
   }
-  return { main: thaiDate(u.date, true, locale), amount };
+  return { main: `${locale === "en" ? "Used" : "ใช้วันที่"} ${thaiDate(u.date, true, locale)}`, amount };
 }
 
 /**
