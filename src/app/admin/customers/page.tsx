@@ -48,7 +48,12 @@ import { GroomProgramPicker, useGroomPrograms } from "@/components/GroomProgramP
 import { RoomTypePicker, useRoomOptions } from "@/components/RoomTypePicker";
 import { OfferItemsEditor, emptyItem, itemsToPayload, type OfferItemDraft } from "@/components/OfferItemsEditor";
 import { groomProgramName } from "@/lib/grooming-prices";
-import { tidyServiceText } from "@/lib/stay-line";
+import {
+  buildServiceHistory,
+  stripCatPrefix,
+  thaiDateRange,
+  type HistoryRow,
+} from "@/lib/service-history-rows";
 import { Avatar, EmptyState, MoreMenu, SearchField, Segmented, SectionLabel } from "@/components/ui";
 import { NumInput } from "@/components/NumInput";
 import { roomSummary } from "@/lib/room-segments";
@@ -860,12 +865,16 @@ function ServiceHistorySection({
   customerId,
   services,
   pastBookings,
+  upcomingBookings,
+  petOrder,
   log,
   onChanged,
 }: {
   customerId: string;
   services: Summary["history"]["services"];
   pastBookings: EditableBooking[];
+  upcomingBookings: EditableBooking[];
+  petOrder: string[];
   log?: CustomerServiceLog;
   onChanged: () => void;
 }) {
@@ -880,12 +889,36 @@ function ServiceHistorySection({
     onChanged();
   };
 
+  const groomPrograms = useGroomPrograms();
+  const [roomNames, setRoomNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    fetch("/api/config")
+      .then((r) => r.json())
+      .then((d) =>
+        setRoomNames(
+          Object.fromEntries(
+            ((d.config?.rooms || []) as { id: string; name: string }[]).map((r) => [r.id, r.name])
+          )
+        )
+      )
+      .catch(() => {});
+  }, []);
+
+  /**
+   * 1 แถว = 1 ครั้งที่มา (เข้าพัก/อาบน้ำ) — นัด + บิลของครั้งนั้นรวมเป็นแถวเดียว (lib/service-history-rows.ts)
+   * เดิมนัด "ห้องพัก · รอยืนยัน" กับบิลค่าห้อง/บิลต่อคืนแยกเป็นหลายแถว ชื่อน้องซ้ำสองรอบ วันที่เป็นวันจ่าย
+   */
   type Row = {
     key: string;
+    /** วันเริ่ม — ใช้เรียง/นับ */
     date: string;
-    text: string;
+    when: string;
+    title: string;
+    pets?: string;
     sub?: string;
     amount?: number;
+    badge?: { text: string; tone: "wait" | "muted" | "ok" };
+    icon: string;
     kinds: ServiceKind[];
     detail?: { label: string; amount: number }[];
     detailNote?: string;
@@ -893,45 +926,95 @@ function ServiceHistorySection({
   };
 
   const billById = new Map((log?.bills || []).map((b) => [b.id, b]));
+  const serviceById = new Map(services.map((x) => [x.id, x]));
   const groomers = log?.groomers || {};
 
-  const serviceRows: Row[] = services.map((s) => {
-    const bill = s.invoiceId ? billById.get(s.invoiceId) : undefined;
-    const kinds = bill
-      ? Array.from(new Set(bill.items.map(itemServiceKind)))
-      : s.service.split(", ").map((label) => itemServiceKind({ label }));
-    const groomer = s.bookingId ? groomers[s.bookingId] : undefined;
-    return {
-      key: `s${s.id}`,
-      date: s.date,
-      text: `${s.catName} · ${bill ? summarizeInvoiceItems(bill.items) : s.service}`,
-      sub: groomer ? `ช่าง ${groomer}` : undefined,
-      amount: s.amount,
-      kinds,
-      detail: bill?.items.map((it) => ({ label: it.label, amount: it.amount })),
-      detailNote: bill
-        ? `บิล ${bill.id}${bill.paymentMethod ? ` · จ่ายด้วย${PAY_LABELS[bill.paymentMethod] || bill.paymentMethod}` : ""}`
-        : undefined,
-      onDelete: () =>
-        remove("ลบรายการนี้ออกจากประวัติ? กู้คืนไม่ได้", () =>
+  const history = buildServiceHistory({
+    services,
+    pastBookings,
+    upcomingBookings,
+    bills: log?.bills,
+    roomNames,
+    groomName: (id) => groomProgramName(id, groomPrograms) || undefined,
+    catOrder: petOrder,
+  });
+
+  const removeRow = (r: HistoryRow) => {
+    const parts = [
+      r.bookingIds.length ? (r.bookingIds.length > 1 ? `นัด ${r.bookingIds.length} ตัว` : "นัด") : "",
+      r.serviceIds.length ? "ประวัติบิล" : "",
+    ].filter(Boolean);
+    return remove(`ลบรายการนี้ (${parts.join(" + ")}) ทิ้งถาวร? กู้คืนไม่ได้`, () =>
+      Promise.all([
+        ...r.bookingIds.map((id) =>
+          fetch("/api/bookings", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id, action: "delete" }),
+          })
+        ),
+        ...r.serviceIds.map((serviceId) =>
           fetch("/api/customers", {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              id: customerId,
-              action: "delete_service_record",
-              serviceId: s.id,
-            }),
+            body: JSON.stringify({ id: customerId, action: "delete_service_record", serviceId }),
           })
         ),
+      ])
+    );
+  };
+
+  const toRow = (r: HistoryRow): Row => {
+    const recBills = r.serviceIds
+      .map((id) => serviceById.get(id)?.invoiceId)
+      .map((id) => (id ? billById.get(id) : undefined))
+      .filter((b): b is NonNullable<typeof b> => !!b);
+    const kinds = recBills.length
+      ? Array.from(new Set(recBills.flatMap((b) => b.items.map(itemServiceKind))))
+      : [r.kind];
+    const names = Array.from(new Set(r.bookingIds.map((id) => groomers[id]).filter(Boolean)));
+    const detail = recBills.flatMap((b) =>
+      b.items.map((it) => ({ label: stripCatPrefix(it.label), amount: it.amount }))
+    );
+    const pay = recBills
+      .map((b) => b.paymentMethod)
+      .filter(Boolean)
+      .map((m) => PAY_LABELS[m!] || m);
+    return {
+      key: r.key,
+      date: r.start,
+      when: `${thaiDateRange(r.start, r.end)}${r.time ? ` · ${r.time}` : ""}${r.nights ? ` · ${r.nights} คืน` : ""}`,
+      title: `${r.title}${r.extras.length ? ` + ${r.extras.join(" + ")}` : ""}`,
+      pets: r.cats.join(", "),
+      sub: names.length ? `ช่าง ${names.join(", ")}` : undefined,
+      amount: r.amount,
+      badge:
+        r.status === "unbilled"
+          ? { text: "ยังไม่ออกบิล", tone: "wait" }
+          : r.status === "no_show"
+            ? { text: "ไม่มา", tone: "muted" }
+            : r.status === "cancelled"
+              ? { text: "ยกเลิก", tone: "muted" }
+              : !r.amount
+                ? { text: "ปิดบิลแล้ว", tone: "ok" }
+                : undefined,
+      icon: r.kind === "room" ? "bed" : "bath",
+      kinds: kinds.length ? kinds : [r.kind],
+      detail: detail.length ? detail : undefined,
+      detailNote: recBills.length
+        ? `บิล ${recBills.map((b) => b.id).join(", ")}${pay.length ? ` · จ่ายด้วย${Array.from(new Set(pay)).join(", ")}` : ""}`
+        : undefined,
+      onDelete: () => removeRow(r),
     };
-  });
+  };
 
   const posRows: Row[] = (log?.posSales || []).map((p) => ({
     key: `p${p.id}`,
     date: p.date,
-    text: `ซื้อหน้าร้าน · ${summarizeInvoiceItems(p.items.map((it) => ({ label: it.name })))}`,
+    when: thaiDateRange(p.date),
+    title: `ซื้อหน้าร้าน · ${summarizeInvoiceItems(p.items.map((it) => ({ label: it.name })))}`,
     amount: p.total,
+    icon: "bag",
     kinds: ["product"],
     detail: p.items.map((it) => ({
       label: `${it.name}${it.qty > 1 ? ` × ${it.qty}` : ""}`,
@@ -940,51 +1023,10 @@ function ServiceHistorySection({
     detailNote: `${p.no} · จ่ายด้วย${PAY_LABELS[p.method] || p.method} · ยกเลิกบิลได้ที่หน้า POS`,
   }));
 
-  // นัดบ้านเดียวกัน นัดเดียวกัน (สถานะเดียวกัน) = 1 แถว ใส่ชื่อทุกตัว
-  const bookingRow = (group: EditableBooking[]): Row => {
-    const b = group[0];
-    const names = Array.from(new Set(group.map((g) => groomers[g.id]).filter(Boolean)));
-    return {
-      key: `b${group.map((g) => g.id).join(",")}`,
-      date: b.date,
-      text: `${group.map((g) => g.catName).join(", ")} · ${
-        b.service === "room" ? "ห้องพัก" : "อาบน้ำ"
-      } · ${statusLabel(b.status)}`,
-      sub: names.length ? `ช่าง ${names.join(", ")}` : undefined,
-      kinds: [b.service === "room" ? "room" : "groom"],
-      onDelete: () =>
-        remove(
-          group.length > 1
-            ? `ลบนัดนี้ทั้งบ้าน (${group.length} ตัว) ทิ้งถาวร? กู้คืนไม่ได้`
-            : "ลบนัดนี้ทิ้งถาวร? กู้คืนไม่ได้",
-          () =>
-            Promise.all(
-              group.map((g) =>
-                fetch("/api/bookings", {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ id: g.id, action: "delete" }),
-                })
-              )
-            )
-        ),
-    };
-  };
-  const groupRows = (list: EditableBooking[]) => {
-    const byStatus = new Map<string, EditableBooking[]>();
-    for (const b of list) byStatus.set(b.status, [...(byStatus.get(b.status) || []), b]);
-    return Array.from(byStatus.values()).flatMap((l) => groupHousehold(l)).map(bookingRow);
-  };
-
   const byDateDesc = (a: Row, b: Row) => b.date.localeCompare(a.date);
-  const cancelledRows = groupRows(pastBookings.filter((b) => b.status === "cancelled")).sort(
-    byDateDesc
-  );
-  const allRows = [
-    ...serviceRows,
-    ...posRows,
-    ...groupRows(pastBookings.filter((b) => b.status !== "cancelled")),
-  ].sort(byDateDesc);
+  const cancelledRows = history.cancelled.map(toRow);
+  const serviceRows = history.rows.map(toRow);
+  const allRows = [...serviceRows, ...posRows].sort(byDateDesc);
 
   // สรุป: นับเป็น "วันที่มาใช้" ต่อประเภท — บิลกับนัดของวันเดียวกันจะได้ไม่นับซ้ำ
   // (นัดที่ยังไม่ปิดงาน/ไม่มา ไม่นับ)
@@ -993,7 +1035,7 @@ function ServiceHistorySection({
     room: new Set(),
     product: new Set(),
   };
-  for (const r of [...serviceRows, ...posRows]) {
+  for (const r of [...serviceRows.filter((x) => !x.badge || x.badge.tone === "ok"), ...posRows]) {
     for (const k of r.kinds) if (k !== "other") daysByKind[k].add(r.date.slice(0, 10));
   }
   for (const b of pastBookings) {
@@ -1027,28 +1069,48 @@ function ServiceHistorySection({
       {list.map((r) => {
         const expanded = openKey === r.key;
         return (
-          <li key={r.key} className="py-1.5 pl-3 pr-1.5">
-            <div className="flex min-h-[44px] items-center gap-2">
+          <li key={r.key} className="py-2 pl-3 pr-1.5">
+            <div className="flex min-h-[44px] items-center gap-2.5">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-paper text-latte-deep">
+                <Icon name={r.icon} size={18} />
+              </span>
               <button
                 type="button"
                 disabled={!r.detail?.length}
                 onClick={() => setOpenKey(expanded ? null : r.key)}
                 className="min-w-0 flex-1 text-left"
               >
-                <span className={`block font-bold text-brown ${expanded ? "" : "truncate"}`}>
-                  {r.text}
+                <span className="flex items-start justify-between gap-2">
+                  <span className="min-w-0 text-[13px] font-bold leading-snug text-brown">{r.when}</span>
+                  {r.amount ? (
+                    <span className="shrink-0 font-extrabold text-brown">฿{r.amount.toLocaleString()}</span>
+                  ) : r.badge ? (
+                    <span
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                        r.badge.tone === "wait"
+                          ? "bg-honey/30 text-wait"
+                          : r.badge.tone === "ok"
+                            ? "bg-sage/30 text-ok"
+                            : "bg-paper text-brown-faint"
+                      }`}
+                    >
+                      {r.badge.text}
+                    </span>
+                  ) : null}
                 </span>
-                <span className="block text-[11px] text-brown-faint">
-                  {r.date}
-                  {r.sub ? ` · ${r.sub}` : ""}
-                  {r.detail?.length ? (expanded ? " · ซ่อนรายการ" : " · ดูรายการ") : ""}
-                </span>
+                <span className={`block text-brown-soft ${expanded ? "" : "truncate"}`}>{r.title}</span>
+                {(r.pets || r.sub || r.detail?.length) && (
+                  <span className="block truncate text-[11px] text-brown-faint">
+                    {[
+                      r.pets ? `🐾 ${r.pets}` : "",
+                      r.sub || "",
+                      r.detail?.length ? (expanded ? "ซ่อนรายการ" : "ดูรายการ") : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                )}
               </button>
-              {r.amount ? (
-                <span className="shrink-0 font-extrabold text-brown">
-                  ฿{r.amount.toLocaleString()}
-                </span>
-              ) : null}
               {r.onDelete ? (
                 <MoreMenu
                   items={[{ label: "ลบรายการนี้", icon: "trash", danger: true, onClick: r.onDelete }]}
@@ -1083,7 +1145,7 @@ function ServiceHistorySection({
         title="ประวัติใช้บริการ"
         right={
           allRows.length > 0 ? (
-            <span className="shrink-0 text-[11px] font-bold text-brown-faint">{allRows.length} รายการ</span>
+            <span className="shrink-0 text-[11px] font-bold text-brown-faint">{allRows.length} ครั้ง</span>
           ) : undefined
         }
       />
@@ -1235,6 +1297,7 @@ function PackageHistorySection({
       price?: number;
       status: string;
       createdAt?: string;
+      unit?: "use" | "night";
     }[]
   >([]);
   const [busy, setBusy] = useState("");
@@ -1307,10 +1370,10 @@ function PackageHistorySection({
               <span className="min-w-0 flex-1">
                 <b className="text-brown">{p.name}</b>{" "}
                 <span className="text-brown-faint">
-                  ({p.usedUses}/{p.totalUses} ครั้ง)
+                  (ใช้ไป {p.usedUses}/{p.totalUses} {p.unit === "night" ? "คืน" : "ครั้ง"})
                 </span>
                 <span className="block text-[10px] text-brown-faint">
-                  {p.createdAt ? p.createdAt.slice(0, 10) : "—"}
+                  {p.createdAt ? `ซื้อ ${thaiDateRange(p.createdAt)}` : "—"}
                   {p.price ? ` · ${p.price.toLocaleString()} บาท` : ""}
                 </span>
               </span>
@@ -1335,13 +1398,29 @@ function PackageHistorySection({
 
       <SectionLabel>Usage · การใช้</SectionLabel>
       <ul className="divide-y divide-petflow-line rounded-petflow-sm border border-petflow-line text-xs text-brown-soft">
-        {usage.map((u) => (
-          <li key={u.invoiceId} className="flex min-h-[48px] items-center gap-2 py-1.5 pl-3 pr-1.5">
-            <span className="min-w-0 flex-1">
-              <span className="block truncate font-bold text-brown">{u.description}</span>
-              <span className="block text-[11px] text-brown-faint">{u.date}</span>
-            </span>
-            <MoreMenu
+        {usage.map((u) => {
+          const pkg = packages.find((p) => p.id === u.packageId);
+          const unit = pkg?.unit === "night" ? "คืน" : "ครั้ง";
+          // "ส้ม, ดำ · 🐾 ส้ม, ดำ · ห้อง Mini Duo × 2 คืน" → "ห้อง Mini Duo"
+          const what = stripCatPrefix(
+            u.catName ? u.description.replace(`${u.catName} · `, "") : u.description
+          ).replace(/\s*×\s*\d+\s*คืน.*$/, "");
+          return (
+            <li key={u.invoiceId} className="flex min-h-[52px] items-center gap-2 py-2 pl-3 pr-1.5">
+              <span className="min-w-0 flex-1">
+                <span className="block font-bold text-brown">
+                  {u.checkin && u.checkout
+                    ? `เข้าพัก ${thaiDateRange(u.checkin, u.checkout)}`
+                    : `ใช้วันที่ ${thaiDateRange(u.date)}`}
+                </span>
+                <span className="block truncate text-[11px] text-brown-faint">
+                  {[what, u.catName].filter(Boolean).join(" · ")}
+                </span>
+              </span>
+              <span className="shrink-0 text-xs font-extrabold text-latte-deep">
+                −{u.units || 1} {unit}
+              </span>
+              <MoreMenu
               items={[
                 {
                   label: "คืนครั้ง (ยกเลิกการใช้)",
@@ -1353,7 +1432,8 @@ function PackageHistorySection({
               ]}
             />
           </li>
-        ))}
+          );
+        })}
         {!usage.length && <li className="px-3 py-3 text-brown-faint">ยังไม่เคยหักครั้งจากคอร์ส</li>}
       </ul>
     </section>
@@ -3802,6 +3882,8 @@ export default function CustomersPage() {
           customerId={c.id}
           services={selected.history.services}
           pastBookings={selected.history.pastBookings || []}
+          upcomingBookings={selected.history.upcomingBookings || []}
+          petOrder={c.cats.map((x) => x.name)}
           log={selected.serviceLog}
           onChanged={() => open(c.id)}
         />

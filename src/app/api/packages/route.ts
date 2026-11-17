@@ -14,6 +14,8 @@ import { cleanBranchIds } from "@/lib/branches";
 import { normalizeOfferItems, sellOfferItems, listPackageOffers } from "@/lib/package-shop-store";
 import { listInvoices } from "@/lib/invoices-store";
 import { getBooking } from "@/lib/bookings-store";
+import { courseUseRanges } from "@/lib/service-history-rows";
+import { isRoomLine } from "@/lib/stay-line";
 import { roomPlanOutstanding, createPackagePlan, viewRoomPlan } from "@/lib/room-plans-store";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { withResolvedTenant, withTenant } from "@/lib/tenant-context";
@@ -124,17 +126,31 @@ async function customerCourseView(customerId: string) {
       .map((b) => [b.id, b])
   );
 
+  // บิลแรก + บิลต่อคืนของการพักเดียวกัน → แบ่งช่วงวันให้แต่ละใบ (ไม่ใช่ทุกใบโชว์ช่วงพักทั้งหมด)
+  const ranges = courseUseRanges(
+    usedBills.map((i) => ({
+      id: i.id,
+      bookingId: i.bookingId,
+      at: i.createdAt || i.paidAt || "",
+      nights:
+        (i.items || []).filter(isRoomLine).reduce((s, it) => s + (Number(it.qty) || 0), 0) ||
+        i.packageUnits ||
+        1,
+    })),
+    (id) => bookings.get(id)
+  );
+
   const packages = shown.map((p) => {
     const due = p.planId ? owed.get(p.planId) || 0 : 0;
     const uses = usedBills
       .filter((i) => i.packageId === p.id)
       .map((i) => {
-        const bk = i.bookingId ? bookings.get(i.bookingId) : undefined;
+        const r = ranges.get(i.id);
         return {
           date: (i.paidAt || i.createdAt || "").slice(0, 10),
           units: i.packageUnits || 1,
-          checkin: bk?.checkin,
-          checkout: bk?.checkout,
+          checkin: r?.checkin,
+          checkout: r?.checkout,
           catName: i.catName || undefined,
         };
       })

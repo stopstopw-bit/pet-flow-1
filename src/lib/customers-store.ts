@@ -2596,22 +2596,56 @@ export type PackageUsageRecord = {
   description: string;
   date: string;
   at: string;
+  /** หักไปกี่ครั้ง/คืน */
+  units?: number;
+  catName?: string;
+  /** ช่วงวันเข้าพักที่หักคอร์สครั้งนี้ (คอร์สวันพัก) */
+  checkin?: string;
+  checkout?: string;
 };
 
 async function listPackageUsage(customerId: string): Promise<PackageUsageRecord[]> {
   const { listInvoices } = await import("./invoices-store");
   const { summarizeInvoiceItems } = await import("./invoice-item-label");
-  const invoices = await listInvoices(customerId);
+  const { isRoomLine } = await import("./stay-line");
+  const { courseUseRanges } = await import("./service-history-rows");
+  const { getBooking } = await import("./bookings-store");
+  const invoices = (await listInvoices(customerId)).filter(
+    (i) => i.packageId && i.status === "paid" && i.paidAt
+  );
+  const bookingIds = [...new Set(invoices.map((i) => i.bookingId).filter(Boolean) as string[])];
+  const bookings = new Map(
+    (await Promise.all(bookingIds.map((id) => getBooking(id).catch(() => undefined))))
+      .filter((b): b is NonNullable<typeof b> => !!b)
+      .map((b) => [b.id, b])
+  );
+  const ranges = courseUseRanges(
+    invoices.map((i) => ({
+      id: i.id,
+      bookingId: i.bookingId,
+      at: i.createdAt || i.paidAt || "",
+      nights:
+        (i.items || []).filter(isRoomLine).reduce((s, it) => s + (Number(it.qty) || 0), 0) ||
+        i.packageUnits ||
+        1,
+    })),
+    (id) => bookings.get(id)
+  );
   return invoices
-    .filter((i) => i.packageId && i.status === "paid" && i.paidAt)
-    .map((i) => ({
-      invoiceId: i.id,
-      packageId: i.packageId!,
-      description: `${i.catName} · ${summarizeInvoiceItems(i.items)}`,
-      date: i.paidAt!.slice(0, 10),
-      at: i.paidAt!,
-    }))
-    .sort((a, b) => b.at.localeCompare(a.at));
+    .map((i) => {
+      const r = ranges.get(i.id);
+      return {
+        invoiceId: i.id,
+        packageId: i.packageId!,
+        description: `${i.catName} · ${summarizeInvoiceItems(i.items)}`,
+        date: i.paidAt!.slice(0, 10),
+        at: i.paidAt!,
+        units: i.packageUnits || 1,
+        catName: i.catName || undefined,
+        ...(r ? { checkin: r.checkin, checkout: r.checkout } : {}),
+      };
+    })
+    .sort((a, b) => (b.checkin || b.date).localeCompare(a.checkin || a.date) || b.at.localeCompare(a.at));
 }
 
 /** บิลแบบย่อ (เฉพาะบรรทัดอาบน้ำ/ห้องพัก) — ให้ประวัติรายตัวใช้โปรแกรม/ห้องตามที่ออกบิลจริง */
