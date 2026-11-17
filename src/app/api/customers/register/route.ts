@@ -54,6 +54,8 @@ async function handlePost(req: NextRequest) {
   if (taxInvoice.error) {
     return NextResponse.json({ error: taxInvoice.error }, { status: 400 });
   }
+  // ภาษาที่ลูกค้าใช้กรอกฟอร์ม — ใช้เลือกภาษาการ์ด LINE ต่อไป
+  const language = body.language === "en" ? "en" : body.language === "th" ? "th" : undefined;
   const cats = Array.isArray(body.cats)
     ? body.cats.map(parseCatInput)
     : [];
@@ -101,6 +103,7 @@ async function handlePost(req: NextRequest) {
       emergencyContact: parseEmergencyContact(body.emergencyContact),
       nickname: typeof body.nickname === "string" ? body.nickname.trim().slice(0, 60) : undefined,
       marketingConsent,
+      language,
       cats,
     });
   } catch (e) {

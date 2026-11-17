@@ -233,6 +233,11 @@ export const MIGRATIONS: { name: string; sql: string }[] = [
     sql: "alter table customers add column if not exists tax_invoice jsonb;",
   },
   {
+    // ภาษาที่ลูกค้าใช้ (th/en) — สมัครด้วยฟอร์ม EN = en, ส่งการ์ด LINE ตามภาษานี้ (แอดมินเลือกทับได้ตอนส่ง)
+    name: "customers.language",
+    sql: "alter table customers add column if not exists language text;",
+  },
+  {
     name: "articles.table",
     sql: "create table if not exists articles (id text primary key, slug text not null, title text not null, description text, body text, cover_url text, emoji text, published boolean not null default true, date_published date, created_at timestamptz not null default now());",
   },

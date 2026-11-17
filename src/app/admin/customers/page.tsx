@@ -1977,6 +1977,20 @@ function CustomerSummaryCard({
   const [mergeOpen, setMergeOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
 
+  /** ร้านเปิดการ์ด LINE ภาษาอังกฤษไว้ (ตั้งค่า › อัตโนมัติ) — ปิด = ไม่โชว์แถวภาษา */
+  const englishCards = useConfig().config.automation?.englishCards === true;
+  /** ภาษาการ์ด LINE ของลูกค้าคนนี้ (ลูกค้าตั้งเองตอนสมัคร/สลับในแอป หรือร้านตั้งให้ตรงนี้) */
+  const setCardLanguage = async (language: "th" | "en") => {
+    if ((customer.language || "th") === language) return;
+    const res = await fetch("/api/customers", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: customer.id, action: "update_customer", patch: { language } }),
+    });
+    if (res.ok) onSaved();
+    else setMsg("เปลี่ยนภาษาไม่สำเร็จ");
+  };
+
   const unlinkLine = async () => {
     if (
       !confirm(
@@ -2249,6 +2263,32 @@ function CustomerSummaryCard({
           <Icon name={customer.marketingConsent ? "check" : "x"} size={14} />
           {customer.marketingConsent ? "ยินยอมรับข่าวสาร/โปร" : "ไม่รับข่าวสาร/โปร"}
         </li>
+        {englishCards && (
+        <li className="flex items-center gap-2">
+          <Icon name="message" size={14} className="text-brown-faint" />
+          <span className="text-brown-soft">ภาษาการ์ด LINE</span>
+          <span className="ml-auto flex gap-1 rounded-full bg-paper p-0.5">
+            {(
+              [
+                ["th", "ไทย"],
+                ["en", "English"],
+              ] as const
+            ).map(([v, label]) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => void setCardLanguage(v)}
+                aria-pressed={(customer.language || "th") === v}
+                className={`min-h-[32px] rounded-full px-3 text-[11px] font-bold ${
+                  (customer.language || "th") === v ? "bg-latte-deep text-card" : "text-brown-soft"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </span>
+        </li>
+        )}
       </ul>
 
       <CustomerIntakeCards customer={customer} onDone={onSaved} />

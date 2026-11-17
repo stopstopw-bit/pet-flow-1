@@ -45,6 +45,7 @@ async function handleGet(req: NextRequest) {
       emergencyContact: emergencyOf(c) ?? null,
       nickname: c.nickname || "",
       marketingConsent: c.marketingConsent !== false,
+      language: c.language || "th",
       cats: c.cats.map((x) => ({
         id: x.id,
         name: x.name,
@@ -97,6 +98,7 @@ async function handlePost(req: NextRequest) {
     taxInvoice?: CustomerTaxInvoice | null;
     emergencyContact?: EmergencyContact | null;
     nickname?: string;
+    language?: "th" | "en";
   } = {};
   // ชื่อเล่น — ส่งว่าง = ล้าง (เก็บเป็น null) · หน้าเก่าที่ไม่ส่งมา = คงค่าเดิม
   if (typeof body.nickname === "string") patch.nickname = body.nickname.trim().slice(0, 60);
@@ -119,6 +121,8 @@ async function handlePost(req: NextRequest) {
     patch.postalCode = body.postalCode.trim() || undefined;
   if (typeof body.marketingConsent === "boolean")
     patch.marketingConsent = body.marketingConsent;
+  // ลูกค้าสลับภาษาในแอป → การ์ด LINE ต่อจากนี้ใช้ภาษานั้น
+  if (body.language === "en" || body.language === "th") patch.language = body.language;
   await updateCustomer(c.id, patch);
 
   // น้องที่เพิ่งสร้าง: id ชั่วคราว "new-…" → id จริง — หน้าโปรไฟล์ใช้อัปรูปที่เลือกไว้ก่อนกดบันทึก
@@ -170,6 +174,10 @@ async function handlePost(req: NextRequest) {
       }
     }
   }
+
+  // แค่สลับภาษาในแอป — ไม่ต้องแจ้งร้าน
+  const onlyLanguage = Object.keys(patch).every((k) => k === "language") && !Array.isArray(body.cats);
+  if (onlyLanguage) return NextResponse.json({ ok: true, created });
 
   sendTelegramLater(
     formatBookingTelegram("✏️ ลูกค้าแก้ไขข้อมูลตัวเอง", {

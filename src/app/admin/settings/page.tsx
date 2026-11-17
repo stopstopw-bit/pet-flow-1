@@ -3485,6 +3485,7 @@ const AUTOMATION_DEFAULT = {
   reviewRequestEnabled: true,
   reviewRequestDaysAfter: 1,
   receiptAskOnPaid: false,
+  englishCards: false,
   groomVaccineOnce: false,
   groomInfoEnabled: true,
   intakeAutoEnabled: true,
@@ -4019,6 +4020,15 @@ function AutomationTab({
             sends: "ขึ้นคำถาม \"ส่งใบเสร็จให้ลูกค้าทาง LINE เลยไหม?\" กดตกลง = ส่งการ์ดใบเสร็จ · ปิดไว้ = ไม่ถาม ส่งเองที่ปุ่ม ส่ง LINE",
             on: form.receiptAskOnPaid === true,
             onToggle: (v) => set({ receiptAskOnPaid: v }),
+          })}
+          {item({
+            emoji: "🇬🇧",
+            title: "การ์ด LINE ภาษาอังกฤษ",
+            services: ["groom", "stay"],
+            when: "ทุกครั้งที่ส่งการ์ด LINE",
+            sends: "เปิด = ฟอร์มสมัครถามภาษา (🇹🇭/🇬🇧) ลูกค้าที่เลือกอังกฤษได้การ์ดภาษาอังกฤษ และเลือกภาษาได้ตอนกดส่ง · ปิด = ส่งไทยทุกใบเหมือนเดิม",
+            on: form.englishCards === true,
+            onToggle: (v) => set({ englishCards: v }),
           })}
           {item({
             emoji: "💉",

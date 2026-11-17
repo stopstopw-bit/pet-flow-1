@@ -6,6 +6,7 @@ import type { CustomerProfile } from "@/lib/business";
 import type { PointsHistoryEntry } from "@/lib/points-store";
 import type { CustomerTier } from "@/lib/customer-tier";
 import { firstFlowHref } from "@/lib/intake-flow";
+import { useLocale } from "@/components/LocaleProvider";
 import {
   customerFetch,
   setCustomerSessionIssue,
@@ -21,6 +22,8 @@ type LineCustomer = {
   /** สถานะ Member + เครดิตคงเหลือ — API ส่งมาอยู่แล้ว ใช้โชว์ในหน้าแรกของลูกค้า */
   isMember?: boolean;
   memberCredit?: number;
+  /** ภาษาที่ลูกค้าตั้งไว้ (การ์ด LINE ส่งภาษานี้) */
+  language?: "th" | "en";
 };
 
 type LiffCtx = {
@@ -157,6 +160,17 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
   const [customer, setCustomer] = useState<LineCustomer | null>(null);
+  const { setLocale } = useLocale();
+  // ลูกค้าตั้งภาษาอังกฤษไว้ (สมัครด้วยฟอร์ม EN) แต่เครื่องนี้ยังไม่เคยเลือกภาษา → เปิดแอปเป็นภาษาอังกฤษ
+  useEffect(() => {
+    if (customer?.language !== "en") return;
+    try {
+      if (!localStorage.getItem("petflow-locale")) setLocale("en");
+    } catch {
+      /* storage ใช้ไม่ได้ — ไม่เป็นไร */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customer?.language]);
   const [needsRegistration, setNeedsRegistration] = useState(false);
   const [history, setHistory] = useState<PointsHistoryEntry[]>([]);
   const [error, setError] = useState<string | null>(null);

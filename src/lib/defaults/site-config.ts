@@ -72,6 +72,7 @@ export function getDefaultSiteConfig(): SiteConfig {
         reviewRequestEnabled: true,
         reviewRequestDaysAfter: 1,
         receiptAskOnPaid: false,
+        englishCards: false,
         groomVaccineOnce: false,
         groomInfoEnabled: true,
         intakeAutoEnabled: true,
