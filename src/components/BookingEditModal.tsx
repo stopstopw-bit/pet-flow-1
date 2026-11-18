@@ -23,6 +23,7 @@ import { branchesForUser, isMultiBranch, mainBranchId } from "@/lib/branches";
 
 export type EditableBooking = Booking & {
   lineUserId?: string;
+  customerId?: string;
   room?: string;
   checkin?: string;
   notes?: string;
@@ -349,10 +350,56 @@ export function BookingEditModal({
   };
   const transportPayload = hasTransport(transport) ? transport : null;
 
+  // เพิ่มอาบน้ำทีหลัง (ห้องพักที่จองไว้แล้ว) — สร้างนัดอาบน้ำในช่วงพัก = รวมเป็นนัดเดียว บิลเดียวกับการเข้าพัก
+  const isStay = booking.service === "room" && service === "room";
+  const stayCats = useMemo(
+    () => [booking.catName, ...siblings.map((s) => s.catName)].filter((n, i, a) => n && a.indexOf(n) === i),
+    [booking.catName, siblings]
+  );
+  /** นัดอาบน้ำที่มีอยู่แล้วในช่วงพัก (ตัวไหนมีแล้ว ไม่ต้องสร้างซ้ำ) */
+  const bathsInStay = useMemo(() => {
+    const who = booking.customerId || customerId || booking.customerName;
+    const from = (checkinSel || "").slice(0, 10);
+    const to = (checkoutSel || checkinSel || "").slice(0, 10);
+    return (roomBookings as (BoardBooking & { date?: string; time?: string })[]).filter((b) => {
+      const d = (b.date || "").slice(0, 10);
+      return (
+        b.service === "groom" &&
+        b.status !== "cancelled" &&
+        (b.customerId || b.customerName) === who &&
+        stayCats.includes(b.catName) &&
+        !!d && d >= from && d <= to
+      );
+    });
+  }, [roomBookings, booking.customerId, booking.customerName, customerId, checkinSel, checkoutSel, stayCats]);
+  const catsNeedBath = stayCats.filter((n) => !bathsInStay.some((b) => b.catName === n));
+  const [addBath, setAddBath] = useState(false);
+  const [bathCats, setBathCats] = useState<string[]>([]);
+  useEffect(() => setBathCats(catsNeedBath), [catsNeedBath.join("|")]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [bathDate, setBathDate] = useState(booking.checkout || "");
+  const [bathDateTouched, setBathDateTouched] = useState(false);
+  // วันอาบตั้งต้น = วันออก (อาบก่อนกลับบ้าน) — เลื่อนวันออกแล้วตามไปด้วยจนกว่าจะแก้เอง
+  useEffect(() => {
+    if (!bathDateTouched) setBathDate(checkoutSel || checkinSel);
+  }, [checkoutSel, checkinSel, bathDateTouched]);
+  const [bathTime, setBathTime] = useState("12:30");
+  const [bathProgram, setBathProgram] = useState("");
+  const withBath = isStay && addBath && bathCats.length > 0;
+  const bathClashes = useGroomClashes(withBath ? bathDate : "", bathTime);
+
   const submit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     if (service === "groom" && !confirmClashes(clashes)) return;
+    if (withBath) {
+      if (!bathDate || !bathTime) {
+        alert("ใส่วันและเวลาอาบน้ำด้วยนะ (หรือปิด “เพิ่มอาบน้ำ”)");
+        return;
+      }
+      const inStay = bathDate >= checkinSel && bathDate <= (checkoutSel || checkinSel);
+      if (!inStay && !confirm("วันอาบน้ำอยู่นอกช่วงเข้าพัก — จะกลายเป็นนัดอาบน้ำแยก ไม่รวมบิลเดียวกับห้องพัก บันทึกต่อไหม?")) return;
+      if (!confirmClashes(bathClashes)) return;
+    }
     setSaving(true);
     const payload =
       service === "groom"
@@ -486,6 +533,31 @@ export function BookingEditModal({
       }
     }
 
+    // 4) เพิ่มอาบน้ำทีหลัง — นัดอาบน้ำในช่วงพัก ระบบนับเป็นนัดเดียว บิลเดียวกับการเข้าพัก
+    let bathAdded = 0;
+    if (withBath) {
+      for (const cat of bathCats) {
+        const r = await fetch("/api/bookings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            customerId: booking.customerId || customerId || undefined,
+            customerName: String(fd.get("customer") || booking.customerName),
+            lineUserId: booking.lineUserId || undefined,
+            service: "groom",
+            date: bathDate,
+            time: bathTime,
+            groomProgram: bathProgram || undefined,
+            // สาขาเดียวกับการเข้าพัก
+            ...(multiBranch ? { branchId: branchSel || booking.branchId } : {}),
+            // ตัวที่กำลังแก้อาจเพิ่งเปลี่ยนชื่อในฟอร์มนี้ — ใช้ชื่อใหม่
+            catName: cat === booking.catName ? String(fd.get("cat") || cat) : cat,
+          }),
+        });
+        if (r.ok) bathAdded += 1;
+      }
+    }
+
     const count = Number(movedData.movedCount) || 1;
     const inv = movedData.invoice as
       | { kind: "none" }
@@ -499,6 +571,14 @@ export function BookingEditModal({
       lines.push(`แก้บิลเดิมเป็น ${inv.nights} คืน · ${inv.total.toLocaleString()} บาท`);
     } else if (inv?.kind === "created_extra") {
       lines.push(`บิลเดิมปิดไปแล้ว — ออกบิลพักต่อ ${inv.nights} คืน · ${inv.total.toLocaleString()} บาท ไว้ในหน้าบิล`);
+    }
+    if (withBath) {
+      lines.push(
+        bathAdded === bathCats.length
+          ? `เพิ่มอาบน้ำ ${bathAdded} ตัว · ${bathDate} ${bathTime}`
+          : `เพิ่มอาบน้ำได้ ${bathAdded}/${bathCats.length} ตัว — ลองเพิ่มตัวที่เหลืออีกครั้ง`
+      );
+      if (bathAdded > 0) lines.push("ถ้าออกบิลห้องพักไปแล้ว อย่าลืมเพิ่มค่าอาบน้ำในบิลนั้น");
     }
     if (inv?.kind === "warn") {
       alert(`⚠️ ${inv.message}`);
@@ -750,6 +830,131 @@ export function BookingEditModal({
                     setMovesTouched(true);
                   }}
                 />
+              )}
+              {isStay && (
+                <div className="rounded-petflow-sm border border-petflow-line bg-paper/50 p-3">
+                  {bathsInStay.length > 0 && (
+                    <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold text-brown-soft">
+                      <Icon name="bath" size={14} />
+                      อาบน้ำก่อนกลับแล้ว:{" "}
+                      {bathsInStay.map((b) => `${b.catName} ${(b.date || "").slice(0, 10)}${b.time ? ` ${b.time}` : ""}`).join(" · ")}
+                    </p>
+                  )}
+                  {catsNeedBath.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setAddBath((v) => !v)}
+                      aria-pressed={addBath}
+                      className="flex w-full items-center justify-between gap-2 text-left"
+                    >
+                      <span className="flex items-center gap-1.5 text-xs font-extrabold text-petflow-chocolate">
+                        <Icon name="bath" size={15} />
+                        เพิ่มอาบน้ำ (นัดเดียว บิลเดียว)
+                      </span>
+                      <span
+                        className={`flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition ${
+                          addBath ? "justify-end bg-petflow-chocolate" : "justify-start bg-petflow-line"
+                        }`}
+                      >
+                        <span className="h-5 w-5 rounded-full bg-card shadow" />
+                      </span>
+                    </button>
+                  )}
+                  {addBath && catsNeedBath.length > 0 && (
+                    <div className="mt-3 space-y-3">
+                      {catsNeedBath.length > 1 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {catsNeedBath.map((n) => {
+                            const on = bathCats.includes(n);
+                            return (
+                              <button
+                                key={n}
+                                type="button"
+                                aria-pressed={on}
+                                onClick={() => setBathCats((p) => (on ? p.filter((x) => x !== n) : [...p, n]))}
+                                className={`inline-flex min-h-[36px] items-center gap-1 rounded-full px-3 text-xs font-bold ${
+                                  on ? "bg-petflow-chocolate text-card" : "bg-card text-brown-soft ring-1 ring-petflow-line"
+                                }`}
+                              >
+                                {on && <Icon name="check" size={14} />}
+                                {n}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <div>
+                        <label className="block text-xs font-bold text-brown-soft">
+                          วันอาบน้ำ
+                          <input
+                            type="date"
+                            value={bathDate}
+                            onChange={(e) => {
+                              setBathDateTouched(true);
+                              setBathDate(e.target.value);
+                            }}
+                            className="mt-1 min-h-[44px] w-full rounded-petflow-sm border border-petflow-line bg-card px-3 py-2.5 text-sm text-brown"
+                          />
+                        </label>
+                        {checkinSel && checkoutSel && (
+                          <div className="mt-1.5 flex gap-2">
+                            {[
+                              { d: checkinSel, label: "วันเข้า" },
+                              { d: checkoutSel, label: "วันออก" },
+                            ].map((o) => (
+                              <button
+                                key={o.label}
+                                type="button"
+                                onClick={() => {
+                                  setBathDateTouched(true);
+                                  setBathDate(o.d);
+                                }}
+                                className={`min-h-[32px] rounded-full px-3 text-[11px] font-bold ${
+                                  bathDate === o.d
+                                    ? "bg-petflow-chocolate text-card"
+                                    : "bg-card text-brown-soft ring-1 ring-petflow-line"
+                                }`}
+                              >
+                                {o.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <label className="block text-xs font-bold text-brown-soft">
+                        เวลาอาบน้ำ
+                        <input
+                          type="time"
+                          list="edit-bath-slots"
+                          value={bathTime}
+                          onChange={(e) => setBathTime(e.target.value)}
+                          className="mt-1 min-h-[44px] w-full rounded-petflow-sm border border-petflow-line bg-card px-3 py-2.5 text-sm text-brown"
+                        />
+                        <datalist id="edit-bath-slots">
+                          {groomSlots.map((t) => (
+                            <option key={t} value={t} />
+                          ))}
+                        </datalist>
+                        <GroomClashNote clashes={bathClashes} />
+                      </label>
+                      <label className="block text-xs font-bold text-brown-soft">
+                        โปรแกรมอาบน้ำ (ถ้าเลือกแล้ว)
+                        <select
+                          value={bathProgram}
+                          onChange={(e) => setBathProgram(e.target.value)}
+                          className="mt-1 min-h-[44px] w-full rounded-petflow-sm border border-petflow-line bg-card px-3 py-2.5 text-sm text-brown"
+                        >
+                          <option value="">— ยังไม่ระบุ (เลือกตอนคิดเงิน) —</option>
+                          {groomPrograms.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                  )}
+                </div>
               )}
               <div className="grid grid-cols-2 gap-2">
                 <div className="min-w-0">
