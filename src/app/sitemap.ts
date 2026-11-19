@@ -6,7 +6,7 @@ import { SEO_SOFTWARE_PAGES, SITE_URL } from "@/lib/seo-software-pages";
  * ใส่เฉพาะหน้าที่อยากให้ติด Google: หน้าแรก + หน้าคำค้นแต่ละประเภทร้าน + หน้าฟีเจอร์
  * หน้าโรงแรมแมวตัวอย่างเก่า (/cat-hotel, /cat-bath, /blog) ตั้ง noindex แล้ว จึงไม่ใส่ที่นี่
  */
-const UPDATED = new Date("2026-11-11");
+const UPDATED = new Date("2026-11-19");
 
 export default function sitemap(): MetadataRoute.Sitemap {
   return [

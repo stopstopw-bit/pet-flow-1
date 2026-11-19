@@ -320,7 +320,7 @@ export async function middleware(req: NextRequest) {
     tenantSlug &&
     tenantSlug !== "petflow" &&
     (pathname === "/" ||
-      /^\/(cat-bath|cat-hotel|blog|pet-grooming-software|pet-hotel-software|pet-booking-system|pet-shop-pos|pet-shop-crm)(\/|$)/.test(pathname))
+      /^\/(cat-bath|cat-hotel|blog|pet-grooming-software|pet-hotel-software|pet-booking-system|pet-shop-pos|pet-shop-crm|pet-hotel-grooming-software|cat-hotel-software)(\/|$)/.test(pathname))
   ) {
     const url = req.nextUrl.clone();
     url.pathname = shopPath(tenantSlug, "/app");
