@@ -2,6 +2,7 @@
 import type { Metadata } from "next";
 import {
   ORG_ID,
+  PRICE_PLANS,
   SEO_SOFTWARE_PAGES,
   SITE_URL,
   SOFTWARE_ID,
@@ -61,6 +62,21 @@ function jsonLd(p: SeoSoftwarePage) {
         url: `${SITE_URL}/`,
         publisher: { "@id": ORG_ID },
         description: "ระบบจัดการร้านสัตว์เลี้ยงครบวงจร สำหรับร้านอาบน้ำ-ตัดขน โรงแรมสัตว์เลี้ยง และรับฝากหมาแมว ทำงานบน LINE",
+        image: `${SITE_URL}/og-petflow.jpg`,
+        offers: {
+          "@type": "AggregateOffer",
+          priceCurrency: "THB",
+          lowPrice: Math.min(...PRICE_PLANS.map((x) => x.month)),
+          highPrice: Math.max(...PRICE_PLANS.map((x) => x.month)),
+          offerCount: PRICE_PLANS.length,
+          offers: PRICE_PLANS.map((x) => ({
+            "@type": "Offer",
+            name: x.name,
+            price: x.month,
+            priceCurrency: "THB",
+            url: `${SITE_URL}/shop-questions`,
+          })),
+        },
       },
       {
         "@type": "WebPage",
