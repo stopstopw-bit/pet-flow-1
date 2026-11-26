@@ -414,6 +414,12 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
       router.replace(`${shop}/app/pet-docs?${q}`);
       return;
     }
+    if (path === "flea") {
+      // การ์ดอัปเดตยากำจัดเห็บหมัด — cats = น้องที่ร้านขอ (ไม่ใส่ = ทุกตัว)
+      const cats = params.get("cats");
+      router.replace(`${shop}/app/flea${cats ? `?cats=${encodeURIComponent(cats)}` : ""}`);
+      return;
+    }
     if (path === "groom-info") {
       const cats = params.get("cats");
       if (cats) {
@@ -463,6 +469,7 @@ export function LiffProvider({ children }: { children: React.ReactNode }) {
       pathname.startsWith("/app/profile") ||
       pathname.startsWith("/app/groom-info") ||
       pathname.startsWith("/app/pet-docs") ||
+      pathname.startsWith("/app/flea") ||
       pathname.startsWith("/app/coupons") ||
       pathname.startsWith("/app/claim-coupon");
 

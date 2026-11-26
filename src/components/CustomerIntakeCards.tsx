@@ -10,9 +10,11 @@ import { cardOn, isFeatureOn } from "@/lib/features";
 import { INTAKE_LABEL } from "@/lib/intake-cards";
 import { splitVaccinePhotos } from "@/lib/vaccine-photos";
 import { stayInfoDone } from "@/lib/intake-rules";
+import { fleaQuestions, parseFleaInfo } from "@/lib/flea-update";
+import { formatThaiDateShort } from "@/lib/format-thai-date";
 import type { CustomerRecord } from "@/lib/customers-store";
 
-type Part = "groomInfo" | "stayInfo" | "prestay" | "consent" | "groomConsent" | "vaccine" | "idcard";
+type Part = "groomInfo" | "stayInfo" | "prestay" | "consent" | "groomConsent" | "vaccine" | "idcard" | "fleaUpdate";
 
 /**
  * หน้าข้อมูลลูกค้า: ส่งการ์ดถามข้อมูลก่อนรับน้อง โดยยังไม่ต้องลงนัด
@@ -34,7 +36,7 @@ export function CustomerIntakeCards({
   const hotelOn = bookingKind !== "groom";
   const groomOn = bookingKind !== "room";
   // การ์ดที่ร้านปิดในตั้งค่า › เปิด/ปิดฟีเจอร์ ไม่โชว์ให้ส่ง · มาจากฟอร์มจอง = เฉพาะเรื่องที่นัดนี้ใช้
-  const HOTEL_PARTS: Part[] = ["stayInfo", "idcard", "prestay"];
+  const HOTEL_PARTS: Part[] = ["stayInfo", "idcard", "prestay", "fleaUpdate"];
   const partOn = (part: Part) =>
     cardOn(config, part) &&
     (part === "groomInfo" || part === "groomConsent" ? groomOn : HOTEL_PARTS.includes(part) ? hotelOn : true);
@@ -52,6 +54,17 @@ export function CustomerIntakeCards({
   const stayDone = cats.length > 0 && cats.every((c) => stayInfoDone(c.stayInfo));
   const vaccineDone = cats.length > 0 && cats.every((c) => splitVaccinePhotos(c.vaccinePhotos).length > 0);
   const groomConsentOn = partOn("groomConsent") && isFeatureOn(config, "grooming");
+  // ยาเห็บหมัดล่าสุดของแต่ละตัว — ลูกค้าอัปเดตจากการ์ดนี้หรือจากฟอร์มก่อนเข้าพัก
+  const fleaMethods = fleaQuestions(config).methods;
+  const flea = cats.map((c) => ({ cat: c, info: parseFleaInfo(c.stayInfo) }));
+  const fleaStatus = flea
+    .filter((f) => f.info.method || f.info.last)
+    .map((f) => {
+      const m = fleaMethods.find((o) => o.key === f.info.method)?.label || "";
+      const upd = f.info.updatedAt ? ` (อัปเดต ${formatThaiDateShort(f.info.updatedAt.slice(0, 10))})` : "";
+      return `${cats.length > 1 ? `${f.cat.name}: ` : ""}${[m, f.info.last].filter(Boolean).join(" ")}${upd}`;
+    })
+    .join(" · ");
   const rows: { part: Part; label: string; icon: string; when: boolean; status?: string; done?: boolean }[] = [
     { part: "stayInfo", label: INTAKE_LABEL.stayInfo, icon: "edit", when: partOn("stayInfo"), done: stayDone, status: stayDone ? "กรอกแล้ว" : "ยังไม่กรอก" },
     { part: "groomInfo", label: INTAKE_LABEL.groomInfo, icon: "bath", when: partOn("groomInfo"), done: infoDone, status: infoDone ? "กรอกแล้ว" : "ยังไม่กรอก" },
@@ -85,6 +98,14 @@ export function CustomerIntakeCards({
     // กฎอาบน้ำ/นวด แยกจากกฎเข้าพัก (ตั้งค่า › ข้อความ › ก่อนอาบน้ำ / นวด)
     { part: "groomConsent", label: "กฎอาบน้ำ/นวด + กดยินยอม", icon: "bath", when: groomConsentOn },
     { part: "prestay", label: INTAKE_LABEL.prestay, icon: "bed", when: partOn("prestay") },
+    {
+      part: "fleaUpdate",
+      label: "อัปเดตยากำจัดเห็บหมัด",
+      icon: "paw",
+      when: partOn("fleaUpdate"),
+      done: cats.length > 0 && flea.every((f) => f.info.updatedAt),
+      status: fleaStatus || "ยังไม่เคยแจ้ง",
+    },
   ];
 
   // สลับประเภทนัดแล้ว เรื่องที่ติ๊กไว้แต่ถูกซ่อน ไม่ส่งไปด้วย
@@ -248,6 +269,25 @@ export function CustomerIntakeCards({
               <VaccinePhotosAdmin customerId={customer.id} catId={c.id} value={c.vaccinePhotos} onDone={onDone} />
             </div>
           ))}
+        </div>
+      )}
+      {/* รูปหลักฐานยาเห็บหมัดที่ลูกค้าแนบ (ล่าสุดก่อน) */}
+      {partOn("fleaUpdate") && flea.some((f) => f.info.photos.length) && (
+        <div className="mt-3 space-y-1">
+          {flea
+            .filter((f) => f.info.photos.length)
+            .map((f) => (
+              <div key={f.cat.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                <span className="flex items-center gap-1 font-bold text-brown-soft">💧 {f.cat.name}</span>
+                {[...f.info.photos].reverse().map((url, i) => (
+                  <a key={url} href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 font-bold text-ok underline">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={url} alt="หลักฐานยาเห็บหมัด" className="h-8 w-8 rounded border border-petflow-line object-cover" />
+                    {i === 0 && "หลักฐานยาเห็บหมัดล่าสุด"}
+                  </a>
+                ))}
+              </div>
+            ))}
         </div>
       )}
       {customer.consentSignature && (

@@ -73,3 +73,8 @@ export function buildIdCardUrl(liffId: string) {
 export function buildCustomerConsentUrl(liffId: string, kind?: "groom") {
   return buildLiffUrl(liffId, kind ? { path: "consent", mode: "customer", kind } : { path: "consent", mode: "customer" });
 }
+
+/** การ์ดอัปเดตยากำจัดเห็บหมัด — ลูกค้าเลือกวิธี + วันที่ให้ยา + แนบรูปหลักฐาน (ดู flea-update.ts) */
+export function buildFleaUpdateUrl(liffId: string, catIds: string[]) {
+  return buildLiffUrl(liffId, catIds.length ? { path: "flea", cats: catIds.join(",") } : { path: "flea" });
+}

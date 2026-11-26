@@ -13,6 +13,7 @@ export type FeatureKey =
   | "stayInfo"
   | "idCard"
   | "prestay"
+  | "fleaUpdate"
   | "intakeDaySummary"
   | "checkinTime"
   | "grooming"
@@ -185,6 +186,14 @@ export const FEATURES: FeatureDef[] = [
     requires: "hotel",
   },
   {
+    key: "fleaUpdate",
+    label: "การ์ดอัปเดตยากำจัดเห็บหมัด",
+    hint: "ร้านส่งให้ลูกค้าอัปเดต หยด/ทาน/ฉีด + วันที่ให้ยา + รูปหลักฐาน · ลูกค้ากดอัปเดตเองได้ในหน้าแก้ไขข้อมูล (ใช้เมื่อเปิดรับฝาก)",
+    group: "ข้อมูลก่อนรับน้อง",
+    requires: "hotel",
+    appPaths: ["/app/flea"],
+  },
+  {
     key: "intakeDaySummary",
     label: "สรุปคำตอบลูกค้าเข้า Telegram เช้าวันนัด",
     hint: "ทุกเช้า 08:00 ส่งคำตอบทุกข้อของฟอร์มก่อนอาบน้ำ/ก่อนเข้าพัก แยกข้อความละ 1 นัด (นัดอาบน้ำวันนี้ + เข้าพักวันนี้)",
@@ -345,6 +354,7 @@ export const CARD_FEATURE: Record<string, FeatureKey> = {
   consent: "consent",
   groomConsent: "consent",
   prestay: "prestay",
+  fleaUpdate: "fleaUpdate",
   checkin: "checkinTime",
   checkout: "checkinTime",
 };

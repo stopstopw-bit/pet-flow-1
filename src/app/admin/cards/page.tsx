@@ -21,6 +21,7 @@ import { resolveStayForm, stayFormDefaults } from "@/lib/stay-form";
 import { usesLitter, type PetKind } from "@/lib/pet-kind";
 import type { RegisterFieldConfig, RegisterFormConfig } from "@/lib/register-form";
 import { brandColorsFor } from "@/lib/card-brand";
+import { FLEA_CARD_DEFAULTS } from "@/lib/flea-update";
 import {
   BIRTHDAY_CARD_DEFAULTS,
   DEPOSIT_REMINDER_DEFAULTS,
@@ -349,6 +350,26 @@ const CARDS: CardMeta[] = [
       { key: "idcardHeader", label: "บัตรประชาชน: หัวการ์ด", placeholder: DOC_REQUEST_DEFAULTS.idcardHeader },
       { key: "idcardBody", label: "บัตรประชาชน: เนื้อความ", placeholder: DOC_REQUEST_DEFAULTS.idcardBody, multiline: true },
       { key: "idcardButton", label: "บัตรประชาชน: ปุ่ม", placeholder: DOC_REQUEST_DEFAULTS.idcardButton },
+    ],
+    closingLabel: "ประโยคเสริมท้ายการ์ด (ไม่บังคับ)",
+    hasTitleSize: true,
+  },
+  {
+    key: "fleaUpdate",
+    name: "อัปเดตการให้ยากำจัดเห็บหมัด",
+    desc: "การ์ดเดี่ยวให้ลูกค้าเลือก หยด/ทาน/ฉีด + วันที่ให้ยา + แนบรูปหลักฐาน (ตัวเลือกแก้ที่ฟอร์มก่อนเข้าพัก · ขอรูปไหมตั้งที่ ตั้งค่า › เปิด/ปิดฟีเจอร์)",
+    colors: [
+      { key: "headerColor", label: "สีแถบหัว", fallback: "#6e2f48" },
+      { key: "headerTextColor", label: "สีตัวหนังสือหัว", fallback: "#FFFFFF" },
+      { key: "accentColor", label: "สีชื่อน้อง", fallback: "#5C4033" },
+      { key: "buttonColor", label: "สีปุ่ม", fallback: "#bd3a6a" },
+    ],
+    fields: [],
+    texts: [],
+    styleTexts: [
+      { key: "header", label: "ข้อความบนแถบหัว", placeholder: FLEA_CARD_DEFAULTS.header },
+      { key: "body", label: "เนื้อความ (ใช้ได้: {pet})", placeholder: FLEA_CARD_DEFAULTS.body, multiline: true },
+      { key: "button", label: "คำในปุ่ม", placeholder: FLEA_CARD_DEFAULTS.button },
     ],
     closingLabel: "ประโยคเสริมท้ายการ์ด (ไม่บังคับ)",
     hasTitleSize: true,
@@ -1721,6 +1742,22 @@ function Preview({
       <div className="space-y-3">
         {one("vaccine")}
         {one("idcard")}
+      </div>
+    );
+  }
+
+  if (meta.key === "fleaUpdate") {
+    return (
+      <div className={bubble}>
+        <div className="px-4 py-3" style={{ background: c("headerColor", "#6e2f48") }}>
+          <p className="text-xs font-extrabold" style={{ color: c("headerTextColor", "#FFFFFF") }}>{t("header", FLEA_CARD_DEFAULTS.header)}</p>
+        </div>
+        <div className="space-y-2 px-4 py-3 text-[11px] text-[#4E3E32]">
+          <p className={`${titleCls} font-extrabold`} style={{ color: c("accentColor", "#5C4033") }}>🐾 น้อง Soju</p>
+          <p className="whitespace-pre-line">{t("body", FLEA_CARD_DEFAULTS.body).replace(/\{(?:pet|cat)\}/g, "น้อง Soju")}</p>
+          {st.closing && <p className="whitespace-pre-line text-[10px] text-[#A2907E]">{st.closing}</p>}
+        </div>
+        {btn(c("buttonColor", "#bd3a6a"), t("button", FLEA_CARD_DEFAULTS.button))}
       </div>
     );
   }
