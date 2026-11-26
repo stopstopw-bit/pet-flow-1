@@ -135,7 +135,13 @@ function BriefCard({ it, flat }: { it: TodayBrief; flat?: boolean }) {
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-[15px] font-extrabold leading-snug text-petflow-chocolate">
-            {it.catNames.join(", ")}
+            {it.customerId ? (
+              <Link href={`/admin/customers?id=${encodeURIComponent(it.customerId)}`} className="underline-offset-2 hover:underline">
+                {it.catNames.join(", ")}
+              </Link>
+            ) : (
+              it.catNames.join(", ")
+            )}
             {it.catNames.length > 1 && (
               <span className="ml-1 text-[11px] font-bold text-latte-deep">{it.catNames.length} ตัว</span>
             )}
