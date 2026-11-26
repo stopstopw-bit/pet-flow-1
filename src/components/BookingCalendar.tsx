@@ -1339,6 +1339,27 @@ export function BookingCalendar() {
     liveBookings,
     activeDate
   );
+  // นัดที่จองเกินห้อง — จัดเป็นบ้าน แล้ววางไว้ใต้ประเภทห้องที่จอง (ห้องเชื่อม = ใต้ห้องจริงตัวแรก)
+  // จะได้ไม่หายไปจากผัง กดเปิดย้ายห้อง/เลื่อนวันได้เลย
+  const overflowGroups = groupBookings(board.overflow as CalendarDay[]).map((g) => {
+    const roomId = g[0].room || "";
+    const hostType = board.byType.some((t) => t.typeId === roomId)
+      ? roomId
+      : rooms.find((r) => r.id === roomId)?.composedOf?.[0]?.typeId || "";
+    const key = bookingGroupKey(g[0]);
+    const household = liveBookings.filter((x) => x.service === "room" && bookingGroupKey(x) === key);
+    return {
+      key,
+      cats: g,
+      household: household.length ? household : g,
+      roomName: rooms.find((r) => r.id === roomId)?.name || "ยังไม่เลือกห้อง",
+      hostType,
+    };
+  });
+  const overflowByType = (typeId: string) => overflowGroups.filter((o) => o.hostType === typeId);
+  const overflowNoType = overflowGroups.filter(
+    (o) => !board.byType.some((t) => t.typeId === o.hostType)
+  );
 
   const viewTitle =
     view === "month"
@@ -1806,9 +1827,20 @@ export function BookingCalendar() {
                   จองเกินจำนวนห้องที่มี {board.overflow.length} รายการ
                 </p>
                 <p className="mt-0.5 text-[10px] text-brown-soft">
-                  {board.overflow.map((b) => `${b.catName} · ${b.customerName}`).join(" / ")}
-                  {" — ต้องย้ายประเภทห้องหรือเลื่อนวัน"}
+                  แตะชื่อเพื่อย้ายประเภทห้องหรือเลื่อนวัน · การ์ดสีแดงอยู่ใต้ประเภทห้องที่จอง
                 </p>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {overflowGroups.map((o) => (
+                    <button
+                      key={o.key}
+                      type="button"
+                      onClick={() => openEdit(o.household[0], o.household)}
+                      className="max-w-full truncate rounded-full bg-card px-2.5 py-1 text-[10px] font-bold text-red-700 ring-1 ring-red-300 hover:bg-red-100"
+                    >
+                      {o.cats.map((b) => b.catName).join(", ")} · {o.roomName}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -1976,9 +2008,22 @@ export function BookingCalendar() {
                         </button>
                       );
                     })}
+                    {overflowByType(t.typeId).map((o) => (
+                      <OverflowCard key={o.key} o={o} onOpen={() => openEdit(o.household[0], o.household)} />
+                    ))}
                   </div>
                 </div>
               ))}
+              {overflowNoType.length > 0 && (
+                <div>
+                  <p className="mb-1.5 text-[11px] font-extrabold text-red-600">ยังไม่มีห้อง</p>
+                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6">
+                    {overflowNoType.map((o) => (
+                      <OverflowCard key={o.key} o={o} onOpen={() => openEdit(o.household[0], o.household)} />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -2682,5 +2727,37 @@ export function BookingCalendar() {
         </div>
       )}
     </div>
+  );
+}
+
+/** การ์ดนัดที่จองเกินห้อง — โผล่ในผังห้องสีแดง ไม่หายไปไหน แตะเพื่อเปิดแก้ไข */
+function OverflowCard({
+  o,
+  onOpen,
+}: {
+  o: { cats: CalendarDay[]; roomName: string };
+  onOpen: () => void;
+}) {
+  const host = o.cats[0];
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="min-h-[62px] rounded-xl bg-red-50 px-2 py-1.5 text-left ring-1 ring-red-300 transition hover:bg-red-100"
+    >
+      <p className="flex items-center gap-1 text-[9px] font-extrabold text-red-600">
+        <Icon name="alert" size={10} />
+        เกินห้อง{o.cats.length > 1 && ` · ${o.cats.length} ตัว`}
+      </p>
+      <p className="truncate text-[9px] font-bold text-latte-deep">{o.roomName}</p>
+      <p className="truncate text-[11px] font-extrabold text-petflow-chocolate">
+        {o.cats.map((x) => x.catName).join(", ")}
+      </p>
+      <p className="truncate text-[9px] text-brown-soft">{host.customerName}</p>
+      <p className="truncate text-[9px] text-brown-faint">
+        {host.checkin || "-"} → {host.checkout || "-"}
+      </p>
+      <p className="mt-0.5 truncate text-[9px] font-bold text-red-600">แตะเพื่อย้ายห้อง/เลื่อนวัน</p>
+    </button>
   );
 }
