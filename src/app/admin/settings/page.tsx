@@ -1,5 +1,6 @@
 "use client";
 
+import { FLEA_PROOF_OPTIONS, fleaProofMode } from "@/lib/flea-update";
 import { CUSTOMER_FONTS, CUSTOMER_TEXT_SIZES, customerFont, customerTextCss, type CustomerTextConfig } from "@/lib/customer-text";
 
 import { savedPopup } from "@/components/Toast";
@@ -3589,6 +3590,28 @@ function FeaturesTab({
                   <p className="-mt-1 pb-1 text-[10px] text-brown-faint">
                     {locked ? `ปิดอยู่เพราะปิด "${FEATURES.find((x) => x.key === f.requires)?.label}"` : f.hint}
                   </p>
+                  {f.key === "fleaUpdate" && !locked && form.fleaUpdate && (
+                    <div className="pb-2">
+                      <p className="pb-1 text-[11px] font-bold text-brown-soft">รูปหลักฐาน (กล่องยา / ใบเสร็จ / สมุดหมอ)</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {FLEA_PROOF_OPTIONS.map((o) => {
+                          const on = fleaProofMode({ intakeRules: rules }) === o.key;
+                          return (
+                            <button
+                              key={o.key}
+                              type="button"
+                              onClick={() => setRules((r) => ({ ...r, fleaProof: o.key }))}
+                              className={`min-h-[36px] rounded-full px-3 text-[11px] font-bold ${
+                                on ? "bg-latte-deep text-white" : "bg-paper text-brown-soft"
+                              }`}
+                            >
+                              {o.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                   {f.key === "referral" && !locked && form.referral && (
                     <div className="grid grid-cols-2 gap-2 pb-2">
                       <Field

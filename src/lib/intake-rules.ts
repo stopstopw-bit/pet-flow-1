@@ -16,6 +16,8 @@ export type IntakeRules = {
   allRequired?: boolean;
   /** หน้าสมัครสมาชิกถามประวัติเจ้าของ + น้อง (ของฟอร์มทำประวัติ) ไปเลย ไม่บังคับ — เก็บเป็นข้อมูลก่อนเข้าพักของน้อง */
   registerAsksHistory?: boolean;
+  /** การ์ดอัปเดตยากำจัดเห็บหมัด ขอรูปหลักฐานไหม — ไม่ตั้ง = แนบได้ ไม่บังคับ (ดู flea-update.ts) */
+  fleaProof?: "off" | "optional" | "required";
 };
 
 export type IntakeAnswers = Record<string, string | string[]>;
@@ -114,7 +116,9 @@ export const REGISTER_HISTORY_SOURCE = "register";
 export function stayInfoDone(json?: string | null): boolean {
   if (!json) return false;
   try {
-    return (JSON.parse(json) as { source?: string }).source !== REGISTER_HISTORY_SOURCE;
+    const src = (JSON.parse(json) as { source?: string }).source;
+    // มาจากหน้าสมัคร หรือการ์ดอัปเดตยาเห็บหมัดอย่างเดียว = ยังไม่ได้กรอกฟอร์มก่อนเข้าพักจริง
+    return src !== REGISTER_HISTORY_SOURCE && src !== "flea-update";
   } catch {
     return true;
   }
