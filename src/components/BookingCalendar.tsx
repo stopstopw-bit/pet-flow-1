@@ -3,7 +3,7 @@
 import { configInView, knownBranchId, patchForBranch, readBranchCookie, roomsInView } from "@/lib/branches";
 import { groomUsesCard } from "@/lib/intake-rules";
 import { isDayCareStay } from "@/lib/day-care";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
@@ -58,6 +58,27 @@ type CalendarDay = EditableBooking & {
   /** ลูกค้าจองเองผ่านแอป — รอร้านกดรับคิว (ไม่ใช่รอลูกค้าตอบรับ) */
   selfBooked?: boolean;
 };
+
+// ชื่อลูกค้า/ชื่อน้องบนการ์ดนัด — กดแล้วเปิดหน้าข้อมูลลูกค้า (ไม่มี customerId = ข้อความธรรมดา)
+function CustomerLink({
+  customerId,
+  plain = false,
+  children,
+}: {
+  customerId?: string;
+  plain?: boolean;
+  children: ReactNode;
+}) {
+  if (!customerId) return <>{children}</>;
+  return (
+    <Link
+      href={`/admin/customers?id=${encodeURIComponent(customerId)}`}
+      className={plain ? "shrink-0" : "underline decoration-dotted decoration-1 underline-offset-[3px] hover:decoration-solid"}
+    >
+      {children}
+    </Link>
+  );
+}
 
 function formatThaiDateTime(iso: string) {
   const d = new Date(iso);
@@ -2413,11 +2434,13 @@ export function BookingCalendar() {
                   </p>
                 )}
                 <div className="flex items-start gap-3">
-                  <Avatar name={b.customerName} />
+                  <CustomerLink customerId={b.customerId} plain>
+                    <Avatar name={b.customerName} />
+                  </CustomerLink>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-2">
                       <p className="min-w-0 break-words text-sm font-extrabold text-petflow-chocolate">
-                        {b.customerName}
+                        <CustomerLink customerId={b.customerId}>{b.customerName}</CustomerLink>
                       </p>
                       <span
                         className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
@@ -2442,7 +2465,7 @@ export function BookingCalendar() {
                     <p className="flex items-center gap-1 break-words text-xs font-bold text-brown">
                       <Icon name="paw" size={13} className="text-brown-soft" />
                       <span className="min-w-0">
-                        {catNames}
+                        <CustomerLink customerId={b.customerId}>{catNames}</CustomerLink>
                         {many ? ` (${group.length} ตัว)` : ""}
                       </span>
                     </p>
@@ -2569,7 +2592,7 @@ export function BookingCalendar() {
                     <div key={x.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
                       <span className="flex items-center gap-1 font-bold text-brown-soft">
                         <Icon name="paw" size={12} />
-                        {x.catName}
+                        <CustomerLink customerId={x.customerId || b.customerId}>{x.catName}</CustomerLink>
                       </span>
                       {(b.service !== "groom" || groomVaccine) && (
                         <VaccinePhotosAdmin bookingId={x.id} value={x.vaccinePhotoUrl} onDone={load} />
