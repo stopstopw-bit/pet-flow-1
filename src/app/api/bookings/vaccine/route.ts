@@ -53,7 +53,9 @@ async function postHandler(req: NextRequest) {
       ลูกค้า: b.customerName,
       วันที่: `${b.checkin || b.date || "-"}${b.checkout ? ` → ${b.checkout}` : ""}`,
       สมุดวัคซีน: `แนบเพิ่ม ${res.added} รูป (รวม ${res.urls.length} รูป) 📸`,
-    })
+    }),
+    undefined,
+    [{ urls: res.addedUrls, caption: `💉 สมุดวัคซีน ${b.catName}` }]
   );
   return NextResponse.json({ ok: true, count: res.urls.length });
 }

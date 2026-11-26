@@ -74,6 +74,7 @@ export function getDefaultSiteConfig(): SiteConfig {
         receiptAskOnPaid: false,
         englishCards: false,
         groomVaccineOnce: false,
+        telegramDocPhotos: false,
         groomInfoEnabled: true,
         intakeAutoEnabled: true,
         freeLitterMinNights: 3,

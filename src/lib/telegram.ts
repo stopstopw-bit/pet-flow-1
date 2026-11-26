@@ -13,6 +13,8 @@ import { requireTenantId } from "./tenant-context";
 import { runAfterResponse } from "./after-response";
 import { getSiteConfig } from "./config-store";
 import { bookingBranchId, branchById, isMultiBranch, knownBranchId } from "./branches";
+import { getSupabase } from "./supabase/server";
+import { PRIVATE_BUCKET, PRIVATE_FILE_ROUTE } from "./supabase/storage";
 
 const TELEGRAM_API = "https://api.telegram.org";
 
@@ -278,9 +280,21 @@ const webhookCheckedAt = new Map<string, number>();
  * แจ้งเจ้าของร้านหลังตอบลูกค้าแล้ว — ใช้ใน route ฝั่งลูกค้าแทน await sendTelegram()
  * ลูกค้าไม่ต้องรอ Telegram (ช้า/ล่มก็ไม่ขวางการสมัคร/จอง) ข้อความยังส่งครบเหมือนเดิม
  */
-export function sendTelegramLater(text: string, opts?: TelegramBranchOpts) {
-  runAfterResponse("telegram notify", () => sendTelegram(text, opts));
+export function sendTelegramLater(text: string, opts?: TelegramBranchOpts, photos?: TelegramPhotoGroup[]) {
+  runAfterResponse("telegram notify", async () => {
+    await sendTelegram(text, opts);
+    // รูปเอกสารที่ลูกค้าแนบ ส่งตามหลังข้อความสรุป — เฉพาะร้านที่เปิด ตั้งค่า › อัตโนมัติ › ส่งรูปเข้า Telegram
+    if (!photos?.some((g) => g.urls.length)) return;
+    const config = await getSiteConfig().catch(() => null);
+    if (config?.automation?.telegramDocPhotos !== true) return;
+    for (const g of photos) {
+      if (g.urls.length) await sendTelegramPhotos(g.urls, g.caption, opts);
+    }
+  });
 }
+
+/** รูปชุดหนึ่งที่ส่งตามข้อความสรุป เช่น สมุดวัคซีนของน้องหนึ่งตัว หรือบัตรประชาชน */
+export type TelegramPhotoGroup = { urls: string[]; caption?: string };
 
 /** ส่งรูป + คำบรรยายให้เจ้าของทุกคน (เช่น รูปโปรไฟล์คนที่แอด LINE) */
 export async function sendTelegramPhoto(photoUrl: string, caption: string) {
@@ -298,6 +312,103 @@ export async function sendTelegramPhoto(photoUrl: string, caption: string) {
     )
   );
   return { ok: results.every((r) => r.ok) };
+}
+
+/** โหลดรูปมาเป็นไฟล์เอง (ลิงก์ Supabase หรือ data URL ที่อัปขึ้น storage ไม่ได้) แล้วอัปให้ Telegram ตรงๆ
+ *  ไม่ให้ Telegram ไปดึงลิงก์เอง — ดึงเองจำกัด 5MB และบางทีดึงไม่สำเร็จ */
+async function loadPhotoBlob(src: string): Promise<Blob | null> {
+  try {
+    const m = /^data:([^;]+);base64,(.+)$/.exec(src);
+    if (m) return new Blob([Buffer.from(m[2], "base64")], { type: m[1] });
+    // ไฟล์ใน bucket ส่วนตัว (/api/files/<ร้าน>/...) — โหลดตรงจาก storage เฉพาะไฟล์ของร้านนี้เท่านั้น
+    const priv = `${PRIVATE_FILE_ROUTE}/`;
+    const at = src.indexOf(priv);
+    if (at >= 0 && (at === 0 || /^https?:\/\//.test(src))) {
+      const path = decodeURIComponent(src.slice(at + priv.length).split(/[?#]/)[0]);
+      if (!path.startsWith(`${requireTenantId()}/`) || path.includes("..")) return null;
+      const sb = getSupabase();
+      if (!sb) return null;
+      const { data, error } = await sb.storage.from(PRIVATE_BUCKET).download(path);
+      return error || !data || data.size === 0 ? null : data;
+    }
+    if (!/^https?:\/\//.test(src)) return null;
+    const res = await fetch(src);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return blob.size > 0 ? blob : null;
+  } catch {
+    return null;
+  }
+}
+
+async function telegramUpload(token: string, method: string, form: FormData) {
+  const res = await fetch(`${TELEGRAM_API}/bot${token}/${method}`, { method: "POST", body: form });
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; parameters?: { retry_after?: number } };
+  return { ok: res.ok && data.ok !== false, status: res.status, data };
+}
+
+/**
+ * ส่งรูปเอกสารที่ลูกค้าแนบ (สมุดวัคซีน / บัตรประชาชน) ตามหลังข้อความสรุปให้เจ้าของทุกคน
+ * รูปเดียว = sendPhoto, หลายรูป = อัลบั้ม (sendMediaGroup ทีละไม่เกิน 10 รูป) คำบรรยายอยู่รูปแรก
+ */
+export async function sendTelegramPhotos(sources: string[], caption = "", opts?: TelegramBranchOpts) {
+  const creds = await getTelegramCredentials();
+  if (!creds?.botToken) return { ok: false, reason: "not_configured" };
+  // ส่งเข้าแชทเดียวกับข้อความสรุป (เจ้าของ + กลุ่มของสาขา)
+  const chatIds = [...creds.ownerChatIds];
+  if (opts?.branchId || opts?.booking) {
+    const config = await getSiteConfig().catch(() => null);
+    if (config && isMultiBranch(config)) {
+      const branchId = opts.branchId ? knownBranchId(config, opts.branchId) : bookingBranchId(config, opts.booking || {});
+      const branch = branchId ? branchById(config, branchId) : undefined;
+      for (const id of String(branch?.telegramChatIds || "").split(/[,\s]+/)) {
+        if (/^-?\d+$/.test(id) && !chatIds.includes(id)) chatIds.push(id);
+      }
+    }
+  }
+  if (!chatIds.length) return { ok: false, reason: "not_configured" };
+  const blobs = (await Promise.all(sources.filter(Boolean).map(loadPhotoBlob))).filter(
+    (b): b is Blob => !!b
+  );
+  if (!blobs.length) return { ok: false, reason: "no_photo" };
+
+  const sendChunk = async (chatId: number | string, chunk: Blob[], cap: string) => {
+    const build = () => {
+      const form = new FormData();
+      form.append("chat_id", String(chatId));
+      if (chunk.length === 1) {
+        form.append("photo", chunk[0], "photo.jpg");
+        if (cap) form.append("caption", cap);
+        return { method: "sendPhoto", form };
+      }
+      const media = chunk.map((_, i) => ({
+        type: "photo",
+        media: `attach://p${i}`,
+        ...(i === 0 && cap ? { caption: cap } : {}),
+      }));
+      form.append("media", JSON.stringify(media));
+      chunk.forEach((b, i) => form.append(`p${i}`, b, `p${i}.jpg`));
+      return { method: "sendMediaGroup", form };
+    };
+    let { method, form } = build();
+    const first = await telegramUpload(creds.botToken, method, form);
+    if (first.status !== 429) return first;
+    const wait = Math.min(Number(first.data.parameters?.retry_after) || 5, 40);
+    await new Promise((r) => setTimeout(r, wait * 1000));
+    ({ method, form } = build());
+    return telegramUpload(creds.botToken, method, form);
+  };
+
+  const results = await Promise.all(
+    chatIds.map(async (chatId) => {
+      const out = [];
+      for (let i = 0; i < blobs.length; i += 10) {
+        out.push(await sendChunk(chatId, blobs.slice(i, i + 10), i === 0 ? caption : ""));
+      }
+      return out.every((r) => r.ok);
+    })
+  );
+  return { ok: results.every(Boolean) };
 }
 
 export async function getTelegramWebhookInfo(token: string) {

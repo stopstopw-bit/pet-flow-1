@@ -3487,6 +3487,7 @@ const AUTOMATION_DEFAULT = {
   receiptAskOnPaid: false,
   englishCards: false,
   groomVaccineOnce: false,
+  telegramDocPhotos: false,
   groomInfoEnabled: true,
   intakeAutoEnabled: true,
   freeLitterMinNights: 3,
@@ -4038,6 +4039,15 @@ function AutomationTab({
             sends: "เปิด = น้องที่มีรูปสมุดวัคซีนในบัญชีแล้ว นัดอาบน้ำไม่ขอซ้ำ (เข้าพักยังขอทุกรอบ) · ปิด = ขอทุกนัด",
             on: form.groomVaccineOnce === true,
             onToggle: (v) => set({ groomVaccineOnce: v }),
+          })}
+          {item({
+            emoji: "📸",
+            title: "ส่งรูปสมุดวัคซีน + บัตรประชาชนเข้า Telegram",
+            services: ["groom", "stay"],
+            when: "ตอนลูกค้าแนบสมุดวัคซีน / บัตรประชาชน / กดยอมรับข้อตกลง",
+            sends: "เปิด = ข้อความสรุปใน Telegram มีรูปที่ลูกค้าแนบมารอบนี้ตามไปด้วย · ปิด = ส่งแค่ข้อความเหมือนเดิม",
+            on: form.telegramDocPhotos === true,
+            onToggle: (v) => set({ telegramDocPhotos: v }),
           })}
           {item({
             emoji: "⭐",

@@ -36,7 +36,10 @@ async function postHandler(req: NextRequest) {
       น้อง: res.cat.name,
       ลูกค้า: me.name,
       สมุดวัคซีน: `แนบเพิ่ม ${res.added} รูป (รวม ${res.urls.length} รูป) 📸`,
-    })
+    }),
+    undefined,
+    // ส่งเฉพาะรูปที่แนบมารอบนี้ (ต่อท้ายรายการเสมอ)
+    [{ urls: res.urls.slice(-res.added), caption: `💉 สมุดวัคซีน ${res.cat.name}` }]
   );
   return NextResponse.json({ ok: true, count: res.urls.length });
 }
