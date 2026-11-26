@@ -266,6 +266,9 @@ export function BookingEditModal({
   const [roomSel, setRoomSel] = useState(booking.room || booking.roomType || "");
   const [checkinSel, setCheckinSel] = useState(booking.checkin || booking.date || "");
   const [checkoutSel, setCheckoutSel] = useState(booking.checkout || "");
+  // เวลามาส่ง/มารับ — ใช้เช็คว่าลงคิวต่อกับนัดอื่นในห้องเดียวกันวันเดียวกันได้ไหม
+  const [arrivalSel, setArrivalSel] = useState(booking.arrivalTime || "");
+  const [pickupSel, setPickupSel] = useState(booking.pickupTime || "");
   const [roomUnit, setRoomUnit] = useState<number | null>(booking.roomUnit ?? null);
   // ย้ายห้องกลางทาง — ส่งไปบันทึกเฉพาะตอนแก้จริง (ไม่งั้นเลื่อนวันแล้ววันย้ายเดิมจะทับที่ระบบขยับให้)
   const [roomMoves, setRoomMoves] = useState<RoomSegment[]>(booking.roomSegments || []);
@@ -302,14 +305,18 @@ export function BookingEditModal({
       roomSel,
       checkinSel,
       firstOut || checkoutSel || checkinSel,
-      booking.id
+      booking.id,
+      { inTime: arrivalSel, outTime: firstOut ? undefined : pickupSel }
     );
-  }, [boardRooms, roomBookings, roomSel, checkinSel, checkoutSel, firstOut, booking.id]);
+  }, [boardRooms, roomBookings, roomSel, checkinSel, checkoutSel, firstOut, booking.id, arrivalSel, pickupSel]);
   // ห้องที่มีบ้านอื่นออกวันที่เข้า / เข้าวันที่ออก — เลือกได้ แต่ต้องรับต่อวันเดียวกัน
   const turn = useMemo(() => {
     if (!roomSel || !checkinSel || compositionOf(roomSel, boardRooms)) return new Map<number, string>();
-    return turnoverUnitsForRange(boardRooms, roomBookings, roomSel, checkinSel, firstOut || checkoutSel || checkinSel, booking.id);
-  }, [boardRooms, roomBookings, roomSel, checkinSel, checkoutSel, firstOut, booking.id]);
+    return turnoverUnitsForRange(boardRooms, roomBookings, roomSel, checkinSel, firstOut || checkoutSel || checkinSel, booking.id, {
+      inTime: arrivalSel,
+      outTime: firstOut ? undefined : pickupSel,
+    });
+  }, [boardRooms, roomBookings, roomSel, checkinSel, checkoutSel, firstOut, booking.id, arrivalSel, pickupSel]);
 
   // เปลี่ยนห้อง/วัน แล้วเลขที่เคยเลือกไว้ไม่ว่างแล้ว → เคลียร์ทิ้ง (ให้ระบบเดาเองแทน)
   useEffect(() => {
@@ -963,6 +970,7 @@ export function BookingEditModal({
                     name="arrivalTime"
                     type="time"
                     defaultValue={booking.arrivalTime || ""}
+                    onChange={setArrivalSel}
                   />
                 </div>
                 <div className="min-w-0">
@@ -971,6 +979,7 @@ export function BookingEditModal({
                     name="pickupTime"
                     type="time"
                     defaultValue={booking.pickupTime || ""}
+                    onChange={setPickupSel}
                   />
                 </div>
               </div>

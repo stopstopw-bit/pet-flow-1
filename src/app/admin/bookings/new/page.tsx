@@ -463,6 +463,9 @@ export default function NewBookingPage() {
   const [appointmentDate, setAppointmentDate] = useState(presetDate);
   /** Day Care = ฝากรายวัน ไม่ค้างคืน — วันออก = วันเข้า คิดครึ่งราคาห้อง */
   const [dayCare, setDayCare] = useState(false);
+  // เวลามาส่ง/มารับ (ถ้ารู้) — กรอกแล้วห้องที่อีกบ้านใช้เสร็จก่อนในวันเดียวกันก็จองต่อคิวได้
+  const [arrivalTime, setArrivalTime] = useState("");
+  const [pickupTime, setPickupTime] = useState("");
   const [checkoutDate, setCheckoutDate] = useState(() => {
     if (!presetDate) return "";
     const d = new Date(`${presetDate}T12:00:00`);
@@ -558,6 +561,9 @@ export default function NewBookingPage() {
   );
   /** วันที่ออกจากห้องแรก (ย้ายห้อง = วันย้ายครั้งแรก) */
   const room1Out = liveMoves[0]?.from || stayOut;
+  /** เวลาเข้า-ออกของห้องแรก (ย้ายห้องกลางทาง = ไม่รู้ว่าออกจากห้องแรกกี่โมง) */
+  const times1 = { inTime: arrivalTime, outTime: liveMoves.length ? undefined : pickupTime };
+  const times2 = { inTime: arrivalTime, outTime: pickupTime };
   const [transport, setTransport] = useState<BookingTransport>({});
 
   // คิวอาบน้ำ: นับ 1 แมว = 1 คิว เหมือนฝั่งลูกค้าจองเอง หลายตัวจะไม่ไปกองอยู่เวลาเดียวกัน
@@ -640,12 +646,14 @@ export default function NewBookingPage() {
         existing,
         r.id,
         appointmentDate,
-        room1Out
+        room1Out,
+        undefined,
+        times1
       );
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [service, appointmentDate, room1Out, rooms, existing]);
+  }, [service, appointmentDate, room1Out, rooms, existing, arrivalTime, pickupTime, liveMoves.length]);
 
   // ห้องที่เลือกไว้เต็มไปแล้ว (เช่นเพิ่งเปลี่ยนวัน) → เด้งไปห้องที่ยังว่าง
   useEffect(() => {
@@ -668,10 +676,12 @@ export default function NewBookingPage() {
       existing,
       roomId,
       appointmentDate,
-      room1Out
+      room1Out,
+      undefined,
+      times1
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [service, roomId, appointmentDate, room1Out, rooms, existing]);
+  }, [service, roomId, appointmentDate, room1Out, rooms, existing, arrivalTime, pickupTime, liveMoves.length]);
 
   // เปลี่ยนห้อง/วัน แล้วเลขที่เคยเลือกไว้ไม่ว่างแล้ว → เคลียร์ทิ้ง (ให้ระบบเดาเองแทน)
   useEffect(() => {
@@ -685,11 +695,11 @@ export default function NewBookingPage() {
   const free2 = (id: string) => (availability[id]?.free ?? 0) - (id === roomId ? 1 : 0);
   const freeUnits2 = useMemo(() => {
     if (service !== "room" || !room2Id || !appointmentDate || compositionOf(room2Id, boardRooms)) return [];
-    return freeUnitsForRange(boardRooms, existing, room2Id, appointmentDate, stayOut).filter(
+    return freeUnitsForRange(boardRooms, existing, room2Id, appointmentDate, stayOut, undefined, times2).filter(
       (u) => !(room2Id === roomId && u === roomUnit)
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [service, room2Id, roomId, roomUnit, appointmentDate, stayOut, rooms, existing]);
+  }, [service, room2Id, roomId, roomUnit, appointmentDate, stayOut, rooms, existing, arrivalTime, pickupTime]);
   useEffect(() => {
     if (room2Unit != null && !freeUnits2.includes(room2Unit)) setRoom2Unit(null);
   }, [freeUnits2, room2Unit]);
@@ -697,11 +707,11 @@ export default function NewBookingPage() {
   const turnUnits = useMemo(() => {
     if (service !== "room" || !appointmentDate) return { r1: new Map<number, string>(), r2: new Map<number, string>() };
     return {
-      r1: roomId ? turnoverUnitsForRange(boardRooms, existing, roomId, appointmentDate, room1Out) : new Map<number, string>(),
-      r2: room2Id ? turnoverUnitsForRange(boardRooms, existing, room2Id, appointmentDate, stayOut) : new Map<number, string>(),
+      r1: roomId ? turnoverUnitsForRange(boardRooms, existing, roomId, appointmentDate, room1Out, undefined, times1) : new Map<number, string>(),
+      r2: room2Id ? turnoverUnitsForRange(boardRooms, existing, room2Id, appointmentDate, stayOut, undefined, times2) : new Map<number, string>(),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [service, roomId, room2Id, appointmentDate, room1Out, stayOut, rooms, existing]);
+  }, [service, roomId, room2Id, appointmentDate, room1Out, stayOut, rooms, existing, arrivalTime, pickupTime, liveMoves.length]);
 
   const closeRoom2 = () => {
     setRoom2Id("");
@@ -778,6 +788,8 @@ export default function NewBookingPage() {
             : String(fd.get("checkout") || ""),
       notes,
       transport: hasTransport(transport) ? transport : undefined,
+      arrivalTime: service === "room" ? arrivalTime || undefined : undefined,
+      pickupTime: service === "room" ? pickupTime || undefined : undefined,
     };
 
     const created: {
@@ -1299,6 +1311,27 @@ export default function NewBookingPage() {
                 />
               )}
             </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Field
+                label="เวลามาส่ง (ถ้ารู้)"
+                name="arrivalTime"
+                type="time"
+                value={arrivalTime}
+                onChange={setArrivalTime}
+              />
+              <Field
+                label="เวลามารับ (ถ้ารู้)"
+                name="pickupTime"
+                type="time"
+                value={pickupTime}
+                onChange={setPickupTime}
+              />
+            </div>
+            {dayCare && (
+              <p className="-mt-1 text-[10px] text-brown-faint">
+                กรอกเวลาแล้ว ห้องเดียวกันรับต่อคิวกับบ้านอื่นในวันเดียวกันได้ เช่น ฝาก 09:00–12:00 อีกบ้านเข้า 14:00
+              </p>
+            )}
             <div>
               <p className="text-xs font-bold text-brown-soft">ห้อง</p>
               <p className="mb-1.5 text-[10px] text-brown-faint">

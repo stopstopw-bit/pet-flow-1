@@ -217,6 +217,35 @@ function stayRange(b: BoardBooking): [string, string] {
 
 const overlaps = (a: [string, string], b: [string, string]) => a[0] < b[1] && b[0] < a[1];
 
+/**
+ * ช่วงใช้ห้อง + เวลามาส่ง/มารับ — ใช้ตัดสินว่าสองนัดลงห้องเดียวกันต่อกันได้ไหม
+ * dayCare = ฝากรายวัน (เข้า-ออกวันเดียว) ใช้ห้องแค่กลางวัน ไม่ได้ค้างคืน
+ */
+export type TimeSlot = { range: [string, string]; dayCare?: boolean; inTime?: string; outTime?: string };
+
+/** Day Care x มารับก่อน (หรือตรงกับ) เวลาที่ y มาส่ง ในวันเดียวกัน — รู้เวลาทั้งคู่เท่านั้น */
+const doneBefore = (x: TimeSlot, y: TimeSlot) =>
+  !!x.dayCare && !!x.outTime && !!y.inTime && y.range[0] === x.range[0] && x.outTime <= y.inTime;
+
+/**
+ * สองช่วงชนกันจริงไหม — คืนไม่ทับกัน = ไม่ชน (วันเช็คเอาท์รับต่อได้อยู่แล้ว)
+ * วันที่มี Day Care: ถ้ากรอกเวลาไว้แล้วไม่ทับกัน (เช่น ฝากรายวัน 09:00–12:00 แล้วอีกบ้านเข้า 14:00)
+ * ก็ลงคิวต่อกันในห้องเดียวได้ · ไม่รู้เวลาฝั่งใดฝั่งหนึ่ง = ถือว่าชนเหมือนเดิม
+ */
+export function slotsClash(a: TimeSlot, b: TimeSlot) {
+  if (!overlaps(a.range, b.range)) return false;
+  return !(doneBefore(a, b) || doneBefore(b, a));
+}
+
+const isSameDay = (b: { checkin?: string; checkout?: string }) => !!b.checkin && b.checkout === b.checkin;
+
+/** ช่วงของนัดที่กำลังจะจอง (ยังไม่มีในระบบ) */
+export function requestSlot(checkin: string, checkout: string, times?: { inTime?: string; outTime?: string }): TimeSlot {
+  const dayCare = !!checkin && (!checkout || checkout <= checkin);
+  const out = checkout && checkout > checkin ? checkout : nextDay(checkin);
+  return { range: [checkin, out], dayCare, inTime: times?.inTime || undefined, outTime: times?.outTime || undefined };
+}
+
 const typeMatches = (b: BoardBooking, type: { id: string; name: string }) => {
   const r = (b.room || "").trim();
   return r === type.id || r === type.name;
@@ -226,6 +255,8 @@ type Occupant = {
   range: [string, string];
   hh: string;
   composite: boolean;
+  /** ฝากรายวัน (เข้า-ออกวันเดียว) */
+  dayCare?: boolean;
   /** เวลาที่ลูกค้าแจ้งว่าจะมาส่ง (วันแรก) / มารับ (วันสุดท้าย) — ไม่แจ้ง = ว่าง */
   inTime?: string;
   outTime?: string;
@@ -258,7 +289,10 @@ export type StayAssignment = {
 
 const assignCache = new WeakMap<
   BoardBooking[],
-  { key: string; result: { assign: Map<string, StayAssignment>; overflow: Set<string> } }
+  {
+    key: string;
+    result: { assign: Map<string, StayAssignment>; overflow: Set<string>; occ: Map<string, Occupant[]> };
+  }
 >();
 
 /**
@@ -291,11 +325,11 @@ export function assignStays(rooms: BoardRoomType[], bookings: BoardBooking[]) {
     else occ.set(k, [o]);
   };
   // ห้องนี้รับบ้านนี้ได้ตลอดช่วงไหม (ว่าง หรือมีแต่บ้านเดียวกันและยังไม่เต็ม)
-  const fits = (t: string, u: number, range: [string, string], hh: string, exclusive: boolean) => {
+  const fits = (t: string, u: number, me: TimeSlot, hh: string, exclusive: boolean) => {
     const cap = capOf.get(t) || 1;
     let same = 0;
     for (const o of occ.get(slot(t, u)) || []) {
-      if (!overlaps(o.range, range)) continue;
+      if (!slotsClash(o, me)) continue;
       if (exclusive || o.composite || o.hh !== hh) return false;
       same++;
     }
@@ -327,7 +361,7 @@ export function assignStays(rooms: BoardRoomType[], bookings: BoardBooking[]) {
     const type = physical.find((t) => typeMatches(b, t));
     const u = b.roomUnit;
     if (type && u && u >= 1 && u <= type.count) {
-      add(type.id, u, { range: stayRange(b), hh: householdKey(b), composite: false, inTime: inTimeOf(b), outTime: outTimeOf(b) });
+      add(type.id, u, { range: stayRange(b), hh: householdKey(b), composite: false, dayCare: isSameDay(b), inTime: inTimeOf(b), outTime: outTimeOf(b) });
       assign.set(b.segKey, { units: [{ typeId: type.id, unit: u }] });
     } else rest.push(b);
   }
@@ -339,6 +373,8 @@ export function assignStays(rooms: BoardRoomType[], bookings: BoardBooking[]) {
     const hh = householdKey(b);
     const inT = inTimeOf(b);
     const outT = outTimeOf(b);
+    const dayCare = isSameDay(b);
+    const me: TimeSlot = { range, dayCare, inTime: inT, outTime: outT };
     const type = physical.find((t) => typeMatches(b, t));
     if (type) {
       // แมวบ้านเดียวกันที่จัดไปแล้ว อยู่ห้องไหน → ลองห้องนั้นก่อน
@@ -347,17 +383,17 @@ export function assignStays(rooms: BoardRoomType[], bookings: BoardBooking[]) {
         const hasHousemate = (occ.get(slot(type.id, u)) || []).some(
           (o) => o.hh === hh && overlaps(o.range, range)
         );
-        if (hasHousemate && fits(type.id, u, range, hh, false)) picked = u;
+        if (hasHousemate && fits(type.id, u, me, hh, false)) picked = u;
       }
       // ห้องว่างจริงทั้งวันก่อน แล้วค่อยห้องที่ต้องรับต่อวันเดียวกัน
       for (let u = 1; u <= type.count && !picked; u++) {
-        if (fits(type.id, u, range, hh, false) && !tight(type.id, u, range, hh, inT, outT)) picked = u;
+        if (fits(type.id, u, me, hh, false) && !tight(type.id, u, range, hh, inT, outT)) picked = u;
       }
       for (let u = 1; u <= type.count && !picked; u++) {
-        if (fits(type.id, u, range, hh, false)) picked = u;
+        if (fits(type.id, u, me, hh, false)) picked = u;
       }
       if (picked) {
-        add(type.id, picked, { range, hh, composite: false, inTime: inT, outTime: outT });
+        add(type.id, picked, { range, hh, composite: false, dayCare, inTime: inT, outTime: outT });
         assign.set(b.segKey, { units: [{ typeId: type.id, unit: picked }] });
       } else overflow.add(b.segKey);
       continue;
@@ -384,7 +420,7 @@ export function assignStays(rooms: BoardRoomType[], bookings: BoardBooking[]) {
       for (let u = 1; u <= (t?.count || 0); u++) {
         if (
           !claimed.some((c) => c.typeId === part.typeId && c.unit === u) &&
-          fits(part.typeId, u, range, hh, true)
+          fits(part.typeId, u, me, hh, true)
         )
           free.push(u);
       }
@@ -416,11 +452,11 @@ export function assignStays(rooms: BoardRoomType[], bookings: BoardBooking[]) {
       overflow.add(b.segKey);
       continue;
     }
-    for (const c of claimed) add(c.typeId, c.unit, { range, hh, composite: true, inTime: inT, outTime: outT });
+    for (const c of claimed) add(c.typeId, c.unit, { range, hh, composite: true, dayCare, inTime: inT, outTime: outT });
     assign.set(b.segKey, { units: claimed, partOf: compType.name, compositeId: compType.id });
   }
 
-  const result = { assign, overflow };
+  const result = { assign, overflow, occ };
   assignCache.set(bookings, { key, result });
   return result;
 }
@@ -509,7 +545,11 @@ export function buildRoomBoard(
     for (const s of typeUnits) {
       // ห้องย่อยของห้องเชื่อมที่มีคนออกวันนี้ก็ต้องรับต่อเหมือนกัน
       s.turnover = s.leaving.length > 0 && (s.staying.length > 0 || !!s.partOf);
-      s.overCapacity = s.staying.length > s.capacity || s.leaving.length > s.capacity;
+      // คนที่ออกวันนี้ต่างบ้านกันไม่ได้อยู่พร้อมกัน (ออกเช้า/Day Care ที่กรอกเวลาต่อคิวกัน) — นับทีละบ้าน
+      const leavingByHousehold = new Map<string, number>();
+      for (const x of s.leaving) leavingByHousehold.set(householdKey(x), (leavingByHousehold.get(householdKey(x)) || 0) + 1);
+      const leavingMax = Math.max(0, ...leavingByHousehold.values());
+      s.overCapacity = s.staying.length > s.capacity || leavingMax > s.capacity;
       s.extraCats = s.overCapacity ? 0 : Math.max(0, s.staying.length - s.baseCats);
     }
     // ห้องที่ถูกห้องเชื่อมยึดไว้ ถือว่าไม่ว่าง แม้แถวนั้นจะไม่มีชื่อแมว
@@ -555,7 +595,9 @@ export function typeAvailability(
   typeId: string,
   checkin: string,
   checkout: string,
-  ignoreBookingId?: string
+  ignoreBookingId?: string,
+  /** เวลามาส่ง/มารับของนัดที่กำลังจอง — มีแล้วห้องที่ Day Care ใช้เสร็จก่อนก็นับเป็นว่าง */
+  times?: { inTime?: string; outTime?: string }
 ): { free: number; total: number; tightestDate: string } {
   const type = rooms.find((r) => r.id === typeId);
   const parts = compositionOf(typeId, rooms);
@@ -580,11 +622,22 @@ export function typeAvailability(
   const total = totalFor(null);
   let free = total;
   let tightestDate = checkin;
-  for (const d of nightsBetween(checkin, checkout)) {
-    const board = buildRoomBoard(rooms, pool, d);
+  const me = requestSlot(checkin, checkout, times);
+  const occ = parts ? null : assignStays(rooms, pool).occ;
+  const nights = nightsBetween(checkin, checkout);
+  for (const d of nights) {
+    // ห้องเดี่ยว: นับห้องที่ไม่มีใครชนในคืนนี้ — Day Care ที่กรอกเวลาไว้ไม่ทับกัน ลงคิวต่อกันได้
+    const meTonight: TimeSlot = {
+      range: [d, nextDay(d)],
+      dayCare: me.dayCare,
+      inTime: d === checkin ? me.inTime : undefined,
+      outTime: d === nights[nights.length - 1] ? me.outTime : undefined,
+    };
     const f = parts
-      ? totalFor(board)
-      : board.byType.find((x) => x.typeId === typeId)?.free ?? 0;
+      ? totalFor(buildRoomBoard(rooms, pool, d))
+      : Array.from({ length: type?.count || 0 }, (_, i) => i + 1).filter(
+          (u) => !(occ!.get(`${typeId}#${u}`) || []).some((o) => slotsClash(o, meTonight))
+        ).length;
     if (f < free) {
       free = f;
       tightestDate = d;
@@ -604,29 +657,26 @@ export function freeUnitsForRange(
   typeId: string,
   checkin: string,
   checkout: string,
-  ignoreBookingId?: string
+  ignoreBookingId?: string,
+  /** เวลามาส่ง/มารับของนัดที่กำลังจอง — ใช้ตัดสินว่าต่อคิวกับ Day Care ในวันเดียวกันได้ไหม */
+  times?: { inTime?: string; outTime?: string }
 ): number[] {
   const type = rooms.find((r) => r.id === typeId);
   if (!type || compositionOf(typeId, rooms)) return [];
   const pool = ignoreBookingId ? bookings.filter((b) => b.id !== ignoreBookingId) : bookings;
-  const nights = nightsBetween(checkin, checkout);
-  if (nights.length === 0)
+  if (!checkin)
     return Array.from({ length: type.count || 0 }, (_, i) => i + 1).filter((u) => !closureOn(type.closures, u, checkin));
 
-  let free: number[] | null = null;
-  for (const d of nights) {
-    const board = buildRoomBoard(rooms, pool, d);
-    const freeToday = new Set(
-      board.units
-        .filter((u) => u.typeId === typeId && u.staying.length === 0 && !u.partOf && !u.closed)
-        .map((u) => u.unit)
-    );
-    free = free ? free.filter((u) => freeToday.has(u)) : [...freeToday];
-  }
+  // ห้องที่ไม่มีใคร (รวมห้องปิด/ห้องที่ห้องเชื่อมยึดไว้) ชนกับช่วงที่ขอเลย
+  const { occ } = assignStays(rooms, pool);
+  const me = requestSlot(checkin, checkout, times);
+  const free = Array.from({ length: type.count || 0 }, (_, i) => i + 1).filter(
+    (u) => !(occ.get(`${typeId}#${u}`) || []).some((o) => slotsClash(o, me))
+  );
   // ว่างทั้งวัน → ว่างหลังเวลาที่แจ้ง → รับต่อแบบไม่รู้เวลา
-  const turn = turnoverUnitsForRange(rooms, pool, typeId, checkin, checkout);
+  const turn = turnoverUnitsForRange(rooms, pool, typeId, checkin, checkout, undefined, times);
   const rank = (u: number) => (!turn.has(u) ? 0 : turn.get(u) ? 1 : 2);
-  return (free || []).sort((a, b) => rank(a) - rank(b) || a - b);
+  return free.sort((a, b) => rank(a) - rank(b) || a - b);
 }
 
 /**
@@ -640,17 +690,30 @@ export function turnoverUnitsForRange(
   typeId: string,
   checkin: string,
   checkout: string,
-  ignoreBookingId?: string
+  ignoreBookingId?: string,
+  times?: { inTime?: string; outTime?: string }
 ): Map<number, string> {
   const units = new Map<number, string>();
   if (!checkin) return units;
   const pool = ignoreBookingId ? bookings.filter((b) => b.id !== ignoreBookingId) : bookings;
   const { assign } = assignStays(rooms, pool);
-  const out = checkout && checkout > checkin ? checkout : nextDay(checkin);
+  const me = requestSlot(checkin, checkout, times);
+  const out = me.range[1];
   for (const p of expandBySegments(pool.filter((b) => b.service === "room" && isLive(b) && b.checkin))) {
     const [ci, co] = stayRange(p);
+    const them: TimeSlot = { range: [ci, co], dayCare: isSameDay(p), inTime: inTimeOf(p), outTime: outTimeOf(p) };
     // ออกวันที่เราเข้า → ว่างหลังเวลามารับ · เข้าวันที่เราออก → เราต้องออกก่อนเขามา (นับว่ายังไม่รู้เวลา)
-    const after = co === checkin ? outTimeOf(p) || "" : ci === out ? "" : null;
+    // Day Care วันเดียวกันที่กรอกเวลาต่อคิวกันได้ → เขามาก่อน = ว่างหลังเวลาเขามารับ · เรามาก่อน = รับต่อ
+    const after =
+      co === checkin
+        ? outTimeOf(p) || ""
+        : ci === out
+          ? ""
+          : overlaps(them.range, me.range) && !slotsClash(them, me)
+            ? doneBefore(them, me)
+              ? them.outTime || ""
+              : ""
+            : null;
     if (after === null) continue;
     for (const u of assign.get(p.segKey)?.units || []) {
       if (u.typeId !== typeId) continue;
