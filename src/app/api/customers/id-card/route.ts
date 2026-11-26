@@ -4,6 +4,8 @@ import { withResolvedTenant } from "@/lib/tenant-context";
 import { featureOff } from "@/lib/features-server";
 import { findCustomerByLine, setCustomerIdCard } from "@/lib/customers-store";
 import { uploadPrivateDataUrl } from "@/lib/supabase/storage";
+import { formatBookingTelegram, sendTelegramLater } from "@/lib/telegram";
+import { getSiteConfig } from "@/lib/config-store";
 
 /**
  * ลูกค้าแนบรูปบัตรประชาชน (ผู้ปกครองน้องแมว) สำหรับลงทะเบียนเข้าพัก
@@ -30,5 +32,13 @@ async function handlePost(req: NextRequest) {
   const url = await uploadPrivateDataUrl(`id-cards/${c.id}-${Date.now()}`, image);
   const res = await setCustomerIdCard(c.id, url);
   if (!res.ok) return NextResponse.json({ error: res.error, needSql: true }, { status: 500 });
+  // หน้าข้อตกลงส่ง notify:false — รูปบัตรจะไปพร้อมข้อความสรุปตอนกดยอมรับแทน (ไม่ส่งซ้ำ)
+  // แจ้งเฉพาะร้านที่เปิด ตั้งค่า › อัตโนมัติ › ส่งรูปเข้า Telegram (ร้านเดิมไม่มีข้อความใหม่โผล่)
+  const cfg = await getSiteConfig().catch(() => null);
+  if (body.notify !== false && cfg?.automation?.telegramDocPhotos === true) {
+    sendTelegramLater(formatBookingTelegram("🪪 ลูกค้าแนบบัตรประชาชนแล้ว", { ลูกค้า: c.name }), undefined, [
+      { urls: [url], caption: `🪪 บัตรประชาชน ${c.name}` },
+    ]);
+  }
   return NextResponse.json({ ok: true, url });
 }

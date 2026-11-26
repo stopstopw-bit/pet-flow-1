@@ -30,7 +30,10 @@ async function postHandler(req: NextRequest) {
         น้อง: me.cats.map((c) => c.name).join(", ") || "-",
         ป้องกันเห็บหมัด: fleaTick ? "✅ ลูกค้ายืนยันว่าทำมาแล้ว (หยด/ทาน/ฉีด)" : "❌ ยังไม่ได้ทำ/ไม่ระบุ",
         ...(careNote ? { "การดูแลเพิ่มเติม": careNote } : {}),
-      })
+      }),
+      undefined,
+      // ลูกค้าเพิ่งแนบบัตรประชาชนในหน้านี้ → ส่งรูปบัตรตามข้อความสรุป
+      body.idCardNew && me.idCardUrl ? [{ urls: [me.idCardUrl], caption: `🪪 บัตรประชาชน ${me.name}` }] : []
     );
   }
   return NextResponse.json({ ok: res.ok, needSql: !res.ok });
