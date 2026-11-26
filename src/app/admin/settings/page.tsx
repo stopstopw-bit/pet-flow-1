@@ -1,6 +1,7 @@
 "use client";
 
 import { FLEA_PROOF_OPTIONS, fleaProofMode } from "@/lib/flea-update";
+import { FLEA_LEGAL_NOTE_TH, consentFleaProofOn } from "@/lib/flea-proof";
 import { CUSTOMER_FONTS, CUSTOMER_TEXT_SIZES, customerFont, customerTextCss, type CustomerTextConfig } from "@/lib/customer-text";
 
 import { savedPopup } from "@/components/Toast";
@@ -3590,6 +3591,27 @@ function FeaturesTab({
                   <p className="-mt-1 pb-1 text-[10px] text-brown-faint">
                     {locked ? `ปิดอยู่เพราะปิด "${FEATURES.find((x) => x.key === f.requires)?.label}"` : f.hint}
                   </p>
+                  {f.key === "consent" && !locked && form.consent && (
+                    <div className="space-y-1 pb-2">
+                      <Toggle
+                        label="เรื่องเห็บหมัด: ช่องแนบรูปหลักฐาน (ไม่บังคับ) + ข้อความรับรองทางกฎหมาย"
+                        checked={consentFleaProofOn({ intakeRules: rules })}
+                        onChange={(v) => setRules((r) => ({ ...r, consentFleaProof: v }))}
+                      />
+                      <p className="-mt-1 text-[10px] text-brown-faint">
+                        หน้ากดยอมรับก่อนเข้าพัก ใต้ข้อติ๊กยืนยันเห็บหมัด — ลูกค้าแนบรูปได้ ไม่แนบก็ถือว่ายืนยันแล้ว · ติ๊กแล้วขึ้นข้อความด้านล่าง
+                      </p>
+                      {consentFleaProofOn({ intakeRules: rules }) && (
+                        <textarea
+                          value={rules.fleaLegalNote ?? ""}
+                          onChange={(e) => setRules((r) => ({ ...r, fleaLegalNote: e.target.value }))}
+                          placeholder={FLEA_LEGAL_NOTE_TH}
+                          rows={4}
+                          className="w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-[11px] text-brown"
+                        />
+                      )}
+                    </div>
+                  )}
                   {f.key === "fleaUpdate" && !locked && form.fleaUpdate && (
                     <div className="pb-2">
                       <p className="pb-1 text-[11px] font-bold text-brown-soft">รูปหลักฐาน (กล่องยา / ใบเสร็จ / สมุดหมอ)</p>

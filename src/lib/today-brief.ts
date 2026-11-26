@@ -1,3 +1,4 @@
+import { stayInfoDone } from "./intake-rules";
 import { listBookings, type StoredBooking } from "@/lib/bookings-store";
 import { bookingMatchesCustomer } from "@/lib/booking-customer-match";
 import { stayForGroom } from "@/lib/booking-group";
@@ -224,7 +225,7 @@ export async function buildTodayBrief(date: string): Promise<TodayBrief[]> {
       if (on("consent") && d.rows.some((r) => !r.consentAcceptedAt))
         todos.push({ text: "ยังไม่ยอมรับเงื่อนไขเข้าพัก — ให้เซ็นตอนมาส่ง", tone: "amber" });
       for (const { b, cat } of cats) {
-        if (on("stayInfo") && !cat?.stayInfo)
+        if (on("stayInfo") && !stayInfoDone(cat?.stayInfo))
           todos.push({ text: "ยังไม่กรอกข้อมูลก่อนเข้าพัก — ถามอาหาร/ยาตอนรับน้อง", tone: "amber", cat: tag(b.catName) });
         if (on("vaccine") && !b.vaccinePhotoUrl && splitVaccinePhotos(cat?.vaccinePhotos).length === 0)
           todos.push({ text: "ยังไม่มีรูปสมุดวัคซีน — ขอดูตอนมาส่ง", tone: "amber", cat: tag(b.catName) });
