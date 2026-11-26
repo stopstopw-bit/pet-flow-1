@@ -340,7 +340,17 @@ async function handlePost(req: NextRequest) {
     eventId: booking.id,
   });
 
-  await updateBooking(booking.id, { calendarEventId: cal.eventId });
+  // เวลามาส่ง/มารับที่ร้านกรอกตอนจองห้อง (ถ้ารู้) — ใช้จัดห้องต่อคิววันเดียวกัน ลูกค้าไม่ต้องเลือกซ้ำ
+  const hhmm = (v: unknown) => (typeof v === "string" && /^\d{2}:\d{2}$/.test(v) ? v : undefined);
+  const roomTimes =
+    body.service === "room"
+      ? { arrivalTime: hhmm(body.arrivalTime), pickupTime: hhmm(body.pickupTime) }
+      : {};
+  await updateBooking(booking.id, {
+    calendarEventId: cal.eventId,
+    ...(roomTimes.arrivalTime ? { arrivalTime: roomTimes.arrivalTime } : {}),
+    ...(roomTimes.pickupTime ? { pickupTime: roomTimes.pickupTime } : {}),
+  });
 
   const base = process.env.NEXT_PUBLIC_APP_URL || "";
   const icsUrl = `${base}/api/calendar/${booking.id}`;
