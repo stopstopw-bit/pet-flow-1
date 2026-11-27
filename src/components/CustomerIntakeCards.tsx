@@ -272,7 +272,7 @@ export function CustomerIntakeCards({
         </div>
       )}
       {/* รูปหลักฐานยาเห็บหมัดที่ลูกค้าแนบ (ล่าสุดก่อน) */}
-      {partOn("fleaUpdate") && flea.some((f) => f.info.photos.length) && (
+      {flea.some((f) => f.info.photos.length) && (
         <div className="mt-3 space-y-1">
           {flea
             .filter((f) => f.info.photos.length)

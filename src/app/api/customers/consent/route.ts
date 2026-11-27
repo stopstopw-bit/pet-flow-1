@@ -4,6 +4,7 @@ import { featureOff } from "@/lib/features-server";
 import { requireCustomerSession, noCustomerSessionResponse } from "@/lib/customer-session";
 import { findCustomerByLine, setCustomerConsent } from "@/lib/customers-store";
 import { sendTelegramLater, formatBookingTelegram } from "@/lib/telegram";
+import { saveFleaProof } from "@/lib/flea-proof-server";
 
 /**
  * ลูกค้ากดยอมรับข้อตกลงของร้านจากลิงก์ที่ส่งจากหน้าข้อมูลลูกค้า (ยังไม่มีนัด)
@@ -24,16 +25,22 @@ async function postHandler(req: NextRequest) {
   if (!me) return NextResponse.json({ error: "not found" }, { status: 404 });
   const res = await setCustomerConsent(me.id, { signature, careNote, fleaTick });
   if (res.ok) {
+    // รูปหลักฐานหยดยาเห็บหมัด (ไม่บังคับ) — ยังไม่มีนัด เก็บไว้ที่น้องทุกตัวของลูกค้า
+    const fleaUrls = await saveFleaProof(me, body.fleaPhotos);
     sendTelegramLater(
       formatBookingTelegram("✅ ลูกค้ายอมรับข้อตกลงของร้านแล้ว (ก่อนลงนัด)", {
         ลูกค้า: me.name,
         น้อง: me.cats.map((c) => c.name).join(", ") || "-",
         ป้องกันเห็บหมัด: fleaTick ? "✅ ลูกค้ายืนยันว่าทำมาแล้ว (หยด/ทาน/ฉีด)" : "❌ ยังไม่ได้ทำ/ไม่ระบุ",
+        ...(fleaUrls.length ? { หลักฐานหยดยา: `แนบรูป ${fleaUrls.length} รูป 📸` } : {}),
         ...(careNote ? { "การดูแลเพิ่มเติม": careNote } : {}),
       }),
       undefined,
       // ลูกค้าเพิ่งแนบบัตรประชาชนในหน้านี้ → ส่งรูปบัตรตามข้อความสรุป
-      body.idCardNew && me.idCardUrl ? [{ urls: [me.idCardUrl], caption: `🪪 บัตรประชาชน ${me.name}` }] : []
+      [
+        ...(body.idCardNew && me.idCardUrl ? [{ urls: [me.idCardUrl], caption: `🪪 บัตรประชาชน ${me.name}` }] : []),
+        ...(fleaUrls.length ? [{ urls: fleaUrls, caption: `🐛 หลักฐานหยดยาเห็บหมัด ${me.name}` }] : []),
+      ]
     );
   }
   return NextResponse.json({ ok: res.ok, needSql: !res.ok });

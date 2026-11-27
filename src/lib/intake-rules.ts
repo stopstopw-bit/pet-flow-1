@@ -18,6 +18,10 @@ export type IntakeRules = {
   registerAsksHistory?: boolean;
   /** การ์ดอัปเดตยากำจัดเห็บหมัด ขอรูปหลักฐานไหม — ไม่ตั้ง = แนบได้ ไม่บังคับ (ดู flea-update.ts) */
   fleaProof?: "off" | "optional" | "required";
+  /** หน้ากดยอมรับข้อตกลงก่อนเข้าพัก: ช่องแนบรูปหลักฐานหยดยา (ไม่บังคับ) + ข้อความรับรองทางกฎหมายหลังติ๊ก — ไม่ตั้ง = เปิด */
+  consentFleaProof?: boolean;
+  /** ข้อความรับรองทางกฎหมายที่ร้านแก้เอง — ว่าง = ข้อความเริ่มต้น (ดู flea-proof.ts) */
+  fleaLegalNote?: string;
 };
 
 export type IntakeAnswers = Record<string, string | string[]>;
