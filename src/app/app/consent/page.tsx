@@ -23,7 +23,7 @@ import { IntakeFlowBar } from "@/components/IntakeFlowBar";
 import { SectionLabel } from "@/components/ui";
 import { Icon } from "@/components/Icon";
 import { MAX_VACCINE_PHOTOS } from "@/lib/vaccine-photos";
-import { FLEA_PROOF_MAX, consentFleaProofOn, fleaLegalNote } from "@/lib/flea-proof";
+import { FLEA_PROOF_MAX, consentFleaProofOn, fleaLegalNote, vaccineLegalNote, vaccineLegalOn } from "@/lib/flea-proof";
 import { flowProgress } from "@/lib/intake-flow";
 import { idCardPurpose, watermarkIdCard } from "@/lib/id-card-watermark";
 import { isFeatureOn } from "@/lib/features";
@@ -572,6 +572,11 @@ function ConsentContent() {
                     {tr("หากไม่ได้แนบสมุดวัคซีน ถือว่าเจ้าของรับทราบและยอมรับข้อตกลงทั้งหมด รวมถึงความเสี่ยงจากการที่ทางร้านไม่ได้ตรวจสอบประวัติวัคซีนของน้อง", "If no vaccine book is attached, you accept all terms, including the risk that the shop has not checked your pet's vaccination history.")}
                   </span>
                 </p>
+                {vaccineLegalOn(config) && (
+                  <p className="mb-2 whitespace-pre-line rounded-petflow-sm border border-ok/30 bg-sage/15 p-3 text-[11px] leading-relaxed text-brown">
+                    {vaccineLegalNote(config, locale === "en")}
+                  </p>
+                )}
                 {(groupCats.length ? groupCats : booking ? [{ id: booking.id, catName: booking.catName }] : []).map(
                   (cat) => {
                     const photos = vaccineByCat[cat.id] || [];

@@ -22,6 +22,10 @@ export type IntakeRules = {
   consentFleaProof?: boolean;
   /** ข้อความรับรองทางกฎหมายที่ร้านแก้เอง — ว่าง = ข้อความเริ่มต้น (ดู flea-proof.ts) */
   fleaLegalNote?: string;
+  /** ข้อความรับรองทางกฎหมายตอนแนบสมุดวัคซีน — ไม่ตั้ง = เปิด (ดู flea-proof.ts) */
+  vaccineLegal?: boolean;
+  /** ข้อความรับรองเรื่องวัคซีนที่ร้านแก้เอง — ว่าง = ข้อความเริ่มต้น */
+  vaccineLegalNote?: string;
 };
 
 export type IntakeAnswers = Record<string, string | string[]>;

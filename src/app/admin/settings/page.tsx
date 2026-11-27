@@ -1,7 +1,7 @@
 "use client";
 
 import { FLEA_PROOF_OPTIONS, fleaProofMode } from "@/lib/flea-update";
-import { FLEA_LEGAL_NOTE_TH, consentFleaProofOn } from "@/lib/flea-proof";
+import { FLEA_LEGAL_NOTE_TH, VACCINE_LEGAL_NOTE_TH, consentFleaProofOn, vaccineLegalOn } from "@/lib/flea-proof";
 import { CUSTOMER_FONTS, CUSTOMER_TEXT_SIZES, customerFont, customerTextCss, type CustomerTextConfig } from "@/lib/customer-text";
 
 import { savedPopup } from "@/components/Toast";
@@ -3591,6 +3591,27 @@ function FeaturesTab({
                   <p className="-mt-1 pb-1 text-[10px] text-brown-faint">
                     {locked ? `ปิดอยู่เพราะปิด "${FEATURES.find((x) => x.key === f.requires)?.label}"` : f.hint}
                   </p>
+                  {f.key === "vaccine" && !locked && form.vaccine && (
+                    <div className="space-y-1 pb-2">
+                      <Toggle
+                        label="ข้อความรับรองทางกฎหมายตอนแนบสมุดวัคซีน"
+                        checked={vaccineLegalOn({ intakeRules: rules })}
+                        onChange={(v) => setRules((r) => ({ ...r, vaccineLegal: v }))}
+                      />
+                      <p className="-mt-1 text-[10px] text-brown-faint">
+                        ขึ้นในหน้าแนบสมุดวัคซีน และช่องแนบสมุดวัคซีนในหน้ากดยอมรับ — แก้ข้อความด้านล่างได้ (ว่าง = ข้อความเริ่มต้น)
+                      </p>
+                      {vaccineLegalOn({ intakeRules: rules }) && (
+                        <textarea
+                          value={rules.vaccineLegalNote ?? ""}
+                          onChange={(e) => setRules((r) => ({ ...r, vaccineLegalNote: e.target.value }))}
+                          placeholder={VACCINE_LEGAL_NOTE_TH}
+                          rows={4}
+                          className="w-full rounded-petflow-sm border border-petflow-line bg-paper px-3 py-2 text-[11px] text-brown"
+                        />
+                      )}
+                    </div>
+                  )}
                   {f.key === "consent" && !locked && form.consent && (
                     <div className="space-y-1 pb-2">
                       <Toggle
