@@ -3491,6 +3491,7 @@ const AUTOMATION_DEFAULT = {
   groomVaccineOnce: false,
   telegramDocPhotos: false,
   billExtras: false,
+  transportReminders: false,
   groomInfoEnabled: true,
   intakeAutoEnabled: true,
   freeLitterMinNights: 3,
@@ -4103,6 +4104,15 @@ function AutomationTab({
             sends: "เปิด = บริการที่ใส่ในบิลนอกจากค่าห้อง/รับ-ส่ง ขึ้นบอกพนักงานว่าน้องตัวไหนต้องทำอะไรเพิ่ม · ปิด = เหมือนเดิม",
             on: form.billExtras === true,
             onToggle: (v) => set({ billExtras: v }),
+          })}
+          {item({
+            emoji: "⏰",
+            title: "เตือนรับ-ส่ง + เตือนก่อนนัด 3 ชั่วโมง (Telegram)",
+            services: ["groom", "stay"],
+            when: "สรุป Telegram เช้า/พรุ่งนี้/ปิดวัน · ทุกชั่วโมงตรง (เตือนนัดที่จะถึงในอีก 2–3 ชม.)",
+            sends: "เปิด = บรรทัดน้องบอกร้านไปรับ/ไปส่ง + ข้อความเตือนก่อนเวลานัดพร้อมเบอร์/แผนที่/งานเพิ่ม · ปิด = เหมือนเดิม",
+            on: form.transportReminders === true,
+            onToggle: (v) => set({ transportReminders: v }),
           })}
           {item({
             emoji: "⭐",
