@@ -12,6 +12,7 @@ import { BTN_PRIMARY, PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/ui";
 import { Icon } from "@/components/Icon";
 import { MAX_VACCINE_PHOTOS, splitVaccinePhotos } from "@/lib/vaccine-photos";
+import { vaccineLegalNote, vaccineLegalOn } from "@/lib/flea-proof";
 import { idCardPurpose, watermarkIdCard } from "@/lib/id-card-watermark";
 import { IntakeFlowBar } from "@/components/IntakeFlowBar";
 import { flowProgress } from "@/lib/intake-flow";
@@ -197,6 +198,8 @@ function StayLine({ b }: { b: StayBooking }) {
 
 function VaccineSection({ target }: { target: VaccineTarget }) {
   const tr = useTr();
+  const { config } = useConfig();
+  const { locale } = useLocale();
   const booking = target.booking;
   const [sentCount, setSentCount] = useState(target.initialCount);
   const [photos, setPhotos] = useState<string[]>([]);
@@ -298,6 +301,13 @@ function VaccineSection({ target }: { target: VaccineTarget }) {
             </div>
           ))}
         </div>
+      )}
+
+      {/* ข้อความรับรองทางกฎหมาย — ขึ้นก่อนแนบ เพราะเลือกรูปแล้วส่งให้ร้านทันที */}
+      {vaccineLegalOn(config) && (
+        <p className="mb-2 whitespace-pre-line rounded-petflow-sm border border-ok/30 bg-sage/15 p-3 text-[11px] leading-relaxed text-brown">
+          {vaccineLegalNote(config, locale === "en")}
+        </p>
       )}
 
       {photos.length < MAX_VACCINE_PHOTOS && (
