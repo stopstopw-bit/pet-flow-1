@@ -29,10 +29,6 @@
       "schedule": "30 12 * * *"
     },
     {
-      "path": "/api/cron/upcoming",
-      "schedule": "0 * * * *"
-    },
-    {
       "path": "/api/cron/daily-close",
       "schedule": "0 13 * * *"
     },
