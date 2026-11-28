@@ -3490,6 +3490,7 @@ const AUTOMATION_DEFAULT = {
   englishCards: false,
   groomVaccineOnce: false,
   telegramDocPhotos: false,
+  billExtras: false,
   groomInfoEnabled: true,
   intakeAutoEnabled: true,
   freeLitterMinNights: 3,
@@ -4093,6 +4094,15 @@ function AutomationTab({
             sends: "เปิด = ข้อความสรุปใน Telegram มีรูปที่ลูกค้าแนบมารอบนี้ตามไปด้วย · ปิด = ส่งแค่ข้อความเหมือนเดิม",
             on: form.telegramDocPhotos === true,
             onToggle: (v) => set({ telegramDocPhotos: v }),
+          })}
+          {item({
+            emoji: "➕",
+            title: "บอกงานเพิ่มในบิล (ตัดเล็บ ไถขน อาบน้ำ ฯลฯ)",
+            services: ["groom", "stay"],
+            when: "ตอนออก/แก้บิล · สรุป Telegram เช้า/พรุ่งนี้/ปิดวัน · หน้าวันนี้ · ปฏิทิน/ผังห้อง",
+            sends: "เปิด = บริการที่ใส่ในบิลนอกจากค่าห้อง/รับ-ส่ง ขึ้นบอกพนักงานว่าน้องตัวไหนต้องทำอะไรเพิ่ม · ปิด = เหมือนเดิม",
+            on: form.billExtras === true,
+            onToggle: (v) => set({ billExtras: v }),
           })}
           {item({
             emoji: "⭐",

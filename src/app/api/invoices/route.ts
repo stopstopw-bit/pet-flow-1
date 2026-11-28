@@ -123,6 +123,10 @@ function summaryFlexFromInvoice(
   }, cardStyle);
 }
 import { sendTelegram, formatBookingTelegram } from "@/lib/telegram";
+import { runAfterResponse } from "@/lib/after-response";
+import { isExtraLine } from "@/lib/booking-extras";
+import { isRoomLine } from "@/lib/stay-line";
+import { shortItemLabel } from "@/lib/invoice-item-label";
 import { hasAudit, logAudit } from "@/lib/audit-log";
 import { requireTenantId } from "@/lib/tenant-context";
 import { cancelAppointmentToCredit, creditableAmount } from "@/lib/cancel-to-credit";
@@ -335,6 +339,7 @@ async function handlePost(req: NextRequest) {
         })
       );
     }
+    notifyBillExtras(invoice);
     return NextResponse.json({ ok: true, invoice });
   }
 
@@ -1105,6 +1110,7 @@ async function handlePatch(req: NextRequest) {
         { status: 400 }
       );
     }
+    if (res.invoice) notifyBillExtras(res.invoice, inv.items);
     return NextResponse.json({ ok: true, invoice: res.invoice });
   }
 
@@ -1167,3 +1173,43 @@ async function handlePatch(req: NextRequest) {
 
   return NextResponse.json({ error: "unknown action" }, { status: 400 });
 }
+
+/**
+ * บิลมีงานเพิ่มนอกจากค่าห้อง/อาบน้ำตามนัด (เช่น ไถขนก้น+เท้า) → แจ้ง Telegram ให้พนักงานรู้ว่าน้องตัวไหนต้องทำอะไร
+ * แก้บิล = แจ้งเฉพาะรายการที่เพิ่งเพิ่มเข้ามา (ไม่แจ้งซ้ำของเดิม) · แจ้งไม่ได้ก็ไม่ขวางการออกบิล
+ */
+function notifyBillExtras(
+  inv: Pick<InvoiceRecord, "customerName" | "catName" | "items" | "bookingId">,
+  before?: InvoiceRecord["items"]
+) {
+  const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const line = (it: InvoiceRecord["items"][number]) => {
+    const name = shortItemLabel(it.label);
+    const cat = (it.catName || "").trim();
+    return `• ${cat ? `${cat}: ` : ""}${name}${(it.qty || 1) > 1 ? ` ×${Math.round(it.qty || 1)}` : ""}`;
+  };
+  // บิลอาบน้ำล้วน: โปรแกรมอาบน้ำคืองานหลักของนัดอยู่แล้ว ไม่ต้องแจ้ง · บิลเข้าพัก: อาบน้ำ = งานเพิ่ม
+  const extras = (items?: InvoiceRecord["items"]) => {
+    const list = items || [];
+    const stay = list.some((it) => isRoomLine(it));
+    return list.filter((it) => isExtraLine(it) && (stay || it.kind !== "grooming")).map(line);
+  };
+  const had = new Set(extras(before));
+  const fresh = Array.from(new Set(extras(inv.items))).filter((l) => !had.has(l));
+  if (!fresh.length) return;
+  runAfterResponse("bill extras notify", async () => {
+    if ((await getSiteConfig()).automation?.billExtras !== true) return;
+    const bk = inv.bookingId ? await getBooking(inv.bookingId).catch(() => null) : null;
+    const detail: Record<string, string> = {
+      ลูกค้า: esc(inv.customerName || "-"),
+      น้อง: esc(invoiceCatNames(inv) || "-"),
+    };
+    if (bk) detail["นัด"] = esc(bookingScheduleText(bk));
+    detail["งานเพิ่ม"] = `\n${esc(fresh.join("\n"))}`;
+    await sendTelegram(
+      formatBookingTelegram(before ? "🧾 แก้บิล — มีงานเพิ่มให้น้อง" : "🧾 ออกบิล — มีงานเพิ่มให้น้อง", detail),
+      bk ? { booking: bk } : undefined
+    );
+  });
+}
+
