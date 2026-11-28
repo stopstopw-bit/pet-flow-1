@@ -76,6 +76,7 @@ export function getDefaultSiteConfig(): SiteConfig {
         groomVaccineOnce: false,
         telegramDocPhotos: false,
         billExtras: false,
+        transportReminders: false,
         groomInfoEnabled: true,
         intakeAutoEnabled: true,
         freeLitterMinNights: 3,
