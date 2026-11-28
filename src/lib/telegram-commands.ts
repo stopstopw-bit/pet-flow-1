@@ -1,7 +1,8 @@
 import { bookingsForDate, listBookings } from "@/lib/bookings-store";
 import { searchCustomers, listCustomers, getCatStaffNotes } from "@/lib/customers-store";
 import { todayFinance, monthFinance } from "@/lib/finance-store";
-import { salesSummary } from "@/lib/invoices-store";
+import { listInvoicesForBookings, salesSummary } from "@/lib/invoices-store";
+import { bookingExtras, extrasForCat, extrasText, relatedBookingIds } from "@/lib/booking-extras";
 import { adminDashboardStats, bookingsForMonth } from "@/lib/admin-stats";
 import {
   bookFromTelegram,
@@ -86,6 +87,18 @@ export async function buildDayScheduleMessage(
   const roomAt = (b: (typeof live)[number], d: string) => roomOn(b, d).room || "-";
   const total = groom.length + checkin.length + checkout.length + ongoing.length + moving.length;
 
+  // งานเพิ่มที่ร้านใส่ไว้ในบิล (ไถขน อาบน้ำ ฯลฯ) — เมื่อก่อนออกบิลแล้วแต่ Telegram ไม่บอก
+  // พนักงานเลยไม่รู้ว่าน้องตัวนี้ต้องทำอะไรเพิ่ม
+  const shown = [...groom, ...checkin, ...checkout, ...ongoing, ...moving];
+  const extrasOn = (await getSiteConfig().catch(() => null))?.automation?.billExtras === true;
+  const invoices = extrasOn && shown.length
+    ? await listInvoicesForBookings(Array.from(relatedBookingIds(shown, live))).catch(() => [])
+    : [];
+  const extraLine = (b: (typeof live)[number], skipGrooming = false) => {
+    const t = extrasText(extrasForCat(bookingExtras([b], live, invoices), b.catName), { skipGrooming });
+    return t ? `\n   ➕ งานเพิ่ม: ${t}` : "";
+  };
+
   if (total === 0) {
     return `${heading}\n\n${opts?.emptyText ?? "ยังไม่มีนัด/เข้าพัก-ออกพักในระบบค่ะ 🎉"}`;
   }
@@ -98,7 +111,7 @@ export async function buildDayScheduleMessage(
           .map((b, i) => {
             const consent = b.consentAcceptedAt ? "✅ เซ็นแล้ว" : "⏳ ยังไม่เซ็น";
             const note = b.careNote ? ` — 📝 ${b.careNote}` : "";
-            return `${i + 1}. ${b.catName} · ${b.customerName} — ห้อง ${roomAt(b, date)} · ${consent}${note}`;
+            return `${i + 1}. ${b.catName} · ${b.customerName} — ห้อง ${roomAt(b, date)} · ${consent}${note}${extraLine(b)}`;
           })
           .join("\n")
     );
@@ -121,7 +134,7 @@ export async function buildDayScheduleMessage(
           notes?.allergy && notes.allergy !== "ไม่มี" ? `🚫 แพ้: ${notes.allergy}` : "",
           b.notes ? `📝 ${b.notes}` : "",
         ].filter(Boolean);
-        return flags.length ? `${base}\n   ⚠️ ${flags.join(" · ")}` : base;
+        return (flags.length ? `${base}\n   ⚠️ ${flags.join(" · ")}` : base) + extraLine(b, true);
       })
     );
     lines.push(`\n🛁 นัดอาบน้ำ (${groom.length}):\n` + groomLines.join("\n"));
@@ -132,7 +145,7 @@ export async function buildDayScheduleMessage(
         checkin
           .map(
             (b, i) =>
-              `${i + 1}. ${moveText("มาส่ง", b.arrivalTime)} — ${b.catName} · ${b.customerName} · ห้อง ${b.room || "-"}`
+              `${i + 1}. ${moveText("มาส่ง", b.arrivalTime)} — ${b.catName} · ${b.customerName} · ห้อง ${b.room || "-"}${extraLine(b)}`
           )
           .join("\n")
     );
@@ -154,7 +167,7 @@ export async function buildDayScheduleMessage(
         checkout
           .map(
             (b, i) =>
-              `${i + 1}. ${moveText("มารับ", b.pickupTime)} — ${b.catName} · ${b.customerName} · ห้อง ${roomAt(b, date)}`
+              `${i + 1}. ${moveText("มารับ", b.pickupTime)} — ${b.catName} · ${b.customerName} · ห้อง ${roomAt(b, date)}${extraLine(b)}`
           )
           .join("\n")
     );
