@@ -1,0 +1,33 @@
+# เตือนก่อนเวลานัด ~3 ชม. (Telegram ร้าน) — ยิง /api/cron/upcoming ทุกชั่วโมงแทน Vercel cron
+# เพราะโปรเจกต์ Vercel แผน Hobby ตั้ง cron ได้แค่วันละครั้ง (ใส่ใน vercel.json แล้ว deploy ล้ม)
+#
+# ต้องตั้ง 2 ค่าใน GitHub › Settings › Secrets and variables › Actions:
+#   PETFLOW_URL  = ที่อยู่เว็บ petflow จริง เช่น https://xxxx.vercel.app (ไม่ต้องมี / ท้าย)
+#   CRON_SECRET  = ค่าเดียวกับ CRON_SECRET ใน Vercel › Settings › Environment Variables
+# ยังไม่ตั้ง = ข้ามเฉยๆ ไม่ล้ม · ร้านที่ไม่ได้เปิดสวิตช์ "เตือนรับ-ส่ง + เตือนก่อนนัด 3 ชั่วโมง" จะไม่ได้ข้อความ
+name: upcoming-reminder
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call /api/cron/upcoming
+        env:
+          PETFLOW_URL: ${{ secrets.PETFLOW_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$PETFLOW_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "PETFLOW_URL / CRON_SECRET ยังไม่ได้ตั้ง — ข้าม"
+            exit 0
+          fi
+          # GitHub schedule อาจช้าไปหลายนาที — ส่งชั่วโมงไทยที่ตั้งใจไว้ไปด้วย (ชั่วโมงที่ job เริ่ม)
+          HOUR=$(TZ=Asia/Bangkok date +%-H)
+          curl -fsS --max-time 60 -H "Authorization: Bearer $CRON_SECRET" "$PETFLOW_URL/api/cron/upcoming?hour=$HOUR"
